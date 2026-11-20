@@ -12,7 +12,71 @@ const DEFAULT_GEMINI_MODEL =
     ? 'gemini-3.1-pro-preview'
     : rawDefaultModel;
 const FAST_GEMINI_MODEL =
-  process.env.GEMINI_FAST_MODEL || 'gemini-3.1-pro-preview';
+  process.env.GEMINI_FAST_MODEL || 'gemini-3-flash-preview';
+
+const MODEL_FALLBACK_CHAIN = [
+  'gemini-3.1-pro-preview',
+  'gemini-3-flash-preview',
+  'gemini-2.5-flash',
+];
+
+function createGeminiClient(apiKey: string) {
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      apiVersion: 'v1beta',
+    },
+  });
+}
+
+async function generateContentWithFallback(
+  ai: GoogleGenAI,
+  preferredModel: string,
+  params: Omit<Parameters<GoogleGenAI['models']['generateContent']>[0], 'model'>
+) {
+  const candidates = Array.from(
+    new Set([preferredModel, ...MODEL_FALLBACK_CHAIN])
+  );
+  let lastError: unknown;
+
+  for (const model of candidates) {
+    try {
+      return await ai.models.generateContent({
+        ...params,
+        model,
+      });
+    } catch (err: unknown) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      // If thinkingConfig isn't supported by this model, retry same model without thinkingConfig
+      if (
+        params.config &&
+        'thinkingConfig' in params.config &&
+        /thinking/i.test(msg)
+      ) {
+        const { thinkingConfig: _omit, ...restConfig } = params.config as Record<
+          string,
+          unknown
+        >;
+        try {
+          return await ai.models.generateContent({
+            ...params,
+            config: restConfig,
+            model,
+          });
+        } catch (retryErr: unknown) {
+          lastError = retryErr;
+        }
+      }
+      // Only fall back to next model on 404 / NOT_FOUND / unsupported model errors
+      if (/404|NOT_FOUND|no longer available|not found/i.test(msg)) {
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError;
+}
 
 async function startServer() {
   const app = express();
@@ -28,6 +92,7 @@ async function startServer() {
       hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
       model: DEFAULT_GEMINI_MODEL,
       fastModel: FAST_GEMINI_MODEL,
+      apiVersion: 'v1beta',
     });
   });
 
@@ -49,9 +114,7 @@ async function startServer() {
         });
       }
 
-      const ai = new GoogleGenAI({
-        apiKey: process.env.GEMINI_API_KEY,
-      });
+      const ai = createGeminiClient(process.env.GEMINI_API_KEY);
 
       const eventNum = nextEventNumber || 1;
       const targetClub = clubName || 'the managed club';
@@ -85,8 +148,7 @@ Key Playbook v2.0 Rules:
         text: `Analyze this FM27 screen / match update for ${targetClub} (Event #${eventNum}). User notes: "${notes || 'Extract match statistics, xG, ratings, tactical audit, and generate ready-to-paste Google Docs & Google Sheets sync blocks.'}"`,
       });
 
-      const response = await ai.models.generateContent({
-        model: DEFAULT_GEMINI_MODEL,
+      const response = await generateContentWithFallback(ai, DEFAULT_GEMINI_MODEL, {
         contents: { parts },
         config: {
           systemInstruction: systemPrompt,
@@ -347,8 +409,7 @@ ${liveAppContext ? `\n${liveAppContext}\n` : ''}`;
         parts: currentTurnParts,
       });
 
-      const response = await ai.models.generateContent({
-        model: selectedModel,
+      const response = await generateContentWithFallback(ai, selectedModel, {
         contents,
         config: {
           systemInstruction: systemPrompt,
