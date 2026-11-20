@@ -271,6 +271,26 @@ export interface DynamicTacticalPlan {
   cbPairNames: string;
 }
 
+function getPosRating(
+  pr: Record<string, number>,
+  ...keys: string[]
+): number {
+  const lowerMap: Record<string, number> = {};
+  for (const [k, v] of Object.entries(pr)) {
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      lowerMap[k.toLowerCase()] = v;
+    }
+  }
+  let best = 0;
+  for (const key of keys) {
+    const val = lowerMap[key.toLowerCase()];
+    if (typeof val === 'number' && val > best) {
+      best = val;
+    }
+  }
+  return best;
+}
+
 function getSlotSuitability(
   p: PlayerRecord,
   slot: DynamicStarterSlot['slotCode']
@@ -278,29 +298,51 @@ function getSlotSuitability(
   const pr = p.positionRatings;
   const pos = (p.position || '').toUpperCase();
 
-  if (pr) {
+  if (pr && Object.values(pr).some((v) => typeof v === 'number' && v > 1)) {
     switch (slot) {
       case 'GK':
-        return pr.gk || 1;
+        return getPosRating(pr, 'gk') || 1;
       case 'RB':
-        return Math.max(pr.dr || 1, pr.wbr || 1);
+        return Math.max(getPosRating(pr, 'dr', 'rb'), getPosRating(pr, 'wbr')) || 1;
       case 'RCB':
       case 'LCB':
-        return pr.dc || 1;
+        return getPosRating(pr, 'dc', 'cb') || 1;
       case 'LB':
-        return Math.max(pr.dl || 1, pr.wbl || 1);
+        return Math.max(getPosRating(pr, 'dl', 'lb'), getPosRating(pr, 'wbl')) || 1;
       case 'DM':
-        return Math.max(pr.dm || 1, (pr.mc || 1) - 2);
+        return Math.max(
+          getPosRating(pr, 'dm'),
+          Math.max(1, getPosRating(pr, 'mc', 'cm') - 3)
+        );
       case 'LCM':
-        return Math.max(pr.mc || 1, (pr.dm || 1) - 2, (pr.amc || 1) - 2);
+        return Math.max(
+          getPosRating(pr, 'mc', 'cm'),
+          Math.max(1, getPosRating(pr, 'dm') - 2),
+          Math.max(1, getPosRating(pr, 'amc', 'am') - 2)
+        );
       case 'RCM':
-        return Math.max(pr.amc || 1, pr.mc || 1);
+        return Math.max(
+          getPosRating(pr, 'mc', 'cm'),
+          getPosRating(pr, 'amc', 'am')
+        ) || 1;
       case 'RW':
-        return Math.max(pr.amr || 1, pr.mr || 1, (pr.stc || 1) - 3);
+        return Math.max(
+          getPosRating(pr, 'amr', 'rw'),
+          getPosRating(pr, 'mr'),
+          Math.max(1, getPosRating(pr, 'st', 'stc') - 4)
+        );
       case 'LW':
-        return Math.max(pr.aml || 1, pr.ml || 1, (pr.stc || 1) - 3);
+        return Math.max(
+          getPosRating(pr, 'aml', 'lw'),
+          getPosRating(pr, 'ml'),
+          Math.max(1, getPosRating(pr, 'st', 'stc') - 4)
+        );
       case 'ST':
-        return Math.max(pr.stc || 1, (pr.amr || 1) - 3, (pr.aml || 1) - 3);
+        return Math.max(
+          getPosRating(pr, 'st', 'stc'),
+          Math.max(1, getPosRating(pr, 'amr', 'rw') - 4),
+          Math.max(1, getPosRating(pr, 'aml', 'lw') - 4)
+        );
     }
   }
 
@@ -454,7 +496,17 @@ function scorePlayerForSlot(
       break;
   }
 
+  const familiarityTierBonus =
+    suit >= 18
+      ? 160
+      : suit >= 15
+        ? 110
+        : suit >= 12
+          ? 45
+          : -140;
+
   return (
+    familiarityTierBonus +
     suit * 6.5 +
     starScore +
     attrScore +

@@ -366,3 +366,83 @@ test('computeFm27EngineMetrics computes accurate Patch 27.1.0 physics metrics', 
   assert.equal(metrics.jumpHeightMeters, 0.63);
   assert.equal(metrics.sprintDrainRate, 1.98);
 });
+
+test('buildDynamicTacticalPlan respects uppercase positionRatings and never puts an LB at CB over natural CBs', () => {
+  const makePlayer = (
+    id: string,
+    name: string,
+    position: string,
+    ability: number,
+    positionRatings: Record<string, number>
+  ): PlayerRecord => ({
+    id,
+    number: 1,
+    name,
+    position,
+    apps: '5',
+    minutes: 450,
+    rating: 7.1,
+    goals: 0,
+    xG: 0,
+    xGPer90: 0,
+    assists: 0,
+    xA: 0,
+    xAPer90: 0,
+    drbPer90: 0,
+    prPassesPer90: 0,
+    hdrPct: 60,
+    intPer90: 1.5,
+    tckPct: 75,
+    personality: 'Balanced',
+    age: 24,
+    ability,
+    potential: ability,
+    condition: 95,
+    sharpness: 95,
+    expires: '30/06/2028',
+    nation: 'BEL',
+    wagePw: 300,
+    status: 'Starter',
+    positionRatings,
+    attributes: {
+      pace: 13,
+      acceleration: 13,
+      stamina: 13,
+      jumpingReach: 13,
+      determination: 13,
+      passing: 12,
+      finishing: 10,
+      tackling: 13,
+      firstTouch: 12,
+      decisions: 12,
+      workRate: 13,
+      offTheBall: 11,
+    },
+    ipRole: 'Centre-Back (CB)',
+    oopRole: 'Centre-Back (CB)',
+    notes: '',
+  });
+
+  const squad: PlayerRecord[] = [
+    makePlayer('gk1', 'Keeper One', 'GK', 3.5, { GK: 20 }),
+    makePlayer('lb1', 'Star LeftBack', 'D (L)', 5.0, { DL: 20, WBL: 18, DC: 6 }),
+    makePlayer('cb1', 'Natural CB One', 'D (C)', 3.0, { DC: 20, DL: 4 }),
+    makePlayer('cb2', 'Natural CB Two', 'D (C)', 3.0, { DC: 19, DR: 5 }),
+    makePlayer('rb1', 'Natural RB', 'D (R)', 3.5, { DR: 20, DC: 7 }),
+  ];
+
+  const plan = buildDynamicTacticalPlan(squad);
+  const rcb = plan.startingXI.find((s) => s.slotCode === 'RCB');
+  const lcb = plan.startingXI.find((s) => s.slotCode === 'LCB');
+  const lb = plan.startingXI.find((s) => s.slotCode === 'LB');
+
+  assert.equal(lb?.player.name, 'Star LeftBack');
+  assert.ok(
+    [rcb?.player.name, lcb?.player.name].includes('Natural CB One'),
+    'Natural CB One must be selected at CB'
+  );
+  assert.ok(
+    [rcb?.player.name, lcb?.player.name].includes('Natural CB Two'),
+    'Natural CB Two must be selected at CB'
+  );
+});
