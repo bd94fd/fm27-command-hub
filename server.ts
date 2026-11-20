@@ -117,16 +117,29 @@ async function generateContentWithFallback(
     }
   };
 
+  const isTransientOrMissing = (msg: string) =>
+    /404|NOT_FOUND|no longer available|not found|503|UNAVAILABLE|high demand|overloaded|429|RESOURCE_EXHAUSTED/i.test(
+      msg
+    );
+
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
   for (const model of candidates) {
-    try {
-      return await tryModel(model);
-    } catch (err: unknown) {
-      lastError = err;
-      const msg = err instanceof Error ? err.message : String(err);
-      if (/404|NOT_FOUND|no longer available|not found/i.test(msg)) {
-        continue;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await tryModel(model);
+      } catch (err: unknown) {
+        lastError = err;
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/503|UNAVAILABLE|high demand|overloaded|429/i.test(msg) && attempt === 0) {
+          await sleep(1500);
+          continue;
+        }
+        if (isTransientOrMissing(msg)) {
+          break; // try next model in fallback chain
+        }
+        throw err;
       }
-      throw err;
     }
   }
 
@@ -390,6 +403,7 @@ STRICT FM27 ACCURACY & RATING POLICY:
 - Always cross-check tactical, match-engine, training, set-piece, and SCR mechanics against the VERIFIED FM27 KNOWLEDGE BASE block included in the context.
 - NEVER mention, reveal, or guess raw numeric CA or PA values (e.g. "CA 120 / PA 140"). Always use relative Star Ratings (e.g. 3.5★/4.5★), visible attributes, and FM27 Engine Metrics (Sprint Speed m/s, Aerial Jump Height, Physical Score /100).
 - NEVER recommend retired FM24 roles (Mezzala, Enganche, Trequartista, Carrilero, Raumdeuter, Segundo Volante) or legacy Defend/Support/Attack duties. Always pair authentic FM27 In-Possession (IP) and Out-of-Possession (OOP) roles.
+- **ALWAYS EXPLAIN "WHY" FOR EVERY RECOMMENDATION**: Whenever you recommend a Starting XI pick, lineup change, bench drop, IP/OOP role tweak, or substitution window, explicitly state **WHY** in plain, actionable terms—citing exact positional familiarity, key attributes (Pace, Stamina, Jumping Reach, Passing, Decisions), condition/fatigue, or the opponent's tactical weakness so the manager understands the reasoning behind every click.
 
 YOUR CORE IDENTITY & CONVERSATIONAL INTELLIGENCE:
 You are having an ongoing, multi-turn back-and-forth tactical working session with the manager.

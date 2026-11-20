@@ -611,10 +611,20 @@ export function buildDynamicTacticalPlan(
 
     const best = candidates[0];
     if (!best) continue;
+    const runnerUp = candidates[1];
     pickedIds.add(best.id);
 
     const a = best.attributes;
-    const caLabel = `${best.ability.toFixed(1)}★ / ${best.potential.toFixed(1)}★`;
+    const bestSuit = getSlotSuitability(best, s.code);
+    const famLabel =
+      bestSuit >= 18
+        ? 'Natural'
+        : bestSuit >= 15
+          ? 'Accomplished'
+          : bestSuit >= 12
+            ? 'Competent'
+            : 'Cover';
+    const starLabel = `${best.ability.toFixed(1)}★`;
     const statLabel =
       best.minutes > 0
         ? `${best.minutes}m (${best.apps} apps${best.rating ? `, ${best.rating.toFixed(2)} rat` : ''})`
@@ -631,6 +641,21 @@ export function buildDynamicTacticalPlan(
       specificAttrNote = `Fin ${a.finishing}, OtB ${a.offTheBall}, Pac ${a.pace}, JR ${a.jumpingReach}`;
     }
 
+    const whyParts: string[] = [`${famLabel} (${bestSuit}/20) at ${s.code}`];
+    if (runnerUp) {
+      const rSuit = getSlotSuitability(runnerUp, s.code);
+      const bestCond = typeof best.condition === 'number' ? best.condition : null;
+      const runCond =
+        typeof runnerUp.condition === 'number' ? runnerUp.condition : null;
+      if (bestSuit - rSuit >= 3) {
+        whyParts.push(`ahead of ${runnerUp.name} (${rSuit}/20 fit)`);
+      } else if (bestCond !== null && runCond !== null && bestCond - runCond >= 8) {
+        whyParts.push(`fresher than ${runnerUp.name} (${bestCond}% vs ${runCond}%)`);
+      } else {
+        whyParts.push(`edges ${runnerUp.name} on role attributes & form`);
+      }
+    }
+
     pickedBySlot.set(s.code, {
       slotCode: s.code,
       player: best,
@@ -638,7 +663,7 @@ export function buildDynamicTacticalPlan(
       oopRole: s.oopRole,
       plannedMinutes: 90,
       subOffFor: null,
-      rationale: `${caLabel} · ${specificAttrNote} · ${statLabel}`,
+      rationale: `Why: ${whyParts.join(', ')} · ${starLabel} · ${specificAttrNote} · ${statLabel}`,
     });
   }
 
