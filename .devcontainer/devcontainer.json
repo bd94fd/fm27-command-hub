@@ -1,0 +1,26 @@
+{
+  "name": "FM27 Command Hub",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm",
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": {
+      "label": "FM27 Command Hub",
+      "onAutoForward": "openBrowser",
+      "visibility": "public"
+    }
+  },
+  "secrets": {
+    "GEMINI_API_KEY": {
+      "description": "Gemini API key for the FM27 AI Tactical Analyst & Screenshot Analyzer"
+    }
+  },
+  "postCreateCommand": "npm install --legacy-peer-deps",
+  "postStartCommand": "nohup npm run dev > /tmp/fm27-dev.log 2>&1 &",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  }
+}
