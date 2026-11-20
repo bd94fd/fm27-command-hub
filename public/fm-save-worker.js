@@ -1,215 +1,305 @@
 /**
  * FM27 Command Hub — Browser Web Worker for local FM26/FM27 .fm Save Parsing.
  *
- * Uses Pyodide 3.14 (with native Python 3.14 zstd/zlib support) + fmsave (0.14.1)
- * + zero-copy WORKERFS so large 50–300 MB .fm save files are mounted and read
- * directly from disk inside the browser with zero network upload and zero ArrayBuffer copies.
+ * Uses Pyodide 314.0.7 (Python 3.14 with native zstd) + fmsave==0.14.1
+ * + zero-copy WORKERFS mounted at /mnt so large 50–300+ MB .fm save files are
+ * read directly from local disk without allocating a full-file JS ArrayBuffer.
  */
 
 const PYODIDE_VERSION = '314.0.7';
-const FMSAVE_VERSION = '0.14.1';
 const PYODIDE_INDEX_URL = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
-const MOUNT_DIR = '/mnt_save';
+const FMSAVE_REQUIREMENT = 'fmsave==0.14.1';
+const MOUNT_POINT = '/mnt';
 
 let pyodide = null;
-let bootPromise = null;
 let mapperModule = null;
+let bootPromise = null;
 
 const yieldTick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-async function ensureBooted(reply, origin) {
-  if (pyodide && mapperModule) return pyodide;
-  if (!bootPromise) {
-    bootPromise = (async () => {
-      reply({
-        type: 'stage',
-        stage: 'boot',
-        step: 'Init 1/2',
-        label: `Booting local WebAssembly Python 3.14 runtime (Pyodide ${PYODIDE_VERSION})...`,
-      });
-      const { loadPyodide } = await import(PYODIDE_INDEX_URL + 'pyodide.mjs');
-      const instance = await loadPyodide({ indexURL: PYODIDE_INDEX_URL });
+function emitStage(reply, stage, step, label, percent) {
+  reply({ type: 'stage', stage, step, label, percent });
+}
 
-      // Protect WORKERFS reads if the file is modified while being read
-      const ops = instance.FS.filesystems.WORKERFS.stream_ops;
-      const origRead = ops.read;
-      ops.read = function (...args) {
-        try {
-          return origRead.apply(this, args);
-        } catch (err) {
-          if (err instanceof instance.FS.ErrnoError) throw err;
-          throw new instance.FS.ErrnoError(29);
-        }
-      };
-
-      reply({
-        type: 'stage',
-        stage: 'install',
-        step: 'Init 2/2',
-        label: `Loading fmsave ${FMSAVE_VERSION} decoder in browser (zero server upload)...`,
-      });
-      await instance.loadPackage('micropip');
-      const micropip = instance.pyimport('micropip');
-      await micropip.install(`fmsave==${FMSAVE_VERSION}`);
-
-      const mapperUrl = new URL('/fm-save-mapper.py', origin || self.location.origin).href;
-      const mapperSource = await (await fetch(mapperUrl, { cache: 'no-cache' })).text();
-      instance.FS.writeFile('/home/pyodide/fm_save_mapper.py', mapperSource);
-      mapperModule = instance.pyimport('fm_save_mapper');
-
-      pyodide = instance;
-      return instance;
-    })().catch((err) => {
-      bootPromise = null;
-      pyodide = null;
-      mapperModule = null;
-      throw err;
-    });
+async function ensureBooted(origin, reply) {
+  if (pyodide && mapperModule) {
+    return { instance: pyodide, mapper: mapperModule };
   }
+  if (bootPromise) {
+    return bootPromise;
+  }
+
+  bootPromise = (async () => {
+    emitStage(
+      reply,
+      'boot',
+      'Init 1/2',
+      'Loading local Python 3.14 WebAssembly runtime (native zstd)...',
+      5,
+    );
+    const { loadPyodide } = await import(`${PYODIDE_INDEX_URL}pyodide.mjs`);
+    const instance = await loadPyodide({ indexURL: PYODIDE_INDEX_URL });
+
+    // Protect WORKERFS reads so non-ErrnoError failures throw ErrnoError(29) (EIO)
+    const ops = instance.FS.filesystems.WORKERFS.stream_ops;
+    const origRead = ops.read;
+    ops.read = function (...args) {
+      try {
+        return origRead.apply(this, args);
+      } catch (err) {
+        if (err instanceof instance.FS.ErrnoError) throw err;
+        throw new instance.FS.ErrnoError(29);
+      }
+    };
+
+    emitStage(
+      reply,
+      'install',
+      'Init 2/2',
+      `Installing ${FMSAVE_REQUIREMENT} binary reader & mapper...`,
+      10,
+    );
+    await instance.loadPackage('micropip');
+    const micropip = instance.pyimport('micropip');
+    await micropip.install(FMSAVE_REQUIREMENT);
+
+    const baseOrigin = origin || self.location.origin;
+    const mapperUrl = new URL('/fm-save-mapper.py', baseOrigin).href;
+    const mapperResp = await fetch(mapperUrl, { cache: 'no-cache' });
+    if (!mapperResp.ok) {
+      throw new Error(`Failed to fetch /fm-save-mapper.py (HTTP ${mapperResp.status}).`);
+    }
+    const mapperSource = await mapperResp.text();
+    instance.FS.writeFile('/home/pyodide/fm_save_mapper.py', mapperSource);
+
+    const mapper = instance.pyimport('fm_save_mapper');
+    pyodide = instance;
+    mapperModule = mapper;
+    return { instance, mapper };
+  })().catch((err) => {
+    bootPromise = null;
+    pyodide = null;
+    mapperModule = null;
+    throw err;
+  });
+
   return bootPromise;
 }
 
 function safeUnmount(instance) {
   if (!instance) return;
   try {
-    instance.FS.unmount(MOUNT_DIR);
+    instance.FS.unmount(MOUNT_POINT);
   } catch {
-    // ignore
+    // Ignore when not mounted
   }
 }
 
+function classifyJsError(err, activeStep) {
+  const rawMsg = err instanceof Error ? err.message : String(err);
+  const kind = err instanceof Error ? err.name : 'WorkerError';
+
+  if (/NotAFmSaveError/i.test(rawMsg)) {
+    return {
+      error: 'This file is not a valid Football Manager (.fm) save file.',
+      kind: 'NotAFmSaveError',
+    };
+  }
+  if (/UnsupportedGameError/i.test(rawMsg)) {
+    return {
+      error:
+        'This .fm save is from an unsupported Football Manager build. fmsave 0.14.1 supports FM26 and FM27 saves.',
+      kind: 'UnsupportedGameError',
+    };
+  }
+  if (/CorruptSaveError/i.test(rawMsg)) {
+    return {
+      error:
+        'The .fm save appears incomplete or damaged. Wait for Football Manager to finish saving and try again.',
+      kind: 'CorruptSaveError',
+    };
+  }
+  if (/MemoryError|out of memory|abort\(/i.test(rawMsg)) {
+    return {
+      error: `Browser ran out of WebAssembly memory during ${activeStep}. Close background tabs or switch to 'Managed Club Only' scope.`,
+      kind: 'MemoryError',
+    };
+  }
+  if (rawMsg.includes('Failed to fetch') || rawMsg.includes('import')) {
+    return {
+      error:
+        'Could not download the Pyodide/fmsave runtime from CDN. Check your internet connection or use JSON/HTML export.',
+      kind,
+    };
+  }
+  return {
+    error: rawMsg || `Unexpected error during ${activeStep}.`,
+    kind,
+  };
+}
+
+function parseStepJson(rawJson, activeStep) {
+  const parsed = JSON.parse(String(rawJson));
+  if (!parsed || parsed.ok === false) {
+    const err = new Error(parsed?.error || `${activeStep} failed.`);
+    err.name = parsed?.kind || 'ParseError';
+    throw err;
+  }
+  return parsed;
+}
+
 self.onmessage = async (event) => {
-  const { type, file, requestId, clubHint, origin } = event.data || {};
+  const {
+    type,
+    file,
+    scope = 'managed_only',
+    clubHint = '',
+    requestId,
+    origin,
+  } = event.data || {};
+
   const reply = (payload) => self.postMessage({ ...payload, requestId });
 
   if (type === 'warmup') {
     try {
-      await ensureBooted(reply, origin);
-      reply({ type: 'ready', fmsaveVersion: FMSAVE_VERSION, pyodideVersion: PYODIDE_VERSION });
+      await ensureBooted(origin, reply);
+      reply({
+        type: 'ready',
+        fmsaveVersion: '0.14.1',
+        pyodideVersion: PYODIDE_VERSION,
+      });
     } catch (err) {
+      const classified = classifyJsError(err, 'Initialization');
       reply({
         type: 'error',
-        message: err?.message || 'Could not initialize the local fmsave WebAssembly engine.',
+        error: classified.error,
+        kind: classified.kind,
       });
     }
     return;
   }
 
-  if ((type === 'parse_fm' || type === 'parse') && file) {
+  if ((type === 'parse' || type === 'parse_fm') && file) {
     let instance = null;
+    let mapper = null;
     let activeStep = 'Initialization';
-    try {
-      instance = await ensureBooted(reply, origin);
 
-      // Mount the browser File directly via zero-copy WORKERFS (no memory copying!)
-      activeStep = 'Step 1/6 (Mounting save directly via WORKERFS)';
+    try {
+      const booted = await ensureBooted(origin, reply);
+      instance = booted.instance;
+      mapper = booted.mapper;
+
+      // Step 1/6: Zero-copy WORKERFS mount at /mnt/<file.name>
+      activeStep = 'Step 1/6 (Mounting .fm file)';
+      emitStage(
+        reply,
+        'mount',
+        'Step 1/6',
+        `Step 1/6: Mounting ${file.name} locally via zero-copy WORKERFS...`,
+        15,
+      );
+      await yieldTick();
+
       safeUnmount(instance);
-      instance.FS.mkdirTree(MOUNT_DIR);
+      instance.FS.mkdirTree(MOUNT_POINT);
       instance.FS.mount(
         instance.FS.filesystems.WORKERFS,
         { files: [file] },
-        MOUNT_DIR
+        MOUNT_POINT,
       );
-      const savePath = `${MOUNT_DIR}/${file.name}`;
+      const savePath = `${MOUNT_POINT}/${file.name}`;
 
-      const totalMb = ((file.size || 0) / (1024 * 1024)).toFixed(1);
-      reply({
-        type: 'stage',
-        stage: 'read',
-        step: 'Step 1/6',
-        label: `Step 1/6: Opening ${file.name} (${totalMb} MB) via zero-copy WORKERFS...`,
-      });
+      // Step 2/6: Open save, enter shared game_db borrow, detect club, read meta & nations
+      activeStep = 'Step 2/6 (Opening save & game_db)';
+      emitStage(
+        reply,
+        'open',
+        'Step 2/6',
+        `Step 2/6: Opening ${file.name} & borrowing game_db section...`,
+        25,
+      );
       await yieldTick();
+      const openRes = parseStepJson(
+        mapper.step_open(savePath, scope || 'managed_only', clubHint || ''),
+        activeStep,
+      );
+      const meta = openRes.meta || {};
 
-      // Step 1/6: Open archive, borrow game_db ONCE, read metadata & managed club
-      const metaJson = mapperModule.step_open(savePath, clubHint || '');
-      const meta = JSON.parse(metaJson);
-
-      // Step 2/6: Squad CA/PA & attributes (club-scoped query)
-      activeStep = 'Step 2/6 (Extracting squad attributes & CA/PA)';
-      reply({
-        type: 'stage',
-        stage: 'parse',
-        step: 'Step 2/6',
-        label: `Step 2/6: Opened ${meta.game} (${meta.gameDateDmy || 'live'} · ${meta.clubName}) — extracting squad CA/PA & attributes...`,
-      });
+      // Step 3/6: Extract players (club-scoped or scouting pool), season stats, and injuries
+      activeStep = 'Step 3/6 (Players, season stats & injuries)';
+      emitStage(
+        reply,
+        'players',
+        'Step 3/6',
+        `Step 3/6: Opened ${meta.game || 'FM'} (${meta.gameDateDmy || meta.gameDateIso || 'live'} · ${meta.clubName || 'Managed Club'}) — reading squad, attributes & season stats...`,
+        45,
+      );
       await yieldTick();
-      const pSummary = JSON.parse(mapperModule.step_players());
+      const playersRes = parseStepJson(mapper.step_players_and_stats(), activeStep);
 
-      // Step 3/6: Finances, injuries, tactics & mentoring (releases game_db borrow & caches after)
-      activeStep = 'Step 3/6 (Reading finances, injuries, tactics & mentoring)';
-      reply({
-        type: 'stage',
-        stage: 'parse',
-        step: 'Step 3/6',
-        label: `Step 3/6: Reading club finances, injuries, tactics & mentoring (releasing game_db RAM after)...`,
-      });
+      // Step 4/6: Extract staff, clubs, 12-month finances, mentoring & tactics
+      activeStep = 'Step 4/6 (Staff, clubs, finances & tactics)';
+      emitStage(
+        reply,
+        'staff_clubs',
+        'Step 4/6',
+        `Step 4/6: Extracted ${playersRes.playerCount} players (${playersRes.matchedStats} stats matched) — reading staff, clubs, finances, mentoring & tactics...`,
+        65,
+      );
       await yieldTick();
-      mapperModule.step_club_extras_and_release_gamedb();
+      parseStepJson(mapper.step_staff_and_clubs(), activeStep);
 
-      // Step 4/6: Match player season stats & per-90s
-      activeStep = 'Step 4/6 (Reading season stats & per-90s)';
-      reply({
-        type: 'stage',
-        stage: 'parse',
-        step: 'Step 4/6',
-        label: `Step 4/6: Extracted ${pSummary.playerCount} players — matching season stats, xG/xA & ratings...`,
-      });
+      // Step 5/6: Exit game_db borrow, evict heavy caches & gc.collect() before span_records
+      activeStep = 'Step 5/6 (Releasing game_db RAM)';
+      emitStage(
+        reply,
+        'release_memory',
+        'Step 5/6',
+        'Step 5/6: Releasing game_db caches & reclaiming memory before fixture stream...',
+        78,
+      );
       await yieldTick();
-      mapperModule.step_season_stats();
+      parseStepJson(mapper.step_release_gamedb_for_span(), activeStep);
 
-      // Step 5/6: Recent match results & upcoming schedule
-      activeStep = 'Step 5/6 (Reading match results & schedule)';
-      reply({
-        type: 'stage',
-        stage: 'parse',
-        step: 'Step 5/6',
-        label: `Step 5/6: Reading recent match results & upcoming fixtures from ${meta.gameDateDmy || 'save date'}...`,
-      });
+      // Step 6/6: Stream span_records once for competitions, fixtures & league tables, then close
+      activeStep = 'Step 6/6 (Fixtures & league table)';
+      emitStage(
+        reply,
+        'fixtures_league',
+        'Step 6/6',
+        'Step 6/6: Streaming competitions, match fixtures & domestic league table...',
+        90,
+      );
       await yieldTick();
-      const fixSummary = JSON.parse(mapperModule.step_fixtures());
+      const finalPayload = parseStepJson(
+        mapper.step_fixtures_league_and_finish(),
+        activeStep,
+      );
 
-      // Step 6/6: Live league standings & finish
-      activeStep = 'Step 6/6 (Building live league standings)';
-      reply({
-        type: 'stage',
-        stage: 'parse',
-        step: 'Step 6/6',
-        label: `Step 6/6: Found ${fixSummary.playedCount} results & ${fixSummary.upcomingCount} fixtures — building live league table...`,
-      });
-      await yieldTick();
-      const parsed = JSON.parse(mapperModule.step_league_table_and_finish());
-
-      if (parsed && parsed.meta) {
-        parsed.meta.fileName = file.name;
-        parsed.meta.fileSizeMb = Number(((file.size || 0) / (1024 * 1024)).toFixed(2));
-        parsed.meta.decodedAtIso = new Date().toISOString();
+      if (finalPayload.meta) {
+        finalPayload.meta.fileName = file.name;
+        finalPayload.meta.fileSizeMb = Number(((file.size || 0) / (1024 * 1024)).toFixed(2));
+        finalPayload.meta.decodedAtIso = new Date().toISOString();
       }
 
-      safeUnmount(instance);
-      reply({ type: 'result', data: parsed });
+      emitStage(reply, 'done', 'Complete', 'Save parsed successfully!', 100);
+      reply({ type: 'result', data: finalPayload });
     } catch (err) {
-      if (mapperModule) {
+      const classified = classifyJsError(err, activeStep);
+      reply({
+        type: 'error',
+        error: classified.error,
+        kind: classified.kind,
+      });
+    } finally {
+      if (mapper) {
         try {
-          mapperModule.step_close();
+          mapper.step_close();
         } catch {
-          // ignore
+          // Ignore cleanup failure
         }
       }
-      if (instance) safeUnmount(instance);
-
-      const rawMsg = err?.message || String(err);
-      let friendly = `${activeStep} failed: ${rawMsg}`;
-      if (/NotAFmSaveError/i.test(rawMsg)) {
-        friendly = 'This file is not a valid Football Manager (.fm) save file.';
-      } else if (/UnsupportedGameError/i.test(rawMsg)) {
-        friendly = `This .fm save comes from an unsupported Football Manager version/build. fmsave 0.14.1 supports FM26 and FM27 saves.`;
-      } else if (/CorruptSaveError/i.test(rawMsg)) {
-        friendly = 'The .fm save appears incomplete or still being written by Football Manager. Save again or copy the file first.';
-      } else if (/MemoryError|out of memory|abort\(/i.test(rawMsg)) {
-        friendly = `Browser ran out of WebAssembly memory during ${activeStep}. Close background tabs or try on desktop.`;
-      }
-      reply({ type: 'error', message: friendly });
+      safeUnmount(instance);
     }
   }
 };

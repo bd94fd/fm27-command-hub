@@ -1,173 +1,218 @@
-import React from 'react';
-import { MatchLogEntry } from '../types/fm27';
-import { computeCompetitiveSummary } from '../utils/fmSyncEngine';
+import { Activity, CloudUpload, FileArchive, Upload } from 'lucide-react';
+import { computeCompetitiveSummary } from '../domain/fmEngine';
+import type { LeagueStandingSummary, MatchLogEntry } from '../domain/types';
 
 interface MatchLogArchiveProps {
   matches: MatchLogEntry[];
-  liveLeagueRecord?: string | null;
-  liveSaveFileName?: string | null;
+  saveStatus: 'awaiting_save' | 'loaded';
+  saveLabel: string;
+  leagueStanding: LeagueStandingSummary | null;
+  onOpenLoadSave: () => void;
+  onOpenSync: () => void;
 }
 
-export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
+export function MatchLogArchive({
   matches,
-  liveLeagueRecord,
-  liveSaveFileName,
-}) => {
+  saveStatus,
+  saveLabel,
+  leagueStanding,
+  onOpenLoadSave,
+  onOpenSync,
+}: MatchLogArchiveProps) {
   const summary = computeCompetitiveSummary(matches);
 
-  return (
-    <div className="space-y-6">
-      <div className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-5 border-b border-slate-200 dark:border-slate-800">
-          <div>
-            <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-              Table 1G · Competitive Match Log &amp; Data Hub Audit Archive
-            </h2>
-            <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-              {liveSaveFileName
-                ? `Synced directly from ${liveSaveFileName} (dates, opponents & scorelines from .fm binary; attach Data Hub screenshots to enrich match xG/possession)`
-                : 'Awaiting .fm save or match screenshot to populate live match chronology'}
-            </p>
+  if (saveStatus === 'awaiting_save' && matches.length === 0) {
+    return (
+      <div className="flex h-full items-center justify-center rounded-[8px] border border-dashed border-[#59515f] bg-[#14111a]/90 p-8 text-center">
+        <div className="max-w-[520px] space-y-3">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-[#734096] bg-[#34223f] text-[#dc87ff]">
+            <FileArchive className="h-5 w-5" />
           </div>
-          <div className="flex flex-wrap items-center gap-3 text-xs font-mono text-slate-700 dark:text-slate-300">
-            <span>
-              League Record:{' '}
-              {liveLeagueRecord ||
-                (summary.played > 0
-                  ? `${summary.played} GP (${summary.wins}W-${summary.draws}D-${summary.losses}L · ${summary.points} Pts)`
-                  : '--')}
-            </span>
-            {summary.xgMatchesCount > 0 && (
-              <>
-                <span>&middot;</span>
-                <span>
-                  Audited League xG ({summary.xgMatchesCount}m):{' '}
-                  {summary.totalXgFor.toFixed(2)} For vs{' '}
-                  {summary.totalXgAgainst.toFixed(2)} Against (
-                  {summary.xgDiff >= 0 ? `+${summary.xgDiff}` : summary.xgDiff})
-                </span>
-              </>
-            )}
+          <div className="font-mono text-[11px] font-bold uppercase tracking-[0.12em] text-[#dc87ff]">
+            Awaiting .fm Save
+          </div>
+          <h3 className="fm-font-display text-[20px] font-bold text-white">
+            Table 1G · Competitive Match Log Empty
+          </h3>
+          <p className="text-[13px] text-[#b2acbb]">
+            Load your <code className="text-[#dc87ff]">.fm</code> save to extract match chronology,
+            or attach Data Hub screenshots in AI &amp; Auto-Sync to populate xG, possession, shots,
+            and tactical audits.
+          </p>
+          <div className="flex flex-wrap justify-center gap-2.5 pt-1">
+            <button
+              type="button"
+              onClick={onOpenLoadSave}
+              className="inline-flex h-[38px] items-center gap-2 rounded-[5px] bg-[#850be3] px-4 text-[13px] font-semibold text-white hover:bg-[#9c2be4] cursor-pointer"
+            >
+              <Upload className="h-4 w-4" />
+              <span>Load .fm Save</span>
+            </button>
+            <button
+              type="button"
+              onClick={onOpenSync}
+              className="inline-flex h-[38px] items-center gap-2 rounded-[5px] border border-[#59515f] bg-[#202128] px-4 text-[13px] font-semibold text-[#f0edf4] hover:border-[#dc87ff] cursor-pointer"
+            >
+              <CloudUpload className="h-4 w-4 text-emerald-400" />
+              <span>Attach Match Screenshot</span>
+            </button>
           </div>
         </div>
+      </div>
+    );
+  }
 
-        <div className="overflow-x-auto mt-4">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                <th className="py-2.5 pr-3">Event &amp; Date</th>
-                <th className="py-2.5 pr-3">Fixture</th>
-                <th className="py-2.5 pr-3">Result</th>
-                <th className="py-2.5 pr-3 text-right">xG (Diff)</th>
-                <th className="py-2.5 pr-3 text-right">Poss / Pass%</th>
-                <th className="py-2.5 pr-3 text-right">Shots / CCC</th>
-                <th className="py-2.5 pr-3">Goal Timeline &amp; POTM</th>
-                <th className="py-2.5">Tactical Audit &amp; Directives</th>
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      <div className="flex flex-col gap-3 rounded-[8px] border border-[#39333f] bg-[#14111a] p-5 shrink-0 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <Activity className="h-4 w-4 text-emerald-400" />
+            <h2 className="fm-font-display text-[17px] font-bold text-white">
+              Table 1G · Competitive Match Log &amp; Data Hub Audit Archive
+            </h2>
+          </div>
+          <p className="mt-1 text-[12px] text-[#b2acbb]">
+            Source: {saveLabel} · Missing xG/possession metrics strictly display{' '}
+            <code className="text-[#dc87ff]">--</code> until enriched via Data Hub screenshots.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5 font-mono text-[12px] text-[#d4ced8]">
+          <span className="rounded border border-[#39333f] bg-[#1b1623] px-3 py-1.5">
+            Record:{' '}
+            <strong className="text-white">
+              {leagueStanding
+                ? `${leagueStanding.played} GP (${leagueStanding.won}W-${leagueStanding.drawn}D-${leagueStanding.lost}L · ${leagueStanding.points} Pts)`
+                : `${summary.played} GP (${summary.wins}W-${summary.draws}D-${summary.losses}L · ${summary.points} Pts)`}
+            </strong>
+          </span>
+
+          <span className="rounded border border-[#39333f] bg-[#1b1623] px-3 py-1.5">
+            xG ({summary.xgMatchesCount}m):{' '}
+            <strong className="text-emerald-300">
+              {summary.totalXgFor !== null && summary.totalXgAgainst !== null
+                ? `${summary.totalXgFor.toFixed(2)} - ${summary.totalXgAgainst.toFixed(2)} (${
+                    summary.xgDiff !== null && summary.xgDiff >= 0
+                      ? `+${summary.xgDiff}`
+                      : summary.xgDiff
+                  })`
+                : '--'}
+            </strong>
+          </span>
+
+          <span className="rounded border border-[#39333f] bg-[#1b1623] px-3 py-1.5">
+            Avg Poss:{' '}
+            <strong className="text-white">
+              {summary.avgPossession !== null ? `${summary.avgPossession}%` : '--'}
+            </strong>
+          </span>
+        </div>
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[7px] border border-[#59515f] bg-[#100e14]">
+        <div className="min-h-0 flex-1 overflow-auto">
+          <table className="fm-grid-table w-full border-collapse text-[12px] text-[#f0edf4]">
+            <thead className="sticky top-0 z-10">
+              <tr>
+                <th className="h-[40px] px-3 text-left whitespace-nowrap">Event &amp; Date</th>
+                <th className="h-[40px] px-3 text-left whitespace-nowrap">Fixture</th>
+                <th className="h-[40px] px-3 text-left whitespace-nowrap">Result</th>
+                <th className="h-[40px] px-3 text-right whitespace-nowrap">xG (Diff)</th>
+                <th className="h-[40px] px-3 text-right whitespace-nowrap">Poss / Pass%</th>
+                <th className="h-[40px] px-3 text-right whitespace-nowrap">Shots / CCC</th>
+                <th className="h-[40px] px-3 text-left whitespace-nowrap">Goal Timeline &amp; POTM</th>
+                <th className="h-[40px] px-3 text-left whitespace-nowrap">Tactical Audit</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-xs">
-              {matches.map((m) => {
-                const hasXg =
-                  typeof m.xGFor === 'number' && typeof m.xGAgainst === 'number';
-                const xgDelta = hasXg
-                  ? Number(((m.xGFor ?? 0) - (m.xGAgainst ?? 0)).toFixed(2))
-                  : null;
-                const resultColor =
-                  m.result === 'W'
-                    ? 'text-emerald-700 dark:text-emerald-400'
-                    : m.result === 'D'
-                      ? 'text-amber-700 dark:text-amber-400'
-                      : 'text-red-600 dark:text-red-400';
+            <tbody>
+              {matches.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-14 text-center text-[13px] text-[#b2acbb]">
+                    No completed fixtures recorded in this save yet.
+                  </td>
+                </tr>
+              ) : (
+                matches.map((m) => {
+                  const hasXg =
+                    typeof m.xGFor === 'number' && typeof m.xGAgainst === 'number';
+                  const xgDelta = hasXg
+                    ? Number(((m.xGFor ?? 0) - (m.xGAgainst ?? 0)).toFixed(2))
+                    : null;
+                  const resultColor =
+                    m.result === 'W'
+                      ? 'text-emerald-400'
+                      : m.result === 'D'
+                        ? 'text-amber-400'
+                        : 'text-[#ff758b]';
 
-                return (
-                  <tr
-                    key={m.id}
-                    className="hover:bg-slate-50 dark:hover:bg-slate-800/50 align-top"
-                  >
-                    <td className="py-3 pr-3 font-mono whitespace-nowrap">
-                      <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-slate-100">
-                        <span>Event #{m.eventNumber}</span>
-                        {m.source === 'FM_SAVE' && (
-                          <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded">
-                            .FM
+                  return (
+                    <tr key={m.id} className="border-b border-white/[0.04] align-top">
+                      <td className="px-3 py-3 font-mono whitespace-nowrap">
+                        <div className="flex items-center gap-1.5 font-bold text-white">
+                          <span>Event #{m.eventNumber}</span>
+                          <span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300">
+                            {m.source === 'FM_SAVE' ? '.FM' : m.source === 'EXPORT' ? 'EXP' : 'AI'}
                           </span>
+                        </div>
+                        <div className="text-[11px] text-[#9c92a6]">{m.date || '--'}</div>
+                      </td>
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        <div className="font-semibold text-white">
+                          vs {m.opponent} ({m.venue})
+                        </div>
+                        <div className="text-[11px] text-[#9c92a6]">{m.competition}</div>
+                      </td>
+                      <td className={`px-3 py-3 font-mono font-bold whitespace-nowrap ${resultColor}`}>
+                        {m.result} {m.score}
+                      </td>
+                      <td className="px-3 py-3 text-right font-mono tabular-nums whitespace-nowrap">
+                        {hasXg ? (
+                          <>
+                            <div className="font-semibold text-white">
+                              {(m.xGFor ?? 0).toFixed(2)} - {(m.xGAgainst ?? 0).toFixed(2)}
+                            </div>
+                            <div className="text-[11px] text-[#9c92a6]">
+                              {xgDelta !== null && xgDelta >= 0 ? `+${xgDelta}` : xgDelta}
+                            </div>
+                          </>
+                        ) : (
+                          <span className="text-[#6f6778]">--</span>
                         )}
-                      </div>
-                      <div className="text-slate-500 dark:text-slate-400">
-                        {m.date}
-                      </div>
-                    </td>
-                    <td className="py-3 pr-3 whitespace-nowrap">
-                      <div className="font-semibold text-slate-900 dark:text-slate-100">
-                        vs {m.opponent} ({m.venue})
-                      </div>
-                      <div className="text-slate-500 dark:text-slate-400">
-                        {m.competition}
-                      </div>
-                    </td>
-                    <td
-                      className={`py-3 pr-3 font-mono font-bold whitespace-nowrap ${resultColor}`}
-                    >
-                      {m.result} {m.score}
-                    </td>
-                    <td className="py-3 pr-3 text-right font-mono tabular-nums whitespace-nowrap">
-                      {hasXg ? (
-                        <>
-                          <div className="font-semibold text-slate-900 dark:text-slate-100">
-                            {(m.xGFor ?? 0).toFixed(2)} -{' '}
-                            {(m.xGAgainst ?? 0).toFixed(2)}
+                      </td>
+                      <td className="px-3 py-3 text-right font-mono tabular-nums whitespace-nowrap">
+                        {typeof m.possession === 'number' || typeof m.passCompletion === 'number'
+                          ? `${m.possession ?? '--'}% / ${m.passCompletion ?? '--'}%`
+                          : '--'}
+                      </td>
+                      <td className="px-3 py-3 text-right font-mono tabular-nums whitespace-nowrap">
+                        <div>
+                          {m.shotsFor ? `${m.shotsFor} vs ${m.shotsAgainst ?? '--'}` : '--'}
+                        </div>
+                        {typeof m.cccFor === 'number' && (
+                          <div className="text-[11px] text-[#9c92a6]">
+                            CCC: {m.cccFor} - {m.cccAgainst ?? '--'}
                           </div>
-                          <div className="text-slate-500 dark:text-slate-400">
-                            {xgDelta !== null && xgDelta >= 0
-                              ? `+${xgDelta}`
-                              : xgDelta}
-                          </div>
-                        </>
-                      ) : (
-                        <span className="text-slate-500">—</span>
-                      )}
-                    </td>
-                    <td className="py-3 pr-3 text-right font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                      {typeof m.possession === 'number' ||
-                      typeof m.passCompletion === 'number'
-                        ? `${m.possession ?? '—'}% / ${m.passCompletion ?? '—'}%`
-                        : '—'}
-                    </td>
-                    <td className="py-3 pr-3 text-right font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                      <div>
-                        {m.shotsFor && m.shotsFor !== '—'
-                          ? `${m.shotsFor} vs ${m.shotsAgainst}`
-                          : '—'}
-                      </div>
-                      <div className="text-slate-500 dark:text-slate-400">
-                        {typeof m.cccFor === 'number'
-                          ? `CCC: ${m.cccFor} - ${m.cccAgainst ?? 0}`
-                          : ''}
-                      </div>
-                    </td>
-                    <td className="py-3 pr-3 min-w-[210px] space-y-1">
-                      <div className="text-slate-800 dark:text-slate-200">
-                        {m.goalTimeline}
-                      </div>
-                      <div className="text-emerald-700 dark:text-emerald-400 font-medium">
-                        {m.potm}
-                      </div>
-                    </td>
-                    <td className="py-3 text-slate-600 dark:text-slate-400 min-w-[260px] space-y-1">
-                      {m.defensiveWatchpoints && m.defensiveWatchpoints !== '—' && (
-                        <div>{m.defensiveWatchpoints}</div>
-                      )}
-                      <div className="text-slate-800 dark:text-slate-300 font-medium">
-                        {m.tacticalAudit}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                        )}
+                      </td>
+                      <td className="min-w-[190px] px-3 py-3 space-y-1">
+                        <div className="text-[#d4ced8]">{m.goalTimeline ?? '--'}</div>
+                        {m.potm && (
+                          <div className="font-medium text-emerald-400">POTM: {m.potm}</div>
+                        )}
+                      </td>
+                      <td className="min-w-[240px] px-3 py-3 space-y-1 text-[#b2acbb]">
+                        {m.defensiveWatchpoints && <div>{m.defensiveWatchpoints}</div>}
+                        <div className="text-[#d4ced8]">{m.tacticalAudit ?? '--'}</div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
       </div>
     </div>
   );
-};
+}

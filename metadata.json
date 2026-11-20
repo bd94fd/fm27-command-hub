@@ -1,6 +1,0 @@
-{
-  "name": "KVV Zelzate FM27 Command & Auto-Sync Hub",
-  "description": "Live Football Manager 27 tactical war room, 28-man squad analytics engine, and 1-click Google Docs & Sheets synchronization hub for KVV Zelzate.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

@@ -1,358 +1,502 @@
-import express from 'express';
-import { createServer as createViteServer } from 'vite';
-import path from 'path';
-import dotenv from 'dotenv';
+import 'dotenv/config';
 import { GoogleGenAI, Type } from '@google/genai';
+import express from 'express';
+import fs from 'node:fs';
+import path from 'node:path';
+import { createServer as createViteServer } from 'vite';
+import { PLAYBOOK_V2_SUMMARY_FOR_AI } from './src/data/playbookV2';
+import { createEmptyAiContext, createEmptySnapshot } from './src/domain/emptyState';
+import { expandSlashCommand } from './src/domain/filters';
+import { runContextualFmTools } from './src/domain/fmTools';
+import type {
+  AiContextState,
+  PositionCode,
+  RecruitmentCase,
+  ShortlistRecord,
+  SyncTurnOutput,
+  TacticDefinition,
+  TacticSlot,
+  WorkspaceSnapshot,
+} from './src/domain/types';
 
-dotenv.config();
+const PORT = Number(process.env.PORT || 3000);
+const isProduction = process.env.NODE_ENV === 'production';
+
+// Clean "Awaiting .fm Save" runtime state — zero fake/mock players, clubs, or matches
+let snapshot: WorkspaceSnapshot = createEmptySnapshot();
+let recruitmentCases: RecruitmentCase[] = [];
+let shortlists: ShortlistRecord[] = [];
+let aiContext: AiContextState = createEmptyAiContext();
+
+function getDefaultDualPhase433Slots(): TacticSlot[] {
+  const layout: Array<[PositionCode, string, string]> = [
+    ['GK', 'Goalkeeper', 'Sweeper Keeper'],
+    ['DR', 'Full-Back', 'Full-Back'],
+    ['DC', 'Centre-Back', 'Centre-Back'],
+    ['DC', 'Ball-Playing Centre-Back', 'Centre-Back'],
+    ['DL', 'Full-Back', 'Full-Back'],
+    ['DM', 'Defensive Midfielder', 'Defensive Midfielder'],
+    ['MC', 'Central Midfielder', 'Screening Central Midfielder'],
+    ['MC', 'Channel Midfielder', 'Central Midfielder'],
+    ['AMR', 'Winger', 'Tracking Winger'],
+    ['AML', 'Inside Forward', 'Tracking Winger'],
+    ['ST', 'Channel Forward', 'Central Outlet Centre Forward'],
+  ];
+  return layout.map(([position, inPossessionRole, outOfPossessionRole], slotIndex) => ({
+    slotIndex,
+    position,
+    inPossessionRole,
+    outOfPossessionRole,
+  }));
+}
+
+function getGeminiClient(): GoogleGenAI {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY is not configured in the server environment.');
+  }
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      },
+    },
+  });
+}
+
+async function generateWithRetry(
+  ai: GoogleGenAI,
+  params: {
+    contents: unknown;
+    systemInstruction: string;
+    responseMimeType?: string;
+    responseSchema?: unknown;
+  },
+): Promise<string> {
+  const modelsToTry = ['gemini-4-hydrogen', 'gemini-4-hydrogen', 'gemini-2.5-flash'] as const;
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt < modelsToTry.length; attempt++) {
+    const model = modelsToTry[attempt];
+    try {
+      if (attempt === 1) {
+        await new Promise((r) => setTimeout(r, 600));
+      }
+      const config: Record<string, unknown> = {
+        systemInstruction: params.systemInstruction,
+      };
+      if (params.responseMimeType) {
+        config.responseMimeType = params.responseMimeType;
+      }
+      if (params.responseSchema) {
+        config.responseSchema = params.responseSchema;
+      }
+
+      const response = await ai.models.generateContent({
+        model,
+        contents: params.contents as never,
+        config: config as never,
+      });
+      const text = response.text?.trim() ?? '';
+      if (text) {
+        return text;
+      }
+    } catch (attemptErr: unknown) {
+      lastError = attemptErr;
+      const errStr = attemptErr instanceof Error ? attemptErr.message : String(attemptErr);
+      const isTransient =
+        errStr.includes('503') ||
+        errStr.includes('UNAVAILABLE') ||
+        errStr.includes('high demand') ||
+        errStr.includes('429') ||
+        errStr.includes('RESOURCE_EXHAUSTED');
+      if (!isTransient) {
+        throw attemptErr;
+      }
+      console.warn(
+        `[FM27 Command Hub] Transient error on ${model} (attempt ${attempt + 1}/${modelsToTry.length}): ${errStr}`,
+      );
+    }
+  }
+
+  if (lastError) {
+    throw lastError;
+  }
+  return '';
+}
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  app.use(express.json({ limit: '50mb' }));
 
-  app.use(express.json({ limit: '15mb' }));
-
-  app.post('/api/fm27/analyze-screenshot', async (req, res) => {
-    try {
-      const { imageBase64, mimeType, notes, nextEventNumber } = req.body as {
-        imageBase64?: string;
-        mimeType?: string;
-        notes?: string;
-        nextEventNumber?: number;
-      };
-
-      if (!process.env.GEMINI_API_KEY) {
-        return res.status(500).json({
-          error:
-            'GEMINI_API_KEY is missing. Please verify your API key in Settings > Secrets.',
-        });
-      }
-
-      const ai = new GoogleGenAI({
-        apiKey: process.env.GEMINI_API_KEY,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build',
-          },
-        },
-      });
-
-      const eventNum = nextEventNumber || 34;
-
-      const systemPrompt = `You are Bobby Dean's Football Manager 27 Chief Tactical Analyst for KVV Zelzate (1e Nationale Voetbal Vlaanderen, 2027/28 Season).
-Key Club Rules & Context:
-- Primary Tactic: 4-3-3 Counter Positive (Balanced Ground Build-Up, Short/Mixed GK Distribution, Standard Passing, Tracking Wingers OOP on both flanks).
-- Non-Negotiable Rules:
-  1) Never sub off both starting CBs (Brendan Schoonbaert & Brend Leeflang) simultaneously when protecting a lead.
-  2) Batch all 5 substitutions into 2 second-half windows (60m-65m and 75m+) so 3 stoppages are never burned early. Always sub Quinten Boudry (Stamina 6) around 62m for Jerayson Hoepel.
-  3) Keep 3 midfielders on the pitch (never pull DM for a 4-2-4).
-- Analyze the uploaded FM27 screenshot or match notes and output structured JSON ready for Event #${eventNum}.`;
-
-      const parts: Array<
-        | { text: string }
-        | { inlineData: { mimeType: string; data: string } }
-      > = [];
-
-      if (imageBase64 && mimeType) {
-        parts.push({
-          inlineData: {
-            mimeType,
-            data: imageBase64,
-          },
-        });
-      }
-
-      parts.push({
-        text: `Analyze this FM27 screen / match update for KVV Zelzate (Event #${eventNum}). User notes: "${notes || 'Extract match statistics, xG, ratings, tactical audit, and generate ready-to-paste Google Docs & Google Sheets sync blocks.'}"`,
-      });
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-4-hydrogen',
-        contents: { parts },
-        config: {
-          systemInstruction: systemPrompt,
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              screenDetected: {
-                type: Type.STRING,
-                description: 'Detected FM27 screen type and in-game date',
-              },
-              inGameDate: {
-                type: Type.STRING,
-                description: 'In-game date in DD/MM/YYYY format (e.g. 18/09/2027)',
-              },
-              competition: {
-                type: Type.STRING,
-                description: 'Competition and matchday (e.g. 1st National - VV MD5)',
-              },
-              opponent: {
-                type: Type.STRING,
-                description: 'Opponent club name (e.g. Jong Cercle)',
-              },
-              venue: {
-                type: Type.STRING,
-                description: 'H for Home or A for Away',
-              },
-              result: {
-                type: Type.STRING,
-                description: 'W, D, or L from KVV Zelzate perspective',
-              },
-              score: {
-                type: Type.STRING,
-                description: 'Scoreline from KVV Zelzate perspective (e.g. 2 - 0)',
-              },
-              xGFor: {
-                type: Type.NUMBER,
-                description: 'KVV Zelzate expected goals (e.g. 1.64)',
-              },
-              xGAgainst: {
-                type: Type.NUMBER,
-                description: 'Opponent expected goals (e.g. 0.58)',
-              },
-              possession: {
-                type: Type.NUMBER,
-                description: 'KVV Zelzate possession percentage integer (e.g. 42)',
-              },
-              passCompletion: {
-                type: Type.NUMBER,
-                description: 'KVV Zelzate pass completion percentage integer (e.g. 84)',
-              },
-              shotsFor: {
-                type: Type.STRING,
-                description: 'KVV Zelzate shots (on target) string e.g. 11 (5)',
-              },
-              shotsAgainst: {
-                type: Type.STRING,
-                description: 'Opponent shots (on target) string e.g. 8 (2)',
-              },
-              cccFor: {
-                type: Type.NUMBER,
-                description: 'KVV Zelzate clear cut chances integer',
-              },
-              cccAgainst: {
-                type: Type.NUMBER,
-                description: 'Opponent clear cut chances integer',
-              },
-              goalTimeline: {
-                type: Type.STRING,
-                description: 'Minute-by-minute goal scorers and assists',
-              },
-              potm: {
-                type: Type.STRING,
-                description: 'Player of the Match name, rating, and key stats',
-              },
-              defensiveWatchpoints: {
-                type: Type.STRING,
-                description: 'Defensive unit ratings and tactical watchpoints',
-              },
-              headlineTitle: {
-                type: Type.STRING,
-                description: 'Match fixture or event title',
-              },
-              outcomeMetric: {
-                type: Type.STRING,
-                description: 'Result, scoreline, and xG summary',
-              },
-              executiveBullets: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: '3-4 sharp tactical & Data Hub insights',
-              },
-              recommendedClicks: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: '3 immediate in-game clicks before hitting Continue',
-              },
-              tacticalAuditSummary: {
-                type: Type.STRING,
-                description: '1-paragraph synthesis for Table 1G & Chronicles',
-              },
-            },
-            required: [
-              'screenDetected',
-              'inGameDate',
-              'headlineTitle',
-              'outcomeMetric',
-              'executiveBullets',
-              'recommendedClicks',
-              'tacticalAuditSummary',
-            ],
-          },
-        },
-      });
-
-      const parsed = JSON.parse((response.text ?? '{}').trim());
-      return res.json(parsed);
-    } catch (error: unknown) {
-      const errMessage =
-        error instanceof Error ? error.message : 'Failed to analyze FM27 screen';
-      return res.status(500).json({ error: errMessage });
-    }
+  // === Snapshot API ===
+  app.get('/api/snapshot', (_req, res) => {
+    res.json(snapshot);
   });
 
-  app.post('/api/fm27/tactical-chat', async (req, res) => {
-    try {
-      const {
-        message,
-        history,
-        images,
-        importedFileContext,
-        nextEventNumber,
-        currentSaveDate,
-      } = req.body as {
-        message?: string;
-        history?: Array<{ role: 'user' | 'assistant'; text: string }>;
-        images?: Array<{ base64: string; mimeType: string; name?: string }>;
-        importedFileContext?: string;
-        nextEventNumber?: number;
-        currentSaveDate?: string;
-      };
+  app.post('/api/snapshot/import', (req, res) => {
+    const customSnapshot = req.body?.snapshot as Partial<WorkspaceSnapshot> | undefined;
+    const managedClubName = req.body?.managedClubName as string | null | undefined;
+    const importedTactics = req.body?.tactics as TacticDefinition[] | undefined;
 
-      if (!process.env.GEMINI_API_KEY) {
-        return res.status(500).json({
-          error:
-            'GEMINI_API_KEY is missing. Please verify your API key in Settings > Secrets.',
-        });
+    if (
+      !customSnapshot ||
+      !Array.isArray(customSnapshot.players) ||
+      !Array.isArray(customSnapshot.clubs)
+    ) {
+      return res.status(400).json({ error: 'Invalid FM snapshot payload.' });
+    }
+
+    const base = createEmptySnapshot();
+    const resolvedClubName =
+      managedClubName && managedClubName.trim()
+        ? managedClubName.trim()
+        : customSnapshot.metadata?.managedClubName ?? customSnapshot.clubs[0]?.name ?? null;
+
+    snapshot = {
+      ...base,
+      ...customSnapshot,
+      matchLogs: Array.isArray(customSnapshot.matchLogs) ? customSnapshot.matchLogs : [],
+      tactics: Array.isArray(customSnapshot.tactics)
+        ? customSnapshot.tactics
+        : Array.isArray(importedTactics)
+          ? importedTactics
+          : [],
+      activeInjuries: Array.isArray(customSnapshot.activeInjuries)
+        ? customSnapshot.activeInjuries
+        : [],
+      mentoring: Array.isArray(customSnapshot.mentoring) ? customSnapshot.mentoring : [],
+      finances: customSnapshot.finances ?? null,
+      leagueStanding: customSnapshot.leagueStanding ?? null,
+      metadata: {
+        ...base.metadata,
+        ...customSnapshot.metadata,
+        status: 'loaded',
+        loadedAt: new Date().toISOString(),
+        freshness: 'current',
+        managedClubName: resolvedClubName,
+        totalPlayersInWorld:
+          customSnapshot.metadata?.totalPlayersInWorld || customSnapshot.players.length,
+        totalStaffInWorld:
+          customSnapshot.metadata?.totalStaffInWorld || customSnapshot.staff?.length || 0,
+        totalClubsInWorld:
+          customSnapshot.metadata?.totalClubsInWorld || customSnapshot.clubs.length,
+        totalCompetitionsInWorld:
+          customSnapshot.metadata?.totalCompetitionsInWorld ||
+          customSnapshot.competitions?.length ||
+          0,
+      },
+    };
+
+    const nextTactics =
+      Array.isArray(importedTactics) && importedTactics.length > 0
+        ? importedTactics
+        : snapshot.tactics.length > 0
+          ? snapshot.tactics
+          : aiContext.tactics;
+
+    aiContext = {
+      ...aiContext,
+      managedClubName: resolvedClubName,
+      includeManagedClub: Boolean(resolvedClubName),
+      tactics: nextTactics,
+      activeTacticId:
+        nextTactics.length > 0 ? nextTactics[0].id : aiContext.activeTacticId,
+      includeTactic: nextTactics.length > 0,
+    };
+
+    res.json({ snapshot, aiContext });
+  });
+
+  app.post('/api/snapshot/reset', (_req, res) => {
+    snapshot = createEmptySnapshot();
+    aiContext = createEmptyAiContext();
+    recruitmentCases = [];
+    shortlists = [];
+    res.json({ snapshot, aiContext });
+  });
+
+  // === Recruitment Evidence API ===
+  app.get('/api/recruitment', (_req, res) => {
+    res.json({
+      gameDate: snapshot.metadata.gameDate,
+      cases: recruitmentCases,
+    });
+  });
+
+  app.post('/api/recruitment', (req, res) => {
+    const body = req.body as Partial<RecruitmentCase>;
+    if (!body.playerName?.trim()) {
+      return res.status(400).json({ error: 'Player name is required.' });
+    }
+    const defaultDate = snapshot.metadata.gameDate || new Date().toISOString().slice(0, 10);
+    const created: RecruitmentCase = {
+      id: `rec-${Date.now()}`,
+      playerId: body.playerId ?? null,
+      playerName: body.playerName.trim(),
+      club: (body.club ?? '').trim() || 'Free Agent',
+      interestStatus: body.interestStatus ?? 'Interested',
+      dealStage: body.dealStage ?? 'Scouted',
+      source: (body.source ?? 'Scout Report').trim(),
+      observedGameDate: body.observedGameDate || defaultDate,
+      validUntilGameDate: body.validUntilGameDate || defaultDate,
+      notes: (body.notes ?? '').trim(),
+    };
+    recruitmentCases = [created, ...recruitmentCases];
+    res.status(201).json(created);
+  });
+
+  app.patch('/api/recruitment/:id', (req, res) => {
+    const idx = recruitmentCases.findIndex((c) => c.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'Recruitment case not found.' });
+    recruitmentCases[idx] = { ...recruitmentCases[idx], ...req.body, id: recruitmentCases[idx].id };
+    res.json(recruitmentCases[idx]);
+  });
+
+  app.delete('/api/recruitment/:id', (req, res) => {
+    recruitmentCases = recruitmentCases.filter((c) => c.id !== req.params.id);
+    res.json({ ok: true });
+  });
+
+  app.post('/api/recruitment/clear-expired', (_req, res) => {
+    const today = snapshot.metadata.gameDate;
+    if (!today) {
+      return res.json({ removed: 0, cases: recruitmentCases });
+    }
+    const before = recruitmentCases.length;
+    recruitmentCases = recruitmentCases.filter((c) => c.validUntilGameDate >= today);
+    res.json({ removed: before - recruitmentCases.length, cases: recruitmentCases });
+  });
+
+  // === Shortlists API ===
+  app.get('/api/shortlists', (_req, res) => {
+    res.json(shortlists);
+  });
+
+  app.post('/api/shortlists', (req, res) => {
+    const { name, notes, playerIds, createdBy } = req.body as Partial<ShortlistRecord>;
+    if (!name?.trim()) {
+      return res.status(400).json({ error: 'Shortlist name is required.' });
+    }
+    const created: ShortlistRecord = {
+      id: `sl-${Date.now()}`,
+      name: name.trim(),
+      createdBy: createdBy === 'AI assistant' ? 'AI assistant' : 'Manager',
+      createdAt: snapshot.metadata.gameDate,
+      notes: (notes ?? '').trim(),
+      playerIds: Array.isArray(playerIds) ? Array.from(new Set(playerIds)) : [],
+    };
+    shortlists = [created, ...shortlists];
+    res.status(201).json(created);
+  });
+
+  app.post('/api/shortlists/:id/players', (req, res) => {
+    const sl = shortlists.find((s) => s.id === req.params.id);
+    if (!sl) return res.status(404).json({ error: 'Shortlist not found.' });
+    const playerId = Number(req.body?.playerId);
+    if (!Number.isFinite(playerId)) return res.status(400).json({ error: 'Invalid playerId.' });
+    if (!sl.playerIds.includes(playerId)) {
+      sl.playerIds = [...sl.playerIds, playerId];
+    }
+    res.json(sl);
+  });
+
+  app.delete('/api/shortlists/:id', (req, res) => {
+    shortlists = shortlists.filter((s) => s.id !== req.params.id);
+    res.json({ ok: true });
+  });
+
+  // === AI Context (Managed Club & Dual-Phase Tactics) API ===
+  app.get('/api/context', (_req, res) => {
+    res.json(aiContext);
+  });
+
+  app.put('/api/context', (req, res) => {
+    const { managedClubName, includeManagedClub, activeTacticId, includeTactic } =
+      req.body as Partial<AiContextState>;
+    aiContext = {
+      ...aiContext,
+      managedClubName:
+        managedClubName !== undefined ? managedClubName : aiContext.managedClubName,
+      includeManagedClub: includeManagedClub ?? aiContext.includeManagedClub,
+      activeTacticId:
+        activeTacticId !== undefined ? activeTacticId : aiContext.activeTacticId,
+      includeTactic: includeTactic ?? aiContext.includeTactic,
+    };
+    res.json(aiContext);
+  });
+
+  app.post('/api/context/tactics', (req, res) => {
+    const body = req.body as Partial<TacticDefinition>;
+    if (!body.name?.trim()) {
+      return res.status(400).json({ error: 'Tactic name is required.' });
+    }
+    const created: TacticDefinition = {
+      id: `tactic-${Date.now()}`,
+      fileName:
+        body.fileName || `${body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.fmf`,
+      name: body.name.trim(),
+      formation: body.formation || '4-3-3 DM Wide',
+      mentality: body.mentality || 'Positive',
+      tacticalStyle: body.tacticalStyle || 'Fluid Counter-Attack',
+      inPossessionInstructions: body.inPossessionInstructions ?? ['Balanced Ground Build-Up'],
+      inTransitionInstructions: body.inTransitionInstructions ?? ['Counter-Attack'],
+      outOfPossessionInstructions: body.outOfPossessionInstructions ?? [
+        'Mid Block',
+        'Trigger Press More Often',
+      ],
+      lastModified: snapshot.metadata.gameDate,
+      slots:
+        body.slots && body.slots.length === 11 ? body.slots : getDefaultDualPhase433Slots(),
+    };
+    aiContext = {
+      ...aiContext,
+      tactics: [created, ...aiContext.tactics],
+      activeTacticId: created.id,
+      includeTactic: true,
+    };
+    res.status(201).json(aiContext);
+  });
+
+  // === Unified Grounded AI Chat Endpoint ===
+  app.post('/api/ai/chat', async (req, res) => {
+    const rawMessage = String(req.body?.message ?? '').trim();
+    const history = Array.isArray(req.body?.history)
+      ? (req.body.history as { role: 'user' | 'assistant'; content: string }[]).slice(-8)
+      : [];
+    const images = Array.isArray(req.body?.images)
+      ? (req.body.images as Array<{ base64: string; mimeType: string; name?: string }>)
+      : [];
+    const importedFileContext =
+      typeof req.body?.importedFileContext === 'string' ? req.body.importedFileContext.trim() : '';
+    const nextEventNumber = Number(req.body?.nextEventNumber || snapshot.matchLogs.length + 1);
+    const requestSyncPayload =
+      Boolean(req.body?.requestSyncPayload) || images.length > 0 || importedFileContext.length > 0;
+
+    if (!rawMessage && images.length === 0 && !importedFileContext) {
+      return res.status(400).json({ error: 'Message, screenshot, or export context is required.' });
+    }
+
+    const slashExpanded = rawMessage ? expandSlashCommand(rawMessage) : null;
+    const effectivePrompt =
+      slashExpanded?.expanded ||
+      rawMessage ||
+      'Analyze the attached FM27 screenshot(s) or export data against Playbook v2.0 and the loaded save.';
+    const commandName = slashExpanded?.command.name;
+
+    const activeTactic =
+      aiContext.tactics.find((t) => t.id === aiContext.activeTacticId) ?? null;
+
+    const toolResults = runContextualFmTools({
+      prompt: rawMessage || effectivePrompt,
+      commandName,
+      snapshot,
+      managedClubName: aiContext.managedClubName,
+      includeManagedClub: aiContext.includeManagedClub,
+      activeTactic,
+      includeTactic: aiContext.includeTactic,
+      recruitmentCases,
+      shortlists,
+    });
+
+    let createdShortlist: ShortlistRecord | null = null;
+    const shortlistTool = toolResults.find((t) => t.toolName === 'fm27_transfer_shortlist');
+    if (
+      shortlistTool &&
+      Array.isArray(shortlistTool.data.targets) &&
+      shortlistTool.data.targets.length > 0
+    ) {
+      const targetIds = (shortlistTool.data.targets as { id: number }[])
+        .slice(0, 5)
+        .map((t) => t.id);
+      if (commandName === '/recruit' || /shortlist/i.test(rawMessage)) {
+        const clubLabel =
+          aiContext.managedClubName || snapshot.metadata.managedClubName || 'Club';
+        createdShortlist = {
+          id: `sl-${Date.now()}`,
+          name: `AI Targets · ${clubLabel} (${snapshot.metadata.gameDate || 'Save'})`,
+          createdBy: 'AI assistant',
+          createdAt: snapshot.metadata.gameDate,
+          notes: `Generated from query: "${rawMessage.slice(0, 80)}"`,
+          playerIds: targetIds,
+        };
+        shortlists = [createdShortlist, ...shortlists];
       }
+    }
 
-      const ai = new GoogleGenAI({
-        apiKey: process.env.GEMINI_API_KEY,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build',
-          },
-        },
-      });
+    const systemInstruction = [
+      'You are the FM27 Chief Tactical Analyst inside the FM27 Command Hub.',
+      'Be crisp, tactical, practical, and grounded STRICTLY in the loaded FM27 save data and/or uploaded screenshots/exports.',
+      'STRICT ZERO-FABRICATION RULE: Never invent players, clubs, wages, attributes, match xG, possession, or scores not present in the tool outputs or attached files/screenshots. If snapshot status is awaiting_save and no file/screenshot is attached, explicitly state that no save is loaded yet and offer Playbook v2.0 guidance.',
+      'Use FM27 Dual-Phase IP/OOP role terminology only (zero legacy FM24 duties like Defend/Support/Attack, zero retired roles like Mezzala/Enganche/Trequartista).',
+      PLAYBOOK_V2_SUMMARY_FOR_AI,
+      `Save Status: ${snapshot.metadata.status} | Game Date: ${snapshot.metadata.gameDateDmy || snapshot.metadata.gameDate || 'No save loaded'}.`,
+      aiContext.includeManagedClub && aiContext.managedClubName
+        ? `Managed Club Context: ${aiContext.managedClubName}.`
+        : 'Managed Club Context: none active.',
+      aiContext.includeTactic && activeTactic
+        ? `Active Tactic Context: ${activeTactic.name} (${activeTactic.formation}, ${activeTactic.mentality}, ${activeTactic.tacticalStyle}).`
+        : 'Active Tactic Context: none enabled.',
+    ].join('\n\n');
 
-      const eventNum = nextEventNumber || 34;
+    const groundedContextBlock = toolResults
+      .map(
+        (t) =>
+          `### Tool Output: ${t.toolName}\n\`\`\`json\n${JSON.stringify(t.data, null, 2)}\n\`\`\``,
+      )
+      .join('\n\n');
 
-      const systemPrompt = `You are Bobby Dean's interactive Football Manager 27 Chief Tactical Analyst & Master Sheet Co-Pilot for KVV Zelzate (Matricule 4165, 1e Nationale Voetbal Vlaanderen, Backline Arena 105m x 68m Grass).
+    const conversationContext = history
+      .map((m) => `${m.role === 'user' ? 'Manager' : 'Analyst'}: ${m.content}`)
+      .join('\n\n');
 
-YOUR CORE ROLE IN THIS BACK-AND-FORTH:
-Bobby sends you FM27 screenshots (Match Results, Data Hub Last Match, Pass/Shot Maps, Scout Reports, Set Pieces, Player Profiles, Inbox items, Training, or Squad views), FM27 data exports (.csv / Ctrl+P .html / .rtf), .fm save files, or talks through his tactical ideas.
-You MUST:
-1. Analyze every detail he says and sends using:
-   - "Bobby Dean — Portable FM27 Tactics & Journeyman Playbook v2.0" (Patch 27.1.0 baseline: Dual-Phase IP/OOP roles with zero legacy duties, Golden Rule of One Change at a Time, Three-Man Box Rule, Tactical Effectiveness 8 familiarity areas where Chance Creation & Pressing Intensity carry the highest match weight, 15 Team & 6 Individual Tactical Tweaks macros, 6 mood-based Shouts, 3-player downward-only Mentoring units, Post-Match full Rest day slashing training injury roll from 13.8% to 4.0%, and Physical Engine weights: Pace, Acceleration, Jumping Reach, Stamina, Condition, Sharpness).
-   - "KVV Zelzate Live Master Sheet (Tables 1A–1K & 28-Man Squad Attributes/Per-90 Stats)" currently at Save Date ${currentSaveDate || 'Wed 15/09/2027 (Post-MD4 vs Royal Knokke FC, 6th Place, 6 Pts, 4.27 xGF vs 4.01 xGA, preparing for Sat 18/09/2027 MD5 Away vs 16th-placed Jong Cercle)'}.
-2. HANDLE DECODED .FM SAVE FILES & FM27 EXPORTS WITH 100% PRECISION:
-   - When Bobby uploads his .fm save file, the app decodes it locally in-browser via fmsave 0.14.1 (Python 3.14 WebAssembly) and passes you the LIVE ground-truth data: exact current in-game date, managed club, live league table & next opponent standing, live club finances & wage payroll, recent played matches with xG/shots/possession/CCC, upcoming fixture calendar, active injuries, mentoring groups, and all managed squad players with live CA/PA, attributes, condition/sharpness, wages, and season stats!
-   - When this [LIVE FULL .FM SAVE DECODED VIA FMSAVE ...] block is present:
-     a) Audit EVERY newly played match and squad/attribute diff since the previous checkpoint against Playbook v2.0.
-     b) Highlight live CA/PA insights, attribute gains/drops (e.g. Mentoring Determination gains), condition/sharpness flags, injuries/suspensions, and wage budget compliance.
-     c) Produce a **COMPLETE ACTION PLAN FROM THE EXACT IN-GAME DATE FORWARD**: exact rotated Starting XI + Bench + 62m/75m substitution windows for the next fixture, multi-match load management across the upcoming schedule, training/mentoring tweaks, and transfer/wage actions.
-   - If Bobby drops FM27 .csv / .html / .rtf exports or screenshots instead, analyze every stat/attribute change and deliver the same complete forward plan. Never fabricate numbers not present in the provided data.
-3. Enforce KVV Zelzate's Non-Negotiable Club Rules:
-   - Rule #1: NEVER sub off both starting CBs (#8 Brendan Schoonbaert JR 15, 92% hdrs & #4 Brend Leeflang 100% tck) simultaneously when protecting a lead.
-   - Rule #2: Batch all 5 substitutions across at most 2 second-half windows (60m–65m and 75m+, plus optional HT free stoppage) so 3 stoppages are never burned early. Always sub #23 Quinten Boudry (Stamina 6) around 62m for #9 Jerayson Hoepel.
-   - Rule #3: Keep 3 midfielders on the pitch late (never pull DM for a 4-2-4 when chasing; use FM27 Touchline Tweaks "Play With More Urgency" + "Swap Wings" + Shout "Up Your Game" instead).
-   - Rule #4: Both wide forwards (#23 Boudry & #12 Nathan Karinda) use Tracking Winger OOP (switched from WOW after Bruce Deuwel's 18' overlap goal for Knokke). Both Slot 1 (Home) and Slot 2 (Away) use Balanced Ground Build-Up, Short/Mixed GK Distribution to CBs (#13 René Vanden Borre), and Standard Passing Directness.
-   - Rule #5: Table 1K 180-Minute Double-GW Load Cap (<=125m for standard outfielders across Wed 15/09 Knokke & Sat 18/09 Jong Cercle): Rotate in 100% fresh #3 Lazarus Nkemdirim (LB, 90m), #22 Tijs Temmerman (RB, 62m), #27 Rune Bogaert (DM, 62m), and #20 Sander Dieltjens (LCM, 90m) at Jong Cercle.
-   - Rule #6: Defending Corners Routine 1 is a 43/43 (100%) shutout wall with Tracker B2 #6 Søren Coens stationed at Edge of Area. Attacking Corners Routine 2 (Inswinger: Aim For Centre) is primary active (Polizzi L-foot right side, Karinda R-foot left side; A1 Schoonbaert Near Post, A2 Epolo Mark Keeper, A3 Leeflang Far Post, B1 Polizzi/Karinda Edge of Area, C1 Coens Near, C2 Boudry Far, D3 Melkebeke Lurk Centre, D1 Nkemdirim & D2 Devos Stay Back).
-4. Structure your response clearly with:
-   - **STEP A — AUTOMATIC SCREEN/FILE DETECTION, AUDIT & FORWARD PLAN FROM CURRENT IN-GAME DATE** (Detailed Markdown breakdown referencing exact player numbers, attributes, per-90 stats, and Playbook v2.0 mechanics).
-   - **3 Immediate In-Game Clicks** before hitting Continue.
-   - **Master Sheet & Google Doc Auto-Update Payloads**: Populate the structured JSON fields so the app can update Table 1G (Match Log), Table 1H (Opposition Scouting), Table 1I (Set-Piece/Tactical Audit), Tab 10 (Chronicles Event #${eventNum}), and the Master Google Doc in one click.`;
+    const parts: Array<
+      { text: string } | { inlineData: { mimeType: string; data: string } }
+    > = [];
 
-      const parts: Array<
-        | { text: string }
-        | { inlineData: { mimeType: string; data: string } }
-      > = [];
-
-      if (Array.isArray(history) && history.length > 0) {
-        const transcript = history
-          .slice(-6)
-          .map((h) => `${h.role === 'user' ? 'Bobby' : 'Chief Analyst'}: ${h.text}`)
-          .join('\n\n');
-        parts.push({
-          text: `RECENT CONVERSATION CONTEXT:\n${transcript}`,
-        });
-      }
-
-      if (importedFileContext && importedFileContext.trim().length > 0) {
-        parts.push({
-          text: `IMPORTED FM27 SAVE / EXPORT PAYLOAD:\n${importedFileContext}`,
-        });
-      }
-
-      if (Array.isArray(images)) {
-        for (const img of images) {
-          if (img.base64 && img.mimeType) {
-            parts.push({
-              inlineData: {
-                mimeType: img.mimeType,
-                data: img.base64,
-              },
-            });
-          }
-        }
-      }
-
+    if (conversationContext) {
+      parts.push({ text: `Previous conversation:\n${conversationContext}` });
+    }
+    parts.push({ text: `Loaded FM27 Tool Results:\n${groundedContextBlock}` });
+    if (importedFileContext) {
+      parts.push({ text: `Imported FM27 Export / Save Context:\n${importedFileContext}` });
+    }
+    if (createdShortlist) {
       parts.push({
-        text: `Bobby's Message / Screen / File Submission (Target Next Chronicle Event #${eventNum}):\n${
-          message ||
-          'Analyze the attached FM27 file(s) / screenshot(s) against our Playbook v2.0 and KVV Zelzate Master Sheet, update everything possible, and produce a complete tactical & squad plan from the current in-game date.'
-        }`,
+        text: `Note: Shortlist "${createdShortlist.name}" was automatically created with the top targets.`,
       });
+    }
+    for (const img of images) {
+      if (img.base64 && img.mimeType) {
+        parts.push({ inlineData: { mimeType: img.mimeType, data: img.base64 } });
+      }
+    }
+    parts.push({
+      text: `Manager request (Next Chronicle Event #${nextEventNumber}): ${effectivePrompt}`,
+    });
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-4-hydrogen',
-        contents: { parts },
-        config: {
-          systemInstruction: systemPrompt,
+    try {
+      const ai = getGeminiClient();
+
+      if (requestSyncPayload) {
+        const rawJson = await generateWithRetry(ai, {
+          contents: { parts },
+          systemInstruction,
           responseMimeType: 'application/json',
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              screenDetected: {
-                type: Type.STRING,
-                description: 'Detected FM27 screen type(s) and in-game date',
-              },
-              inGameDate: {
-                type: Type.STRING,
-                description: 'In-game date in DD/MM/YYYY format',
-              },
-              analysisMarkdown: {
-                type: Type.STRING,
-                description:
-                  'Complete, in-depth Markdown tactical & Data Hub analysis (Step A) responding directly to Bobby in our signature back-and-forth style, citing exact players, attributes, and Playbook v2.0 rules.',
-              },
-              immediateClicks: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description:
-                  '3 concrete, numbered in-game clicks/actions for Bobby before hitting Continue',
-              },
-              targetSheetTable: {
-                type: Type.STRING,
-                description:
-                  'Which Master Sheet table this update belongs to: TABLE_1G_MATCH_LOG, TABLE_1H_SCOUTING, TABLE_1I_TACTICAL_AUDIT, or GENERAL_CHRONICLE',
-              },
-              chronicleTitle: {
-                type: Type.STRING,
-                description: 'Title for Event # in Master Doc & Tab 10 Chronicles',
-              },
-              chronicleOutcomeMetric: {
-                type: Type.STRING,
-                description: 'Headline result, metric, or status for Chronicles',
-              },
-              docEventBulletBlock: {
-                type: Type.STRING,
-                description:
-                  'Ready-to-insert flat bullet block (using ● and -) for Event # in Section 5 of the Master Google Doc above [INSERT NEXT CHRONOLOGICAL EVENT HERE]',
-              },
-              sheetRowValues: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description:
-                  '6 or 7 column values matching the detected Master Sheet table row (e.g. Table 1G, Table 1H, or Table 1I) ready to append directly to Google Sheets',
-              },
-              isMatchResult: {
-                type: Type.BOOLEAN,
-                description:
-                  'True if this submission contains a completed match result to add to Table 1G',
-              },
+              screenDetected: { type: Type.STRING },
+              inGameDate: { type: Type.STRING },
+              analysisMarkdown: { type: Type.STRING },
+              immediateClicks: { type: Type.ARRAY, items: { type: Type.STRING } },
+              targetSheetTable: { type: Type.STRING },
+              chronicleTitle: { type: Type.STRING },
+              chronicleOutcomeMetric: { type: Type.STRING },
+              docEventBulletBlock: { type: Type.STRING },
+              sheetRowValues: { type: Type.ARRAY, items: { type: Type.STRING } },
+              isMatchResult: { type: Type.BOOLEAN },
               matchFields: {
                 type: Type.OBJECT,
                 properties: {
@@ -377,35 +521,15 @@ You MUST:
               },
               playerUpdates: {
                 type: Type.ARRAY,
-                description:
-                  'Any KVV Zelzate squad player stat, rating, attribute, injury, or tactical note updates extracted from the screenshot or message so the 28-Man Squad Table updates automatically',
                 items: {
                   type: Type.OBJECT,
                   properties: {
-                    name: {
-                      type: Type.STRING,
-                      description: 'Exact player name (e.g. Matteo Polizzi, Sander Dieltjens, Mbey Epolo)',
-                    },
-                    rating: {
-                      type: Type.NUMBER,
-                      description: 'Updated or latest match rating if shown',
-                    },
-                    goalsAdded: {
-                      type: Type.NUMBER,
-                      description: 'Goals scored in this new match to add to total',
-                    },
-                    assistsAdded: {
-                      type: Type.NUMBER,
-                      description: 'Assists in this new match to add to total',
-                    },
-                    minutesAdded: {
-                      type: Type.NUMBER,
-                      description: 'Minutes played in this new match to add to total',
-                    },
-                    notes: {
-                      type: Type.STRING,
-                      description: 'Updated tactical, scouting, mentoring, or medical report note for this player',
-                    },
+                    name: { type: Type.STRING },
+                    rating: { type: Type.NUMBER },
+                    goalsAdded: { type: Type.NUMBER },
+                    assistsAdded: { type: Type.NUMBER },
+                    minutesAdded: { type: Type.NUMBER },
+                    notes: { type: Type.STRING },
                   },
                   required: ['name', 'notes'],
                 },
@@ -424,37 +548,94 @@ You MUST:
               'isMatchResult',
             ],
           },
-        },
+        });
+
+        if (!rawJson) {
+          return res
+            .status(502)
+            .json({ error: 'Gemini returned an empty response. Please try again.' });
+        }
+
+        const syncOutput = JSON.parse(rawJson) as SyncTurnOutput;
+        return res.json({
+          reply: syncOutput.analysisMarkdown,
+          syncOutput,
+          commandUsed: commandName,
+          toolsUsed: toolResults.map((t) => t.toolName),
+          createdShortlist,
+        });
+      }
+
+      const replyText = await generateWithRetry(ai, {
+        contents: { parts },
+        systemInstruction,
       });
 
-      const parsed = JSON.parse((response.text ?? '{}').trim());
-      return res.json(parsed);
-    } catch (error: unknown) {
-      const errMessage =
-        error instanceof Error
-          ? error.message
-          : 'Failed to run FM27 Tactical Analyst chat';
-      return res.status(500).json({ error: errMessage });
+      if (!replyText) {
+        return res
+          .status(502)
+          .json({ error: 'Gemini returned an empty response. Please try again.' });
+      }
+
+      return res.json({
+        reply: replyText,
+        syncOutput: null,
+        commandUsed: commandName,
+        toolsUsed: toolResults.map((t) => t.toolName),
+        createdShortlist,
+      });
+    } catch (err: unknown) {
+      const rawMessage = err instanceof Error ? err.message : 'Failed to reach Gemini API.';
+      console.error('[FM27 Command Hub] Gemini error:', rawMessage);
+      let friendly = rawMessage;
+      try {
+        const parsed = JSON.parse(rawMessage) as {
+          error?: { message?: string; status?: string };
+        };
+        if (parsed.error?.message) {
+          friendly = parsed.error.message;
+        }
+      } catch {
+        // Keep rawMessage if not JSON
+      }
+      const isAuthIssue = /API_KEY|PERMISSION_DENIED|UNAUTHENTICATED|401|403/i.test(rawMessage);
+      return res.status(502).json({
+        error: isAuthIssue
+          ? `AI request failed: ${friendly} Check GEMINI_API_KEY configuration.`
+          : `AI assistant is temporarily unavailable: ${friendly}`,
+      });
     }
   });
 
-  if (process.env.NODE_ENV !== 'production') {
+  // === Frontend Serving ===
+  if (isProduction) {
+    const distDir = path.resolve(process.cwd(), 'dist');
+    app.use(express.static(distDir));
+    app.get('*all', (_req, res) => {
+      const indexFile = path.join(distDir, 'index.html');
+      if (fs.existsSync(indexFile)) {
+        res.sendFile(indexFile);
+      } else {
+        res.status(404).send('Production build not found. Run npm run build.');
+      }
+    });
+  } else {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: false,
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*all', (_req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`FM27 Command Hub running on http://localhost:${PORT}`);
+    console.log(`FM27 Command Hub listening on http://0.0.0.0:${PORT}`);
   });
 }
 
-startServer();
+startServer().catch((err) => {
+  console.error('Failed to start FM27 Command Hub server:', err);
+  process.exit(1);
+});

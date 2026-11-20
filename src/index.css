@@ -1,18 +1,166 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
+:root {
+  color-scheme: dark;
+  --fmai-ink: #f0edf4;
+  --fmai-text: var(--fmai-ink);
+  --fmai-muted: #b2acbb;
+  --fmai-border: #39333f;
+  --fmai-border-strong: #59515f;
+  --fmai-surface: #121116;
+  --fmai-surface-raised: #202128;
+  --fmai-canvas: #0e0c12;
+  --fmai-header: #120e16;
+  --fmai-accent: #dc87ff;
+  --fmai-accent-button: #850be3;
+  --fmai-accent-soft: #34223f;
+  --fmai-emerald: #10b981;
+  --fmai-emerald-soft: #0f2e24;
+  --fmai-row-hover: #302337;
+  --fmai-blue-soft: #1c2a40;
+  --fmai-red-soft: #40212b;
+  --fmai-score-low: #ff758b;
+  --fmai-score-average: #d4ced8;
+  --fmai-score-good: #f0d637;
+  --fmai-score-excellent: #53e841;
+}
+
 @layer base {
-  body {
-    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+    background: var(--fmai-canvas);
+    color: var(--fmai-ink);
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    scrollbar-color: #665d6e #17131d;
+    -webkit-font-smoothing: antialiased;
   }
 
-  h1, h2, h3, .font-display {
+  h1,
+  h2,
+  h3,
+  .font-display,
+  .fm-font-display {
     font-family: 'Outfit', sans-serif;
     text-wrap: balance;
   }
 
-  .font-mono, .tabular-nums {
+  .font-mono,
+  .tabular-nums {
     font-family: 'JetBrains Mono', monospace;
     font-variant-numeric: tabular-nums;
   }
+}
+
+.fm-workspace-bg {
+  background:
+    linear-gradient(154deg, transparent 27%, #8d203714 27.1%, transparent 27.3%),
+    linear-gradient(12deg, transparent 65%, #10b98112 65.1%, transparent 65.3%),
+    radial-gradient(ellipse at top left, #3f132a 0%, #1d0e1d 38%, #0e0c12 82%);
+}
+
+.fm-sidebar-bg {
+  background: linear-gradient(175deg, #1b111d, #121016 60%);
+}
+
+.fm-tab-active {
+  border-color: #734096;
+  background: linear-gradient(90deg, #61357e, #392242);
+  color: #ffffff;
+}
+
+.fm-status-emerald {
+  border-color: rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.12);
+  color: #6ee7b7;
+}
+
+.fm-profile-hero {
+  background: linear-gradient(115deg, #561934, #281121 48%, #151019);
+  border-bottom: 1px solid #5c334a;
+}
+
+/* Role Attribute Highlight Bars */
+.fm-attr-primary {
+  box-shadow: inset 3px 0 0 #19d88b;
+  background: #17372a !important;
+}
+
+.fm-attr-secondary {
+  box-shadow: inset 3px 0 0 #4493ff;
+  background: #1a2941 !important;
+}
+
+/* FM27 Attribute Tier Colors */
+.fm-attr-tier-elite {
+  color: #53e841;
+}
+
+.fm-attr-tier-good {
+  color: #f0d637;
+}
+
+.fm-attr-tier-avg {
+  color: #d4ced8;
+}
+
+.fm-attr-tier-low {
+  color: #ff758b;
+}
+
+.fm-attr-tier-null {
+  color: #6f6778;
+}
+
+.fm-grid-table th {
+  font-family: 'Outfit', sans-serif;
+  background: #1a151e;
+  border-bottom: 1px solid #514453;
+  color: #bfb3c8;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.fm-grid-table tbody tr:nth-child(odd) {
+  background: #131016;
+}
+
+.fm-grid-table tbody tr:nth-child(even) {
+  background: #1d1822;
+}
+
+.fm-grid-table tbody tr:hover {
+  background: #35263f;
+}
+
+.fm-loan-out-cell {
+  background-color: #43202e;
+  color: #ff9bb0;
+}
+
+.fm-loan-in-cell {
+  background-color: #192d41;
+  color: #85d0ff;
+}
+
+/* Custom sleek dark scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #17131d;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #4b4154;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #665d6e;
 }

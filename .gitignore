@@ -6,7 +6,5 @@ coverage/
 *.log
 .env*
 !.env.example
-*.fm
-*.zip
-.aistudio/
-.agents/
+__pycache__/
+*.pyc

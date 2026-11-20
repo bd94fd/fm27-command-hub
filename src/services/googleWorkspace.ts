@@ -1,14 +1,14 @@
 import { initializeApp } from 'firebase/app';
 import {
   getAuth,
-  signInWithPopup,
   GoogleAuthProvider,
   onAuthStateChanged,
-  User,
+  signInWithPopup,
+  type User,
 } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 
-export const SCOPES = [
+export const GOOGLE_WORKSPACE_SCOPES = [
   'https://www.googleapis.com/auth/documents',
   'https://www.googleapis.com/auth/spreadsheets',
 ];
@@ -17,36 +17,36 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 
 const provider = new GoogleAuthProvider();
-for (const scope of SCOPES) {
+for (const scope of GOOGLE_WORKSPACE_SCOPES) {
   provider.addScope(scope);
 }
 
 let isSigningIn = false;
 let cachedAccessToken: string | null = null;
 
-export const initAuth = (
+export function initGoogleAuth(
   onAuthSuccess?: (user: User, token: string) => void,
-  onAuthFailure?: () => void
-) => {
+  onAuthFailure?: () => void,
+): () => void {
   return onAuthStateChanged(auth, async (user: User | null) => {
     if (user) {
       if (cachedAccessToken) {
-        if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
+        onAuthSuccess?.(user, cachedAccessToken);
       } else if (!isSigningIn) {
         cachedAccessToken = null;
-        if (onAuthFailure) onAuthFailure();
+        onAuthFailure?.();
       }
     } else {
       cachedAccessToken = null;
-      if (onAuthFailure) onAuthFailure();
+      onAuthFailure?.();
     }
   });
-};
+}
 
-export const googleSignIn = async (): Promise<{
+export async function signInWithGoogleWorkspace(): Promise<{
   user: User;
   accessToken: string;
-} | null> => {
+} | null> {
   try {
     isSigningIn = true;
     const result = await signInWithPopup(auth, provider);
@@ -62,16 +62,18 @@ export const googleSignIn = async (): Promise<{
   } finally {
     isSigningIn = false;
   }
-};
+}
 
-export const getAccessToken = async (): Promise<string | null> => {
+export const googleSignIn = signInWithGoogleWorkspace;
+
+export async function getAccessToken(): Promise<string | null> {
   return cachedAccessToken;
-};
+}
 
-export const logout = async () => {
+export async function logoutGoogleWorkspace(): Promise<void> {
   await auth.signOut();
   cachedAccessToken = null;
-};
+}
 
 /**
  * Extracts a Google Document ID or Spreadsheet ID from either a full Google URL or a raw ID string.
@@ -98,20 +100,18 @@ export interface GoogleDocInfo {
  */
 export async function fetchGoogleDocInfo(
   rawIdOrUrl: string,
-  accessToken: string
+  accessToken: string,
 ): Promise<GoogleDocInfo> {
   const documentId = extractGoogleFileId(rawIdOrUrl);
   const res = await fetch(
     `https://docs.googleapis.com/v1/documents/${encodeURIComponent(documentId)}`,
     {
       headers: { Authorization: `Bearer ${accessToken}` },
-    }
+    },
   );
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
-    throw new Error(
-      errData?.error?.message || `Failed to read Google Doc (${res.status})`
-    );
+    throw new Error(errData?.error?.message || `Failed to read Google Doc (${res.status})`);
   }
   const doc = await res.json();
   const content = doc.body?.content || [];
@@ -142,19 +142,17 @@ export async function fetchGoogleDocInfo(
 }
 
 /**
- * Directly appends a formatted chronological event into the user's Google Doc
- * right above [INSERT NEXT CHRONOLOGICAL EVENT HERE] (or at the end of the document if the tag is not found).
+ * Non-destructively inserts a formatted chronological event into a Google Doc
+ * directly above [INSERT NEXT CHRONOLOGICAL EVENT HERE] (or appends at end if not present).
  */
 export async function appendEventToGoogleDoc(
   rawIdOrUrl: string,
   eventTextBlock: string,
-  accessToken: string
+  accessToken: string,
 ): Promise<{ title: string; insertedAtAnchor: boolean }> {
   const info = await fetchGoogleDocInfo(rawIdOrUrl, accessToken);
   const insertIndex =
-    info.anchorIndex !== null
-      ? info.anchorIndex
-      : Math.max(1, info.endIndex - 1);
+    info.anchorIndex !== null ? info.anchorIndex : Math.max(1, info.endIndex - 1);
 
   const formattedPayload =
     info.anchorIndex !== null
@@ -162,9 +160,7 @@ export async function appendEventToGoogleDoc(
       : `\n\n${eventTextBlock.trim()}\n[INSERT NEXT CHRONOLOGICAL EVENT HERE]\n`;
 
   const res = await fetch(
-    `https://docs.googleapis.com/v1/documents/${encodeURIComponent(
-      info.documentId
-    )}:batchUpdate`,
+    `https://docs.googleapis.com/v1/documents/${encodeURIComponent(info.documentId)}:batchUpdate`,
     {
       method: 'POST',
       headers: {
@@ -181,74 +177,18 @@ export async function appendEventToGoogleDoc(
           },
         ],
       }),
-    }
+    },
   );
 
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
-    throw new Error(
-      errData?.error?.message || `Failed to update Google Doc (${res.status})`
-    );
+    throw new Error(errData?.error?.message || `Failed to update Google Doc (${res.status})`);
   }
 
   return {
     title: info.title,
     insertedAtAnchor: info.anchorIndex !== null,
   };
-}
-
-/**
- * Replaces or initializes a Google Doc with the complete repaired KVV Zelzate Master Blueprint (Events #1-#33).
- */
-export async function writeFullMasterBlueprintToDoc(
-  rawIdOrUrl: string,
-  fullText: string,
-  accessToken: string
-): Promise<{ title: string }> {
-  const info = await fetchGoogleDocInfo(rawIdOrUrl, accessToken);
-  const requests: Record<string, unknown>[] = [];
-
-  if (info.endIndex > 2) {
-    requests.push({
-      deleteContentRange: {
-        range: {
-          startIndex: 1,
-          endIndex: info.endIndex - 1,
-        },
-      },
-    });
-  }
-
-  requests.push({
-    insertText: {
-      location: { index: 1 },
-      text: fullText,
-    },
-  });
-
-  const res = await fetch(
-    `https://docs.googleapis.com/v1/documents/${encodeURIComponent(
-      info.documentId
-    )}:batchUpdate`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ requests }),
-    }
-  );
-
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    throw new Error(
-      errData?.error?.message ||
-        `Failed to write Master Blueprint to Google Doc (${res.status})`
-    );
-  }
-
-  return { title: info.title };
 }
 
 export interface GoogleSheetMetadata {
@@ -262,22 +202,21 @@ export interface GoogleSheetMetadata {
  */
 export async function fetchGoogleSheetMetadata(
   rawIdOrUrl: string,
-  accessToken: string
+  accessToken: string,
 ): Promise<GoogleSheetMetadata> {
   const spreadsheetId = extractGoogleFileId(rawIdOrUrl);
   const res = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(
-      spreadsheetId
+      spreadsheetId,
     )}?fields=properties.title,sheets.properties.title`,
     {
       headers: { Authorization: `Bearer ${accessToken}` },
-    }
+    },
   );
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
     throw new Error(
-      errData?.error?.message ||
-        `Failed to read Google Spreadsheet (${res.status})`
+      errData?.error?.message || `Failed to read Google Spreadsheet (${res.status})`,
     );
   }
   const data = await res.json();
@@ -299,16 +238,14 @@ export async function appendRowToGoogleSheet(
   rawIdOrUrl: string,
   sheetTabName: string,
   rowValues: string[],
-  accessToken: string
+  accessToken: string,
 ): Promise<void> {
   const spreadsheetId = extractGoogleFileId(rawIdOrUrl);
-  const range = `'${sheetTabName.replace(/'/g, "''")}'!A:G`;
+  const range = `'${sheetTabName.replace(/'/g, "''")}'!A:Z`;
   const res = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(
-      spreadsheetId
-    )}/values/${encodeURIComponent(
-      range
-    )}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+      spreadsheetId,
+    )}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
     {
       method: 'POST',
       headers: {
@@ -318,14 +255,13 @@ export async function appendRowToGoogleSheet(
       body: JSON.stringify({
         values: [rowValues],
       }),
-    }
+    },
   );
 
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
     throw new Error(
-      errData?.error?.message ||
-        `Failed to append row to sheet tab "${sheetTabName}" (${res.status})`
+      errData?.error?.message || `Failed to append row to sheet tab "${sheetTabName}" (${res.status})`,
     );
   }
 }
