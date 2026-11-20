@@ -453,7 +453,7 @@ You MUST:
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`KVV Zelzate FM27 Hub running on http://localhost:${PORT}`);
+    console.log(`FM27 Command Hub running on http://localhost:${PORT}`);
   });
 }
 
