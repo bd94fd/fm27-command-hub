@@ -30,6 +30,8 @@ export interface PlayerRecord {
   expires: string;
   nation: string;
   wagePw: number;
+  marketValue?: number | null;
+  morale?: string | null;
   status: 'Starter' | 'Rotation' | 'Injured' | 'Surplus' | 'Youth';
   positionRatings?: Record<string, number> | null;
   attributes: {

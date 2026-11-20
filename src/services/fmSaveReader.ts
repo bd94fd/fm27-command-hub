@@ -27,7 +27,7 @@ const STEP_INACTIVITY_TIMEOUT_MS = 150_000;
 
 function getFmSaveWorker(): Worker {
   if (!sharedWorker) {
-    sharedWorker = new Worker('/fm-save-worker.js?v=7', { type: 'module' });
+    sharedWorker = new Worker('/fm-save-worker.js?v=8', { type: 'module' });
   }
   return sharedWorker;
 }

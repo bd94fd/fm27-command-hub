@@ -537,28 +537,73 @@ def step_season_stats() -> str:
     club_uid = _STATE["club_uid"]
     squad_uids = _STATE["squad_uids"]
     players_out = _STATE["players_out"]
+    game_date = _STATE.get("game_date")
     if not squad_uids:
         return json.dumps({"matchedStats": 0})
 
-    overall_by_uid: dict[int, Any] = {}
-    league_by_uid: dict[int, Any] = {}
+    # Determine current football season start year (Jul-Jun)
+    current_season_year = None
+    if game_date:
+        current_season_year = game_date.year if game_date.month >= 7 else game_date.year - 1
+
+    # Store (season_year, is_league, row) so current-season competitive stats always win over last season
+    best_by_uid: dict[int, tuple[int, int, Any]] = {}
     t0 = time.monotonic()
     timed_out = False
+
+    def _row_season_year(row: Any) -> int:
+        for attr in ("season_year", "season", "year"):
+            v = getattr(row, attr, None)
+            if isinstance(v, int) and 1990 <= v <= 2100:
+                return v
+            if isinstance(v, str) and len(v) >= 4 and v[:4].isdigit():
+                return int(v[:4])
+        return -1
 
     def _consume_stat_row(row: Any) -> None:
         p_uid = getattr(row, "player_uid", None)
         if p_uid not in squad_uids:
             return
         kind_str = str(getattr(row, "kind", "")).lower()
-        mins = getattr(row, "minutes", 0) or 0
-        if "overall" in kind_str:
-            existing = overall_by_uid.get(p_uid)
-            if existing is None or mins > (getattr(existing, "minutes", 0) or 0):
-                overall_by_uid[p_uid] = row
-        elif "league" in kind_str:
-            existing = league_by_uid.get(p_uid)
-            if existing is None or mins > (getattr(existing, "minutes", 0) or 0):
-                league_by_uid[p_uid] = row
+        # Skip pre-season friendlies / non-competitive rows
+        if "friendly" in kind_str or "non_competitive" in kind_str or "youth" in kind_str:
+            return
+        is_league = 1 if "league" in kind_str else (0 if "overall" in kind_str or "competitive" in kind_str else -1)
+        if is_league < 0:
+            return
+
+        row_year = _row_season_year(row)
+        # If row carries an explicit older season year, skip it
+        if current_season_year is not None and row_year > 0 and row_year < current_season_year:
+            return
+
+        # Priority: (1) highest season year, (2) league competitive over overall (which can include friendlies)
+        # If season year is absent (-1) and multiple rows exist, prefer league competitive row with realistic current-season minutes
+        existing = best_by_uid.get(p_uid)
+        if existing is None:
+            best_by_uid[p_uid] = (row_year, is_league, row)
+            return
+
+        ex_year, ex_is_league, ex_row = existing
+        if row_year > ex_year:
+            best_by_uid[p_uid] = (row_year, is_league, row)
+        elif row_year == ex_year:
+            if is_league > ex_is_league:
+                best_by_uid[p_uid] = (row_year, is_league, row)
+            elif is_league == ex_is_league:
+                # When season year isn't exposed on rows, the latest/current season row appears after older seasons
+                # or has fewer minutes than a completed 38-game previous season
+                new_mins = getattr(row, "minutes", 0) or 0
+                old_mins = getattr(ex_row, "minutes", 0) or 0
+                if row_year > 0:
+                    if new_mins > old_mins:
+                        best_by_uid[p_uid] = (row_year, is_league, row)
+                else:
+                    # Prefer the lower non-zero minutes row if old_mins looks like a full prior season (>900m in Sept)
+                    if game_date and game_date.month in (7, 8, 9, 10) and old_mins > 900 and 0 <= new_mins <= 900:
+                        best_by_uid[p_uid] = (row_year, is_league, row)
+                    elif new_mins > old_mins and new_mins <= 900:
+                        best_by_uid[p_uid] = (row_year, is_league, row)
 
     try:
         stats_table = save.player_season_stats()
@@ -570,7 +615,7 @@ def step_season_stats() -> str:
                 scoped_rows = stats_table.where(club_uid=club_uid)
                 for row in scoped_rows:
                     _consume_stat_row(row)
-                if overall_by_uid or league_by_uid:
+                if best_by_uid:
                     used_scoped = True
             except Exception:
                 used_scoped = False
@@ -590,7 +635,7 @@ def step_season_stats() -> str:
             except Exception:
                 used_scoped = False
 
-        # Fallback: single linear pass with early exit & 35s mobile safety cap
+        # Fallback: single linear pass with 35s mobile safety cap
         if not used_scoped:
             seen_count = 0
             for row in stats_table:
@@ -599,8 +644,6 @@ def step_season_stats() -> str:
                     timed_out = True
                     break
                 _consume_stat_row(row)
-                if len(overall_by_uid) >= len(squad_uids):
-                    break
 
         if timed_out:
             _STATE["warnings"].append(
@@ -609,7 +652,7 @@ def step_season_stats() -> str:
     except Exception as exc:
         _STATE["warnings"].append(f"player_season_stats: {type(exc).__name__}")
 
-    stats_by_uid = overall_by_uid if overall_by_uid else league_by_uid
+    stats_by_uid = {uid: triple[2] for uid, triple in best_by_uid.items()}
     matched = 0
     for p in players_out:
         st = stats_by_uid.get(p["uid"])

@@ -8,6 +8,9 @@ export interface DecodedFmSavePlayer {
   position: string;
   age: number;
   heightCm?: number;
+  marketValue?: number | null;
+  morale?: string | null;
+  nation?: string | null;
   ca: number;
   pa: number;
   condition: number | null;
@@ -411,8 +414,10 @@ export function hydrateAppFromDecodedFmSave(
       heightCm: dp.heightCm,
       positionRatings: dp.positionRatings ?? null,
       expires: typeof dp.expires === 'string' && dp.expires.trim() ? dp.expires : 'N/A',
-      nation: 'FM',
+      nation: (dp.nation && dp.nation.trim()) || 'FM',
       wagePw: Number(dp.wagePw) || 0,
+      marketValue: dp.marketValue ?? null,
+      morale: dp.morale ?? null,
       status: assignedStatus,
       attributes: dp.attributes || {
         pace: 10,
@@ -572,7 +577,7 @@ export function hydrateAppFromDecodedFmSave(
     leagueStandingLabel = `#${ls.position} of ${ls.totalTeams} (${ls.goalsFor} GF / ${ls.goalsAgainst} GA · ${gdStr} GD)`;
   }
 
-  // Real summed squad season output straight from save.player_season_stats()
+  // Current-season competitive output (never inflate with prior-season or pre-season friendly goals)
   let squadOutputLabel: string | null = null;
   let squadOutputSubLabel: string | null = null;
   if (decoded.players.length > 0) {
@@ -580,22 +585,34 @@ export function hydrateAppFromDecodedFmSave(
     const totalXg = decoded.players.reduce((s, p) => s + (p.xG || 0), 0);
     const totalAssists = decoded.players.reduce((s, p) => s + (p.assists || 0), 0);
     const totalXa = decoded.players.reduce((s, p) => s + (p.xA || 0), 0);
-    squadOutputLabel = `${totalGoals} Gls (${totalXg.toFixed(2)} xG) · ${totalAssists} Ast (${totalXa.toFixed(2)} xA)`;
-    const topScorer = [...decoded.players].sort((a, b) => (b.goals || 0) - (a.goals || 0))[0];
-    const topRated = [...decoded.players]
-      .filter((p) => typeof p.rating === 'number' && (p.minutes || 0) >= 90)
-      .sort((a, b) => (b.rating || 0) - (a.rating || 0))[0];
-    const subParts: string[] = [];
-    if (topScorer && topScorer.goals > 0) {
-      subParts.push(`Top Scorer: ${topScorer.name} (${topScorer.goals}G)`);
+    const ls = decoded.leagueStanding;
+    const looksMultiSeason =
+      ls && ls.played > 0 && totalGoals > ls.goalsFor + 6;
+
+    if (looksMultiSeason && ls) {
+      const gdStr = ls.goalDiff >= 0 ? `+${ls.goalDiff}` : `${ls.goalDiff}`;
+      const gfPerGame = (ls.goalsFor / ls.played).toFixed(2);
+      const gaPerGame = (ls.goalsAgainst / ls.played).toFixed(2);
+      squadOutputLabel = `${ls.goalsFor} GF / ${ls.goalsAgainst} GA (${gdStr} GD)`;
+      squadOutputSubLabel = `Current Season League (${ls.played} GP · ${gfPerGame} GF/g · ${gaPerGame} GA/g)`;
+    } else {
+      squadOutputLabel = `${totalGoals} Gls (${totalXg.toFixed(2)} xG) · ${totalAssists} Ast (${totalXa.toFixed(2)} xA)`;
+      const topScorer = [...decoded.players].sort((a, b) => (b.goals || 0) - (a.goals || 0))[0];
+      const topRated = [...decoded.players]
+        .filter((p) => typeof p.rating === 'number' && (p.minutes || 0) >= 90)
+        .sort((a, b) => (b.rating || 0) - (a.rating || 0))[0];
+      const subParts: string[] = [];
+      if (topScorer && topScorer.goals > 0) {
+        subParts.push(`Top Scorer: ${topScorer.name} (${topScorer.goals}G)`);
+      }
+      if (topRated && topRated.rating) {
+        subParts.push(`Best Rat: ${topRated.name} (${topRated.rating.toFixed(2)})`);
+      }
+      squadOutputSubLabel =
+        subParts.length > 0
+          ? subParts.join(' · ')
+          : `Current season across ${decoded.players.length} squad players`;
     }
-    if (topRated && topRated.rating) {
-      subParts.push(`Best Rat: ${topRated.name} (${topRated.rating.toFixed(2)})`);
-    }
-    squadOutputSubLabel =
-      subParts.length > 0
-        ? subParts.join(' · ')
-        : `Summed across ${decoded.players.length} squad players in .fm save`;
   }
 
   let tacticHeadlineLabel: string | null = null;
@@ -605,6 +622,7 @@ export function hydrateAppFromDecodedFmSave(
     tacticHeadlineLabel = `${primary.name} (${primary.mentality})`;
     tacticSubLabel = `${decoded.activeInjuries.length} Active Injur${decoded.activeInjuries.length === 1 ? 'y' : 'ies'} · ${decoded.mentoring.length} Mentoring Groups`;
   } else {
+    tacticHeadlineLabel = 'Dual-Phase 4-3-3 (War Room)';
     tacticSubLabel = `${decoded.activeInjuries.length} Active Injur${decoded.activeInjuries.length === 1 ? 'y' : 'ies'} · ${decoded.mentoring.length} Mentoring Groups`;
   }
 
