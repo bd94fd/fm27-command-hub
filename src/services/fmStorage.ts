@@ -3,7 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { MatchLogEntry, PlayerRecord } from '../types/fm27';
+import {
+  MatchLogEntry,
+  PlayerRecord,
+  RecruitmentCase,
+  ShortlistRecord,
+  StaffRecord,
+} from '../types/fm27';
 import { HydratedSaveState } from '../utils/fmSaveHydrator';
 
 export const FM27_STORAGE_KEY = 'fm27_command_hub_state_v1';
@@ -20,6 +26,9 @@ export interface FmHubPersistedState {
   clubName?: string;
   players: PlayerRecord[];
   matches: MatchLogEntry[];
+  staff?: StaffRecord[];
+  recruitmentCases?: RecruitmentCase[];
+  shortlists?: ShortlistRecord[];
   hydratedFmSave: HydratedSaveState | null;
 }
 
@@ -57,7 +66,14 @@ export function loadPersistedFmState(): FmHubPersistedState | null {
       return null;
     }
 
-    return parsed;
+    return {
+      ...parsed,
+      staff: Array.isArray(parsed.staff) ? parsed.staff : [],
+      recruitmentCases: Array.isArray(parsed.recruitmentCases)
+        ? parsed.recruitmentCases
+        : [],
+      shortlists: Array.isArray(parsed.shortlists) ? parsed.shortlists : [],
+    };
   } catch (err) {
     console.warn('Failed to load persisted FM27 state from localStorage:', err);
     return null;

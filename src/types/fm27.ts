@@ -19,12 +19,19 @@ export interface PlayerRecord {
   tckPct: number;
   personality: string;
   age: number;
-  ability: number;
-  potential: number;
+  ability: number; // 1.0 - 5.0 stars relative to squad baseline (never raw CA)
+  potential: number; // 1.0 - 5.0 stars relative to squad baseline (never raw PA)
+  condition?: number | null;
+  sharpness?: number | null;
+  leftFoot?: number;
+  rightFoot?: number;
+  preferredFoot?: 'Left' | 'Right' | 'Either';
+  heightCm?: number;
   expires: string;
   nation: string;
   wagePw: number;
   status: 'Starter' | 'Rotation' | 'Injured' | 'Surplus' | 'Youth';
+  positionRatings?: Record<string, number> | null;
   attributes: {
     pace: number;
     acceleration: number;
@@ -38,10 +45,104 @@ export interface PlayerRecord {
     decisions: number;
     workRate: number;
     offTheBall: number;
+    heading?: number;
+    corners?: number;
+    crossing?: number;
+    technique?: number;
+    dribbling?: number;
+    vision?: number;
+    composure?: number;
+    positioning?: number;
+    marking?: number;
+    strength?: number;
+    leadership?: number;
+    teamwork?: number;
   };
   ipRole: string;
   oopRole: string;
   notes: string;
+}
+
+export interface StaffAttributes {
+  attacking: number;
+  defending: number;
+  fitness: number;
+  goalkeeping: number;
+  mental: number;
+  possession: number;
+  set_pieces: number;
+  tactical: number;
+  technical: number;
+  working_with_youngsters: number;
+  adaptability: number;
+  authority: number;
+  determination: number;
+  judging_player_ability: number;
+  judging_player_potential: number;
+  judging_staff_ability: number;
+  man_management: number;
+  motivating: number;
+  negotiating: number;
+  physiotherapy: number;
+  sports_science: number;
+  tactical_knowledge: number;
+  analysing_data: number;
+}
+
+export interface StaffRecord {
+  id: string;
+  uid?: number;
+  name: string;
+  role: string;
+  age: number;
+  nation: string;
+  club: string;
+  wagePw: number;
+  expires: string;
+  attributes: StaffAttributes;
+}
+
+export type InterestStatus =
+  | 'Extremely Interested'
+  | 'Very Interested'
+  | 'Interested'
+  | 'Unsure'
+  | 'Dubious'
+  | 'No Interest';
+
+export type DealStage =
+  | 'Scouted'
+  | 'Shortlisted'
+  | 'Agent Enquiry'
+  | 'Bid Submitted'
+  | 'Contract Talks'
+  | 'Agreed'
+  | 'Rejected';
+
+export interface RecruitmentCase {
+  id: string;
+  playerId?: string;
+  playerName: string;
+  position: string;
+  age: number | null;
+  currentClub: string;
+  targetIpRole: string;
+  targetOopRole: string;
+  interest: InterestStatus;
+  stage: DealStage;
+  estimatedFee: string;
+  estimatedWagePw: number | null;
+  expiresOn: string; // YYYY-MM-DD or DD/MM/YYYY
+  notes: string;
+  updatedAt: string;
+}
+
+export interface ShortlistRecord {
+  id: string;
+  name: string;
+  description: string;
+  playerIds: string[];
+  createdAt: string;
 }
 
 export interface MatchLogEntry {

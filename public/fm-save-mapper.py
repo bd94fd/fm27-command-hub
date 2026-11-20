@@ -281,6 +281,29 @@ def step_players() -> str:
         cond_pct = round(raw_cond / 100) if raw_cond is not None and raw_cond > 100 else raw_cond
         sharp_pct = round(raw_sharp / 100) if raw_sharp is not None and raw_sharp > 100 else raw_sharp
 
+        pos_ratings = None
+        raw_pos_map = getattr(p, "positions", None) or getattr(p, "position_ratings", None)
+        if raw_pos_map is not None:
+            try:
+                if isinstance(raw_pos_map, dict):
+                    pos_ratings = {str(k): _int(v, 1) for k, v in raw_pos_map.items()}
+                else:
+                    pos_ratings = {}
+                    for code in ("GK", "DL", "DC", "DR", "WBL", "DM", "WBR", "ML", "MC", "MR", "AML", "AMC", "AMR", "ST"):
+                        val = getattr(raw_pos_map, code.lower(), None)
+                        if val is None:
+                            val = getattr(raw_pos_map, code, None)
+                        if val is not None:
+                            pos_ratings[code] = _int(val, 1)
+                    if not pos_ratings:
+                        pos_ratings = None
+            except Exception:
+                pos_ratings = None
+
+        left_foot = _int(getattr(p, "left_foot", None) or (getattr(attrs, "left_foot", None) if attrs else None))
+        right_foot = _int(getattr(p, "right_foot", None) or (getattr(attrs, "right_foot", None) if attrs else None))
+        height_cm = _int(getattr(p, "height", None) or getattr(p, "height_cm", None))
+
         players_out.append({
             "uid": uid,
             "name": p.name,
@@ -290,6 +313,10 @@ def step_players() -> str:
             "pa": _int(getattr(ability, "potential", None), 0),
             "condition": cond_pct,
             "sharpness": sharp_pct,
+            "leftFoot": left_foot,
+            "rightFoot": right_foot,
+            "heightCm": height_cm,
+            "positionRatings": pos_ratings,
             "wagePw": _int(getattr(contract, "wage", None), 0) if contract else 0,
             "expires": (_dmy(getattr(contract, "end", None)) or "N/A") if contract else "N/A",
             "onLoan": bool(getattr(p, "on_loan", False)),
@@ -324,6 +351,18 @@ def step_players() -> str:
                 "decisions": _int(getattr(attrs, "decisions", None), 10),
                 "workRate": _int(getattr(attrs, "work_rate", None), 10),
                 "offTheBall": _int(getattr(attrs, "off_the_ball", None), 10),
+                "heading": _int(getattr(attrs, "heading", None), 10),
+                "corners": _int(getattr(attrs, "corners", None), 10),
+                "crossing": _int(getattr(attrs, "crossing", None), 10),
+                "technique": _int(getattr(attrs, "technique", None), 10),
+                "dribbling": _int(getattr(attrs, "dribbling", None), 10),
+                "vision": _int(getattr(attrs, "vision", None), 10),
+                "composure": _int(getattr(attrs, "composure", None), 10),
+                "positioning": _int(getattr(attrs, "positioning", None), 10),
+                "marking": _int(getattr(attrs, "marking", None), 10),
+                "strength": _int(getattr(attrs, "strength", None), 10),
+                "leadership": _int(getattr(attrs, "leadership", None), 10),
+                "teamwork": _int(getattr(attrs, "teamwork", None), 10),
             } if attrs else None,
             "hiddenPersonality": {
                 "professionalism": _int(getattr(pers, "professionalism", None)),
@@ -419,10 +458,66 @@ def step_club_extras_and_release_gamedb() -> str:
     except Exception as exc:
         _STATE["warnings"].append(f"mentoring: {type(exc).__name__}")
 
+    staff_out = []
+    try:
+        staff_fn = getattr(save, "staff", None) or getattr(save, "non_players", None)
+        if callable(staff_fn):
+            s_table = _safe_call(staff_fn, "staff", default=[])
+            raw_staff = []
+            if club_uid is not None:
+                try:
+                    raw_staff = list(s_table.where(club_uid=club_uid))
+                except Exception:
+                    raw_staff = [s for s in s_table if getattr(s, "club_uid", None) == club_uid]
+            for s in raw_staff[:40]:
+                s_name = getattr(s, "name", None)
+                if not s_name:
+                    continue
+                s_attrs = getattr(s, "attributes", None)
+                s_contract = getattr(s, "contract", None)
+                staff_out.append({
+                    "uid": _int(getattr(s, "uid", None), 0),
+                    "name": s_name,
+                    "role": _label(getattr(s, "role", None) or getattr(s, "job", None)) or "Coach",
+                    "age": _int(getattr(s, "age", None), 35),
+                    "nation": getattr(s, "nation_name", None) or getattr(s, "nationality", None) or "N/A",
+                    "club": _STATE["meta"].get("clubName", ""),
+                    "wagePw": _int(getattr(s_contract, "wage", None), 0) if s_contract else 0,
+                    "expires": (_dmy(getattr(s_contract, "end", None)) or "N/A") if s_contract else "N/A",
+                    "attributes": {
+                        "attacking": _int(getattr(s_attrs, "attacking", None), 10),
+                        "defending": _int(getattr(s_attrs, "defending", None), 10),
+                        "fitness": _int(getattr(s_attrs, "fitness", None), 10),
+                        "goalkeeping": _int(getattr(s_attrs, "goalkeeping", None), 10),
+                        "mental": _int(getattr(s_attrs, "mental", None), 10),
+                        "possession": _int(getattr(s_attrs, "possession", None), 10),
+                        "set_pieces": _int(getattr(s_attrs, "set_pieces", None), 10),
+                        "tactical": _int(getattr(s_attrs, "tactical", None), 10),
+                        "technical": _int(getattr(s_attrs, "technical", None), 10),
+                        "working_with_youngsters": _int(getattr(s_attrs, "working_with_youngsters", None), 10),
+                        "adaptability": _int(getattr(s_attrs, "adaptability", None), 10),
+                        "authority": _int(getattr(s_attrs, "authority", None), 10),
+                        "determination": _int(getattr(s_attrs, "determination", None), 10),
+                        "judging_player_ability": _int(getattr(s_attrs, "judging_player_ability", None), 10),
+                        "judging_player_potential": _int(getattr(s_attrs, "judging_player_potential", None), 10),
+                        "judging_staff_ability": _int(getattr(s_attrs, "judging_staff_ability", None), 10),
+                        "man_management": _int(getattr(s_attrs, "man_management", None), 10),
+                        "motivating": _int(getattr(s_attrs, "motivating", None), 10),
+                        "negotiating": _int(getattr(s_attrs, "negotiating", None), 10),
+                        "physiotherapy": _int(getattr(s_attrs, "physiotherapy", None), 10),
+                        "sports_science": _int(getattr(s_attrs, "sports_science", None), 10),
+                        "tactical_knowledge": _int(getattr(s_attrs, "tactical_knowledge", None), 10),
+                        "analysing_data": _int(getattr(s_attrs, "analysing_data", None), 10),
+                    } if s_attrs else None,
+                })
+    except Exception as exc:
+        _STATE["warnings"].append(f"staff: {type(exc).__name__}")
+
     _STATE["finances"] = latest_finance
     _STATE["active_injuries"] = active_injuries[:15]
     _STATE["tactics"] = tactics_out[:3]
     _STATE["mentoring"] = mentoring_out[:5]
+    _STATE["staff_out"] = staff_out
 
     # Release game_db section borrow & heavy player caches to free RAM
     _exit_game_db_borrow()
@@ -432,6 +527,7 @@ def step_club_extras_and_release_gamedb() -> str:
         "injuries": len(_STATE["active_injuries"]),
         "tactics": len(_STATE["tactics"]),
         "mentoring": len(_STATE["mentoring"]),
+        "staff": len(staff_out),
     })
 
 
@@ -653,6 +749,7 @@ def step_league_table_and_finish() -> str:
     payload = {
         "meta": _STATE["meta"],
         "players": _STATE["players_out"],
+        "staff": _STATE.get("staff_out", []),
         "playedMatches": _STATE["played_matches"],
         "upcomingFixtures": _STATE["upcoming_fixtures"],
         "leagueStanding": league_standing,
@@ -678,7 +775,7 @@ def extract_fm_save_payload(path: str, preferred_club_hint: str = "", progress_c
     _emit("Step 1/6", "Opening .fm save & reading game build...")
     step_open(path, preferred_club_hint)
 
-    _emit("Step 2/6", "Extracting squad players, CA/PA & attributes...")
+    _emit("Step 2/6", "Extracting squad players, ratings & attributes...")
     step_players()
 
     _emit("Step 3/6", "Reading finances, injuries & releasing game_db...")

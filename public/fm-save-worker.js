@@ -125,13 +125,13 @@ self.onmessage = async (event) => {
       const metaJson = mapperModule.step_open(savePath, clubHint || '');
       const meta = JSON.parse(metaJson);
 
-      // Step 2/6: Squad CA/PA & attributes (club-scoped query)
-      activeStep = 'Step 2/6 (Extracting squad attributes & CA/PA)';
+      // Step 2/6: Squad attributes & ratings (club-scoped query)
+      activeStep = 'Step 2/6 (Extracting squad attributes & ratings)';
       reply({
         type: 'stage',
         stage: 'parse',
         step: 'Step 2/6',
-        label: `Step 2/6: Opened ${meta.game} (${meta.gameDateDmy || 'live'} · ${meta.clubName}) — extracting squad CA/PA & attributes...`,
+        label: `Step 2/6: Opened ${meta.game} (${meta.gameDateDmy || 'live'} · ${meta.clubName}) — extracting squad attributes & ratings...`,
       });
       await yieldTick();
       const pSummary = JSON.parse(mapperModule.step_players());

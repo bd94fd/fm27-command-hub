@@ -1,9 +1,21 @@
 import { DecodedFmSavePayload } from '../utils/fmSaveHydrator';
 
+export type FmImportScope =
+  | 'managed_club_only'
+  | 'full_division'
+  | 'my_club'
+  | 'full_league'
+  | 'full_save';
+
 export interface FmSaveProgressStage {
   stage: 'boot' | 'install' | 'read' | 'parse';
   step?: string;
   label: string;
+}
+
+export interface DecodeFmSaveOptions {
+  clubHint?: string;
+  scope?: FmImportScope;
 }
 
 let sharedWorker: Worker | null = null;
@@ -41,8 +53,12 @@ export function cancelFmSaveDecode(): void {
 export function decodeFmSaveFile(
   file: File,
   onProgress?: (progress: FmSaveProgressStage) => void,
-  clubHint = ''
+  clubHintOrOptions: string | DecodeFmSaveOptions = ''
 ): Promise<DecodedFmSavePayload> {
+  const clubHint =
+    typeof clubHintOrOptions === 'string'
+      ? clubHintOrOptions
+      : clubHintOrOptions?.clubHint || '';
   return new Promise((resolve, reject) => {
     const worker = getFmSaveWorker();
     const requestId = ++requestCounter;

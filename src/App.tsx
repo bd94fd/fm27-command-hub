@@ -4,10 +4,23 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Users } from 'lucide-react';
+import {
+  BookOpen,
+  Database,
+  Download,
+  Trash2,
+  Upload,
+  Users,
+} from 'lucide-react';
 import { KVV_ZELZATE_META, SQUAD_PLAYERS } from './data/squadData';
 import { COMPETITIVE_MATCH_LOGS } from './data/matchAndTacticsData';
-import { MatchLogEntry, PlayerRecord } from './types/fm27';
+import {
+  MatchLogEntry,
+  PlayerRecord,
+  RecruitmentCase,
+  ShortlistRecord,
+  StaffRecord,
+} from './types/fm27';
 import { computeCompetitiveSummary } from './utils/fmSyncEngine';
 import {
   mergeParsedPlayersIntoSquad,
@@ -28,6 +41,11 @@ import { SquadAnalyticsTable } from './components/SquadAnalyticsTable';
 import { SetPiecesAndTraining } from './components/SetPiecesAndTraining';
 import { MatchLogArchive } from './components/MatchLogArchive';
 import { LiveFmSaveProofCard } from './components/LiveFmSaveProofCard';
+import { RecruitmentWorkspace } from './components/RecruitmentWorkspace';
+import { StaffDirectory } from './components/StaffDirectory';
+import { PlayerDetailModal } from './components/PlayerDetailModal';
+import { StaffDetailModal } from './components/StaffDetailModal';
+import { KnowledgeBasePanel } from './components/KnowledgeBasePanel';
 import {
   loadPersistedFmState,
   savePersistedFmState,
@@ -36,9 +54,15 @@ import {
   exportFmStateBackupJson,
   importFmStateBackupJson,
 } from './services/fmStorage';
-import { Download, Upload, Trash2, Database } from 'lucide-react';
 
-type ActiveTab = 'sync' | 'tactics' | 'squad' | 'setpieces' | 'matches';
+type ActiveTab =
+  | 'sync'
+  | 'tactics'
+  | 'squad'
+  | 'recruitment'
+  | 'staff'
+  | 'setpieces'
+  | 'matches';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('sync');
@@ -46,6 +70,11 @@ export default function App() {
     COMPETITIVE_MATCH_LOGS
   );
   const [players, setPlayers] = useState<PlayerRecord[]>(SQUAD_PLAYERS);
+  const [staff, setStaff] = useState<StaffRecord[]>([]);
+  const [recruitmentCases, setRecruitmentCases] = useState<RecruitmentCase[]>(
+    []
+  );
+  const [shortlists, setShortlists] = useState<ShortlistRecord[]>([]);
   const [saveDate, setSaveDate] = useState<string>(KVV_ZELZATE_META.saveDate);
   const [nextFixture, setNextFixture] = useState<string>(
     KVV_ZELZATE_META.nextFixture
@@ -56,16 +85,35 @@ export default function App() {
   const [hydratedFmSave, setHydratedFmSave] = useState<HydratedSaveState | null>(
     null
   );
-  const [isRestoredFromMemory, setIsRestoredFromMemory] = useState<boolean>(false);
-  const [lastSyncedTimestamp, setLastSyncedTimestamp] = useState<string | null>(null);
+  const [isRestoredFromMemory, setIsRestoredFromMemory] =
+    useState<boolean>(false);
+  const [selectedPlayer, setSelectedPlayer] = useState<PlayerRecord | null>(
+    null
+  );
+  const [selectedStaff, setSelectedStaff] = useState<StaffRecord | null>(null);
+  const [showKnowledgeBase, setShowKnowledgeBase] = useState<boolean>(false);
   const backupFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const clubName =
+    hydratedFmSave?.decodedPayload.meta.clubName || 'FM27 Command Hub';
+  const managerName =
+    hydratedFmSave?.decodedPayload.meta.managerName || '--';
 
   // Restore saved state from previous session on initial mount
   useEffect(() => {
     const saved = loadPersistedFmState();
-    if (saved && (saved.players.length > 0 || saved.matches.length > 0)) {
+    if (
+      saved &&
+      (saved.players.length > 0 ||
+        saved.matches.length > 0 ||
+        (saved.recruitmentCases && saved.recruitmentCases.length > 0) ||
+        (saved.shortlists && saved.shortlists.length > 0))
+    ) {
       setPlayers(saved.players);
       setMatches(saved.matches);
+      if (saved.staff) setStaff(saved.staff);
+      if (saved.recruitmentCases) setRecruitmentCases(saved.recruitmentCases);
+      if (saved.shortlists) setShortlists(saved.shortlists);
       if (saved.saveDate) setSaveDate(saved.saveDate);
       if (saved.nextFixture) setNextFixture(saved.nextFixture);
       if (saved.leagueStandingSub) setLeagueStandingSub(saved.leagueStandingSub);
@@ -73,13 +121,18 @@ export default function App() {
       if (saved.balance) setBalance(saved.balance);
       if (saved.hydratedFmSave) setHydratedFmSave(saved.hydratedFmSave);
       setIsRestoredFromMemory(true);
-      setLastSyncedTimestamp(saved.lastSyncedAt);
     }
   }, []);
 
   // Automatically persist non-empty state across browser refreshes & sessions
   useEffect(() => {
-    if (players.length > 0 || matches.length > 0) {
+    if (
+      players.length > 0 ||
+      matches.length > 0 ||
+      staff.length > 0 ||
+      recruitmentCases.length > 0 ||
+      shortlists.length > 0
+    ) {
       savePersistedFmState({
         saveDate,
         nextFixture,
@@ -89,6 +142,9 @@ export default function App() {
         clubName: hydratedFmSave?.decodedPayload.meta.clubName,
         players,
         matches,
+        staff,
+        recruitmentCases,
+        shortlists,
         hydratedFmSave,
       });
       setIsRestoredFromMemory(true);
@@ -96,6 +152,9 @@ export default function App() {
   }, [
     players,
     matches,
+    staff,
+    recruitmentCases,
+    shortlists,
     saveDate,
     nextFixture,
     leagueStandingSub,
@@ -108,13 +167,16 @@ export default function App() {
 
   const handleClearMemory = () => {
     const confirmed = window.confirm(
-      'Clear saved FM27 memory and return to clean "Awaiting .fm Save" state?'
+      'Clear saved FM27 memory (squad, staff, matches, recruitment & shortlists) and return to clean "Awaiting .fm Save" state?'
     );
     if (!confirmed) return;
 
     clearPersistedFmState();
     setPlayers(SQUAD_PLAYERS);
     setMatches(COMPETITIVE_MATCH_LOGS);
+    setStaff([]);
+    setRecruitmentCases([]);
+    setShortlists([]);
     setSaveDate(KVV_ZELZATE_META.saveDate);
     setNextFixture(KVV_ZELZATE_META.nextFixture);
     setLeagueStandingSub('--');
@@ -122,7 +184,8 @@ export default function App() {
     setBalance(KVV_ZELZATE_META.balance);
     setHydratedFmSave(null);
     setIsRestoredFromMemory(false);
-    setLastSyncedTimestamp(null);
+    setSelectedPlayer(null);
+    setSelectedStaff(null);
   };
 
   const handleExportBackup = () => {
@@ -152,6 +215,9 @@ export default function App() {
       if (imported) {
         setPlayers(imported.players);
         setMatches(imported.matches);
+        setStaff(imported.staff || []);
+        setRecruitmentCases(imported.recruitmentCases || []);
+        setShortlists(imported.shortlists || []);
         setSaveDate(imported.saveDate);
         setNextFixture(imported.nextFixture);
         setLeagueStandingSub(imported.leagueStandingSub);
@@ -159,7 +225,6 @@ export default function App() {
         setBalance(imported.balance);
         setHydratedFmSave(imported.hydratedFmSave);
         setIsRestoredFromMemory(true);
-        setLastSyncedTimestamp(imported.lastSyncedAt);
       } else {
         alert('Invalid FM27 backup file format.');
       }
@@ -178,12 +243,12 @@ export default function App() {
   const handleApplyDecodedFmSave = (
     decoded: DecodedFmSavePayload
   ): HydratedSaveState => {
-    // Record current snapshot before applying new save for delta / progression tracking
     recordPreviousSnapshot(saveDate, players, matches);
 
     const hydrated = hydrateAppFromDecodedFmSave(decoded, players, matches);
     setHydratedFmSave(hydrated);
     setPlayers(hydrated.updatedSquad);
+    setStaff(hydrated.updatedStaff || []);
     setMatches(hydrated.updatedMatches);
     setSaveDate(hydrated.saveDateLabel);
     if (hydrated.nextFixtureLabel) {
@@ -260,11 +325,105 @@ export default function App() {
     );
   };
 
+  // Recruitment & Shortlist handlers
+  const handleAddRecruitmentCase = (
+    entry: Omit<RecruitmentCase, 'id' | 'updatedAt'>
+  ) => {
+    const created: RecruitmentCase = {
+      ...entry,
+      id: `rec-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      updatedAt: new Date().toISOString(),
+    };
+    setRecruitmentCases((prev) => [created, ...prev]);
+  };
+
+  const handleTrackPlayerInRecruitment = (player: PlayerRecord) => {
+    const exists = recruitmentCases.some(
+      (c) =>
+        c.playerId === player.id ||
+        c.playerName.toLowerCase() === player.name.toLowerCase()
+    );
+    if (!exists) {
+      handleAddRecruitmentCase({
+        playerId: player.id,
+        playerName: player.name,
+        position: player.position,
+        age: player.age,
+        currentClub: hydratedFmSave?.decodedPayload.meta.clubName || 'Managed Squad',
+        targetIpRole: player.ipRole,
+        targetOopRole: player.oopRole,
+        interest: 'Interested',
+        stage: 'Shortlisted',
+        estimatedFee: 'In-Squad / Renewal',
+        estimatedWagePw: player.wagePw,
+        expiresOn: player.expires,
+        notes: player.notes,
+      });
+    }
+    setSelectedPlayer(null);
+    setActiveTab('recruitment');
+  };
+
+  const handleUpdateRecruitmentCase = (
+    id: string,
+    patch: Partial<RecruitmentCase>
+  ) => {
+    setRecruitmentCases((prev) =>
+      prev.map((c) =>
+        c.id === id ? { ...c, ...patch, updatedAt: new Date().toISOString() } : c
+      )
+    );
+  };
+
+  const handleDeleteRecruitmentCase = (id: string) => {
+    setRecruitmentCases((prev) => prev.filter((c) => c.id !== id));
+  };
+
+  const handleCreateShortlist = (name: string, description: string) => {
+    const created: ShortlistRecord = {
+      id: `sl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name,
+      description,
+      playerIds: [],
+      createdAt: new Date().toISOString(),
+    };
+    setShortlists((prev) => [created, ...prev]);
+  };
+
+  const handleDeleteShortlist = (id: string) => {
+    setShortlists((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const handleAddPlayerToShortlist = (
+    shortlistId: string,
+    playerId: string
+  ) => {
+    setShortlists((prev) =>
+      prev.map((s) =>
+        s.id === shortlistId && !s.playerIds.includes(playerId)
+          ? { ...s, playerIds: [...s.playerIds, playerId] }
+          : s
+      )
+    );
+  };
+
+  const handleRemovePlayerFromShortlist = (
+    shortlistId: string,
+    playerId: string
+  ) => {
+    setShortlists((prev) =>
+      prev.map((s) =>
+        s.id === shortlistId
+          ? { ...s, playerIds: s.playerIds.filter((id) => id !== playerId) }
+          : s
+      )
+    );
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col">
-      {/* Strict 3-Zone Top Bar Contract (responsive wrap on mobile) */}
-      <header className="flex flex-wrap lg:flex-nowrap items-center justify-between gap-x-6 gap-y-3 px-4 sm:px-6 py-3.5 sm:py-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
-        {/* Zone 1: Single text element wordmark */}
+      {/* Top Navigation Shell */}
+      <header className="flex flex-wrap lg:flex-nowrap items-center justify-between gap-x-5 gap-y-3 px-4 sm:px-6 py-3.5 sm:py-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
         <a
           href="#top"
           onClick={(e) => {
@@ -273,72 +432,41 @@ export default function App() {
           }}
           className="order-1 text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap shrink-0"
         >
-          {hydratedFmSave ? hydratedFmSave.decodedPayload.meta.clubName : 'FM27 Command Hub'}
+          {clubName}
         </a>
 
-        {/* Zone 2: 5 concise single-line text navigation links */}
+        {/* 7 Unified Navigation Tabs */}
         <nav
           aria-label="Primary sections"
-          className="order-3 lg:order-2 w-full lg:w-auto flex items-center gap-5 sm:gap-6 text-sm font-medium text-slate-600 dark:text-slate-400 overflow-x-auto pb-0.5"
+          className="order-3 lg:order-2 w-full lg:w-auto flex items-center gap-4 sm:gap-5 text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-400 overflow-x-auto pb-0.5"
         >
-          <button
-            type="button"
-            onClick={() => setActiveTab('sync')}
-            className={`hover:text-slate-900 dark:hover:text-slate-100 transition-colors whitespace-nowrap shrink-0 cursor-pointer pb-0.5 ${
-              activeTab === 'sync'
-                ? 'text-emerald-700 dark:text-emerald-400 underline underline-offset-4 font-semibold'
-                : ''
-            }`}
-          >
-            Tactical Analyst Chat
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('squad')}
-            className={`hover:text-slate-900 dark:hover:text-slate-100 transition-colors whitespace-nowrap shrink-0 cursor-pointer pb-0.5 ${
-              activeTab === 'squad'
-                ? 'text-emerald-700 dark:text-emerald-400 underline underline-offset-4 font-semibold'
-                : ''
-            }`}
-          >
-            Squad Database ({players.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('tactics')}
-            className={`hover:text-slate-900 dark:hover:text-slate-100 transition-colors whitespace-nowrap shrink-0 cursor-pointer pb-0.5 ${
-              activeTab === 'tactics'
-                ? 'text-emerald-700 dark:text-emerald-400 underline underline-offset-4 font-semibold'
-                : ''
-            }`}
-          >
-            Playbook v2.0 Reference
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('setpieces')}
-            className={`hover:text-slate-900 dark:hover:text-slate-100 transition-colors whitespace-nowrap shrink-0 cursor-pointer pb-0.5 ${
-              activeTab === 'setpieces'
-                ? 'text-emerald-700 dark:text-emerald-400 underline underline-offset-4 font-semibold'
-                : ''
-            }`}
-          >
-            Corners &amp; Training
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('matches')}
-            className={`hover:text-slate-900 dark:hover:text-slate-100 transition-colors whitespace-nowrap shrink-0 cursor-pointer pb-0.5 ${
-              activeTab === 'matches'
-                ? 'text-emerald-700 dark:text-emerald-400 underline underline-offset-4 font-semibold'
-                : ''
-            }`}
-          >
-            Match Log ({matches.length})
-          </button>
+          {(
+            [
+              { id: 'sync', label: 'AI Analyst & Sync' },
+              { id: 'squad', label: `Squad (${players.length})` },
+              { id: 'tactics', label: 'War Room & Playbook' },
+              { id: 'recruitment', label: `Recruitment (${recruitmentCases.length})` },
+              { id: 'staff', label: `Staff (${staff.length})` },
+              { id: 'setpieces', label: 'Corners & Training' },
+              { id: 'matches', label: `Matches (${matches.length})` },
+            ] as const
+          ).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`hover:text-slate-900 dark:hover:text-slate-100 transition-colors whitespace-nowrap shrink-0 cursor-pointer pb-0.5 ${
+                activeTab === tab.id
+                  ? 'text-emerald-700 dark:text-emerald-400 underline underline-offset-4 font-semibold'
+                  : ''
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </nav>
 
-        {/* Zone 3: Actions & Memory Controls */}
+        {/* Actions: FM27 Knowledge Base + Backup/Restore/Reset */}
         <div className="order-2 lg:order-3 flex items-center gap-2 shrink-0">
           <input
             ref={backupFileInputRef}
@@ -348,7 +476,17 @@ export default function App() {
             className="hidden"
           />
 
-          {players.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => setShowKnowledgeBase(true)}
+            title="Open FM27 Patch 27.1.0 Knowledge Base & Fact-Checker"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">FM27 KB</span>
+          </button>
+
+          {players.length > 0 || recruitmentCases.length > 0 ? (
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
@@ -357,7 +495,7 @@ export default function App() {
                 className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="hidden sm:inline">Backup</span>
+                <span className="hidden md:inline">Backup</span>
               </button>
 
               <button
@@ -367,7 +505,7 @@ export default function App() {
                 className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:text-red-400 bg-slate-800/80 hover:bg-red-950/40 border border-slate-700/80 hover:border-red-800/50 rounded-lg transition-colors cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Reset</span>
+                <span className="hidden md:inline">Reset</span>
               </button>
             </div>
           ) : (
@@ -378,7 +516,7 @@ export default function App() {
               className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer"
             >
               <Upload className="w-3.5 h-3.5 text-blue-400" />
-              <span className="hidden sm:inline">Restore Backup</span>
+              <span className="hidden sm:inline">Restore</span>
             </button>
           )}
 
@@ -387,18 +525,18 @@ export default function App() {
             onClick={() =>
               setActiveTab(activeTab === 'squad' ? 'sync' : 'squad')
             }
-            className="inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
             <Users className="w-3.5 h-3.5" />
-            {activeTab === 'squad' ? 'Back to Analyst Chat' : `Inspect ${players.length}-Man Squad`}
+            {activeTab === 'squad' ? 'Analyst Chat' : `${players.length}-Man Squad`}
           </button>
         </div>
       </header>
 
       {/* Main Content Container */}
-      <main className="flex-1 max-w-[1400px] w-full mx-auto px-6 py-8 space-y-8">
+      <main className="flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 sm:space-y-8">
         {/* Executive Club & Save Baseline Strip */}
-        <section className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-5">
+        <section className="p-5 sm:p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-5">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div>
               <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
@@ -435,8 +573,8 @@ export default function App() {
               </div>
               <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100 mt-1">
                 {hydratedFmSave
-                  ? `${hydratedFmSave.decodedPayload.meta.clubName} Tactical Analyst & Live .fm Save Co-Pilot`
-                  : 'FM27 Tactical Analyst & Command Hub'}
+                  ? `${hydratedFmSave.decodedPayload.meta.clubName} Command Hub & AI Tactical Co-Pilot`
+                  : 'FM27 Command Hub & AI Tactical Co-Pilot'}
               </h1>
             </div>
 
@@ -446,8 +584,8 @@ export default function App() {
               </div>
               <div>
                 {hydratedFmSave
-                  ? `Manager: ${hydratedFmSave.decodedPayload.meta.managerName} · Decoded locally via fmsave ${hydratedFmSave.decodedPayload.meta.fmsaveVersion}`
-                  : 'Status: Zero Mock Baseline · Awaiting Save File'}
+                  ? `Manager: ${managerName} · Decoded locally via fmsave ${hydratedFmSave.decodedPayload.meta.fmsaveVersion}`
+                  : 'Status: Zero Mock Baseline · Verified Patch 27.1.0 KB Ready'}
               </div>
             </div>
           </div>
@@ -513,21 +651,30 @@ export default function App() {
                 {wageSpend}
               </div>
               <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Balance: {balance} · {players.length}-Man Squad
+                Balance: {balance} · {players.length}-Man Squad · {staff.length} Staff
               </div>
             </div>
           </div>
         </section>
 
-        {/* Undeniable Live .fm Save Verification Receipt & Raw Data Inspector */}
+        {/* Live .fm Save Verification Receipt */}
         {hydratedFmSave && <LiveFmSaveProofCard hydrated={hydratedFmSave} />}
 
-        {/* Active View Area (keep AutoSyncWorkspace mounted so live .fm chat history & Google auth persist across tabs) */}
+        {/* Active View Area (AutoSyncWorkspace stays mounted so chat history & Google OAuth persist across tabs) */}
         <div className={activeTab === 'sync' ? '' : 'hidden'}>
           <AutoSyncWorkspace
             matches={matches}
             players={players}
+            staff={staff}
+            recruitmentCases={recruitmentCases}
             currentSaveDate={saveDate}
+            clubName={hydratedFmSave?.decodedPayload.meta.clubName}
+            managerName={managerName}
+            nextFixture={nextFixture}
+            leagueStandingSub={leagueStandingSub}
+            wageSpend={wageSpend}
+            balance={balance}
+            hydratedFmSave={hydratedFmSave}
             onUpdateSaveDate={setSaveDate}
             onAddMatch={handleAddMatch}
             onApplyPlayerUpdates={handleApplyPlayerUpdates}
@@ -535,9 +682,57 @@ export default function App() {
             onApplyDecodedFmSave={handleApplyDecodedFmSave}
           />
         </div>
-        {activeTab === 'tactics' && <TacticalWarRoom />}
-        {activeTab === 'squad' && <SquadAnalyticsTable players={players} />}
-        {activeTab === 'setpieces' && <SetPiecesAndTraining />}
+
+        {activeTab === 'tactics' && (
+          <TacticalWarRoom
+            players={players}
+            saveDate={saveDate}
+            nextFixture={nextFixture}
+            clubName={clubName}
+          />
+        )}
+
+        {activeTab === 'squad' && (
+          <SquadAnalyticsTable
+            players={players}
+            clubName={hydratedFmSave?.decodedPayload.meta.clubName}
+            onSelectPlayer={setSelectedPlayer}
+          />
+        )}
+
+        {activeTab === 'recruitment' && (
+          <RecruitmentWorkspace
+            cases={recruitmentCases}
+            shortlists={shortlists}
+            players={players}
+            saveDate={saveDate}
+            onAddCase={handleAddRecruitmentCase}
+            onUpdateCase={handleUpdateRecruitmentCase}
+            onDeleteCase={handleDeleteRecruitmentCase}
+            onCreateShortlist={handleCreateShortlist}
+            onDeleteShortlist={handleDeleteShortlist}
+            onRemoveFromShortlist={handleRemovePlayerFromShortlist}
+            onSelectPlayer={setSelectedPlayer}
+          />
+        )}
+
+        {activeTab === 'staff' && (
+          <StaffDirectory
+            staff={staff}
+            clubName={hydratedFmSave?.decodedPayload.meta.clubName}
+            onSelectStaff={setSelectedStaff}
+          />
+        )}
+
+        {activeTab === 'setpieces' && (
+          <SetPiecesAndTraining
+            players={players}
+            saveDate={saveDate}
+            upcomingFixtures={hydratedFmSave?.decodedPayload.upcomingFixtures || []}
+            clubName={clubName}
+          />
+        )}
+
         {activeTab === 'matches' && (
           <MatchLogArchive
             matches={matches}
@@ -553,13 +748,31 @@ export default function App() {
 
       <footer className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 flex flex-col sm:flex-row items-center justify-between gap-2">
         <span>
-          KVV Zelzate (Matricule 4165) · Football Manager 27 on PC (Patch 27.1.0
-          Baseline)
+          FM27 Command Hub · Football Manager 27 on PC (Patch 27.1.0 Verified Knowledge Base)
         </span>
         <span>
           Anchor Tag Protected: [INSERT NEXT CHRONOLOGICAL EVENT HERE]
         </span>
       </footer>
+
+      {/* Global Modals & Drawers */}
+      <PlayerDetailModal
+        player={selectedPlayer}
+        shortlists={shortlists}
+        onClose={() => setSelectedPlayer(null)}
+        onAddRecruitment={handleTrackPlayerInRecruitment}
+        onAddToShortlist={handleAddPlayerToShortlist}
+      />
+
+      <StaffDetailModal
+        staff={selectedStaff}
+        onClose={() => setSelectedStaff(null)}
+      />
+
+      <KnowledgeBasePanel
+        isOpen={showKnowledgeBase}
+        onClose={() => setShowKnowledgeBase(false)}
+      />
     </div>
   );
 }

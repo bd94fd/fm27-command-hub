@@ -1,4 +1,4 @@
-import { MatchLogEntry, PlayerRecord } from '../types/fm27';
+import { MatchLogEntry, PlayerRecord, StaffRecord } from '../types/fm27';
 import { normalizePlayerName } from './fmFileImporter';
 import { inferFm27Roles } from './fm27RoleMatcher';
 
@@ -7,10 +7,14 @@ export interface DecodedFmSavePlayer {
   name: string;
   position: string;
   age: number;
+  heightCm?: number;
   ca: number;
   pa: number;
   condition: number | null;
   sharpness: number | null;
+  leftFoot?: number;
+  rightFoot?: number;
+  preferredFoot?: 'Left' | 'Right' | 'Either';
   wagePw: number;
   expires: string | null;
   onLoan: boolean;
@@ -32,6 +36,7 @@ export interface DecodedFmSavePlayer {
   distanceKm: number;
   yellowCards: number;
   redCards: number;
+  positionRatings?: Record<string, number> | null;
   attributes: PlayerRecord['attributes'] | null;
   hiddenPersonality: {
     professionalism: number | null;
@@ -43,9 +48,22 @@ export interface DecodedFmSavePlayer {
   suspensionsCount: number;
 }
 
+export interface DecodedFmSaveStaff {
+  uid: number;
+  name: string;
+  role: string;
+  age: number;
+  nation: string;
+  club: string;
+  wagePw: number;
+  expires: string | null;
+  attributes: StaffRecord['attributes'] | null;
+}
+
 export interface DecodedFmSaveMatch {
   dateIso: string | null;
   dateDmy: string | null;
+  competitionId?: number | null;
   competition: string;
   opponent: string;
   venue: 'H' | 'A';
@@ -78,8 +96,11 @@ export interface DecodedFmSavePayload {
     fileName?: string;
     fileSizeMb?: number;
     decodedAtIso?: string;
+    importScope?: string;
+    mountMode?: string;
   };
   players: DecodedFmSavePlayer[];
+  staff?: DecodedFmSaveStaff[];
   playedMatches: DecodedFmSaveMatch[];
   upcomingFixtures: Array<{
     dateIso: string | null;
@@ -149,6 +170,7 @@ export interface DecodedFmSavePayload {
 
 export interface HydratedSaveState {
   updatedSquad: PlayerRecord[];
+  updatedStaff: StaffRecord[];
   updatedMatches: MatchLogEntry[];
   newMatchesCount: number;
   changedPlayers: Array<{ name: string; changes: string[] }>;
@@ -168,7 +190,7 @@ export interface HydratedSaveState {
 
 function formatMoney(amount: number | null | undefined): string {
   if (amount === null || amount === undefined || !Number.isFinite(amount)) {
-    return 'N/A';
+    return '--';
   }
   const abs = Math.abs(amount);
   const formatted =
@@ -180,9 +202,45 @@ function formatMoney(amount: number | null | undefined): string {
   return amount < 0 ? `(${formatted})` : formatted;
 }
 
+function inferPersonalityLabel(dp: DecodedFmSavePlayer): string {
+  const det = dp.attributes?.determination ?? 10;
+  const prof = dp.hiddenPersonality?.professionalism ?? 10;
+  const amb = dp.hiddenPersonality?.ambition ?? 10;
+  if (prof >= 15 && det >= 14) return 'Model Citizen / Professional';
+  if (prof >= 15) return 'Professional';
+  if (det >= 16) return 'Determined';
+  if (det >= 14) return 'Fairly Determined';
+  if (amb >= 15) return 'Ambitious';
+  return 'Balanced';
+}
+
+function inferPreferredFoot(
+  leftFoot?: number,
+  rightFoot?: number,
+  explicit?: 'Left' | 'Right' | 'Either'
+): 'Left' | 'Right' | 'Either' | undefined {
+  if (explicit) return explicit;
+  if (typeof leftFoot !== 'number' && typeof rightFoot !== 'number') return undefined;
+  const lf = leftFoot ?? 0;
+  const rf = rightFoot ?? 0;
+  if (lf >= 15 && rf >= 15) return 'Either';
+  if (lf > rf) return 'Left';
+  return 'Right';
+}
+
+function computeRelativeStarRating(value: number, squadMedian: number): number {
+  if (!value || value <= 0) return 2.5;
+  const baseline = squadMedian > 0 ? squadMedian : 90;
+  const diff = value - baseline;
+  const stars = 3.0 + diff / 18;
+  const clamped = Math.min(5.0, Math.max(1.0, stars));
+  return Math.round(clamped * 2) / 2;
+}
+
 /**
- * Hydrates the entire KVV Zelzate FM27 Command Center (Squad Database, Match Log,
+ * Hydrates the entire FM27 Command Hub (Squad Database, Staff Directory, Match Log,
  * Executive KPI strip, and AI Tactical Analyst context) directly from a decoded .fm save.
+ * Never exposes raw CA/PA numbers in hydrated player notes, diffs, or AI prompts.
  */
 export function hydrateAppFromDecodedFmSave(
   decoded: DecodedFmSavePayload,
@@ -260,6 +318,15 @@ export function hydrateAppFromDecodedFmSave(
       next.expires = dp.expires;
     }
 
+    if (dp.condition !== undefined) next.condition = dp.condition;
+    if (dp.sharpness !== undefined) next.sharpness = dp.sharpness;
+    if (dp.heightCm) next.heightCm = dp.heightCm;
+    if (dp.leftFoot) next.leftFoot = dp.leftFoot;
+    if (dp.rightFoot) next.rightFoot = dp.rightFoot;
+    const prefFoot = inferPreferredFoot(dp.leftFoot, dp.rightFoot, dp.preferredFoot);
+    if (prefFoot) next.preferredFoot = prefFoot;
+    if (dp.positionRatings) next.positionRatings = dp.positionRatings;
+
     if (dp.attributes) {
       const keys = Object.keys(dp.attributes) as Array<
         keyof PlayerRecord['attributes']
@@ -267,17 +334,16 @@ export function hydrateAppFromDecodedFmSave(
       for (const k of keys) {
         const val = dp.attributes[k];
         if (typeof val === 'number' && val > 0 && val !== existing.attributes[k]) {
-          changes.push(`${k} ${existing.attributes[k]}→${val}`);
+          changes.push(`${k} ${existing.attributes[k] ?? '--'}→${val}`);
           next.attributes[k] = val;
         }
       }
     }
 
-    // Append live CA/PA & condition tag cleanly in notes if available
-    if (dp.ca > 0 || dp.pa > 0) {
-      const baseNote = existing.notes.replace(/\s*\[FM Save CA \d+\/PA \d+[^\]]*\]$/, '');
-      next.notes = `${baseNote} [FM Save CA ${dp.ca}/PA ${dp.pa}]`;
-    }
+    // Strip any legacy raw CA/PA note tags if present from older backups
+    next.notes = existing.notes
+      .replace(/\s*\[FM Save CA \d+\/PA \d+[^\]]*\]/gi, '')
+      .trim();
 
     if (changes.length > 0) {
       changedPlayers.push({ name: existing.name, changes });
@@ -285,16 +351,31 @@ export function hydrateAppFromDecodedFmSave(
     return next;
   });
 
+  // Compute squad median ability internally solely for relative 1.0★-5.0★ star scaling (never exposed raw)
+  const validRatings = decoded.players
+    .map((p) => Number(p.ca) || 0)
+    .filter((v) => v > 0)
+    .sort((a, b) => a - b);
+  const squadMedian =
+    validRatings.length > 0
+      ? validRatings[Math.floor(validRatings.length / 2)]
+      : 90;
+
   // Add any newly signed / promoted first-team players from the .fm save not in baseline
   let nextNum = currentSquad.length === 0 ? 1 : 40;
   for (const dp of decoded.players) {
     if (matchedSaveUids.has(dp.uid)) continue;
     if (currentSquad.length > 0 && dp.teamSlot !== 0 && dp.minutes === 0) continue; // skip unplayed reserves/U18s when baseline exists
     const { ipRole, oopRole } = inferFm27Roles(dp.position || 'UTL', dp.attributes);
+    const abilityStars = computeRelativeStarRating(Number(dp.ca) || 0, squadMedian);
+    const potentialStars = Math.max(
+      abilityStars,
+      computeRelativeStarRating(Number(dp.pa) || 0, squadMedian)
+    );
     const assignedStatus: PlayerRecord['status'] =
-      (dp.minutes > 180 || dp.ca >= 80)
+      (dp.minutes > 180 || abilityStars >= 3.5)
         ? 'Starter'
-        : (dp.minutes > 0 || dp.ca >= 65)
+        : (dp.minutes > 0 || abilityStars >= 2.5)
           ? 'Rotation'
           : (dp.age && dp.age <= 21)
             ? 'Youth'
@@ -318,10 +399,17 @@ export function hydrateAppFromDecodedFmSave(
       hdrPct: Number(dp.hdrPct) || 0,
       intPer90: Number(dp.intPer90) || 0,
       tckPct: Number(dp.tckPct) || 0,
-      personality: 'Synced from .fm',
+      personality: inferPersonalityLabel(dp),
       age: Number(dp.age) || 20,
-      ability: Math.min(5, Math.max(1, Number(((Number(dp.ca) || 60) / 30).toFixed(1)))),
-      potential: Math.min(5, Math.max(1, Number(((Number(dp.pa) || 70) / 30).toFixed(1)))),
+      ability: abilityStars,
+      potential: potentialStars,
+      condition: dp.condition ?? null,
+      sharpness: dp.sharpness ?? null,
+      leftFoot: dp.leftFoot,
+      rightFoot: dp.rightFoot,
+      preferredFoot: inferPreferredFoot(dp.leftFoot, dp.rightFoot, dp.preferredFoot),
+      heightCm: dp.heightCm,
+      positionRatings: dp.positionRatings ?? null,
       expires: typeof dp.expires === 'string' && dp.expires.trim() ? dp.expires : 'N/A',
       nation: 'FM',
       wagePw: Number(dp.wagePw) || 0,
@@ -342,11 +430,11 @@ export function hydrateAppFromDecodedFmSave(
       },
       ipRole,
       oopRole,
-      notes: `Auto-imported from .fm save [FM Save CA ${dp.ca}/PA ${dp.pa}]`,
+      notes: 'Synced directly from .fm save',
     });
     changedPlayers.push({
       name: dp.name,
-      changes: [`Added from .fm save (CA ${dp.ca}/PA ${dp.pa})`],
+      changes: [`Added from .fm save (${abilityStars.toFixed(1)}★ / ${potentialStars.toFixed(1)}★)`],
     });
   }
 
@@ -550,9 +638,51 @@ export function hydrateAppFromDecodedFmSave(
       const attrStr = a
         ? `Pac ${a.pace}/Acc ${a.acceleration}/Sta ${a.stamina}/JR ${a.jumpingReach}/Det ${a.determination}/Pas ${a.passing}/Fin ${a.finishing}/Tck ${a.tackling}`
         : '';
-      return `- ${p.name} (${p.position}, Age ${p.age}, CA ${p.ca}/PA ${p.pa}, £${p.wagePw}/wk exp ${p.expires}): Apps ${p.apps}, ${p.minutes}m, Rat ${p.rating ?? '-'}, ${p.goals}G (${p.xG} xG), ${p.assists}A (${p.xA} xA), Tck ${p.tckPct}%, Hdr ${p.hdrPct}% | ${attrStr}`;
+      const abilStar = computeRelativeStarRating(Number(p.ca) || 0, squadMedian);
+      const potStar = Math.max(
+        abilStar,
+        computeRelativeStarRating(Number(p.pa) || 0, squadMedian)
+      );
+      return `- ${p.name} (${p.position}, Age ${p.age}, ${abilStar.toFixed(1)}★/${potStar.toFixed(1)}★, £${p.wagePw}/wk exp ${p.expires}): Apps ${p.apps}, ${p.minutes}m, Rat ${p.rating ?? '-'}, ${p.goals}G (${p.xG} xG), ${p.assists}A (${p.xA} xA), Tck ${p.tckPct}%, Hdr ${p.hdrPct}% | ${attrStr}`;
     })
     .join('\n');
+
+  const updatedStaff: StaffRecord[] = (decoded.staff || []).map((s, idx) => ({
+    id: `fm-staff-${s.uid || idx}`,
+    uid: s.uid,
+    name: s.name || 'Club Staff',
+    role: s.role || 'Coach',
+    age: Number(s.age) || 35,
+    nation: s.nation || 'FM',
+    club: s.club || decoded.meta.clubName || '',
+    wagePw: Number(s.wagePw) || 0,
+    expires: s.expires || 'N/A',
+    attributes: s.attributes || {
+      attacking: 10,
+      defending: 10,
+      fitness: 10,
+      goalkeeping: 10,
+      mental: 10,
+      possession: 10,
+      set_pieces: 10,
+      tactical: 10,
+      technical: 10,
+      working_with_youngsters: 10,
+      adaptability: 10,
+      authority: 10,
+      determination: 10,
+      judging_player_ability: 10,
+      judging_player_potential: 10,
+      judging_staff_ability: 10,
+      man_management: 10,
+      motivating: 10,
+      negotiating: 10,
+      physiotherapy: 10,
+      sports_science: 10,
+      tactical_knowledge: 10,
+      analysing_data: 10,
+    },
+  }));
 
   const playedLines = decoded.playedMatches
     .map(
@@ -619,12 +749,12 @@ ${injuryLines}
 === LIVE MENTORING GROUPS IN SAVE ===
 ${mentoringLines}
 
-=== FULL MANAGED SQUAD (${decoded.players.length} PLAYERS WITH LIVE CA/PA, STATS & ATTRIBUTES) ===
+=== FULL MANAGED SQUAD (${decoded.players.length} PLAYERS WITH STAR RATINGS, STATS & ATTRIBUTES) ===
 ${topPlayersSummary}
 ${decoded.warnings && decoded.warnings.length > 0 ? `\n=== READER NOTES (NON-FATAL) ===\n${decoded.warnings.map((w) => `- ${w}`).join('\n')}\n` : ''}
 ANALYST MISSION FOR THIS .FM SAVE DROP:
 1. Acknowledge the exact in-game date (${saveDateLabel}), league position, recent results (never fabricate match-level xG or possession if not present in the save — cite the exact player season xG/xA and fixture scorelines), and finances directly from the .fm file.
-2. Audit player performance, attribute changes (highlighting any mentoring Determination/attribute gains, hidden CA/PA insights, fatigue/minutes load, and injuries).
+2. Audit player performance, attribute changes (highlighting any mentoring Determination/attribute gains, star-rating progression, FM27 engine metrics, fatigue/minutes load, and injuries). NEVER cite raw hidden CA/PA numbers.
 3. Produce a **COMPLETE ACTION PLAN FROM ${saveDateLabel} FORWARD**:
    - Exact Starting XI + Bench + 62m/75m substitution plan for the very next fixture (${nextFixtureLabel || 'next scheduled match'}), obeying Playbook v2.0 & Club Rules #1–#6 (Tracking Wingers OOP, 3-man midfield late, never pull both CBs, <=125m Double-GW cap).
    - Multi-match rotation & training schedule plan across the upcoming fixtures listed above.
@@ -633,6 +763,7 @@ ANALYST MISSION FOR THIS .FM SAVE DROP:
 
   return {
     updatedSquad: finalSquad,
+    updatedStaff,
     updatedMatches,
     newMatchesCount: newlyAddedCount,
     changedPlayers,

@@ -2,50 +2,64 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import dotenv from 'dotenv';
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 
 dotenv.config();
 
+const DEFAULT_GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-pro';
+const FAST_GEMINI_MODEL = process.env.GEMINI_FAST_MODEL || 'gemini-2.5-flash';
+
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
-  app.use(express.json({ limit: '15mb' }));
+  app.use(express.json({ limit: '100mb' }));
+  app.use(express.urlencoded({ limit: '100mb', extended: true }));
+
+  app.get('/api/health', (_req, res) => {
+    res.json({
+      status: 'ok',
+      app: 'fm27-command-hub',
+      hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
+      model: DEFAULT_GEMINI_MODEL,
+      fastModel: FAST_GEMINI_MODEL,
+    });
+  });
 
   app.post('/api/fm27/analyze-screenshot', async (req, res) => {
     try {
-      const { imageBase64, mimeType, notes, nextEventNumber } = req.body as {
-        imageBase64?: string;
-        mimeType?: string;
-        notes?: string;
-        nextEventNumber?: number;
-      };
+      const { imageBase64, mimeType, notes, nextEventNumber, clubName } =
+        req.body as {
+          imageBase64?: string;
+          mimeType?: string;
+          notes?: string;
+          nextEventNumber?: number;
+          clubName?: string;
+        };
 
       if (!process.env.GEMINI_API_KEY) {
         return res.status(500).json({
           error:
-            'GEMINI_API_KEY is missing. Please verify your API key in Settings > Secrets.',
+            'GEMINI_API_KEY is missing. Set GEMINI_API_KEY in your .env file or cloud environment variables.',
         });
       }
 
       const ai = new GoogleGenAI({
         apiKey: process.env.GEMINI_API_KEY,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build',
-          },
-        },
       });
 
-      const eventNum = nextEventNumber || 34;
+      const eventNum = nextEventNumber || 1;
+      const targetClub = clubName || 'the managed club';
 
-      const systemPrompt = `You are Bobby Dean's Football Manager 27 Chief Tactical Analyst for KVV Zelzate (1e Nationale Voetbal Vlaanderen, 2027/28 Season).
-Key Club Rules & Context:
-- Primary Tactic: 4-3-3 Counter Positive (Balanced Ground Build-Up, Short/Mixed GK Distribution, Standard Passing, Tracking Wingers OOP on both flanks).
-- Non-Negotiable Rules:
-  1) Never sub off both starting CBs (Brendan Schoonbaert & Brend Leeflang) simultaneously when protecting a lead.
-  2) Batch all 5 substitutions into 2 second-half windows (60m-65m and 75m+) so 3 stoppages are never burned early. Always sub Quinten Boudry (Stamina 6) around 62m for Jerayson Hoepel.
-  3) Keep 3 midfielders on the pitch (never pull DM for a 4-2-4).
+      const systemPrompt = `You are Bobby Dean's Football Manager 27 Chief Tactical Analyst for ${targetClub} (Patch 27.1.0 Playbook v2.0).
+Key Playbook v2.0 Rules:
+- Primary System: Dual-Phase 4-3-3 Counter Positive (Balanced Ground Build-Up, Short/Mixed GK Distribution, Standard Passing, Tracking Wingers OOP on both flanks to prevent 2v1 full-back overlaps).
+- Non-Negotiable Guardrails:
+  1) Never sub off both starting CBs simultaneously when protecting a lead.
+  2) Batch all 5 substitutions into at most 2 second-half windows (62m and 75m+, plus optional HT free stoppage) so 3 stoppages are never burned early.
+  3) Keep 3 midfielders on the pitch late (never pull DM for a 4-2-4; use Play With More Urgency + Swap Wings instead).
+  4) NEVER invent, fabricate, or guess any player stats, match xG, scores, wages, or dates not visible in the screenshot or user notes.
+  5) NEVER cite or mention raw numeric CA/PA values—use relative star ratings and FM27 engine metrics only. Never use retired FM24 roles (Mezzala, Enganche, Trequartista, etc.) or legacy Defend/Support/Attack duties.
 - Analyze the uploaded FM27 screenshot or match notes and output structured JSON ready for Event #${eventNum}.`;
 
       const parts: Array<
@@ -63,11 +77,11 @@ Key Club Rules & Context:
       }
 
       parts.push({
-        text: `Analyze this FM27 screen / match update for KVV Zelzate (Event #${eventNum}). User notes: "${notes || 'Extract match statistics, xG, ratings, tactical audit, and generate ready-to-paste Google Docs & Google Sheets sync blocks.'}"`,
+        text: `Analyze this FM27 screen / match update for ${targetClub} (Event #${eventNum}). User notes: "${notes || 'Extract match statistics, xG, ratings, tactical audit, and generate ready-to-paste Google Docs & Google Sheets sync blocks.'}"`,
       });
 
       const response = await ai.models.generateContent({
-        model: 'gemini-4-hydrogen',
+        model: DEFAULT_GEMINI_MODEL,
         contents: { parts },
         config: {
           systemInstruction: systemPrompt,
@@ -81,15 +95,15 @@ Key Club Rules & Context:
               },
               inGameDate: {
                 type: Type.STRING,
-                description: 'In-game date in DD/MM/YYYY format (e.g. 18/09/2027)',
+                description: 'In-game date in DD/MM/YYYY format',
               },
               competition: {
                 type: Type.STRING,
-                description: 'Competition and matchday (e.g. 1st National - VV MD5)',
+                description: 'Competition and matchday',
               },
               opponent: {
                 type: Type.STRING,
-                description: 'Opponent club name (e.g. Jong Cercle)',
+                description: 'Opponent club name',
               },
               venue: {
                 type: Type.STRING,
@@ -97,43 +111,43 @@ Key Club Rules & Context:
               },
               result: {
                 type: Type.STRING,
-                description: 'W, D, or L from KVV Zelzate perspective',
+                description: 'W, D, or L from managed club perspective',
               },
               score: {
                 type: Type.STRING,
-                description: 'Scoreline from KVV Zelzate perspective (e.g. 2 - 0)',
+                description: 'Scoreline from managed club perspective (e.g. 2 - 0)',
               },
               xGFor: {
                 type: Type.NUMBER,
-                description: 'KVV Zelzate expected goals (e.g. 1.64)',
+                description: 'Managed club expected goals if explicitly visible',
               },
               xGAgainst: {
                 type: Type.NUMBER,
-                description: 'Opponent expected goals (e.g. 0.58)',
+                description: 'Opponent expected goals if explicitly visible',
               },
               possession: {
                 type: Type.NUMBER,
-                description: 'KVV Zelzate possession percentage integer (e.g. 42)',
+                description: 'Managed club possession percentage integer if visible',
               },
               passCompletion: {
                 type: Type.NUMBER,
-                description: 'KVV Zelzate pass completion percentage integer (e.g. 84)',
+                description: 'Managed club pass completion percentage integer if visible',
               },
               shotsFor: {
                 type: Type.STRING,
-                description: 'KVV Zelzate shots (on target) string e.g. 11 (5)',
+                description: 'Managed club shots (on target) string if visible',
               },
               shotsAgainst: {
                 type: Type.STRING,
-                description: 'Opponent shots (on target) string e.g. 8 (2)',
+                description: 'Opponent shots (on target) string if visible',
               },
               cccFor: {
                 type: Type.NUMBER,
-                description: 'KVV Zelzate clear cut chances integer',
+                description: 'Managed club clear cut chances integer if visible',
               },
               cccAgainst: {
                 type: Type.NUMBER,
-                description: 'Opponent clear cut chances integer',
+                description: 'Opponent clear cut chances integer if visible',
               },
               goalTimeline: {
                 type: Type.STRING,
@@ -199,15 +213,21 @@ Key Club Rules & Context:
         history,
         images,
         importedFileContext,
+        liveAppContext,
+        reasoningMode,
         nextEventNumber,
         currentSaveDate,
+        clubName,
       } = req.body as {
         message?: string;
         history?: Array<{ role: 'user' | 'assistant'; text: string }>;
         images?: Array<{ base64: string; mimeType: string; name?: string }>;
         importedFileContext?: string;
+        liveAppContext?: string;
+        reasoningMode?: 'deep_high' | 'max_xhigh' | 'fast_lite';
         nextEventNumber?: number;
         currentSaveDate?: string;
+        clubName?: string;
       };
 
       if (!process.env.GEMINI_API_KEY) {
@@ -219,67 +239,88 @@ Key Club Rules & Context:
 
       const ai = new GoogleGenAI({
         apiKey: process.env.GEMINI_API_KEY,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build',
-          },
-        },
       });
 
-      const eventNum = nextEventNumber || 34;
+      const eventNum = nextEventNumber || 1;
+      const targetClub =
+        clubName && clubName !== '--' ? clubName : 'the manager’s club';
 
-      const systemPrompt = `You are Bobby Dean's interactive Football Manager 27 Chief Tactical Analyst & Master Sheet Co-Pilot for KVV Zelzate (Matricule 4165, 1e Nationale Voetbal Vlaanderen, Backline Arena 105m x 68m Grass).
+      const selectedModel =
+        reasoningMode === 'fast_lite'
+          ? FAST_GEMINI_MODEL
+          : DEFAULT_GEMINI_MODEL;
 
-YOUR CORE ROLE IN THIS BACK-AND-FORTH:
-Bobby sends you FM27 screenshots (Match Results, Data Hub Last Match, Pass/Shot Maps, Scout Reports, Set Pieces, Player Profiles, Inbox items, Training, or Squad views), FM27 data exports (.csv / Ctrl+P .html / .rtf), .fm save files, or talks through his tactical ideas.
-You MUST:
-1. Analyze every detail he says and sends using:
-   - "Bobby Dean — Portable FM27 Tactics & Journeyman Playbook v2.0" (Patch 27.1.0 baseline: Dual-Phase IP/OOP roles with zero legacy duties, Golden Rule of One Change at a Time, Three-Man Box Rule, Tactical Effectiveness 8 familiarity areas where Chance Creation & Pressing Intensity carry the highest match weight, 15 Team & 6 Individual Tactical Tweaks macros, 6 mood-based Shouts, 3-player downward-only Mentoring units, Post-Match full Rest day slashing training injury roll from 13.8% to 4.0%, and Physical Engine weights: Pace, Acceleration, Jumping Reach, Stamina, Condition, Sharpness).
-   - "KVV Zelzate Live Master Sheet (Tables 1A–1K & 28-Man Squad Attributes/Per-90 Stats)" currently at Save Date ${currentSaveDate || 'Wed 15/09/2027 (Post-MD4 vs Royal Knokke FC, 6th Place, 6 Pts, 4.27 xGF vs 4.01 xGA, preparing for Sat 18/09/2027 MD5 Away vs 16th-placed Jong Cercle)'}.
-2. HANDLE DECODED .FM SAVE FILES & FM27 EXPORTS WITH 100% PRECISION:
-   - When Bobby uploads his .fm save file, the app decodes it locally in-browser via fmsave 0.14.1 (Python 3.14 WebAssembly) and passes you the LIVE ground-truth data: exact current in-game date, managed club, live league table & next opponent standing, live club finances & wage payroll, recent played matches with xG/shots/possession/CCC, upcoming fixture calendar, active injuries, mentoring groups, and all managed squad players with live CA/PA, attributes, condition/sharpness, wages, and season stats!
-   - When this [LIVE FULL .FM SAVE DECODED VIA FMSAVE ...] block is present:
-     a) Audit EVERY newly played match and squad/attribute diff since the previous checkpoint against Playbook v2.0.
-     b) Highlight live CA/PA insights, attribute gains/drops (e.g. Mentoring Determination gains), condition/sharpness flags, injuries/suspensions, and wage budget compliance.
-     c) Produce a **COMPLETE ACTION PLAN FROM THE EXACT IN-GAME DATE FORWARD**: exact rotated Starting XI + Bench + 62m/75m substitution windows for the next fixture, multi-match load management across the upcoming schedule, training/mentoring tweaks, and transfer/wage actions.
-   - If Bobby drops FM27 .csv / .html / .rtf exports or screenshots instead, analyze every stat/attribute change and deliver the same complete forward plan. Never fabricate numbers not present in the provided data.
-3. Enforce KVV Zelzate's Non-Negotiable Club Rules:
-   - Rule #1: NEVER sub off both starting CBs (#8 Brendan Schoonbaert JR 15, 92% hdrs & #4 Brend Leeflang 100% tck) simultaneously when protecting a lead.
-   - Rule #2: Batch all 5 substitutions across at most 2 second-half windows (60m–65m and 75m+, plus optional HT free stoppage) so 3 stoppages are never burned early. Always sub #23 Quinten Boudry (Stamina 6) around 62m for #9 Jerayson Hoepel.
-   - Rule #3: Keep 3 midfielders on the pitch late (never pull DM for a 4-2-4 when chasing; use FM27 Touchline Tweaks "Play With More Urgency" + "Swap Wings" + Shout "Up Your Game" instead).
-   - Rule #4: Both wide forwards (#23 Boudry & #12 Nathan Karinda) use Tracking Winger OOP (switched from WOW after Bruce Deuwel's 18' overlap goal for Knokke). Both Slot 1 (Home) and Slot 2 (Away) use Balanced Ground Build-Up, Short/Mixed GK Distribution to CBs (#13 René Vanden Borre), and Standard Passing Directness.
-   - Rule #5: Table 1K 180-Minute Double-GW Load Cap (<=125m for standard outfielders across Wed 15/09 Knokke & Sat 18/09 Jong Cercle): Rotate in 100% fresh #3 Lazarus Nkemdirim (LB, 90m), #22 Tijs Temmerman (RB, 62m), #27 Rune Bogaert (DM, 62m), and #20 Sander Dieltjens (LCM, 90m) at Jong Cercle.
-   - Rule #6: Defending Corners Routine 1 is a 43/43 (100%) shutout wall with Tracker B2 #6 Søren Coens stationed at Edge of Area. Attacking Corners Routine 2 (Inswinger: Aim For Centre) is primary active (Polizzi L-foot right side, Karinda R-foot left side; A1 Schoonbaert Near Post, A2 Epolo Mark Keeper, A3 Leeflang Far Post, B1 Polizzi/Karinda Edge of Area, C1 Coens Near, C2 Boudry Far, D3 Melkebeke Lurk Centre, D1 Nkemdirim & D2 Devos Stay Back).
-4. Structure your response clearly with:
-   - **STEP A — AUTOMATIC SCREEN/FILE DETECTION, AUDIT & FORWARD PLAN FROM CURRENT IN-GAME DATE** (Detailed Markdown breakdown referencing exact player numbers, attributes, per-90 stats, and Playbook v2.0 mechanics).
-   - **3 Immediate In-Game Clicks** before hitting Continue.
-   - **Master Sheet & Google Doc Auto-Update Payloads**: Populate the structured JSON fields so the app can update Table 1G (Match Log), Table 1H (Opposition Scouting), Table 1I (Set-Piece/Tactical Audit), Tab 10 (Chronicles Event #${eventNum}), and the Master Google Doc in one click.`;
+      const thinkingConfig =
+        reasoningMode === 'max_xhigh'
+          ? { thinkingLevel: ThinkingLevel.HIGH }
+          : reasoningMode === 'fast_lite'
+            ? { thinkingLevel: ThinkingLevel.LOW }
+            : { thinkingLevel: ThinkingLevel.HIGH };
 
-      const parts: Array<
+      const systemPrompt = `You are Bobby Dean's interactive Football Manager 27 Chief Tactical Analyst, Match Engine Physicist & Master Sheet Co-Pilot for ${targetClub}.
+
+STRICT FM27 ACCURACY & RATING POLICY:
+- Always cross-check tactical, match-engine, training, set-piece, and SCR mechanics against the VERIFIED FM27 KNOWLEDGE BASE block included in the context.
+- NEVER mention, reveal, or guess raw numeric CA or PA values (e.g. "CA 120 / PA 140"). Always use relative Star Ratings (e.g. 3.5★/4.5★), visible attributes, and FM27 Engine Metrics (Sprint Speed m/s, Aerial Jump Height, Physical Score /100).
+- NEVER recommend retired FM24 roles (Mezzala, Enganche, Trequartista, Carrilero, Raumdeuter, Segundo Volante) or legacy Defend/Support/Attack duties. Always pair authentic FM27 In-Possession (IP) and Out-of-Possession (OOP) roles.
+
+YOUR CORE IDENTITY & CONVERSATIONAL INTELLIGENCE:
+You are having an ongoing, multi-turn back-and-forth tactical working session with the manager.
+1. **Deep FM27 Match Engine Mastery (Patch 27.1.0 & Playbook v2.0)**:
+   - You understand how FM27's Dual-Phase In-Possession (IP) and Out-of-Possession (OOP) role pairs interact in every phase of play (build-up, progression, final-third creation, counter-press, high/mid block, and defensive transitions).
+   - You know why **Tracking Winger (TW) OOP** on both AML and AMR stops 2v1 full-back overlaps (whereas Wide Outlet Winger OOP leaves flanks exposed), why **Balanced Ground Build-Up + Short/Mixed GK Distribution + Standard Passing Directness** prevents cheap turnover cascades, and how Patch 27.1.0 weights **Pace, Acceleration, Jumping Reach, Stamina, Anticipation, Decisions, Work Rate, and First Touch**.
+   - You enforce Playbook v2.0's 5 Non-Negotiable Touchline & Periodisation Laws:
+     * **The Golden Rule**: Change 1 structural variable at a time and observe 20–25 in-game minutes.
+     * **Dual-CB 90m Continuity Lock**: Never substitute both starting Centre-Backs simultaneously when protecting a lead or parity.
+     * **2-Window Substitution Script**: Batch all 5 subs into at most 2 second-half stoppages — Window 1 (60'–63') for your 2–3 lowest-Stamina non-CB starters, Window 2 (75'+) for 1–2 fresh closers (plus optional HT 45' free window).
+     * **3-Man Midfield Zone 5 Guardrail**: Never pull the holding DM for a 4-2-4 when chasing late; keep 3 midfielders on the pitch and use Touchline Tweaks ("Play With More Urgency" + "Swap Wings") + Shout "Up Your Game".
+     * **180-Minute Double-GW Stamina Cap & Post-Match Rest Law**: Keep standard outfielders <= 125 combined minutes across Wed/Sat double gameweeks and schedule a full Post-Match Rest day (cuts training injury roll from 13.8% to 4.0%).
+
+2. **Context-Aware Multi-Turn Conversation & Memory**:
+   - Always pay close attention to the **multi-turn conversation history** and the **LIVE IN-APP COMMAND HUB CONTEXT** provided below.
+   - If the manager asks a follow-up question ("Why him over X?", "What if we face a 3-5-2 next?", "Who takes corners if he's benched?", "Switch him to Inside Forward IP and mark him as Starter", "How should we adjust at half-time if we're 0-1 down?"), directly answer their specific question first, referencing what you and the manager discussed in previous turns AND the live squad/fixture data in the app.
+   - Do NOT repeat a generic boilerplate essay if the manager asked a targeted question—tailor your markdown headings, tactical reasoning, player comparisons, and 3 Immediate In-Game Clicks directly to the manager's message and the current context.
+   - Whenever the manager asks to change a player's IP role, OOP role, starter/rotation status, rating, stats, or tactical note (or when a screenshot/message reveals new player ratings, goals, assists, minutes, or roles), populate \`playerUpdates\` so the in-app Squad Database and War Room update automatically!
+
+3. **Strict Anti-Fabrication Rule (Zero Made-Up Data)**:
+   - NEVER invent, guess, or fabricate any player names, player stats, match xG, possession percentages, scores, wages, or dates that are not present in the live in-app context, newly imported file, screenshot, or conversation history.
+   - If no .fm save has been imported yet (0 players in the live context), answer the manager's FM27 tactical or match-engine question thoroughly using Playbook v2.0 & Patch 27.1.0 principles without inventing fake squad members.
+
+${liveAppContext ? `\n${liveAppContext}\n` : ''}`;
+
+      const contents: Array<{
+        role: 'user' | 'model';
+        parts: Array<
+          | { text: string }
+          | { inlineData: { mimeType: string; data: string } }
+        >;
+      }> = [];
+
+      if (Array.isArray(history) && history.length > 0) {
+        for (const h of history.slice(-14)) {
+          if (!h.text || !h.text.trim()) continue;
+          contents.push({
+            role: h.role === 'user' ? 'user' : 'model',
+            parts: [{ text: h.text }],
+          });
+        }
+      }
+
+      const currentTurnParts: Array<
         | { text: string }
         | { inlineData: { mimeType: string; data: string } }
       > = [];
 
-      if (Array.isArray(history) && history.length > 0) {
-        const transcript = history
-          .slice(-6)
-          .map((h) => `${h.role === 'user' ? 'Bobby' : 'Chief Analyst'}: ${h.text}`)
-          .join('\n\n');
-        parts.push({
-          text: `RECENT CONVERSATION CONTEXT:\n${transcript}`,
-        });
-      }
-
       if (importedFileContext && importedFileContext.trim().length > 0) {
-        parts.push({
-          text: `IMPORTED FM27 SAVE / EXPORT PAYLOAD:\n${importedFileContext}`,
+        currentTurnParts.push({
+          text: `NEWLY ATTACHED / IMPORTED FM27 SAVE OR EXPORT PAYLOAD ON THIS TURN:\n${importedFileContext}`,
         });
       }
 
       if (Array.isArray(images)) {
         for (const img of images) {
           if (img.base64 && img.mimeType) {
-            parts.push({
+            currentTurnParts.push({
               inlineData: {
                 mimeType: img.mimeType,
                 data: img.base64,
@@ -289,40 +330,53 @@ You MUST:
         }
       }
 
-      parts.push({
-        text: `Bobby's Message / Screen / File Submission (Target Next Chronicle Event #${eventNum}):\n${
+      currentTurnParts.push({
+        text: `Manager's Current Message / Tactical Question / Submission (Current In-Game Date: ${currentSaveDate || '--'} | Next Chronicle Event #${eventNum}):\n${
           message ||
-          'Analyze the attached FM27 file(s) / screenshot(s) against our Playbook v2.0 and KVV Zelzate Master Sheet, update everything possible, and produce a complete tactical & squad plan from the current in-game date.'
+          'Analyze the attached FM27 save / file(s) / screenshot(s) against Bobby Dean Playbook v2.0, update everything possible, and produce a complete tactical & squad plan from the current in-game date.'
         }`,
       });
 
+      contents.push({
+        role: 'user',
+        parts: currentTurnParts,
+      });
+
       const response = await ai.models.generateContent({
-        model: 'gemini-4-hydrogen',
-        contents: { parts },
+        model: selectedModel,
+        contents,
         config: {
           systemInstruction: systemPrompt,
+          thinkingConfig,
           responseMimeType: 'application/json',
           responseSchema: {
             type: Type.OBJECT,
             properties: {
               screenDetected: {
                 type: Type.STRING,
-                description: 'Detected FM27 screen type(s) and in-game date',
+                description:
+                  'Concise label of what you analyzed on this turn (e.g. "Tactical Follow-Up: Flank Overload & Role Pairing", "Live .fm Save Full Club Audit", "Data Hub Match Report", etc.)',
               },
               inGameDate: {
                 type: Type.STRING,
-                description: 'In-game date in DD/MM/YYYY format',
+                description: 'In-game date in DD/MM/YYYY format (or "--" if not yet loaded)',
               },
               analysisMarkdown: {
                 type: Type.STRING,
                 description:
-                  'Complete, in-depth Markdown tactical & Data Hub analysis (Step A) responding directly to Bobby in our signature back-and-forth style, citing exact players, attributes, and Playbook v2.0 rules.',
+                  'Clever, context-aware Markdown response directly answering the manager’s question or auditing the save/screenshot using FM27 Patch 27.1.0 physics, Dual-Phase IP/OOP mechanics, Playbook v2.0 rules, and the live squad/fixture data without fabricating any missing numbers.',
               },
               immediateClicks: {
                 type: Type.ARRAY,
                 items: { type: Type.STRING },
                 description:
-                  '3 concrete, numbered in-game clicks/actions for Bobby before hitting Continue',
+                  '3 concrete, numbered in-game clicks/actions tailored to this exact turn',
+              },
+              followUpQuestions: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+                description:
+                  '3 smart, context-aware follow-up questions or tactical scenarios the manager can click next to continue this conversation',
               },
               targetSheetTable: {
                 type: Type.STRING,
@@ -335,7 +389,7 @@ You MUST:
               },
               chronicleOutcomeMetric: {
                 type: Type.STRING,
-                description: 'Headline result, metric, or status for Chronicles',
+                description: 'Headline result, metric, or tactical decision summary for Chronicles',
               },
               docEventBulletBlock: {
                 type: Type.STRING,
@@ -346,12 +400,12 @@ You MUST:
                 type: Type.ARRAY,
                 items: { type: Type.STRING },
                 description:
-                  '6 or 7 column values matching the detected Master Sheet table row (e.g. Table 1G, Table 1H, or Table 1I) ready to append directly to Google Sheets',
+                  '6 or 7 column values matching the detected Master Sheet table row ready to append directly to Google Sheets',
               },
               isMatchResult: {
                 type: Type.BOOLEAN,
                 description:
-                  'True if this submission contains a completed match result to add to Table 1G',
+                  'True ONLY if this submission reports a newly completed match result not already in the Match Log',
               },
               matchFields: {
                 type: Type.OBJECT,
@@ -378,33 +432,49 @@ You MUST:
               playerUpdates: {
                 type: Type.ARRAY,
                 description:
-                  'Any KVV Zelzate squad player stat, rating, attribute, injury, or tactical note updates extracted from the screenshot or message so the 28-Man Squad Table updates automatically',
+                  'Any squad player IP/OOP role changes, status changes (Starter/Rotation/Youth/Injured), rating, goals, assists, minutes, condition, or tactical note updates agreed upon in this chat turn or extracted from a screenshot',
                 items: {
                   type: Type.OBJECT,
                   properties: {
                     name: {
                       type: Type.STRING,
-                      description: 'Exact player name (e.g. Matteo Polizzi, Sander Dieltjens, Mbey Epolo)',
+                      description: 'Exact player name from the squad',
+                    },
+                    ipRole: {
+                      type: Type.STRING,
+                      description: 'Updated In-Possession (IP) role if changed or recommended',
+                    },
+                    oopRole: {
+                      type: Type.STRING,
+                      description: 'Updated Out-of-Possession (OOP) role if changed or recommended',
+                    },
+                    status: {
+                      type: Type.STRING,
+                      description: 'Updated squad status if changed: Starter, Rotation, Youth, or Injured',
+                    },
+                    condition: {
+                      type: Type.NUMBER,
+                      description: 'Updated condition percentage (1-100) if explicitly reported',
                     },
                     rating: {
                       type: Type.NUMBER,
-                      description: 'Updated or latest match rating if shown',
+                      description: 'Updated or latest match rating if explicitly shown',
                     },
                     goalsAdded: {
                       type: Type.NUMBER,
-                      description: 'Goals scored in this new match to add to total',
+                      description: 'Goals scored in a new match to add to total',
                     },
                     assistsAdded: {
                       type: Type.NUMBER,
-                      description: 'Assists in this new match to add to total',
+                      description: 'Assists in a new match to add to total',
                     },
                     minutesAdded: {
                       type: Type.NUMBER,
-                      description: 'Minutes played in this new match to add to total',
+                      description: 'Minutes played in a new match to add to total',
                     },
                     notes: {
                       type: Type.STRING,
-                      description: 'Updated tactical, scouting, mentoring, or medical report note for this player',
+                      description: 'Updated tactical, role, scouting, mentoring, or medical report note for this player',
                     },
                   },
                   required: ['name', 'notes'],
@@ -416,6 +486,7 @@ You MUST:
               'inGameDate',
               'analysisMarkdown',
               'immediateClicks',
+              'followUpQuestions',
               'targetSheetTable',
               'chronicleTitle',
               'chronicleOutcomeMetric',
@@ -437,6 +508,28 @@ You MUST:
       return res.status(500).json({ error: errMessage });
     }
   });
+
+  app.use(
+    (
+      err: { type?: string; status?: number; name?: string; message?: string },
+      _req: express.Request,
+      res: express.Response,
+      next: express.NextFunction
+    ) => {
+      if (
+        err &&
+        (err.type === 'entity.too.large' ||
+          err.status === 413 ||
+          err.name === 'PayloadTooLargeError')
+      ) {
+        return res.status(413).json({
+          error:
+            'Request payload was too large. Reminder: .fm save files are decoded 100% locally in your browser and never sent raw to the server, and attached screenshots are automatically compressed.',
+        });
+      }
+      return next(err);
+    }
+  );
 
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({

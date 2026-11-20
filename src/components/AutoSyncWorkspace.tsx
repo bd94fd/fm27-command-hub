@@ -10,9 +10,17 @@ import {
   Settings2,
   LogOut,
   RefreshCw,
+  FileArchive,
+  ShieldCheck,
 } from 'lucide-react';
 import { User } from 'firebase/auth';
-import { MatchLogEntry, PlayerRecord } from '../types/fm27';
+import {
+  MatchLogEntry,
+  PlayerRecord,
+  RecruitmentCase,
+  StaffRecord,
+} from '../types/fm27';
+import { verifyFm27Accuracy } from '../data/fm27KnowledgeBase';
 import {
   parseFmStructuredExport,
   ParsedFmExportResult,
@@ -27,6 +35,7 @@ import {
   decodeFmSaveFile,
   cancelFmSaveDecode,
   FmSaveProgressStage,
+  FmImportScope,
 } from '../services/fmSaveReader';
 import {
   initAuth,
@@ -40,15 +49,14 @@ import {
   GoogleDocInfo,
   GoogleSheetMetadata,
 } from '../services/googleWorkspace';
+import {
+  AnalystReasoningMode,
+  buildConversationTranscript,
+  buildLiveTacticalAnalystContext,
+  ExtendedPlayerAutoUpdate,
+} from '../utils/tacticalAnalystContext';
 
-export interface PlayerAutoUpdate {
-  name: string;
-  rating?: number;
-  goalsAdded?: number;
-  assistsAdded?: number;
-  minutesAdded?: number;
-  notes: string;
-}
+export type PlayerAutoUpdate = ExtendedPlayerAutoUpdate;
 
 interface AttachedFmFile {
   id: string;
@@ -69,6 +77,7 @@ export interface ChatTurnPayload {
   inGameDate?: string;
   analysisMarkdown?: string;
   immediateClicks?: string[];
+  followUpQuestions?: string[];
   targetSheetTable?: string;
   chronicleTitle?: string;
   chronicleOutcomeMetric?: string;
@@ -81,7 +90,16 @@ export interface ChatTurnPayload {
 interface AutoSyncWorkspaceProps {
   matches: MatchLogEntry[];
   players: PlayerRecord[];
+  staff?: StaffRecord[];
+  recruitmentCases?: RecruitmentCase[];
   currentSaveDate: string;
+  clubName?: string;
+  managerName?: string;
+  nextFixture?: string;
+  leagueStandingSub?: string;
+  wageSpend?: string;
+  balance?: string;
+  hydratedFmSave?: HydratedSaveState | null;
   onUpdateSaveDate?: (date: string) => void;
   onAddMatch: (match: MatchLogEntry) => void;
   onApplyPlayerUpdates?: (updates: PlayerAutoUpdate[]) => void;
@@ -97,30 +115,19 @@ interface PendingWorkspaceMutation {
   chronicleRowValues: string[];
 }
 
-const INITIAL_ASSISTANT_TURN: ChatTurnPayload = {
-  id: 'turn-initial-awaiting',
-  role: 'assistant',
-  screenDetected: 'Awaiting .fm Save (Zero Fake Data Baseline)',
-  inGameDate: 'Awaiting Save',
-  eventNumber: 1,
-  analysisMarkdown: `### FM27 COMMAND HUB — AWAITING .FM SAVE OR EXPORT
-Welcome to your unified **Football Manager 27 Command Hub & AI Assistant**.
-
-**Status:** Operating in clean zero-mock baseline mode.
-* **Upload \`.fm\` Save:** Drop your career \`.fm\` save file in the uploader above to decode your managed club, squad attributes, CA/PA, contract wages, match log, and live league standings locally inside your browser via Pyodide 3.14 & fmsave.
-* **Import CSV / HTML / RTF:** Use the Import modal to ingest squad attribute or match performance views exported from FM27.
-* **Playbook v2.0 Reference:** The static **Bobby Dean FM27 Tactics & Journeyman Playbook v2.0** tab is always active in the top navigation bar.`,
-  immediateClicks: [
-    'Drop your Football Manager (.fm) save file into the parser to automatically sync your live squad, finances, and fixtures.',
-    'Or export your Squad view from FM27 (Ctrl+P -> Web page .html or Text) and drop it here to populate player attributes.',
-    'Explore the Playbook v2.0 Reference tab above for genuine FM27 Dual-Phase role pairings and tactical guidelines.',
-  ],
-};
-
 export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   matches,
   players,
+  staff = [],
+  recruitmentCases = [],
   currentSaveDate: saveDateProp,
+  clubName,
+  managerName,
+  nextFixture = '--',
+  leagueStandingSub = 'Awaiting .fm save import',
+  wageSpend = '--',
+  balance = '--',
+  hydratedFmSave = null,
   onUpdateSaveDate,
   onAddMatch,
   onApplyPlayerUpdates,
@@ -128,12 +135,17 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   onApplyDecodedFmSave,
 }) => {
   const latestMatch = matches[0];
-  const nextEventNum = (latestMatch?.eventNumber || 0) + 1;
-  const currentSaveDate = saveDateProp || latestMatch?.date || 'Awaiting Save';
+  const nextEventNum = (latestMatch?.eventNumber || matches.length) + 1;
+  const currentSaveDate =
+    saveDateProp && saveDateProp !== '--'
+      ? saveDateProp
+      : latestMatch?.date || '--';
 
-  const [turns, setTurns] = useState<ChatTurnPayload[]>([
-    INITIAL_ASSISTANT_TURN,
-  ]);
+  const [turns, setTurns] = useState<ChatTurnPayload[]>([]);
+  const [importScope, setImportScope] =
+    useState<FmImportScope>('managed_club_only');
+  const [reasoningMode, setReasoningMode] =
+    useState<AnalystReasoningMode>('deep_high');
   const [messageInput, setMessageInput] = useState('');
   const [uploadedImages, setUploadedImages] = useState<
     Array<{ base64: string; mimeType: string; name: string }>
@@ -148,7 +160,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   const feedEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (turns.length > 1 || isSending) {
+    if (turns.length > 0 || isSending) {
       feedEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
     }
   }, [turns.length, isSending]);
@@ -164,7 +176,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     return () => window.clearInterval(timer);
   }, [Boolean(fmDecodeStage)]);
 
-  // Collapsible Google Workspace Connection Settings (zero clutter by default)
+  // Collapsible Google Workspace Connection Settings
   const [showGoogleSettings, setShowGoogleSettings] = useState(false);
   const [googleUser, setGoogleUser] = useState<User | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -172,14 +184,22 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
 
   const [docUrlOrId, setDocUrlOrId] = useState<string>(() => {
     try {
-      return localStorage.getItem('kvv_zelzate_doc_id') || '';
+      return (
+        localStorage.getItem('fm27_command_hub_doc_id') ||
+        localStorage.getItem('kvv_zelzate_doc_id') ||
+        ''
+      );
     } catch {
       return '';
     }
   });
   const [sheetUrlOrId, setSheetUrlOrId] = useState<string>(() => {
     try {
-      return localStorage.getItem('kvv_zelzate_sheet_id') || '';
+      return (
+        localStorage.getItem('fm27_command_hub_sheet_id') ||
+        localStorage.getItem('kvv_zelzate_sheet_id') ||
+        ''
+      );
     } catch {
       return '';
     }
@@ -213,7 +233,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   const handleDocUrlChange = (val: string) => {
     setDocUrlOrId(val);
     try {
-      localStorage.setItem('kvv_zelzate_doc_id', val);
+      localStorage.setItem('fm27_command_hub_doc_id', val);
     } catch {
       // ignore
     }
@@ -222,7 +242,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   const handleSheetUrlChange = (val: string) => {
     setSheetUrlOrId(val);
     try {
-      localStorage.setItem('kvv_zelzate_sheet_id', val);
+      localStorage.setItem('fm27_command_hub_sheet_id', val);
     } catch {
       // ignore
     }
@@ -424,7 +444,6 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   }) => {
     const { promptText, imagesToSend, fmFilesToSend } = params;
 
-    // Immediately merge any structured FM27 CSV/HTML/RTF player exports into the live Squad Database
     const bulkMergedDiffSummaries: string[] = [];
     const bulkUpdatedPlayerNames: string[] = [];
     let detectedExportDate: string | null = null;
@@ -453,7 +472,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           }
         } else if (mergeRes.matchedCount > 0) {
           bulkMergedDiffSummaries.push(
-            `- Matched all ${mergeRes.matchedCount} players from ${fmFile.name} (baseline verified with 0 numerical diffs vs current database).`
+            `- Matched all ${mergeRes.matchedCount} players from ${fmFile.name} (0 numerical diffs vs current database).`
           );
         }
         if (fmFile.parsedExport.detectedDate) {
@@ -472,7 +491,11 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         `[AUTO-MERGED SQUAD DATABASE DIFFS FROM UPLOADED EXPORT]\n${bulkMergedDiffSummaries.join('\n')}`
       );
     }
-    const importedFileContext = combinedFileContextParts.join('\n\n---\n\n');
+    const rawFileContext = combinedFileContextParts.join('\n\n---\n\n');
+    const importedFileContext =
+      rawFileContext.length > 60000
+        ? `${rawFileContext.slice(0, 60000)}\n...[truncated to keep request fast]`
+        : rawFileContext;
 
     const attachedNames = [
       ...fmFilesToSend.map((f) => f.name),
@@ -481,11 +504,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
 
     const finalPrompt =
       promptText ||
-      `Imported ${attachedNames.join(', ')} — update everything in the Squad Database, Match Log & Master Sheet, analyze every result/attribute change against Playbook v2.0, and produce a complete tactical & rotation plan from the current in-game date (${detectedExportDate || currentSaveDate}).`;
-
-    const isLiveFmDrop = fmFilesToSend.some(
-      (f) => f.kind === 'FM_SAVE_DECODED'
-    );
+      `Imported ${attachedNames.join(', ')} — update everything in the Squad Database, Match Log & Master Sheet, analyze every result and attribute against Bobby Dean's Playbook v2.0, and produce a complete tactical & rotation plan from the current in-game date (${detectedExportDate || currentSaveDate}).`;
 
     const userTurn: ChatTurnPayload = {
       id: `user-${Date.now()}`,
@@ -494,24 +513,65 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       imageNames: attachedNames,
     };
 
-    setTurns((prev) => {
-      const cleaned = isLiveFmDrop
-        ? prev.filter((t) => t.id !== 'turn-initial-md4')
-        : prev;
-      return [...cleaned, userTurn];
-    });
+    setTurns((prev) => [...prev, userTurn]);
     setIsSending(true);
 
     try {
-      const historyForApi = (
-        isLiveFmDrop ? turns.filter((t) => t.id !== 'turn-initial-md4') : turns
-      ).map((t) => ({
-        role: t.role,
-        text:
-          t.role === 'user'
-            ? t.userText || ''
-            : `${t.screenDetected || ''}\n${t.analysisMarkdown || ''}`,
-      }));
+      const latestHydratedSave =
+        fmFilesToSend.find((f) => f.hydratedSave)?.hydratedSave ||
+        hydratedFmSave;
+
+      const effectivePlayers =
+        latestHydratedSave && latestHydratedSave.updatedSquad.length > 0
+          ? latestHydratedSave.updatedSquad
+          : players;
+
+      const effectiveMatches =
+        latestHydratedSave && latestHydratedSave.updatedMatches.length > 0
+          ? latestHydratedSave.updatedMatches
+          : matches;
+
+      const effectiveClubName =
+        latestHydratedSave?.decodedPayload.meta.clubName ||
+        (clubName && clubName !== '--' ? clubName : '--');
+
+      const effectiveManagerName =
+        latestHydratedSave?.decodedPayload.meta.managerName ||
+        (managerName && managerName !== '--' ? managerName : '--');
+
+      const effectiveSaveDate =
+        detectedExportDate ||
+        latestHydratedSave?.saveDateLabel ||
+        currentSaveDate;
+
+      const effectiveNextFixture =
+        latestHydratedSave?.nextFixtureLabel || nextFixture;
+
+      const effectiveStandingSub =
+        latestHydratedSave?.leagueStandingLabel || leagueStandingSub;
+
+      const effectiveWageSpend =
+        latestHydratedSave?.wageComplianceLabel || wageSpend;
+
+      const effectiveBalance = latestHydratedSave?.balanceLabel || balance;
+
+      const liveAppContext = buildLiveTacticalAnalystContext({
+        clubName: effectiveClubName,
+        managerName: effectiveManagerName,
+        saveDate: effectiveSaveDate,
+        nextFixture: effectiveNextFixture,
+        leagueStandingSub: effectiveStandingSub,
+        wageSpend: effectiveWageSpend,
+        balance: effectiveBalance,
+        players: effectivePlayers,
+        matches: effectiveMatches,
+        hydratedFmSave: latestHydratedSave,
+        staff,
+        recruitmentCases,
+        userQuery: finalPrompt,
+      });
+
+      const historyForApi = buildConversationTranscript(turns, 14);
 
       const res = await fetch('/api/fm27/tactical-chat', {
         method: 'POST',
@@ -521,8 +581,12 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           history: historyForApi,
           images: imagesToSend,
           importedFileContext: importedFileContext || undefined,
+          liveAppContext,
+          reasoningMode,
           nextEventNumber: nextEventNum,
-          currentSaveDate: detectedExportDate || currentSaveDate,
+          currentSaveDate: effectiveSaveDate,
+          clubName:
+            effectiveClubName !== '--' ? effectiveClubName : undefined,
         }),
       });
 
@@ -533,11 +597,10 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
 
       const assignedEventNum = nextEventNum;
 
-      if (data.inGameDate && onUpdateSaveDate) {
+      if (data.inGameDate && data.inGameDate !== '--' && onUpdateSaveDate) {
         onUpdateSaveDate(data.inGameDate);
       }
 
-      // Apply any automatic squad player note/stat updates extracted by the analyst
       const appliedPlayerNames: string[] = [...bulkUpdatedPlayerNames];
       if (
         Array.isArray(data.playerUpdates) &&
@@ -552,7 +615,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         }
       }
 
-      // Automatically add completed match if not already hydrated directly from the .fm save
+      // Automatically add completed match if explicitly reported in screenshot/chat (never fabricate missing stats)
       const alreadyHydratedMatch = fmFilesToSend.some(
         (f) => f.kind === 'FM_SAVE_DECODED'
       );
@@ -566,32 +629,32 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         const newMatch: MatchLogEntry = {
           id: `chat-match-${Date.now()}`,
           eventNumber: assignedEventNum,
-          date: data.inGameDate || detectedExportDate || currentSaveDate,
-          competition: mf.competition || '1st National - VV',
+          date: data.inGameDate || effectiveSaveDate,
+          competition: mf.competition || 'League / Cup',
           opponent: mf.opponent,
           venue: mf.venue === 'H' ? 'H' : 'A',
           result:
             mf.result === 'W' || mf.result === 'D' || mf.result === 'L'
               ? mf.result
-              : 'W',
+              : 'D',
           score: mf.score,
-          xGFor: typeof mf.xGFor === 'number' ? mf.xGFor : 1.5,
-          xGAgainst: typeof mf.xGAgainst === 'number' ? mf.xGAgainst : 0.7,
-          possession: typeof mf.possession === 'number' ? mf.possession : 40,
+          xGFor: typeof mf.xGFor === 'number' ? mf.xGFor : null,
+          xGAgainst: typeof mf.xGAgainst === 'number' ? mf.xGAgainst : null,
+          possession: typeof mf.possession === 'number' ? mf.possession : null,
           passCompletion:
-            typeof mf.passCompletion === 'number' ? mf.passCompletion : 82,
-          shotsFor: mf.shotsFor || '10 (4)',
-          shotsAgainst: mf.shotsAgainst || '9 (3)',
-          cccFor: typeof mf.cccFor === 'number' ? mf.cccFor : 2,
-          cccAgainst: typeof mf.cccAgainst === 'number' ? mf.cccAgainst : 0,
-          goalTimeline: mf.goalTimeline || 'Logged automatically from chat',
-          potm: mf.potm || 'Standout performer',
-          defensiveWatchpoints:
-            mf.defensiveWatchpoints || 'Defensive structure audited',
+            typeof mf.passCompletion === 'number' ? mf.passCompletion : null,
+          shotsFor: mf.shotsFor || '—',
+          shotsAgainst: mf.shotsAgainst || '—',
+          cccFor: typeof mf.cccFor === 'number' ? mf.cccFor : null,
+          cccAgainst: typeof mf.cccAgainst === 'number' ? mf.cccAgainst : null,
+          goalTimeline: mf.goalTimeline || 'Logged from Data Hub screenshot',
+          potm: mf.potm || '—',
+          defensiveWatchpoints: mf.defensiveWatchpoints || '—',
           tacticalAudit:
             mf.tacticalAudit ||
             data.chronicleOutcomeMetric ||
             'Audited against Bobby Dean Playbook v2.0',
+          source: 'CHAT',
         };
         onAddMatch(newMatch);
       }
@@ -600,9 +663,12 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         id: `assistant-${Date.now()}`,
         role: 'assistant',
         screenDetected: data.screenDetected,
-        inGameDate: data.inGameDate || detectedExportDate || currentSaveDate,
+        inGameDate: data.inGameDate || effectiveSaveDate,
         analysisMarkdown: data.analysisMarkdown,
         immediateClicks: data.immediateClicks || [],
+        followUpQuestions: Array.isArray(data.followUpQuestions)
+          ? data.followUpQuestions
+          : [],
         targetSheetTable: data.targetSheetTable || 'TABLE_1G_MATCH_LOG',
         chronicleTitle: data.chronicleTitle || data.screenDetected,
         chronicleOutcomeMetric: data.chronicleOutcomeMetric || 'Updated',
@@ -624,6 +690,74 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     }
   };
 
+  const compressImageFile = (
+    file: File,
+    maxDimension = 1600,
+    quality = 0.82
+  ): Promise<{ base64: string; mimeType: string; name: string }> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const img = new Image();
+        img.onload = () => {
+          try {
+            let width = img.naturalWidth || img.width;
+            let height = img.naturalHeight || img.height;
+            if (width > maxDimension || height > maxDimension) {
+              if (width >= height) {
+                height = Math.round((height * maxDimension) / width);
+                width = maxDimension;
+              } else {
+                width = Math.round((width * maxDimension) / height);
+                height = maxDimension;
+              }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              const rawBase64 = dataUrl.split(',')[1] || '';
+              resolve({
+                base64: rawBase64,
+                mimeType: file.type || 'image/png',
+                name: file.name,
+              });
+              return;
+            }
+            ctx.drawImage(img, 0, 0, width, height);
+            const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+            const compressedBase64 = compressedDataUrl.split(',')[1] || '';
+            resolve({
+              base64: compressedBase64,
+              mimeType: 'image/jpeg',
+              name: file.name,
+            });
+          } catch {
+            const rawBase64 = dataUrl.split(',')[1] || '';
+            resolve({
+              base64: rawBase64,
+              mimeType: file.type || 'image/png',
+              name: file.name,
+            });
+          }
+        };
+        img.onerror = () => {
+          const rawBase64 = dataUrl.split(',')[1] || '';
+          resolve({
+            base64: rawBase64,
+            mimeType: file.type || 'image/png',
+            name: file.name,
+          });
+        };
+        img.src = dataUrl;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
   const processIncomingFiles = async (files: File[]) => {
     if (files.length === 0) return;
     setChatError(null);
@@ -635,11 +769,15 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         try {
           setFmDecodeStage({
             stage: 'boot',
-            label: `Starting local fmsave 0.14.1 reader for ${file.name}...`,
+            label: `Starting local Pyodide 3.14 + fmsave 0.14.1 reader for ${file.name}...`,
           });
-          const decoded = await decodeFmSaveFile(file, (stage) => {
-            setFmDecodeStage(stage);
-          });
+          const decoded = await decodeFmSaveFile(
+            file,
+            (stage) => {
+              setFmDecodeStage(stage);
+            },
+            { scope: importScope }
+          );
           setFmDecodeStage(null);
 
           const hydrated = onApplyDecodedFmSave
@@ -650,17 +788,15 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             id: `fm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             name: file.name,
             kind: 'FM_SAVE_DECODED',
-            badgeLabel: `${file.name} (${decoded.meta.game} · ${decoded.meta.gameDateDmy || 'Decoded'} · ${decoded.players.length} players, ${decoded.playedMatches.length} matches)`,
+            badgeLabel: `${file.name} (${decoded.meta.clubName} · ${decoded.meta.gameDateDmy || 'Decoded'} · ${decoded.players.length} players, ${decoded.playedMatches.length} matches)`,
             promptContext:
-              hydrated?.analystPromptContext ||
-              JSON.stringify(decoded.meta),
+              hydrated?.analystPromptContext || JSON.stringify(decoded.meta),
             hydratedSave: hydrated,
           };
 
-          // 1-step dream workflow: if user hasn't typed a custom question, immediately run full analysis & forward plan!
           if (!messageInput.trim()) {
             await dispatchToAnalyst({
-              promptText: `I just uploaded my live save file ${file.name} (${decoded.meta.game} · In-Game Date: ${decoded.meta.gameDateDmy || 'Live'}). Everything has been updated in the app — give me the complete audit of what changed and my exact tactical, rotation, and training plan from ${decoded.meta.gameDateDmy || 'today'} forward.`,
+              promptText: `I just imported my live .fm save file ${file.name} (Managed Club: ${decoded.meta.clubName} · Manager: ${decoded.meta.managerName} · In-Game Date: ${decoded.meta.gameDateDmy || 'Live'}). Everything has been populated in the app — audit our current squad, played results, league standing, finances, and injuries against Bobby Dean's Playbook v2.0, and give me a tailored tactical, Starting XI, 62m/75m substitution, set-piece, and rotation plan from ${decoded.meta.gameDateDmy || 'today'} forward.`,
               imagesToSend: [],
               fmFilesToSend: [decodedEntry],
             });
@@ -688,9 +824,18 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         try {
           const text = await file.text();
           const parsed = parseFmStructuredExport(text, file.name);
+          if (
+            parsed.parsedPlayers.length > 0 &&
+            onBulkMergePlayers
+          ) {
+            onBulkMergePlayers(parsed.parsedPlayers);
+          }
+          if (parsed.detectedDate && onUpdateSaveDate) {
+            onUpdateSaveDate(parsed.detectedDate);
+          }
           const countDesc =
             parsed.parsedPlayers.length > 0
-              ? `${parsed.parsedPlayers.length} players parsed · Auto-updates Squad DB`
+              ? `${parsed.parsedPlayers.length} players synced to Squad DB`
               : `${parsed.rowCount} rows parsed`;
 
           setAttachedFmFiles((prev) => [
@@ -708,22 +853,14 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           setChatError(`Could not parse ${file.name}.`);
         }
       } else if (file.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const resStr = reader.result as string;
-          const base64Part = resStr.split(',')[1];
-          if (base64Part) {
-            setUploadedImages((prev) => [
-              ...prev,
-              {
-                base64: base64Part,
-                mimeType: file.type || 'image/png',
-                name: file.name,
-              },
-            ]);
+        try {
+          const compressed = await compressImageFile(file);
+          if (compressed.base64) {
+            setUploadedImages((prev) => [...prev, compressed]);
           }
-        };
-        reader.readAsDataURL(file);
+        } catch {
+          setChatError(`Could not read image ${file.name}.`);
+        }
       } else {
         setChatError(
           `Unsupported file "${file.name}". Drop a .fm save file, FM27 .csv/.html/.rtf export, or screenshot image.`
@@ -786,6 +923,13 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     });
   };
 
+  const displayManagerLabel =
+    managerName && managerName !== '--'
+      ? `${managerName} (${clubName && clubName !== '--' ? clubName : 'Manager'})`
+      : clubName && clubName !== '--'
+        ? `Manager · ${clubName}`
+        : 'FM27 Manager';
+
   return (
     <div className="space-y-6">
       {/* Explicit User Confirmation Modal for Google Docs & Sheets Direct Mutations */}
@@ -802,7 +946,8 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                 id="confirm-sync-title"
                 className="text-base font-bold text-slate-900 dark:text-slate-100"
               >
-                Push Event #{pendingMutation.eventNumber} ({pendingMutation.title}) to Google Sheet &amp; Doc?
+                Push Event #{pendingMutation.eventNumber} (
+                {pendingMutation.title}) to Google Sheet &amp; Doc?
               </h3>
               <button
                 type="button"
@@ -868,21 +1013,83 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             : 'border-slate-200 dark:border-slate-800'
         }`}
       >
-        {/* Top Header + Compact Google Connection Toggle */}
+        {/* Top Header + Scope Selector + Compact Google Connection Toggle */}
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
           <div>
             <div className="text-xs font-mono uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-              Bobby Dean Playbook v2.0 + Direct .FM Save Reader (fmsave 0.14.1 Local WebAssembly)
+              Bobby Dean Playbook v2.0 + Local Browser .FM Save Reader (Pyodide
+              3.14 · fmsave 0.14.1 · WORKERFS Zero-Copy)
             </div>
             <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 mt-0.5">
               FM27 Tactical Analyst Chat &amp; Direct .fm Save Sync
             </h2>
             <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-              Just drop your <span className="font-mono text-emerald-400">.fm</span> save file directly here (read locally in your browser via <span className="font-mono text-emerald-400">fmsave 0.14.1</span> — never uploaded to a server). It automatically decodes your in-game date, full squad attributes &amp; CA/PA, season stats, matches &amp; xG, league table, finances, and injuries, updates everything, and builds your plan from today&apos;s date.
+              Drop or select your{' '}
+              <span className="font-mono text-emerald-400">.fm</span> save file
+              below (100% decoded locally in your browser — never uploaded to
+              any server). Automatically extracts your managed club, squad
+              attributes &amp; star ratings, season stats, fixtures, league table,
+              tactics, finances, and injuries, populates every tab, and builds
+              your tactical plan from the current in-game date forward.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            {/* Analyst Reasoning Depth Selector */}
+            <div className="flex items-center gap-1.5">
+              <label
+                htmlFor="analyst-reasoning-mode-select"
+                className="text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap"
+              >
+                Analyst Brain:
+              </label>
+              <select
+                id="analyst-reasoning-mode-select"
+                aria-label="Analyst Reasoning Depth"
+                value={reasoningMode}
+                onChange={(e) =>
+                  setReasoningMode(e.target.value as AnalystReasoningMode)
+                }
+                className="px-2.5 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 rounded-lg"
+              >
+                <option value="deep_high">
+                  Deep Tactical Reasoning (Gemini 4 High)
+                </option>
+                <option value="max_xhigh">
+                  Max Engine &amp; Squad Synthesis (Gemini 4 XHigh)
+                </option>
+                <option value="fast_lite">
+                  Rapid Touchline Co-Pilot (Flash Lite)
+                </option>
+              </select>
+            </div>
+
+            {/* Scope Selector Before/When Importing */}
+            <div className="flex items-center gap-1.5">
+              <label
+                htmlFor="fm-import-scope-select"
+                className="text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap"
+              >
+                Import Scope:
+              </label>
+              <select
+                id="fm-import-scope-select"
+                aria-label="FM Save Import Scope"
+                value={importScope}
+                onChange={(e) =>
+                  setImportScope(e.target.value as FmImportScope)
+                }
+                className="px-2.5 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 rounded-lg"
+              >
+                <option value="managed_club_only">
+                  My Managed Club Only (Fastest for Mobile)
+                </option>
+                <option value="club_and_division">
+                  My Managed Club + Full Division Table
+                </option>
+              </select>
+            </div>
+
             {!accessToken ? (
               <button
                 type="button"
@@ -948,6 +1155,48 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           </div>
         </div>
 
+        {/* Live Context & Conversation Memory Status Strip */}
+        <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex flex-wrap items-center gap-2 text-slate-600 dark:text-slate-300">
+            <span className="inline-flex items-center gap-1 font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+              <Sparkles className="w-3.5 h-3.5" />
+              Active Analyst Context:
+            </span>
+            <span>
+              FM27 Patch 27.1.0 Physics &middot; Playbook v2.0 (All 9 Sections)
+            </span>
+            <span>&middot;</span>
+            {players.length > 0 ? (
+              <span className="font-mono text-emerald-400">
+                {clubName && clubName !== '--' ? clubName : 'Managed Club'} (
+                {players.length} Players, War Room XI, Set-Pieces &amp;{' '}
+                {matches.length} Matches Synced)
+              </span>
+            ) : (
+              <span className="font-mono text-amber-400">
+                0 Players / 0 Matches (Drop .fm Save to Bind Live Club State)
+              </span>
+            )}
+            <span>&middot;</span>
+            <span className="font-mono text-slate-500 dark:text-slate-400">
+              {turns.length} Chat Turn{turns.length === 1 ? '' : 's'} in Memory
+            </span>
+          </div>
+
+          {turns.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setTurns([]);
+                setChatError(null);
+              }}
+              className="px-2.5 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 bg-slate-200/70 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 rounded-md cursor-pointer transition-colors"
+            >
+              Clear Chat Memory
+            </button>
+          )}
+        </div>
+
         {/* Collapsible One-Time Google Sheet & Doc URL Drawer */}
         {showGoogleSettings && (
           <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl space-y-3">
@@ -957,7 +1206,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                   htmlFor="google-sheet-url"
                   className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1"
                 >
-                  KVV Zelzate Master Google Sheet URL or ID
+                  Master Google Sheet URL or ID
                 </label>
                 <input
                   id="google-sheet-url"
@@ -973,7 +1222,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                   htmlFor="google-doc-url"
                   className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1"
                 >
-                  KVV Zelzate Master Google Doc URL or ID (Optional)
+                  Master Google Doc URL or ID (Optional)
                 </label>
                 <input
                   id="google-doc-url"
@@ -1071,12 +1320,16 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             onClick={() =>
               handleSendToAnalyst(
                 undefined,
-                'Give me our complete Pre-Match Opposition & Tactical Gameplan for MD5 away vs 16th-placed Jong Cercle (Sat 18/09/2027), including our rotated Table 1K Starting XI, Tracking Winger OOP roles, and 62m/75m substitution windows.'
+                players.length > 0
+                  ? `Give me our complete Pre-Match Tactical Gameplan for ${clubName || 'our managed club'} from ${currentSaveDate} forward (${nextFixture !== '--' ? `Next: ${nextFixture}` : 'next fixture'}), including our best Dual-Phase 4-3-3 Starting XI, Tracking Winger OOP roles, and 62m/75m substitution windows based on our imported squad's Stamina and Condition.`
+                  : 'Explain how Bobby Dean’s FM27 Playbook v2.0 Dual-Phase 4-3-3, Tracking Winger OOP flank lock, and 62m/75m 2-window substitution script work in Patch 27.1.0.'
               )
             }
             className="px-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-emerald-500/15 hover:text-emerald-400 border border-slate-300 dark:border-slate-700 rounded-lg transition-colors cursor-pointer"
           >
-            MD5 Pre-Match Gameplan vs Jong Cercle (A)
+            {players.length > 0
+              ? 'Next Fixture Dual-Phase 4-3-3 & 62m/75m Sub Plan'
+              : 'How Playbook v2.0 Dual-Phase 4-3-3 Works'}
           </button>
           <button
             type="button"
@@ -1084,17 +1337,98 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             onClick={() =>
               handleSendToAnalyst(
                 undefined,
-                'Audit our 28-man squad against Playbook v2.0 Section 7 (Wage cap deficit, Wolf Ackx £550/wk offload, Visar Shala £450/wk Plan B, and Mentoring Groups 1-3 progress after Polizzi Det +1).'
+                players.length > 0
+                  ? `Audit our ${players.length}-man squad at ${clubName || 'our club'} against Playbook v2.0 Section 7 & Section 9: wage budget compliance, highest earners vs minutes played, top star ratings & FM27 engine scores, Set-Piece Aerial Threats (JR + Heading), and 3-player Mentoring group recommendations.`
+                  : 'How do we counter a 3-5-2 / 5-3-2 wing-back system or a high-pressing 4-2-3-1 in FM27 without breaking the 3-man midfield Zone 5 guardrail?'
               )
             }
             className="px-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-emerald-500/15 hover:text-emerald-400 border border-slate-300 dark:border-slate-700 rounded-lg transition-colors cursor-pointer"
           >
-            Audit Wages, Wolf Ackx &amp; Mentoring
+            {players.length > 0
+              ? 'Audit Squad Wages, Star Ratings & Set-Piece Threats'
+              : 'Countering 3-5-2 Wing-Backs & 4-2-3-1 Presses in FM27'}
+          </button>
+          <button
+            type="button"
+            disabled={isSending}
+            onClick={() =>
+              handleSendToAnalyst(
+                undefined,
+                players.length > 0
+                  ? `Rank our squad's top Patch 27.1.0 physical engine outliers (Top Sprint Speed m/s, Vertical Jump Reach, and Stamina Drain) and tell me who should be our A1/A2/A3 corner targets, Left/Right inswinger takers, and D1/D2 recovery defenders.`
+                  : 'How does FM27 Patch 27.1.0 weight Pace, Acceleration, Jumping Reach, and Stamina, and how should I set up Attacking & Defending Corners?'
+              )
+            }
+            className="px-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-emerald-500/15 hover:text-emerald-400 border border-slate-300 dark:border-slate-700 rounded-lg transition-colors cursor-pointer"
+          >
+            {players.length > 0
+              ? 'Patch 27.1.0 Speed/Jump Leaders & Corner Specialists'
+              : 'Patch 27.1.0 Physical Weights & Corner Routines'}
+          </button>
+          <button
+            type="button"
+            disabled={isSending}
+            onClick={() =>
+              handleSendToAnalyst(
+                undefined,
+                players.length > 0
+                  ? `Walk me through our in-match touchline contingency script for ${nextFixture !== '--' ? nextFixture : 'our next match'}: what exact single tweak and shout do we use at 62m and 75m if we are chasing 0-1 vs protecting a 1-0 lead?`
+                  : 'What is the exact 62m / 75m touchline contingency script when chasing a goal late vs protecting a 1-goal lead in FM27?'
+              )
+            }
+            className="px-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-emerald-500/15 hover:text-emerald-400 border border-slate-300 dark:border-slate-700 rounded-lg transition-colors cursor-pointer"
+          >
+            62m / 75m Touchline Contingency Script (Chasing vs Leading)
           </button>
         </div>
 
-        {/* Conversation Feed */}
+        {/* Conversation Feed or Clean "Awaiting .fm Save" Empty State */}
         <div className="space-y-4 max-h-[600px] overflow-y-auto pr-1">
+          {turns.length === 0 && !isSending && (
+            <div className="p-6 rounded-xl bg-slate-50 dark:bg-slate-950 border border-dashed border-emerald-500/40 text-center space-y-3">
+              <FileArchive className="w-8 h-8 text-emerald-500 mx-auto" />
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  Awaiting .fm Save File — Zero Pre-Filled Club Data Loaded
+                </h3>
+                <p className="text-xs text-slate-600 dark:text-slate-400 max-w-2xl mx-auto leading-relaxed">
+                  Drop your Football Manager{' '}
+                  <span className="font-mono text-emerald-400">.fm</span> save
+                  file anywhere in this workspace or click{' '}
+                  <strong>Import .fm Save / Image</strong> below. Your save is
+                  mounted via zero-copy <span className="font-mono">WORKERFS</span>{' '}
+                  inside a local Pyodide 3.14 Web Worker with{' '}
+                  <span className="font-mono">fmsave 0.14.1</span> (native zstd
+                  + automatic memory garbage collection between steps so mobile
+                  browsers never time out). You can also chat directly with the
+                  Tactical Analyst about any FM27 tactic, role pairing, or match
+                  scenario right now.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
+                <label
+                  htmlFor="chat-empty-state-fm-upload"
+                  className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg cursor-pointer transition-colors"
+                >
+                  <Upload className="w-4 h-4" />
+                  <span>Select .fm Save File</span>
+                  <input
+                    id="chat-empty-state-fm-upload"
+                    type="file"
+                    accept=".fm,image/*,.csv,.html,.htm,.rtf,.txt"
+                    multiple
+                    onChange={handleFilesSelected}
+                    className="hidden"
+                  />
+                </label>
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                  100% Local Browser Decode · Never Uploaded to Server
+                </span>
+              </div>
+            </div>
+          )}
+
           {turns.map((turn) => {
             if (turn.role === 'user') {
               return (
@@ -1103,7 +1437,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                   className="ml-auto max-w-3xl p-4 rounded-xl bg-emerald-950/50 border border-emerald-500/30 text-slate-100"
                 >
                   <div className="flex items-center justify-between text-[11px] font-mono text-emerald-400 mb-1">
-                    <span>Bobby Dean (Manager · KVV Zelzate)</span>
+                    <span>{displayManagerLabel}</span>
                     {turn.imageNames && turn.imageNames.length > 0 && (
                       <span>Attached: {turn.imageNames.join(', ')}</span>
                     )}
@@ -1146,9 +1480,11 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                           chronicleRowValues: [
                             `Event #${turn.eventNumber || nextEventNum}`,
                             turn.inGameDate || currentSaveDate,
-                            '2027/28 Season (Sep)',
+                            clubName && clubName !== '--'
+                              ? clubName
+                              : 'FM27 Save',
                             turn.targetSheetTable || 'Tactical & Match Audit',
-                            turn.chronicleTitle || 'KVV Zelzate Update',
+                            turn.chronicleTitle || 'FM27 Tactical Update',
                             turn.chronicleOutcomeMetric || 'Audited',
                             turn.docEventBulletBlock || '',
                           ],
@@ -1167,11 +1503,42 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                     <div className="px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300 flex items-center gap-2">
                       <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                       <span>
-                        Automatically updated in-app 28-Man Squad Database for:{' '}
-                        <strong>{turn.playerUpdatesApplied.join(', ')}</strong>
+                        Automatically updated in-app Squad Database for:{' '}
+                        <strong>
+                          {turn.playerUpdatesApplied.slice(0, 12).join(', ')}
+                          {turn.playerUpdatesApplied.length > 12
+                            ? ` (+${turn.playerUpdatesApplied.length - 12} more)`
+                            : ''}
+                        </strong>
                       </span>
                     </div>
                   )}
+
+                {/* Automatic FM27 Knowledge Base Accuracy Verification */}
+                {turn.analysisMarkdown && (() => {
+                  const check = verifyFm27Accuracy(turn.analysisMarkdown);
+                  return (
+                    <div
+                      className={`mb-2 rounded-lg border px-2.5 py-1.5 text-[11px] flex flex-wrap items-center justify-between gap-2 ${
+                        check.passed
+                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                          : 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+                      }`}
+                    >
+                      <span className="font-semibold flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                        {check.passed
+                          ? 'FM27 Knowledge Base Verified (Patch 27.1.0 · No retired FM24 roles or raw CA/PA)'
+                          : `FM27 Accuracy Notice: ${check.warnings.join(' · ')}`}
+                      </span>
+                      {check.citedVerifiedRoles.length > 0 && (
+                        <span className="font-mono text-[10px] opacity-80">
+                          Verified Roles: {check.citedVerifiedRoles.slice(0, 4).join(', ')}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Analysis Body with Clean Formatted Headings, Bullets, and Bold Spans */}
                 <div className="space-y-2 text-xs text-slate-800 dark:text-slate-200 leading-relaxed font-sans">
@@ -1251,6 +1618,29 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                     </ol>
                   </div>
                 )}
+
+                {/* Context-Aware Suggested Follow-Up Questions */}
+                {turn.followUpQuestions &&
+                  turn.followUpQuestions.length > 0 && (
+                    <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                      <div className="text-[11px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                        Continue Tactical Discussion (1-Click Follow-Up):
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {turn.followUpQuestions.map((q, qIdx) => (
+                          <button
+                            key={qIdx}
+                            type="button"
+                            disabled={isSending}
+                            onClick={() => handleSendToAnalyst(undefined, q)}
+                            className="px-3 py-1.5 text-xs font-medium text-left text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                          >
+                            {q}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
               </div>
             );
           })}
@@ -1259,8 +1649,8 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center gap-3 text-xs text-slate-600 dark:text-slate-300">
               <Sparkles className="w-4 h-4 text-emerald-500 animate-spin" />
               <span>
-                Analyzing against Bobby Dean Playbook v2.0 &amp; updating KVV
-                Zelzate Squad &amp; Master Sheet...
+                Analyzing live save state against Bobby Dean Playbook v2.0 &amp;
+                preparing tactical plan...
               </span>
             </div>
           )}

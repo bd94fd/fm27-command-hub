@@ -218,11 +218,12 @@ test('hydrateAppFromDecodedFmSave updates squad stats/attributes, logs new match
   assert.match(hydrated.tacticHeadlineLabel || '', /4-3-3 Counter Positive/);
   assert.match(hydrated.wageComplianceLabel || '', /£9,707 \/ £10,203 p\/w/);
 
-  // Squad stats & attributes updated
+  // Squad stats & attributes updated, relative stars computed, and raw CA/PA NEVER exposed
   const epolo = hydrated.updatedSquad.find((p) => p.name === 'Mbey Epolo');
   assert.equal(epolo?.goals, 5);
   assert.equal(epolo?.attributes.finishing, 14);
-  assert.match(epolo?.notes || '', /FM Save CA 92\/PA 104/);
+  assert.ok((epolo?.ability ?? 0) >= 1 && (epolo?.ability ?? 0) <= 5);
+  assert.doesNotMatch(epolo?.notes || '', /CA \d+|PA \d+/i);
 
   const polizzi = hydrated.updatedSquad.find((p) => p.name === 'Matteo Polizzi');
   assert.equal(polizzi?.attributes.determination, 7);
@@ -233,10 +234,11 @@ test('hydrateAppFromDecodedFmSave updates squad stats/attributes, logs new match
   assert.equal(hydrated.updatedMatches[0].score, '2 - 0');
   assert.equal(hydrated.updatedMatches[0].xGFor, 1.88);
 
-  // Analyst prompt context carries exact date, upcoming fixture, and diffs
+  // Analyst prompt context carries exact date, upcoming fixture, diffs, and ZERO raw CA/PA numbers
   assert.match(hydrated.analystPromptContext, /EXACT CURRENT IN-GAME DATE: 19\/09\/2027/);
   assert.match(hydrated.analystPromptContext, /KFC Dessel Sport/);
   assert.match(hydrated.analystPromptContext, /Mbey Epolo/);
+  assert.doesNotMatch(hydrated.analystPromptContext, /CA \d+\/PA \d+/i);
 });
 
 test('hydrateAppFromDecodedFmSave handles non-contract players with null expires without crashing table render', () => {

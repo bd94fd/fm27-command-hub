@@ -117,3 +117,75 @@ The Two Portable Tactical Templates:
 * Rule 3 — Dual-Phase 4-3-3 Balance: Balanced Ground Build-Up, Short/Mixed GK Distribution to CBs/FBs, Standard Passing Directness, and Tracking Wingers OOP on both flanks to prevent full-back overlaps.`;
 
 export const MASTER_GOOGLE_DOC_CLEAN = BOBBY_DEAN_PLAYBOOK_V2_TEXT;
+
+export interface PlaybookRuleCard {
+  id: string;
+  section: string;
+  title: string;
+  tag: string;
+  summary: string;
+  inGameSetting: string;
+}
+
+export const PLAYBOOK_V2_REFERENCE_RULES: PlaybookRuleCard[] = [
+  {
+    id: 'rule-dual-phase',
+    section: 'Section 1 & 2 · Dual-Phase 4-3-3 Architecture',
+    title: 'In-Possession 4-3-3 / Out-of-Possession Tracking Wingers',
+    tag: 'CORE SHAPE',
+    summary:
+      'FM27 replaces legacy support/attack duties with separate In-Possession (IP) and Out-of-Possession (OOP) role pairs. Both wide forwards (AML & AMR) must use Tracking Winger (TW) OOP instead of Wide Outlet Winger (WOW) so opposition full-backs can never create 2v1 flank overloads.',
+    inGameSetting:
+      'Tactics -> Out of Possession -> AML & AMR: Tracking Winger (TW) · Balanced Ground Build-Up · Short/Mixed GK Distribution · Standard Passing Directness.',
+  },
+  {
+    id: 'rule-one-change',
+    section: 'Section 3 · The Golden Rule & 3-Man Box Rule',
+    title: 'One Tactical Change at a Time + 3-Man Rest-Defence Box',
+    tag: 'GOLDEN RULE',
+    summary:
+      'Never stack multiple tactical instruction edits simultaneously—change one variable and observe 20–25 in-game minutes so you isolate cause and effect. Maintain a 3-man rest-defence base (2 Centre-Backs + 1 holding DM or tucked Full-Back) behind the ball at all times.',
+    inGameSetting:
+      'Keep DM set to Defensive Midfielder (DM) or Half-Back (HB) IP / DM OOP to anchor Zone 5 in front of both CBs.',
+  },
+  {
+    id: 'rule-sub-windows',
+    section: 'Section 4 · 2-Window Substitution Batching & Dual CB Lock',
+    title: 'Batch All 5 Subs into 62m & 75m Windows · Never Sub Both CBs',
+    tag: 'TOUCHLINE LAW',
+    summary:
+      'Never burn all 3 substitution stoppages before the 75th minute, and NEVER substitute both starting Centre-Backs simultaneously when protecting a lead or parity. Batch subs into Window 1 (60m–65m: replace lowest-Stamina wingers/full-backs/DM) and Window 2 (75m+: fresh striker/CM closer).',
+    inGameSetting:
+      'HT (45m Free Window) -> Window 1 (62m: 2–3 fatigue subs) -> Window 2 (75m: 1–2 closer subs). Both starting CBs play full 90m.',
+  },
+  {
+    id: 'rule-late-midfield',
+    section: 'Section 5 · Late-Game Chasing & Touchline Tweaks',
+    title: 'Keep 3-Man Midfield Intact Late (Never Pull DM for 4-2-4)',
+    tag: 'LATE GAME',
+    summary:
+      'Removing your holding DM after 75m to chase a goal in a 4-2-4 surrenders Zone 5 and kills ball progression into the final third. Keep your 3-man central midfield triangle intact and use FM27 Touchline Tweaks and mood-based Shouts instead.',
+    inGameSetting:
+      'When trailing 70m+: Keep 4-3-3 shape -> Activate Touchline Tweaks "Play With More Urgency" + "Swap Wings" -> Shout "Up Your Game".',
+  },
+  {
+    id: 'rule-familiarity-rest',
+    section: 'Section 6 · 8 Familiarity Areas & Post-Match Rest Buffer',
+    title: 'Chance Creation & Pressing Intensity + 13.8% → 4.0% Injury Cut',
+    tag: 'PERIODISATION',
+    summary:
+      'Among FM27’s 8 Tactical Effectiveness areas, Chance Creation, Build Up, and Pressing Intensity carry the highest match engine weight (target 51+ threshold). In Double Gameweeks, cap standard outfielders at <=125 combined minutes and schedule a full Post-Match Rest day to cut training injury rolls from 13.8% to 4.0%.',
+    inGameSetting:
+      'Training -> Post-Match Day & Double-GW MD-1: Recovery + Rest (Stamina Buffer) · Open Weeks: Build Up + Chance Creation + Pressing Trap.',
+  },
+  {
+    id: 'rule-setpieces-mentoring',
+    section: 'Section 7 & 8 · Set-Piece Wall & 3-Player Downward Mentoring',
+    title: 'Centre-Delivery Corner Separation & 3-Player Mentoring Triads',
+    tag: 'SET PIECES & DEV',
+    summary:
+      'On Attacking Corners, separate your top 3 Jumping Reach + Heading threats across Near Post (A1), Mark Keeper (A2), and Far Post (A3) with a 3-man counter-press wall on the 18-yard arc. On Defending Corners, station your Second-Ball Hub (B2) at Edge of Area. Structure Mentoring in strict 3-player groups (1 high-Determination veteran + 2 U21 prospects).',
+    inGameSetting:
+      'Set Pieces -> Attacking: Inswinger Aim For Centre · Defending: Zonal 6-Yard Wall + B2 Edge of Area · Mentoring: 1 Veteran (Det 14+) + 2 U21s.',
+  },
+];

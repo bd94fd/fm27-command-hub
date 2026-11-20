@@ -206,10 +206,10 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
           )}
         </div>
 
-        {/* 4. Top 5 Synced Players (CA/PA & Season Stats) */}
+        {/* 4. Top 5 Synced Players (Season Stats) */}
         <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-1.5">
           <div className="font-mono text-[11px] uppercase tracking-wider text-emerald-400">
-            Top 5 Active Players (Live CA/PA)
+            Top 5 Active Players (Live Season Output)
           </div>
           {topPlayers.length > 0 ? (
             <div className="space-y-1 font-mono text-[11px] text-slate-300">
@@ -219,7 +219,7 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
                   className="flex items-center justify-between gap-2"
                 >
                   <span className="truncate">
-                    {p.name} ({p.ca}/{p.pa})
+                    {p.name} ({p.position})
                   </span>
                   <span className="shrink-0 tabular-nums text-emerald-300">
                     {p.minutes}m · {p.goals}G/{p.assists}A ·{' '}
@@ -254,12 +254,11 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
                 playedMatches: d.playedMatches,
                 upcomingFixtures: d.upcomingFixtures,
                 playersSampleCount: d.players.length,
+                staffSampleCount: (d.staff || []).length,
                 playersPreview: d.players.slice(0, 10).map((p) => ({
                   name: p.name,
                   pos: p.position,
                   age: p.age,
-                  ca: p.ca,
-                  pa: p.pa,
                   wagePw: p.wagePw,
                   expires: p.expires,
                   mins: p.minutes,

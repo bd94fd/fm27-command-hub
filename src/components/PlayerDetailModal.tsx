@@ -1,0 +1,575 @@
+import React, { useMemo, useState } from 'react';
+import {
+  BookmarkPlus,
+  ClipboardPlus,
+  Shield,
+  Sparkles,
+  User,
+  X,
+  Zap,
+} from 'lucide-react';
+import { PlayerRecord, ShortlistRecord } from '../types/fm27';
+import { computeFm27EngineMetrics } from '../utils/fmSyncEngine';
+import fm27RolesRaw from '../data/fm27Roles.json';
+
+interface PlayerDetailModalProps {
+  player: PlayerRecord | null;
+  shortlists: ShortlistRecord[];
+  onClose: () => void;
+  onAddRecruitment: (player: PlayerRecord) => void;
+  onAddToShortlist: (shortlistId: string, playerId: string) => void;
+}
+
+type DetailTab = 'attributes' | 'positions' | 'metrics' | 'contract';
+
+interface CanonicalRole {
+  name: string;
+  phase?: 'IP' | 'OOP' | string;
+  keyAttributes?: string[];
+  preferableAttributes?: string[];
+}
+
+const ALL_ROLES: CanonicalRole[] = Array.isArray(fm27RolesRaw)
+  ? (fm27RolesRaw as CanonicalRole[])
+  : Object.values(fm27RolesRaw as Record<string, unknown>).flatMap((v) =>
+      Array.isArray(v) ? (v as CanonicalRole[]) : []
+    );
+
+const IP_ROLE_LIST = ALL_ROLES.filter(
+  (r) => !r.phase || r.phase.toUpperCase().includes('IN') || r.phase === 'IP'
+);
+const OOP_ROLE_LIST = ALL_ROLES.filter(
+  (r) => r.phase && (r.phase.toUpperCase().includes('OUT') || r.phase === 'OOP')
+);
+
+const PITCH_ROWS: Array<Array<{ code: string; label: string }>> = [
+  [{ code: 'ST', label: 'ST' }],
+  [
+    { code: 'AML', label: 'AML' },
+    { code: 'AMC', label: 'AMC' },
+    { code: 'AMR', label: 'AMR' },
+  ],
+  [
+    { code: 'ML', label: 'ML' },
+    { code: 'MC', label: 'MC' },
+    { code: 'MR', label: 'MR' },
+  ],
+  [
+    { code: 'WBL', label: 'WBL' },
+    { code: 'DM', label: 'DM' },
+    { code: 'WBR', label: 'WBR' },
+  ],
+  [
+    { code: 'DL', label: 'DL' },
+    { code: 'DC', label: 'DC' },
+    { code: 'DR', label: 'DR' },
+  ],
+  [{ code: 'GK', label: 'GK' }],
+];
+
+function attrColorClass(val: number): string {
+  if (val >= 16) return 'text-emerald-300 font-bold';
+  if (val >= 13) return 'text-lime-300 font-semibold';
+  if (val >= 10) return 'text-amber-200';
+  return 'text-slate-400';
+}
+
+function pitchBadgeClass(rating: number): string {
+  if (rating >= 18) return 'border-emerald-400 bg-emerald-500/20 text-emerald-200';
+  if (rating >= 15) return 'border-lime-400/70 bg-lime-500/15 text-lime-200';
+  if (rating >= 12) return 'border-amber-400/60 bg-amber-500/15 text-amber-200';
+  if (rating >= 9) return 'border-orange-400/50 bg-orange-500/10 text-orange-200';
+  return 'border-slate-700 bg-slate-900/70 text-slate-500';
+}
+
+function normalizeAttrKey(s: string): string {
+  return s.toLowerCase().replace(/[^a-z]/g, '');
+}
+
+export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
+  player,
+  shortlists,
+  onClose,
+  onAddRecruitment,
+  onAddToShortlist,
+}) => {
+  const [activeTab, setActiveTab] = useState<DetailTab>('attributes');
+  const [selectedIpRole, setSelectedIpRole] = useState<string>('');
+  const [selectedOopRole, setSelectedOopRole] = useState<string>('');
+  const [selectedShortlistId, setSelectedShortlistId] = useState<string>('');
+  const [shortlistFeedback, setShortlistFeedback] = useState<string | null>(null);
+
+  const effectiveIpRole = selectedIpRole || player?.ipRole || '';
+  const effectiveOopRole = selectedOopRole || player?.oopRole || '';
+
+  const highlightedKeys = useMemo(() => {
+    const keySet = new Set<string>();
+    const prefSet = new Set<string>();
+    const matchRole = (name: string) =>
+      ALL_ROLES.find(
+        (r) =>
+          r.name.toLowerCase() === name.toLowerCase() ||
+          name.toLowerCase().includes(r.name.toLowerCase())
+      );
+
+    for (const roleName of [effectiveIpRole, effectiveOopRole]) {
+      if (!roleName) continue;
+      const found = matchRole(roleName);
+      if (found) {
+        (found.keyAttributes || []).forEach((k) => keySet.add(normalizeAttrKey(k)));
+        (found.preferableAttributes || []).forEach((k) =>
+          prefSet.add(normalizeAttrKey(k))
+        );
+      }
+    }
+    return { keySet, prefSet };
+  }, [effectiveIpRole, effectiveOopRole]);
+
+  if (!player) return null;
+
+  const engineMetrics = computeFm27EngineMetrics(player);
+  const a = player.attributes;
+
+  const technicalAttrs: Array<{ label: string; value: number }> = [
+    { label: 'Passing', value: a.passing },
+    { label: 'First Touch', value: a.firstTouch },
+    { label: 'Finishing', value: a.finishing },
+    { label: 'Tackling', value: a.tackling },
+    { label: 'Heading', value: a.heading ?? 10 },
+    { label: 'Crossing', value: a.crossing ?? 10 },
+    { label: 'Corners', value: a.corners ?? 10 },
+    { label: 'Dribbling', value: a.dribbling ?? 10 },
+    { label: 'Technique', value: a.technique ?? 10 },
+    { label: 'Marking', value: a.marking ?? 10 },
+  ];
+
+  const mentalAttrs: Array<{ label: string; value: number }> = [
+    { label: 'Decisions', value: a.decisions },
+    { label: 'Determination', value: a.determination },
+    { label: 'Work Rate', value: a.workRate },
+    { label: 'Off The Ball', value: a.offTheBall },
+    { label: 'Vision', value: a.vision ?? 10 },
+    { label: 'Composure', value: a.composure ?? 10 },
+    { label: 'Positioning', value: a.positioning ?? 10 },
+    { label: 'Leadership', value: a.leadership ?? 10 },
+    { label: 'Teamwork', value: a.teamwork ?? 10 },
+  ];
+
+  const physicalAttrs: Array<{ label: string; value: number }> = [
+    { label: 'Pace', value: a.pace },
+    { label: 'Acceleration', value: a.acceleration },
+    { label: 'Stamina', value: a.stamina },
+    { label: 'Jumping Reach', value: a.jumpingReach },
+    { label: 'Strength', value: a.strength ?? 10 },
+  ];
+
+  const getPositionScore = (code: string): number => {
+    if (player.positionRatings && typeof player.positionRatings[code] === 'number') {
+      return player.positionRatings[code];
+    }
+    const posUpper = player.position.toUpperCase();
+    if (posUpper.includes(code)) return 19;
+    if (code === 'DC' && /\bD\s*\([^)]*C/.test(posUpper)) return 19;
+    if (code === 'DL' && /\bD\s*\([^)]*L/.test(posUpper)) return 18;
+    if (code === 'DR' && /\bD\s*\([^)]*R/.test(posUpper)) return 18;
+    if (code === 'AML' && /AM\s*\([^)]*L/.test(posUpper)) return 18;
+    if (code === 'AMR' && /AM\s*\([^)]*R/.test(posUpper)) return 18;
+    if (code === 'AMC' && /AM\s*\([^)]*C/.test(posUpper)) return 18;
+    if (code === 'MC' && /\bM\s*\([^)]*C/.test(posUpper)) return 18;
+    return 1;
+  };
+
+  const renderAttrRow = (item: { label: string; value: number }) => {
+    const norm = normalizeAttrKey(item.label);
+    const isKey = highlightedKeys.keySet.has(norm);
+    const isPref = !isKey && highlightedKeys.prefSet.has(norm);
+    return (
+      <div
+        key={item.label}
+        className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs border ${
+          isKey
+            ? 'bg-emerald-500/15 border-emerald-500/40'
+            : isPref
+              ? 'bg-sky-500/10 border-sky-500/30'
+              : 'bg-slate-900/60 border-slate-800'
+        }`}
+      >
+        <span className="text-slate-300 flex items-center gap-1.5">
+          {isKey && (
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" title="Key role attribute" />
+          )}
+          {isPref && (
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-400" title="Preferable role attribute" />
+          )}
+          {item.label}
+        </span>
+        <span className={`font-mono ${attrColorClass(item.value)}`}>{item.value}</span>
+      </div>
+    );
+  };
+
+  const handleShortlistAdd = () => {
+    const targetId = selectedShortlistId || shortlists[0]?.id;
+    if (!targetId) return;
+    onAddToShortlist(targetId, player.id);
+    setShortlistFeedback('Added to shortlist');
+    setTimeout(() => setShortlistFeedback(null), 2000);
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-slate-900/95 px-5 py-4 backdrop-blur">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold">
+              #{player.number}
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-lg font-bold text-white">{player.name}</h2>
+                <span className="rounded-md bg-slate-800 px-2 py-0.5 text-xs font-mono text-emerald-300">
+                  {player.position}
+                </span>
+                <span className="rounded-md bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-xs font-semibold text-amber-300">
+                  {player.ability.toFixed(1)}★ / {player.potential.toFixed(1)}★ Pot
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Age {player.age} · {player.preferredFoot || 'Right'} Foot
+                {player.heightCm ? ` · ${player.heightCm} cm` : ''} · {player.personality} ·{' '}
+                £{player.wagePw.toLocaleString()}/wk (exp {player.expires})
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onAddRecruitment(player)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 px-3 py-1.5 text-xs font-medium text-indigo-300 transition"
+            >
+              <ClipboardPlus className="h-3.5 w-3.5" />
+              Track Target
+            </button>
+            {shortlists.length > 0 && (
+              <div className="flex items-center gap-1">
+                <select
+                  value={selectedShortlistId || shortlists[0]?.id || ''}
+                  onChange={(e) => setSelectedShortlistId(e.target.value)}
+                  className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1.5 text-xs text-slate-200"
+                >
+                  {shortlists.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleShortlistAdd}
+                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 px-2.5 py-1.5 text-xs font-medium text-emerald-300 transition"
+                >
+                  <BookmarkPlus className="h-3.5 w-3.5" />
+                  {shortlistFeedback || 'Shortlist'}
+                </button>
+              </div>
+            )}
+            <button
+              onClick={onClose}
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition"
+              aria-label="Close player modal"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-1 border-b border-slate-800 bg-slate-950/40 px-5 pt-2">
+          {(
+            [
+              { id: 'attributes', label: 'Attributes & IP/OOP Role Fit', icon: Sparkles },
+              { id: 'positions', label: 'Pitch Familiarity', icon: Shield },
+              { id: 'metrics', label: 'FM27 Engine Metrics', icon: Zap },
+              { id: 'contract', label: 'Season Output & Contract', icon: User },
+            ] as const
+          ).map((t) => {
+            const Icon = t.icon;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setActiveTab(t.id)}
+                className={`inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-xs font-medium transition ${
+                  activeTab === t.id
+                    ? 'border-emerald-400 text-emerald-300'
+                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Body */}
+        <div className="p-5 space-y-4">
+          {activeTab === 'attributes' && (
+            <>
+              {/* IP / OOP role highlight selector */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-emerald-400 mb-1">
+                    In-Possession (IP) Role Highlight
+                  </label>
+                  <select
+                    value={effectiveIpRole}
+                    onChange={(e) => setSelectedIpRole(e.target.value)}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-200"
+                  >
+                    <option value={player.ipRole}>{player.ipRole} (Assigned)</option>
+                    {IP_ROLE_LIST.map((r) => (
+                      <option key={`ip-${r.name}`} value={r.name}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-sky-400 mb-1">
+                    Out-of-Possession (OOP) Role Highlight
+                  </label>
+                  <select
+                    value={effectiveOopRole}
+                    onChange={(e) => setSelectedOopRole(e.target.value)}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-200"
+                  >
+                    <option value={player.oopRole}>{player.oopRole} (Assigned)</option>
+                    {OOP_ROLE_LIST.map((r) => (
+                      <option key={`oop-${r.name}`} value={r.name}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                    Technical
+                  </h4>
+                  {technicalAttrs.map(renderAttrRow)}
+                </div>
+                <div className="space-y-1.5">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                    Mental
+                  </h4>
+                  {mentalAttrs.map(renderAttrRow)}
+                </div>
+                <div className="space-y-1.5">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                    Physical
+                  </h4>
+                  {physicalAttrs.map(renderAttrRow)}
+                  <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-400">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                      <span>Key role attribute</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-sky-400" />
+                      <span>Preferable role attribute</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'positions' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="rounded-xl border border-emerald-900/50 bg-gradient-to-b from-emerald-950/40 to-slate-950 p-4 space-y-3">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-300 text-center">
+                  FM27 Positional Familiarity Map
+                </h4>
+                <div className="space-y-2.5">
+                  {PITCH_ROWS.map((row, rIdx) => (
+                    <div key={rIdx} className="flex items-center justify-center gap-3">
+                      {row.map((pos) => {
+                        const score = getPositionScore(pos.code);
+                        return (
+                          <div
+                            key={pos.code}
+                            className={`w-16 rounded-lg border px-2 py-1.5 text-center ${pitchBadgeClass(
+                              score
+                            )}`}
+                          >
+                            <div className="text-[11px] font-bold">{pos.label}</div>
+                            <div className="text-[10px] font-mono opacity-80">{score}/20</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                    Assigned Dual-Phase Roles
+                  </h4>
+                  <div className="space-y-2 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">In-Possession (IP):</span>
+                      <span className="font-semibold text-emerald-300">{player.ipRole}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Out-of-Possession (OOP):</span>
+                      <span className="font-semibold text-sky-300">{player.oopRole}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Preferred Foot:</span>
+                      <span className="font-semibold text-slate-200">
+                        {player.preferredFoot || 'Right'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                    Scout & Tactical Notes
+                  </h4>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    {player.notes || 'Synced directly from FM27 save.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'metrics' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+                <div className="text-[11px] uppercase tracking-wider text-slate-400">
+                  FM27 Engine Score
+                </div>
+                <div className="mt-1 text-2xl font-bold text-emerald-400 font-mono">
+                  {engineMetrics.physicalEngineScore}/100
+                </div>
+                <div className="text-[11px] text-slate-400 mt-1">
+                  Custom physical + engine rating
+                </div>
+              </div>
+              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+                <div className="text-[11px] uppercase tracking-wider text-slate-400">
+                  Top Sprint Speed
+                </div>
+                <div className="mt-1 text-2xl font-bold text-sky-300 font-mono">
+                  {engineMetrics.topSpeedMps} m/s
+                </div>
+                <div className="text-[11px] text-slate-400 mt-1">
+                  Pace {a.pace} · Acc {a.acceleration}
+                </div>
+              </div>
+              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+                <div className="text-[11px] uppercase tracking-wider text-slate-400">
+                  Aerial Reach
+                </div>
+                <div className="mt-1 text-2xl font-bold text-amber-300 font-mono">
+                  +{engineMetrics.jumpHeightMeters} m
+                </div>
+                <div className="text-[11px] text-slate-400 mt-1">
+                  JR {a.jumpingReach} · Heading {a.heading ?? 10}
+                </div>
+              </div>
+              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+                <div className="text-[11px] uppercase tracking-wider text-slate-400">
+                  Condition / Sharpness
+                </div>
+                <div className="mt-1 text-2xl font-bold text-slate-100 font-mono">
+                  {player.condition ?? '--'}% / {player.sharpness ?? '--'}%
+                </div>
+                <div className="text-[11px] text-slate-400 mt-1">
+                  Stamina {a.stamina}/20
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'contract' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2 text-xs">
+                <h4 className="font-bold uppercase tracking-wider text-slate-400 mb-2">
+                  Season Production
+                </h4>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Apps / Minutes:</span>
+                  <span className="font-mono text-slate-200">
+                    {player.apps} ({player.minutes}m)
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Avg Rating:</span>
+                  <span className="font-mono text-emerald-300">
+                    {player.rating !== null ? player.rating.toFixed(2) : '--'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Goals (xG / per 90):</span>
+                  <span className="font-mono text-slate-200">
+                    {player.goals} ({player.xG.toFixed(2)} xG · {player.xGPer90.toFixed(2)}/90)
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Assists (xA / per 90):</span>
+                  <span className="font-mono text-slate-200">
+                    {player.assists} ({player.xA.toFixed(2)} xA · {player.xAPer90.toFixed(2)}/90)
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Tackling / Aerial Win %:</span>
+                  <span className="font-mono text-slate-200">
+                    {player.tckPct}% / {player.hdrPct}%
+                  </span>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2 text-xs">
+                <h4 className="font-bold uppercase tracking-wider text-slate-400 mb-2">
+                  Contract & Squad Standing
+                </h4>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Squad Status:</span>
+                  <span className="font-semibold text-slate-200">{player.status}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Weekly Wage:</span>
+                  <span className="font-mono text-slate-200">
+                    £{player.wagePw.toLocaleString()}/wk
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Contract Expires:</span>
+                  <span className="font-mono text-amber-300">{player.expires}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Relative Ability / Potential:</span>
+                  <span className="font-mono text-amber-300">
+                    {player.ability.toFixed(1)}★ / {player.potential.toFixed(1)}★
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
