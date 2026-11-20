@@ -185,6 +185,12 @@ function matchesPositionBucket(p: PlayerRecord, code: string): boolean {
   }
 }
 
+function playerStrengthScore(p: PlayerRecord): number {
+  const eng = computeFm27EngineMetrics(p);
+  const ratingBonus = typeof p.rating === 'number' && p.rating > 0 ? p.rating * 6 : 40;
+  return (p.ability || 2.5) * 28 + eng.physicalEngineScore * 0.45 + ratingBonus;
+}
+
 export function buildSquadTransferAudit(
   players: PlayerRecord[],
   saveDate: string,
@@ -217,7 +223,6 @@ export function buildSquadTransferAudit(
   const isOverWageBudget =
     wageHeadroomWeekly !== null && wageHeadroomWeekly < 0;
 
-  // Infer club size tier from weekly wage budget / payroll
   const scaleRef = wageBudgetWeekly || wagePayrollWeekly;
   const clubTierLabel =
     scaleRef >= 150_000
@@ -231,16 +236,16 @@ export function buildSquadTransferAudit(
   const strategyBullets: string[] = [];
   if (isInDebt && balanceNum !== null) {
     strategyBullets.push(
-      `Bank balance is NEGATIVE (${balanceNum < 0 ? '-' : ''}£${Math.abs(Math.round(balanceNum / 1000)).toLocaleString()}K) — avoid cash transfer fees; rely on free agents, zero-fee loans, and selling non-essential earners.`
+      `Bank balance is NEGATIVE (-£${Math.abs(Math.round(balanceNum / 1000)).toLocaleString()}K) — avoid cash fees; trim high-wage backups, promote U21 successors, and use free transfers/loans.`
     );
   }
   if (isOverWageBudget && wageHeadroomWeekly !== null) {
     strategyBullets.push(
-      `Over weekly wage budget by £${Math.abs(wageHeadroomWeekly).toLocaleString()}/wk — offload at least 1 unused/surplus earner or renegotiate expiring deals flat/lower.`
+      `Over weekly wage budget by £${Math.abs(wageHeadroomWeekly).toLocaleString()}/wk — offloading 1–2 backup earners or letting aging deals expire fixes compliance immediately.`
     );
   }
   strategyBullets.push(
-    'Protect U21 high-potential prospects (3.5★+ ceiling) on long deals—they are your primary resale & first-team growth assets.'
+    'Protect U21 high-potential prospects (3.5★+ ceiling) on long deals and let them replace pricier aging squad players.'
   );
 
   const clubProfile: ClubFinancialProfile = {
@@ -259,13 +264,14 @@ export function buildSquadTransferAudit(
     strategyBullets,
   };
 
-  // Compute 4-3-3 positional depth FIRST so individual player advice respects squad depth!
+  // Compute 4-3-3 positional depth & rank players inside every position bucket
   const bucketDefs = [
     {
       code: 'GK',
       label: 'Goalkeepers',
       idealMin: 2,
       idealMax: 3,
+      starterSlots: 1,
       scoutProfile: 'No-Nonsense GK IP / GK OOP — Decisions ≥ 11, Aerial/JR ≥ 12',
     },
     {
@@ -273,6 +279,7 @@ export function buildSquadTransferAudit(
       label: 'Right-Backs',
       idealMin: 2,
       idealMax: 3,
+      starterSlots: 1,
       scoutProfile: 'Full-Back IP / FB OOP — Pace ≥ 12, Acc ≥ 12, Stamina ≥ 12, Tackling ≥ 11',
     },
     {
@@ -280,6 +287,7 @@ export function buildSquadTransferAudit(
       label: 'Centre-Backs',
       idealMin: 4,
       idealMax: 5,
+      starterSlots: 2,
       scoutProfile: 'CB / Ball-Playing CB — Jumping Reach ≥ 13, Tackling ≥ 12, Pace ≥ 11',
     },
     {
@@ -287,6 +295,7 @@ export function buildSquadTransferAudit(
       label: 'Left-Backs',
       idealMin: 2,
       idealMax: 3,
+      starterSlots: 1,
       scoutProfile: 'Full-Back IP / FB OOP — Left-footed, Pace ≥ 12, Stamina ≥ 12, Tackling ≥ 11',
     },
     {
@@ -294,6 +303,7 @@ export function buildSquadTransferAudit(
       label: 'Defensive Mids',
       idealMin: 2,
       idealMax: 3,
+      starterSlots: 1,
       scoutProfile: 'DM IP / DM OOP — Tackling ≥ 12, Positioning ≥ 12, Stamina ≥ 12, Passing ≥ 11',
     },
     {
@@ -301,6 +311,7 @@ export function buildSquadTransferAudit(
       label: 'Central Mids',
       idealMin: 4,
       idealMax: 6,
+      starterSlots: 2,
       scoutProfile: 'CM / AM IP + WCM OOP — Passing ≥ 12, First Touch ≥ 12, Work Rate ≥ 12, Stamina ≥ 12',
     },
     {
@@ -308,6 +319,7 @@ export function buildSquadTransferAudit(
       label: 'Wingers / IFs',
       idealMin: 4,
       idealMax: 6,
+      starterSlots: 2,
       scoutProfile: 'Winger / IF IP + Tracking Winger OOP — Pace ≥ 13, Acc ≥ 13, Stamina ≥ 11, Work Rate ≥ 11',
     },
     {
@@ -315,6 +327,7 @@ export function buildSquadTransferAudit(
       label: 'Strikers',
       idealMin: 2,
       idealMax: 4,
+      starterSlots: 1,
       scoutProfile: 'Poacher / Channel Forward IP + Outlet CF OOP — Finishing ≥ 12, Off The Ball ≥ 12, Pace ≥ 13',
     },
   ];
@@ -322,7 +335,7 @@ export function buildSquadTransferAudit(
   const positionalNeeds: PositionalSigningNeed[] = bucketDefs.map((d) => {
     const matched = players
       .filter((p) => matchesPositionBucket(p, d.code))
-      .sort((a, b) => (b.ability || 0) - (a.ability || 0));
+      .sort((a, b) => playerStrengthScore(b) - playerStrengthScore(a));
     const status: PositionalSigningNeed['status'] =
       players.length === 0
         ? 'Balanced'
@@ -343,13 +356,52 @@ export function buildSquadTransferAudit(
     };
   });
 
-  const thinBucketCodes = new Set(
-    positionalNeeds
-      .filter((b) => b.currentCount <= b.idealMin)
-      .map((b) => b.code)
-  );
+  // Compute paid-player median wage (ignoring £0 youth/amateur deals) so wage benchmarks are realistic!
+  const paidWages = players
+    .map((p) => p.wagePw || 0)
+    .filter((w) => w > 0)
+    .sort((a, b) => a - b);
+  const medianPaidWage =
+    paidWages.length > 0
+      ? paidWages[Math.floor(paidWages.length / 2)]
+      : 200;
+  const highWageThreshold =
+    paidWages.length > 0
+      ? paidWages[Math.floor(paidWages.length * 0.65)]
+      : 300;
 
-  const avgWage = players.length > 0 ? squadWeeklyWageSum / players.length : 200;
+  const getPlayerBestBucketInfo = (p: PlayerRecord) => {
+    let bestBucket: PositionalSigningNeed | null = null;
+    let bestRank = 99;
+    let starterSlots = 1;
+    for (let i = 0; i < positionalNeeds.length; i++) {
+      const b = positionalNeeds[i];
+      const idx = b.players.findIndex((cand) => cand.id === p.id);
+      if (idx !== -1 && idx + 1 < bestRank) {
+        bestRank = idx + 1;
+        bestBucket = b;
+        starterSlots = bucketDefs[i].starterSlots;
+      }
+    }
+    return { bestBucket, bestRank, starterSlots };
+  };
+
+  const findInternalYouthSuccessor = (
+    p: PlayerRecord,
+    bucket: PositionalSigningNeed | null
+  ): PlayerRecord | null => {
+    if (!bucket) return null;
+    const youthCands = bucket.players
+      .filter(
+        (cand) =>
+          cand.id !== p.id &&
+          cand.age <= 22 &&
+          cand.potential >= 3.0 &&
+          (cand.wagePw || 0) < (p.wagePw || 0)
+      )
+      .sort((a, b) => (b.potential || 0) - (a.potential || 0));
+    return youthCands[0] || null;
+  };
 
   const playerAdvice: PlayerTransferAdvice[] = players.map((p) => {
     const expDate = parseContractDate(p.expires);
@@ -362,24 +414,33 @@ export function buildSquadTransferAudit(
     const isHighPotYouth =
       p.age <= 21 && (p.potential >= 3.5 || p.potential - p.ability >= 1.0);
     const isExpiringSoon = monthsLeft !== null && monthsLeft <= 11;
-    const isKeyContributor =
-      p.minutes >= 180 ||
-      p.ability >= 3.5 ||
-      (typeof p.rating === 'number' && p.rating >= 7.0);
-    const isThinPositionCover = bucketDefs.some(
-      (b) => thinBucketCodes.has(b.code) && matchesPositionBucket(p, b.code)
-    );
-    const isUnusedHighEarner =
-      (p.wagePw || 0) >= Math.max(180, avgWage * 0.95) &&
-      p.minutes < 90 &&
-      p.status !== 'Injured';
+
+    const { bestBucket, bestRank, starterSlots } = getPlayerBestBucketInfo(p);
+    const isTrueStarter = bestRank <= starterSlots;
+    const isPrimaryBackup = bestRank <= starterSlots + 1;
+    const isDeepSurplusRank =
+      bestBucket !== null && bestRank > Math.max(starterSlots + 1, bestBucket.idealMin);
+    const isThinPositionCover =
+      bestBucket !== null && bestBucket.currentCount <= bestBucket.idealMin;
+    const isOverstockedPos =
+      bestBucket !== null && bestBucket.status === 'Overstocked';
+    const youthSuccessor = findInternalYouthSuccessor(p, bestBucket);
+
+    const isHighEarner = (p.wagePw || 0) >= highWageThreshold && (p.wagePw || 0) > 0;
+    const isPaidSenior = p.age >= 22 && (p.wagePw || 0) >= Math.max(100, medianPaidWage * 0.7);
+    const isAgingExpensive = p.age >= 27 && isHighEarner && !isTrueStarter;
 
     const tags: string[] = [];
+    if (bestBucket) tags.push(`#${bestRank} ${bestBucket.code}`);
     if (isHighPotYouth) tags.push('Youth Asset');
-    if (isMentor) tags.push(`Mentor (${p.personality}, Det ${p.attributes.determination})`);
+    if (youthSuccessor && p.age >= 24) {
+      tags.push(`Youth Ready: ${youthSuccessor.name}`);
+    }
+    if (isMentor) tags.push(`Mentor (Det ${p.attributes.determination})`);
     else if (positivePers) tags.push(`${p.personality} (Det ${p.attributes.determination})`);
     else if (weakPers) tags.push(`Low Det (${p.attributes.determination})`);
-    if (isThinPositionCover) tags.push('Thin Depth Cover');
+    if (isThinPositionCover) tags.push('Thin Depth');
+    if (isOverstockedPos) tags.push('Overstocked Pos');
 
     let verdict: TransferActionVerdict = 'Hold';
     let priority: 'High' | 'Medium' | 'Low' = 'Low';
@@ -387,70 +448,100 @@ export function buildSquadTransferAudit(
     let rationale = '';
     let recommendedMove = '';
 
-    // 1. Protect High-Potential Youth FIRST (never dump high-ceiling U21s!)
+    // 1. Protect Expiring High-Potential Youth FIRST
     if (isHighPotYouth && isExpiringSoon) {
       verdict = 'Protect Youth Asset';
       priority = 'High';
-      const wageTarget = isInDebt || isOverWageBudget
-        ? Math.max(p.wagePw || 80, 100)
-        : Math.round(((p.wagePw || 100) * 1.1) / 10) * 10;
-      headline = `Tie down U21 prospect before Bosman window (${monthsLeft}m left)`;
-      rationale = `Age ${p.age} with ${p.ability.toFixed(1)}★ → ${p.potential.toFixed(1)}★ potential (${p.personality}, Det ${p.attributes.determination}). High resale & first-team upside for a ${clubTierLabel.toLowerCase()}.`;
-      recommendedMove = `Offer a 3-year deal (+ optional 1-yr club extension) around £${wageTarget}/wk; pair in a 3-player mentoring group.`;
-    } else if (isHighPotYouth && p.minutes < 120 && p.status !== 'Starter') {
+      const wageTarget =
+        isInDebt || isOverWageBudget
+          ? Math.max(p.wagePw || 80, 100)
+          : Math.round(((p.wagePw || 100) * 1.1) / 10) * 10;
+      headline = `Lock down U21 prospect before Bosman window (${monthsLeft}m left)`;
+      rationale = `Age ${p.age}, ${p.ability.toFixed(1)}★ → ${p.potential.toFixed(1)}★ ceiling (${p.personality}, Det ${p.attributes.determination}). High resale & first-team value for a ${clubTierLabel.toLowerCase()}.`;
+      recommendedMove = `Offer a 3-year deal (+ 1-yr optional club extension) around £${wageTarget}/wk and put in a 3-player mentoring group.`;
+    }
+    // 2. Fringe U21 Prospects -> Loan Out (Development)
+    else if (
+      isHighPotYouth &&
+      !isTrueStarter &&
+      (bestRank >= starterSlots + 2 || p.minutes < 180)
+    ) {
       verdict = 'Loan Out';
       priority = 'Medium';
-      headline = `Loan for match sharpness (${p.potential.toFixed(1)}★ ceiling, ${p.minutes}m played)`;
-      rationale = `Age ${p.age} prospect (${p.personality}, Det ${p.attributes.determination}) needs regular starts to reach ${p.potential.toFixed(1)}★ potential rather than stalling on the bench.`;
-      recommendedMove = `Place on Development List as Regular Starter (ask 50–100% wage cover to save up to £${p.wagePw}/wk while he develops).`;
-    } else if (isExpiringSoon && isKeyContributor) {
-      verdict = 'Renew Now';
-      priority = monthsLeft !== null && monthsLeft <= 6 ? 'High' : 'Medium';
-      const wageCap =
-        isInDebt || isOverWageBudget
-          ? p.wagePw || 150
-          : Math.round(((p.wagePw || 150) * 1.1) / 10) * 10;
-      headline = `Key starter expiring in ${monthsLeft}m — renew on disciplined terms`;
-      rationale = `${p.ability.toFixed(1)}★ ${p.position} (${p.minutes}m, Engine ${eng.physicalEngineScore}/100, ${p.personality}) is a core contributor. ${isInDebt ? 'Because club balance is negative, hold firm on wages.' : 'Locking him in prevents a free exit.'}`;
-      recommendedMove = `Offer a ${p.age >= 30 ? '1-year' : '2-year'} extension capped at ≤ £${wageCap}/wk (no automatic yearly wage-rise clause).`;
-    } else if (isExpiringSoon && !isKeyContributor && !isHighPotYouth) {
-      if (isThinPositionCover && (p.wagePw || 0) <= avgWage) {
-        verdict = 'Hold';
-        priority = 'Medium';
-        headline = `Cheap depth at thin position — keep until replacement arrives`;
-        rationale = `Expires in ${monthsLeft}m on affordable £${p.wagePw}/wk, and you are thin at ${p.position}. ${isMentor ? 'Also provides positive mentoring influence.' : ''}`;
-        recommendedMove = `Wait until spring; only renew on a flat 1-year squad-player deal if you cannot sign a stronger free agent.`;
+      headline = `Loan for starts (${p.potential.toFixed(1)}★ ceiling · #${bestRank} ${bestBucket?.code || p.position})`;
+      rationale = `Age ${p.age} prospect needs regular senior matches to reach ${p.potential.toFixed(1)}★ potential rather than sitting behind senior starters.`;
+      recommendedMove = `Add to Development List as Regular Starter (ask 50–100% wage cover to save up to £${p.wagePw}/wk while developing).`;
+    }
+    // 3. Expiring Contracts (<= 11m): Separate True Starters (Renew) from Backups/Aging (Let Expire / Keep Until Out)
+    else if (isExpiringSoon) {
+      const shouldRenew =
+        (isTrueStarter && p.age <= 30 && p.ability >= 3.0) ||
+        (isPrimaryBackup && p.age <= 25 && p.ability >= 3.5 && !isOverstockedPos);
+
+      if (shouldRenew) {
+        verdict = 'Renew Now';
+        priority = monthsLeft !== null && monthsLeft <= 6 ? 'High' : 'Medium';
+        const wageCap =
+          isInDebt || isOverWageBudget
+            ? p.wagePw || 150
+            : Math.round(((p.wagePw || 150) * 1.1) / 10) * 10;
+        headline = `Core #${bestRank} ${bestBucket?.code || p.position} expiring in ${monthsLeft}m — renew on disciplined terms`;
+        rationale = `${p.ability.toFixed(1)}★ starter (Engine ${eng.physicalEngineScore}/100, ${p.personality}). ${isInDebt ? 'Because the club is in debt, hold wages flat.' : 'Prevent a free Bosman exit.'}`;
+        recommendedMove = `Offer a ${p.age >= 29 ? '1-year' : '2-year'} extension capped at ≤ £${wageCap}/wk (no automatic yearly wage-rise clause).`;
       } else {
         verdict = 'Let Expire';
-        priority = isInDebt || isOverWageBudget || weakPers ? 'High' : 'Medium';
-        headline = `Free wage exit in ${monthsLeft}m (clears £${p.wagePw}/wk)`;
-        rationale = `Age ${p.age}, ${p.ability.toFixed(1)}★/${p.potential.toFixed(1)}★, only ${p.minutes}m played on £${p.wagePw}/wk (£${annualWage.toLocaleString()}/yr)${weakPers ? ` with weak Determination (${p.attributes.determination})` : ''}.`;
-        recommendedMove = `Do not renew — let contract expire on ${p.expires}${isOverWageBudget ? ' (or offer free/low fee in January to fix your wage deficit immediately)' : ''}.`;
+        priority = isHighEarner || isInDebt || isOverWageBudget ? 'High' : 'Medium';
+        headline = `Keep until contract ends in ${monthsLeft}m — free £${p.wagePw}/wk exit`;
+        rationale = `#${bestRank} ${bestBucket?.code || p.position} (Age ${p.age}, ${p.ability.toFixed(1)}★/${p.potential.toFixed(1)}★, £${p.wagePw}/wk = £${annualWage.toLocaleString()}/yr). ${youthSuccessor ? `${youthSuccessor.name} (Age ${youthSuccessor.age}, £${youthSuccessor.wagePw}/wk) is ready to step up.` : 'Not worth committing fresh wages while managing club finances.'}`;
+        recommendedMove = youthSuccessor
+          ? `Keep for squad depth until ${p.expires}, then let expire and promote ${youthSuccessor.name} (net saving £${Math.max(0, (p.wagePw || 0) - (youthSuccessor.wagePw || 0))}/wk).`
+          : `Keep as cheap cover until ${p.expires}, then let contract expire (or accept any small Jan fee to clear £${p.wagePw}/wk early).`;
       }
-    } else if (isUnusedHighEarner || (p.status === 'Surplus' && (p.wagePw || 0) > 0)) {
-      if (isThinPositionCover) {
+    }
+    // 4. Sell / Transfer List vs Replace Before Selling (Active Contracts > 11m)
+    else if (
+      isPaidSenior &&
+      (isDeepSurplusRank ||
+        isAgingExpensive ||
+        (isOverstockedPos && !isTrueStarter) ||
+        (isHighEarner && p.minutes < 180 && !isTrueStarter) ||
+        (isInDebt && isHighEarner && youthSuccessor !== null && p.age >= 25))
+    ) {
+      const netSaveYouth = youthSuccessor
+        ? Math.max(0, (p.wagePw || 0) - (youthSuccessor.wagePw || 0))
+        : p.wagePw || 0;
+
+      if (isThinPositionCover && !youthSuccessor) {
         verdict = 'Replace Before Selling';
         priority = 'High';
-        headline = `High wage (£${p.wagePw}/wk) but thin depth at ${p.position}`;
-        rationale = `Earning £${p.wagePw}/wk with ${p.minutes}m played, which hurts ${isInDebt ? 'your negative balance' : 'wage efficiency'}, BUT selling him before signing cover leaves ${p.position} exposed.`;
-        recommendedMove = `Scout a cheaper free/loan replacement at ${p.position} first, then transfer-list to save £${p.wagePw}/wk (£${annualWage.toLocaleString()}/yr).`;
+        headline = `Sell £${p.wagePw}/wk earner AFTER signing cheaper ${bestBucket?.code || p.position} cover`;
+        rationale = `Earning £${p.wagePw}/wk (£${annualWage.toLocaleString()}/yr) as #${bestRank} ${bestBucket?.code || p.position} (Age ${p.age}, ${p.ability.toFixed(1)}★), which strains ${isInDebt ? 'your negative balance' : 'your wage budget'} — but depth is thin here with no U21 ready.`;
+        recommendedMove = `Line up a cheaper free-agent or zero-fee loan replacement at ${bestBucket?.code || p.position} first, then sell via TransferRoom to clear £${p.wagePw}/wk.`;
       } else {
         verdict = 'Sell / Transfer List';
         priority = 'High';
-        headline = `Offload to cut £${p.wagePw}/wk (£${annualWage.toLocaleString()}/yr)`;
-        rationale = `High earner with ${p.minutes}m played (Age ${p.age}, ${p.ability.toFixed(1)}★/${p.potential.toFixed(1)}★${weakPers ? `, Det ${p.attributes.determination}` : ''}). ${isInDebt || isOverWageBudget ? 'Directly helps clear your club debt & wage budget deficit.' : 'Frees budget for priority positions.'}`;
-        recommendedMove = `Transfer list & offer via TransferRoom (even a nominal fee or 100%-wage loan saves £${p.wagePw}/wk immediately).`;
+        headline = youthSuccessor
+          ? `Sell (£${p.wagePw}/wk) & promote youth ${youthSuccessor.name} (£${youthSuccessor.wagePw}/wk)`
+          : `Transfer list to cut £${p.wagePw}/wk (£${annualWage.toLocaleString()}/yr)`;
+        rationale = `#${bestRank} ${bestBucket?.code || p.position} (Age ${p.age}, ${p.ability.toFixed(1)}★/${p.potential.toFixed(1)}★${weakPers ? `, Det ${p.attributes.determination}` : ''}). ${isOverstockedPos ? `${bestBucket?.label} is overstocked (${bestBucket?.currentCount} players). ` : ''}${isInDebt || isOverWageBudget ? 'Selling directly reduces club debt & wage overspend.' : 'Frees wage budget for priority upgrades.'}`;
+        recommendedMove = youthSuccessor
+          ? `Transfer list & offer via TransferRoom; hand his minutes to ${youthSuccessor.name} (${youthSuccessor.ability.toFixed(1)}★/${youthSuccessor.potential.toFixed(1)}★) to save £${netSaveYouth}/wk (£${(netSaveYouth * 52).toLocaleString()}/yr).`
+          : `Transfer list & offer via TransferRoom (even a nominal fee or 100%-wage loan saves £${p.wagePw}/wk immediately).`;
       }
-    } else {
+    }
+    // 5. Hold (Core starters, cheap mentors, or balanced squad depth)
+    else {
       verdict = 'Hold';
       priority = 'Low';
       headline = isMentor
-        ? `Valuable senior mentor (${p.personality}, Det ${p.attributes.determination})`
-        : `Balanced squad contributor (${p.expires === 'N/A' ? 'Non-contract' : `exp ${p.expires}`})`;
-      rationale = `${p.ability.toFixed(1)}★/${p.potential.toFixed(1)}★, ${p.minutes}m, Engine ${eng.physicalEngineScore}/100 on £${p.wagePw}/wk${isMentor ? ' — strong mentoring anchor for U21 prospects.' : '.'}`;
+        ? `Senior mentor (#${bestRank} ${bestBucket?.code || p.position} · ${p.personality})`
+        : isTrueStarter
+          ? `Core starter (#${bestRank} ${bestBucket?.code || p.position} · exp ${p.expires})`
+          : `Balanced squad depth (#${bestRank} ${bestBucket?.code || p.position} · exp ${p.expires})`;
+      rationale = `${p.ability.toFixed(1)}★/${p.potential.toFixed(1)}★, Engine ${eng.physicalEngineScore}/100, £${p.wagePw}/wk${isMentor ? ' — strong mentoring anchor for U21 prospects.' : ' — fits squad & budget structure.'}`;
       recommendedMove = isMentor
         ? `Keep in squad and anchor a 3-player mentoring group with 2 U21 prospects.`
-        : `Keep in ${p.ipRole} (IP) / ${p.oopRole} (OOP) rotation; review next window.`;
+        : `Keep in ${p.ipRole} (IP) / ${p.oopRole} (OOP) rotation; reassess next window.`;
     }
 
     return {
@@ -467,10 +558,10 @@ export function buildSquadTransferAudit(
   });
 
   const verdictOrder: Record<TransferActionVerdict, number> = {
-    'Protect Youth Asset': 0,
-    'Renew Now': 1,
-    'Sell / Transfer List': 2,
-    'Replace Before Selling': 3,
+    'Sell / Transfer List': 0,
+    'Replace Before Selling': 1,
+    'Protect Youth Asset': 2,
+    'Renew Now': 3,
     'Let Expire': 4,
     'Loan Out': 5,
     Hold: 6,

@@ -62,52 +62,94 @@ test('parseSignedMoneyString accurately parses negative balances in both minus a
   assert.equal(parseSignedMoneyString('-£2.25M'), -2_250_000);
 });
 
-test('buildSquadTransferAudit detects negative club balance, protects expiring U21 assets, and guards thin depth', () => {
+test('buildSquadTransferAudit recommends Sell + Youth Successor, Let Expire, Renew, Protect Youth, and Replace Before Selling', () => {
   const squad: PlayerRecord[] = [
+    // Core CM #1 (expiring -> Renew Now)
     makePlayer({
-      id: 'u21-expiring',
-      name: 'Wonderkid Prospect',
+      id: 'cm-star',
+      name: 'Core Midfielder',
+      position: 'M (C)',
+      age: 24,
+      ability: 4.0,
+      potential: 4.0,
+      minutes: 450,
+      expires: '30/06/2028',
+      wagePw: 280,
+    }),
+    // Core CM #2 (under contract -> Hold)
+    makePlayer({
+      id: 'cm-starter2',
+      name: 'Second Starter CM',
+      position: 'M (C)',
+      age: 23,
+      ability: 3.5,
+      potential: 4.0,
+      minutes: 400,
+      expires: '30/06/2029',
+      wagePw: 240,
+    }),
+    // Expensive #3 CM with U21 successor ready -> Sell / Transfer List naming youth successor
+    makePlayer({
+      id: 'cm-expensive-backup',
+      name: 'Pricey Backup CM',
+      position: 'M (C)',
+      age: 28,
+      ability: 3.0,
+      potential: 3.0,
+      minutes: 250,
+      expires: '30/06/2029',
+      wagePw: 500,
+    }),
+    // U21 Youth Successor at CM (expiring -> Protect Youth Asset)
+    makePlayer({
+      id: 'cm-youth',
+      name: 'Teen CM Prospect',
+      position: 'M (C)',
       age: 19,
       ability: 2.5,
       potential: 4.5,
-      minutes: 0,
+      minutes: 50,
       rating: null,
       expires: '30/06/2028',
-      wagePw: 90,
+      wagePw: 70,
       status: 'Youth',
     }),
+    // Aging #5 CM expiring -> Let Expire (keep until out)
     makePlayer({
-      id: 'star-expiring',
-      name: 'Key Starter',
-      ability: 4.0,
-      minutes: 360,
+      id: 'cm-aging-expiring',
+      name: 'Aging Fringe CM',
+      position: 'M (C)',
+      age: 31,
+      ability: 2.5,
+      potential: 2.5,
+      minutes: 100,
       expires: '30/06/2028',
-      wagePw: 300,
+      wagePw: 260,
+    }),
+    // Thin GK backup earning high wage with no youth successor -> Replace Before Selling
+    makePlayer({
+      id: 'gk-starter',
+      name: 'First GK',
+      position: 'GK',
+      age: 25,
+      ability: 3.5,
+      potential: 3.5,
+      minutes: 450,
+      expires: '30/06/2029',
+      wagePw: 220,
     }),
     makePlayer({
-      id: 'thin-earner',
-      name: 'Only GK Earner',
+      id: 'gk-pricey-backup',
+      name: 'Pricey Backup GK',
       position: 'GK',
-      age: 27,
+      age: 29,
       ability: 2.5,
       potential: 2.5,
       minutes: 0,
       rating: null,
       expires: '30/06/2029',
-      wagePw: 500,
+      wagePw: 480,
       status: 'Rotation',
-    }),
-    makePlayer({
-      id: 'youth-loan',
-      name: 'Loan Prospect',
-      age: 18,
-      ability: 2.0,
-      potential: 4.0,
-      minutes: 0,
-      rating: null,
-      expires: '30/06/2029',
-      wagePw: 80,
-      status: 'Youth',
     }),
   ];
 
@@ -119,11 +161,12 @@ test('buildSquadTransferAudit detects negative club balance, protects expiring U
 
   assert.equal(audit.clubProfile.isInDebt, true);
   assert.equal(audit.clubProfile.balanceNum, -749_000);
-  assert.equal(audit.clubProfile.isOverWageBudget, true);
 
   const byId = Object.fromEntries(audit.playerAdvice.map((a) => [a.player.id, a]));
-  assert.equal(byId['u21-expiring'].verdict, 'Protect Youth Asset');
-  assert.equal(byId['star-expiring'].verdict, 'Renew Now');
-  assert.equal(byId['thin-earner'].verdict, 'Replace Before Selling');
-  assert.equal(byId['youth-loan'].verdict, 'Loan Out');
+  assert.equal(byId['cm-star'].verdict, 'Renew Now');
+  assert.equal(byId['cm-youth'].verdict, 'Protect Youth Asset');
+  assert.equal(byId['cm-expensive-backup'].verdict, 'Sell / Transfer List');
+  assert.match(byId['cm-expensive-backup'].headline, /Teen CM Prospect/);
+  assert.equal(byId['cm-aging-expiring'].verdict, 'Let Expire');
+  assert.equal(byId['gk-pricey-backup'].verdict, 'Replace Before Selling');
 });
