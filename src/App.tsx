@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Users } from 'lucide-react';
 import { KVV_ZELZATE_META, SQUAD_PLAYERS } from './data/squadData';
 import { COMPETITIVE_MATCH_LOGS } from './data/matchAndTacticsData';
@@ -28,6 +28,15 @@ import { SquadAnalyticsTable } from './components/SquadAnalyticsTable';
 import { SetPiecesAndTraining } from './components/SetPiecesAndTraining';
 import { MatchLogArchive } from './components/MatchLogArchive';
 import { LiveFmSaveProofCard } from './components/LiveFmSaveProofCard';
+import {
+  loadPersistedFmState,
+  savePersistedFmState,
+  clearPersistedFmState,
+  recordPreviousSnapshot,
+  exportFmStateBackupJson,
+  importFmStateBackupJson,
+} from './services/fmStorage';
+import { Download, Upload, Trash2, Database } from 'lucide-react';
 
 type ActiveTab = 'sync' | 'tactics' | 'squad' | 'setpieces' | 'matches';
 
@@ -47,8 +56,117 @@ export default function App() {
   const [hydratedFmSave, setHydratedFmSave] = useState<HydratedSaveState | null>(
     null
   );
+  const [isRestoredFromMemory, setIsRestoredFromMemory] = useState<boolean>(false);
+  const [lastSyncedTimestamp, setLastSyncedTimestamp] = useState<string | null>(null);
+  const backupFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Restore saved state from previous session on initial mount
+  useEffect(() => {
+    const saved = loadPersistedFmState();
+    if (saved && (saved.players.length > 0 || saved.matches.length > 0)) {
+      setPlayers(saved.players);
+      setMatches(saved.matches);
+      if (saved.saveDate) setSaveDate(saved.saveDate);
+      if (saved.nextFixture) setNextFixture(saved.nextFixture);
+      if (saved.leagueStandingSub) setLeagueStandingSub(saved.leagueStandingSub);
+      if (saved.wageSpend) setWageSpend(saved.wageSpend);
+      if (saved.balance) setBalance(saved.balance);
+      if (saved.hydratedFmSave) setHydratedFmSave(saved.hydratedFmSave);
+      setIsRestoredFromMemory(true);
+      setLastSyncedTimestamp(saved.lastSyncedAt);
+    }
+  }, []);
+
+  // Automatically persist non-empty state across browser refreshes & sessions
+  useEffect(() => {
+    if (players.length > 0 || matches.length > 0) {
+      savePersistedFmState({
+        saveDate,
+        nextFixture,
+        leagueStandingSub,
+        wageSpend,
+        balance,
+        clubName: hydratedFmSave?.decodedPayload.meta.clubName,
+        players,
+        matches,
+        hydratedFmSave,
+      });
+      setIsRestoredFromMemory(true);
+    }
+  }, [
+    players,
+    matches,
+    saveDate,
+    nextFixture,
+    leagueStandingSub,
+    wageSpend,
+    balance,
+    hydratedFmSave,
+  ]);
 
   const summary = computeCompetitiveSummary(matches);
+
+  const handleClearMemory = () => {
+    const confirmed = window.confirm(
+      'Clear saved FM27 memory and return to clean "Awaiting .fm Save" state?'
+    );
+    if (!confirmed) return;
+
+    clearPersistedFmState();
+    setPlayers(SQUAD_PLAYERS);
+    setMatches(COMPETITIVE_MATCH_LOGS);
+    setSaveDate(KVV_ZELZATE_META.saveDate);
+    setNextFixture(KVV_ZELZATE_META.nextFixture);
+    setLeagueStandingSub('--');
+    setWageSpend(KVV_ZELZATE_META.wageSpend);
+    setBalance(KVV_ZELZATE_META.balance);
+    setHydratedFmSave(null);
+    setIsRestoredFromMemory(false);
+    setLastSyncedTimestamp(null);
+  };
+
+  const handleExportBackup = () => {
+    const json = exportFmStateBackupJson();
+    if (!json) {
+      alert('No save data currently in memory to export.');
+      return;
+    }
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `fm27-hub-backup-${saveDate.replace(/\//g, '-')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (!text) return;
+      const imported = importFmStateBackupJson(text);
+      if (imported) {
+        setPlayers(imported.players);
+        setMatches(imported.matches);
+        setSaveDate(imported.saveDate);
+        setNextFixture(imported.nextFixture);
+        setLeagueStandingSub(imported.leagueStandingSub);
+        setWageSpend(imported.wageSpend);
+        setBalance(imported.balance);
+        setHydratedFmSave(imported.hydratedFmSave);
+        setIsRestoredFromMemory(true);
+        setLastSyncedTimestamp(imported.lastSyncedAt);
+      } else {
+        alert('Invalid FM27 backup file format.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
 
   const handleAddMatch = (newMatch: MatchLogEntry) => {
     setMatches((prev) => [newMatch, ...prev]);
@@ -60,6 +178,9 @@ export default function App() {
   const handleApplyDecodedFmSave = (
     decoded: DecodedFmSavePayload
   ): HydratedSaveState => {
+    // Record current snapshot before applying new save for delta / progression tracking
+    recordPreviousSnapshot(saveDate, players, matches);
+
     const hydrated = hydrateAppFromDecodedFmSave(decoded, players, matches);
     setHydratedFmSave(hydrated);
     setPlayers(hydrated.updatedSquad);
@@ -217,8 +338,50 @@ export default function App() {
           </button>
         </nav>
 
-        {/* Zone 3: 1 primary action */}
-        <div className="order-2 lg:order-3 flex items-center gap-3 shrink-0">
+        {/* Zone 3: Actions & Memory Controls */}
+        <div className="order-2 lg:order-3 flex items-center gap-2 shrink-0">
+          <input
+            ref={backupFileInputRef}
+            type="file"
+            accept=".json"
+            onChange={handleImportBackup}
+            className="hidden"
+          />
+
+          {players.length > 0 ? (
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleExportBackup}
+                title="Export campaign snapshot as JSON backup"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="hidden sm:inline">Backup</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleClearMemory}
+                title="Clear saved memory and return to clean Awaiting Save state"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:text-red-400 bg-slate-800/80 hover:bg-red-950/40 border border-slate-700/80 hover:border-red-800/50 rounded-lg transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Reset</span>
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => backupFileInputRef.current?.click()}
+              title="Restore previous campaign from a JSON backup file"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer"
+            >
+              <Upload className="w-3.5 h-3.5 text-blue-400" />
+              <span className="hidden sm:inline">Restore Backup</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() =>
@@ -262,6 +425,13 @@ export default function App() {
                     ? `LIVE .FM SYNCED (${hydratedFmSave.decodedPayload.meta.fileName || hydratedFmSave.decodedPayload.meta.saveName || '.fm'})`
                     : 'AWAITING .FM SAVE — DROP .FM SAVE TO SYNC'}
                 </span>
+
+                {isRestoredFromMemory && players.length > 0 && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-mono font-semibold rounded bg-blue-500/15 text-blue-300 border border-blue-500/30">
+                    <Database className="w-3 h-3 text-blue-400" />
+                    PERSISTENT MEMORY ACTIVE
+                  </span>
+                )}
               </div>
               <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100 mt-1">
                 {hydratedFmSave
