@@ -14,6 +14,7 @@ import {
   computeFm27EngineMetrics,
 } from './fmSyncEngine';
 import { HydratedSaveState } from './fmSaveHydrator';
+import { buildSquadTransferAudit } from './transferAudit';
 
 export type AnalystReasoningMode = 'deep_high' | 'max_xhigh' | 'fast_lite';
 
@@ -299,51 +300,63 @@ ${subLines.length > 0 ? subLines.join('\n') : '  * No automated subs required'}
     );
   }
 
-  // 4. Full Squad Database Table with Patch 27.1.0 Physical Metrics (Stars + Engine Metrics only, NEVER raw CA/PA)
-  const squadLines = players.slice(0, 45).map((p) => {
+  // 4. Compact Managed Squad Digest (Top 28 active players — Stars + Key Attributes only, NEVER raw CA/PA)
+  const squadLines = players.slice(0, 28).map((p) => {
     const a = p.attributes;
     const eng = computeFm27EngineMetrics(p);
     const starStr = `${p.ability.toFixed(1)}★/${p.potential.toFixed(1)}★`;
-    return `- #${p.number} ${p.name} [${p.position} | ${p.status} | Age ${p.age} | ${p.preferredFoot || 'Right'} Foot | ${starStr} | Cond ${p.condition ?? '?'}% | £${p.wagePw}/wk exp ${p.expires}]: Apps ${p.apps} (${p.minutes}m), Rat ${p.rating !== null ? p.rating.toFixed(2) : '-'}, ${p.goals}G (${p.xG.toFixed(2)} xG, ${p.xGPer90.toFixed(2)}/90), ${p.assists}A (${p.xA.toFixed(2)} xA, ${p.xAPer90.toFixed(2)}/90), Drb ${p.drbPer90}/90, PrP ${p.prPassesPer90}/90, Hdr ${p.hdrPct}%, Int ${p.intPer90}/90, Tck ${p.tckPct}% | Attrs: Pac ${a.pace} Acc ${a.acceleration} Sta ${a.stamina} JR ${a.jumpingReach} Hdr ${a.heading ?? 10} Det ${a.determination} Pas ${a.passing} Fin ${a.finishing} Tck ${a.tackling} Fir ${a.firstTouch} Dec ${a.decisions} WR ${a.workRate} OtB ${a.offTheBall} Cor ${a.corners ?? 10} Cro ${a.crossing ?? 10} Tec ${a.technique ?? 10} Pos ${a.positioning ?? 10} Str ${a.strength ?? 10} Ldr ${a.leadership ?? 10} | Patch 27.1.0 Engine: ${eng.topSpeedMps} m/s Sprint, +${eng.jumpHeightMeters}m Jump, Score ${eng.physicalEngineScore}/100 | Roles: IP=${p.ipRole} / OOP=${p.oopRole} | Notes: ${p.notes}`;
+    return `- #${p.number} ${p.name} [${p.position} | ${p.status} | Age ${p.age} | ${starStr} | Cond ${p.condition ?? '?'}% | £${p.wagePw}/wk exp ${p.expires} | ${p.personality}]: ${p.minutes}m, Rat ${p.rating !== null ? p.rating.toFixed(2) : '-'}, ${p.goals}G/${p.assists}A | Pac ${a.pace} Acc ${a.acceleration} Sta ${a.stamina} JR ${a.jumpingReach} Det ${a.determination} Pas ${a.passing} Fin ${a.finishing} Tck ${a.tackling} Dec ${a.decisions} | Speed ${eng.topSpeedMps}m/s | IP=${p.ipRole} / OOP=${p.oopRole}`;
   });
 
   sections.push(
-    `=== FULL MANAGED SQUAD DATABASE (${players.length} PLAYERS) ===\n${squadLines.join('\n')}`
+    `=== MANAGED SQUAD DIGEST (${Math.min(players.length, 28)} OF ${players.length} PLAYERS) ===\n${squadLines.join('\n')}`
+  );
+
+  // 4b. Unified Transfer, Contract & Debt Audit Summary (Single Source of Truth with Transfers tab)
+  const transferAudit = buildSquadTransferAudit(players, saveDate, {
+    balanceNum: decoded?.finances?.balance ?? null,
+    wagePayrollWeekly: decoded?.finances?.wagePayrollWeekly ?? null,
+    wageBudgetWeekly: decoded?.finances?.wageBudgetWeekly ?? null,
+    balanceLabel: balance,
+    wageSpendLabel: wageSpend,
+  });
+  const keyActions = transferAudit.playerAdvice
+    .filter((a) => a.verdict !== 'Hold')
+    .slice(0, 12)
+    .map(
+      (a) =>
+        `  * [${a.verdict}] ${a.player.name} (${a.player.position}, Age ${a.player.age}, £${a.player.wagePw}/wk, exp ${a.player.expires}): ${a.headline}`
+    );
+  sections.push(
+    `=== UNIFIED TRANSFERS & CONTRACT AUDIT (MATCHES TRANSFERS TAB) ===
+- Club Profile: ${transferAudit.clubProfile.strategyHeadline}
+- Potential Weekly Wage Savings: £${transferAudit.potentialWeeklySavings.toLocaleString()}/wk (${transferAudit.expiringWithin12mCount} expiring ≤12m)
+${keyActions.length > 0 ? keyActions.join('\n') : '  * Squad balanced — no urgent sales required.'}`
   );
 
   if (state.recruitmentCases && state.recruitmentCases.length > 0) {
-    const recLines = state.recruitmentCases.slice(0, 15).map(
+    const recLines = state.recruitmentCases.slice(0, 10).map(
       (c) =>
-        `- ${c.playerName} (${c.position}, ${c.currentClub || 'Free/Unknown'}) | Stage: ${c.stage} | Interest: ${c.interest} | Est Fee: ${c.estimatedFee || '--'} | Target Roles: IP=${c.targetIpRole || '--'} / OOP=${c.targetOopRole || '--'}`
+        `- ${c.playerName} (${c.position}, ${c.currentClub || 'Free/Unknown'}) | Stage: ${c.stage} | Est Fee: ${c.estimatedFee || '--'}`
     );
     sections.push(
       `=== ACTIVE RECRUITMENT PIPELINE (${state.recruitmentCases.length} TARGETS) ===\n${recLines.join('\n')}`
     );
   }
 
-  if (state.staff && state.staff.length > 0) {
-    const staffLines = state.staff.slice(0, 20).map(
-      (s) =>
-        `- ${s.name} (${s.role}, Age ${s.age}, £${s.wagePw}/wk exp ${s.expires})`
-    );
-    sections.push(
-      `=== CLUB BACKROOM STAFF (${state.staff.length} STAFF) ===\n${staffLines.join('\n')}`
-    );
-  }
-
-  // 5. Recent Played Match Log & Upcoming Fixtures
+  // 5. Recent Played Match Log (10 most recent)
   if (matches.length > 0) {
-    const matchLines = matches.slice(0, 20).map((m) => {
+    const matchLines = matches.slice(0, 10).map((m) => {
       const xgPart =
         m.xGFor !== null && m.xGAgainst !== null
           ? ` | xG ${m.xGFor.toFixed(2)}-${m.xGAgainst.toFixed(2)}`
           : '';
       const possPart =
         m.possession !== null ? ` | Poss ${m.possession}%` : '';
-      return `- Event #${m.eventNumber} (${m.date}) [${m.competition}] vs ${m.opponent} (${m.venue}): ${m.result} ${m.score}${xgPart}${possPart} | Shots ${m.shotsFor} vs ${m.shotsAgainst} | Audit: ${m.tacticalAudit}`;
+      return `- ${m.date} [${m.competition}] vs ${m.opponent} (${m.venue}): ${m.result} ${m.score}${xgPart}${possPart}`;
     });
     sections.push(
-      `=== PLAYED MATCH LOG (${matches.length} TOTAL MATCHES, NEWEST FIRST) ===\n${matchLines.join('\n')}`
+      `=== RECENT PLAYED MATCHES (${Math.min(matches.length, 10)} OF ${matches.length}, NEWEST FIRST) ===\n${matchLines.join('\n')}`
     );
   }
 

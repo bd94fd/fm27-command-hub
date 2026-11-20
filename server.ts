@@ -393,9 +393,7 @@ Key Playbook v2.0 Rules:
       const thinkingConfig =
         reasoningMode === 'max_xhigh'
           ? { thinkingLevel: ThinkingLevel.HIGH }
-          : reasoningMode === 'fast_lite'
-            ? { thinkingLevel: ThinkingLevel.LOW }
-            : { thinkingLevel: ThinkingLevel.HIGH };
+          : { thinkingLevel: ThinkingLevel.LOW };
 
       const systemPrompt = `You are Bobby Dean's interactive Football Manager 27 Chief Tactical Analyst, Match Engine Physicist & Master Sheet Co-Pilot for ${targetClub}.
 
