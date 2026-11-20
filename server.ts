@@ -6,19 +6,36 @@ import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 
 dotenv.config();
 
-const rawDefaultModel = process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview';
-const DEFAULT_GEMINI_MODEL =
-  rawDefaultModel === 'gemini-2.5-pro'
-    ? 'gemini-3.1-pro-preview'
-    : rawDefaultModel;
-const FAST_GEMINI_MODEL =
-  process.env.GEMINI_FAST_MODEL || 'gemini-3-flash-preview';
-
-const MODEL_FALLBACK_CHAIN = [
+const RETIRED_MODELS = new Set([
+  'gemini-2.5-pro',
+  'gemini-2.5-flash',
   'gemini-3.1-pro-preview',
   'gemini-3-flash-preview',
-  'gemini-2.5-flash',
+]);
+
+function resolveActiveModel(envVal: string | undefined, fallback: string): string {
+  const trimmed = (envVal || '').trim();
+  if (!trimmed || RETIRED_MODELS.has(trimmed)) return fallback;
+  return trimmed;
+}
+
+const DEFAULT_GEMINI_MODEL = resolveActiveModel(
+  process.env.GEMINI_MODEL,
+  'gemini-3.8-flash'
+);
+const FAST_GEMINI_MODEL = resolveActiveModel(
+  process.env.GEMINI_FAST_MODEL,
+  'gemini-3.8-flash'
+);
+
+const MODEL_FALLBACK_CHAIN = [
+  'gemini-3.8-flash',
+  'gemini-3.8-pro',
+  'gemini-3.5-flash',
+  'gemini-3.5-pro',
 ];
+
+let discoveredLiveModel: string | null = null;
 
 function createGeminiClient(apiKey: string) {
   return new GoogleGenAI({
@@ -29,26 +46,58 @@ function createGeminiClient(apiKey: string) {
   });
 }
 
+async function discoverLiveGeminiModel(ai: GoogleGenAI): Promise<string | null> {
+  if (discoveredLiveModel) return discoveredLiveModel;
+  try {
+    const pager = await ai.models.list();
+    const available: string[] = [];
+    for await (const m of pager) {
+      const name = (m.name || '').replace(/^models\//, '');
+      const actions = (m as { supportedActions?: string[] }).supportedActions || [];
+      if (
+        name.startsWith('gemini-') &&
+        !name.includes('embedding') &&
+        !name.includes('tts') &&
+        !name.includes('imagen') &&
+        (actions.length === 0 || actions.includes('generateContent'))
+      ) {
+        available.push(name);
+      }
+    }
+    // Prefer flash/pro latest versions (descending lexicographical puts 3.8 > 3.5 > 3.1 > 2.5)
+    available.sort((a, b) => b.localeCompare(a));
+    if (available.length > 0) {
+      discoveredLiveModel = available[0];
+      return discoveredLiveModel;
+    }
+  } catch {
+    // ignore discovery errors
+  }
+  return null;
+}
+
 async function generateContentWithFallback(
   ai: GoogleGenAI,
   preferredModel: string,
   params: Omit<Parameters<GoogleGenAI['models']['generateContent']>[0], 'model'>
 ) {
   const candidates = Array.from(
-    new Set([preferredModel, ...MODEL_FALLBACK_CHAIN])
+    new Set([
+      ...(discoveredLiveModel ? [discoveredLiveModel] : []),
+      preferredModel,
+      ...MODEL_FALLBACK_CHAIN,
+    ])
   );
   let lastError: unknown;
 
-  for (const model of candidates) {
+  const tryModel = async (model: string) => {
     try {
       return await ai.models.generateContent({
         ...params,
         model,
       });
     } catch (err: unknown) {
-      lastError = err;
       const msg = err instanceof Error ? err.message : String(err);
-      // If thinkingConfig isn't supported by this model, retry same model without thinkingConfig
       if (
         params.config &&
         'thinkingConfig' in params.config &&
@@ -58,22 +107,33 @@ async function generateContentWithFallback(
           string,
           unknown
         >;
-        try {
-          return await ai.models.generateContent({
-            ...params,
-            config: restConfig,
-            model,
-          });
-        } catch (retryErr: unknown) {
-          lastError = retryErr;
-        }
+        return await ai.models.generateContent({
+          ...params,
+          config: restConfig,
+          model,
+        });
       }
-      // Only fall back to next model on 404 / NOT_FOUND / unsupported model errors
+      throw err;
+    }
+  };
+
+  for (const model of candidates) {
+    try {
+      return await tryModel(model);
+    } catch (err: unknown) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message : String(err);
       if (/404|NOT_FOUND|no longer available|not found/i.test(msg)) {
         continue;
       }
       throw err;
     }
+  }
+
+  // Dynamic last-resort discovery from live API key model list
+  const live = await discoverLiveGeminiModel(ai);
+  if (live && !candidates.includes(live)) {
+    return await tryModel(live);
   }
   throw lastError;
 }
