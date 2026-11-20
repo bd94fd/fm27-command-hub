@@ -6,8 +6,13 @@ import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 
 dotenv.config();
 
-const DEFAULT_GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-pro';
-const FAST_GEMINI_MODEL = process.env.GEMINI_FAST_MODEL || 'gemini-2.5-flash';
+const rawDefaultModel = process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview';
+const DEFAULT_GEMINI_MODEL =
+  rawDefaultModel === 'gemini-2.5-pro'
+    ? 'gemini-3.1-pro-preview'
+    : rawDefaultModel;
+const FAST_GEMINI_MODEL =
+  process.env.GEMINI_FAST_MODEL || 'gemini-3.1-pro-preview';
 
 async function startServer() {
   const app = express();
