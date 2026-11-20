@@ -754,6 +754,20 @@ export default function App() {
             wageSpend={wageSpend}
             balance={balance}
             clubName={hydratedFmSave?.decodedPayload.meta.clubName}
+            finances={
+              hydratedFmSave?.decodedPayload.finances
+                ? {
+                    balanceNum: hydratedFmSave.decodedPayload.finances.balance,
+                    wagePayrollWeekly:
+                      hydratedFmSave.decodedPayload.finances.wagePayrollWeekly,
+                    wageBudgetWeekly:
+                      hydratedFmSave.decodedPayload.finances.wageBudgetWeekly,
+                    transferBudgetRemaining:
+                      hydratedFmSave.decodedPayload.finances
+                        .transferBudgetRemaining,
+                  }
+                : null
+            }
             onAddCase={handleAddRecruitmentCase}
             onUpdateCase={handleUpdateRecruitmentCase}
             onDeleteCase={handleDeleteRecruitmentCase}
@@ -790,6 +804,8 @@ export default function App() {
               hydratedFmSave?.decodedPayload.meta.saveName ||
               null
             }
+            clubName={hydratedFmSave?.decodedPayload.meta.clubName}
+            saveDate={saveDate}
           />
         )}
       </main>

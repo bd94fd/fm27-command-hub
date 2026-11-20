@@ -1,5 +1,5 @@
-import React from 'react';
-import { Trophy } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Calendar, Filter, Trophy } from 'lucide-react';
 import { MatchLogEntry } from '../types/fm27';
 import { computeCompetitiveSummary } from '../utils/fmSyncEngine';
 
@@ -8,6 +8,45 @@ interface MatchLogArchiveProps {
   liveLeagueRecord?: string | null;
   liveSaveFileName?: string | null;
   clubName?: string;
+  saveDate?: string;
+}
+
+export function getFootballSeasonLabel(dateStr: string): string {
+  const s = (dateStr || '').trim();
+  let year: number | null = null;
+  let month: number | null = null;
+
+  const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (dmy) {
+    month = Number(dmy[2]);
+    year = Number(dmy[3]);
+  } else {
+    const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (iso) {
+      year = Number(iso[1]);
+      month = Number(iso[2]);
+    }
+  }
+
+  if (!year || !month) return 'Unknown Season';
+  // European football season runs July 1 -> June 30
+  const startYear = month >= 7 ? year : year - 1;
+  const endShort = String((startYear + 1) % 100).padStart(2, '0');
+  return `${startYear}/${endShort}`;
+}
+
+function classifyCompetition(comp: string): 'League' | 'Cup / Friendly' {
+  const c = (comp || '').toLowerCase();
+  if (
+    c.includes('friendly') ||
+    c.includes('cup') ||
+    c.includes('beker') ||
+    c.includes('trophy') ||
+    c.includes('playoff')
+  ) {
+    return 'Cup / Friendly';
+  }
+  return 'League';
 }
 
 export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
@@ -15,46 +54,140 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
   liveLeagueRecord,
   liveSaveFileName,
   clubName,
+  saveDate,
 }) => {
-  const summary = computeCompetitiveSummary(matches);
+  const seasons = useMemo(() => {
+    const set = new Set<string>();
+    for (const m of matches) {
+      set.add(getFootballSeasonLabel(m.date));
+    }
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [matches]);
+
+  const currentSeason = useMemo(() => {
+    if (saveDate && saveDate !== '--') {
+      const fromSave = getFootballSeasonLabel(saveDate);
+      if (seasons.includes(fromSave)) return fromSave;
+    }
+    return seasons[0] || 'ALL';
+  }, [saveDate, seasons]);
+
+  const [selectedSeason, setSelectedSeason] = useState<string>('');
+  const [compFilter, setCompFilter] = useState<'ALL' | 'League' | 'Cup / Friendly'>('ALL');
+
+  const activeSeason = selectedSeason || currentSeason;
+
+  const filteredMatches = useMemo(() => {
+    return matches.filter((m) => {
+      const season = getFootballSeasonLabel(m.date);
+      if (activeSeason !== 'ALL' && season !== activeSeason) return false;
+      if (compFilter !== 'ALL' && classifyCompetition(m.competition) !== compFilter) {
+        return false;
+      }
+      return true;
+    });
+  }, [matches, activeSeason, compFilter]);
+
+  const filteredSummary = useMemo(
+    () => computeCompetitiveSummary(filteredMatches),
+    [filteredMatches]
+  );
+
+  const wins = filteredMatches.filter((m) => m.result === 'W').length;
+  const draws = filteredMatches.filter((m) => m.result === 'D').length;
+  const losses = filteredMatches.filter((m) => m.result === 'L').length;
 
   return (
-    <div className="space-y-6">
-      <div className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-5 border-b border-slate-200 dark:border-slate-800">
+    <div className="space-y-4">
+      <div className="p-4 sm:p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 pb-4 border-b border-slate-200 dark:border-slate-800">
           <div>
-            <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
               {clubName && clubName !== '--'
-                ? `${clubName} · Competitive Match Log & Data Hub Audit Archive (${matches.length})`
-                : `Competitive Match Log & Data Hub Audit Archive (${matches.length})`}
+                ? `${clubName} · Match Log by Season & Competition`
+                : 'Match Log by Season & Competition'}
             </h2>
             <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
               {liveSaveFileName
-                ? `Synced directly from ${liveSaveFileName} (dates, competitions, opponents & scorelines from .fm binary; xG/possession shown as — unless present in save or added via Data Hub screenshots)`
-                : 'Awaiting .fm Save — Import your .fm save file to populate your club’s played fixtures and results'}
+                ? `Synced from ${liveSaveFileName} · Separated by season (Jul–Jun) and competition`
+                : 'Awaiting .fm Save — Import your .fm save file to populate played fixtures and results'}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3 text-xs font-mono text-slate-700 dark:text-slate-300">
-            <span>
-              League Record:{' '}
-              {liveLeagueRecord ||
-                (matches.length > 0
-                  ? `${summary.played} GP (${summary.wins}W-${summary.draws}D-${summary.losses}L · ${summary.points} Pts)`
-                  : '--')}
-            </span>
-            {summary.xgMatchesCount > 0 && (
-              <>
-                <span>&middot;</span>
-                <span>
-                  Audited League xG ({summary.xgMatchesCount}m):{' '}
-                  {summary.totalXgFor.toFixed(2)} For vs{' '}
-                  {summary.totalXgAgainst.toFixed(2)} Against (
-                  {summary.xgDiff >= 0 ? `+${summary.xgDiff}` : summary.xgDiff})
-                </span>
-              </>
+          <div className="flex flex-wrap items-center gap-2 text-xs font-mono text-slate-700 dark:text-slate-300">
+            {liveLeagueRecord && (
+              <span className="rounded-lg bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 text-emerald-300 font-semibold">
+                Current League: {liveLeagueRecord}
+              </span>
+            )}
+            {filteredMatches.length > 0 && (
+              <span className="rounded-lg bg-slate-800 border border-slate-700 px-2.5 py-1 text-slate-200">
+                Showing {filteredMatches.length} GP: {wins}W-{draws}D-{losses}L
+                {filteredSummary.xgMatchesCount > 0
+                  ? ` · xG ${filteredSummary.totalXgFor.toFixed(2)}-${filteredSummary.totalXgAgainst.toFixed(2)}`
+                  : ''}
+              </span>
             )}
           </div>
         </div>
+
+        {/* Season & Competition Filter Controls */}
+        {matches.length > 0 && (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400 mr-1">
+                <Calendar className="w-3.5 h-3.5" /> Season:
+              </span>
+              {seasons.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setSelectedSeason(s)}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold border transition ${
+                    activeSeason === s
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                      : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
+                  }`}
+                >
+                  {s}
+                  {s === currentSeason ? ' (Current)' : ''}
+                </button>
+              ))}
+              {seasons.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedSeason('ALL')}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold border transition ${
+                    activeSeason === 'ALL'
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                      : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
+                  }`}
+                >
+                  All Seasons
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400 mr-1">
+                <Filter className="w-3.5 h-3.5" /> Comp:
+              </span>
+              {(['ALL', 'League', 'Cup / Friendly'] as const).map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setCompFilter(c)}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold border transition ${
+                    compFilter === c
+                      ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                      : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
+                  }`}
+                >
+                  {c === 'ALL' ? 'All Comps' : c}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {matches.length === 0 ? (
           <div className="py-12 text-center space-y-2">
@@ -63,130 +196,76 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
               Awaiting .fm Save — 0 Played Matches Loaded
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xl mx-auto">
-              Zero pre-filled matches or guessed xG figures. Drop or select your{' '}
+              Zero pre-filled matches or guessed xG figures. Drop your{' '}
               <span className="font-mono text-emerald-400">.fm</span> save file
-              in the <strong>Tactical Analyst Chat</strong> tab to populate all
-              played matches directly from your save.
+              in the <strong>Analyst</strong> tab to populate all played matches.
             </p>
           </div>
+        ) : filteredMatches.length === 0 ? (
+          <div className="py-10 text-center text-xs text-slate-400">
+            No matches found for <strong>{activeSeason}</strong> ({compFilter}). Try switching the competition or season filter above.
+          </div>
         ) : (
-          <div className="overflow-x-auto mt-4">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  <th className="py-2.5 pr-3">Event &amp; Date</th>
-                  <th className="py-2.5 pr-3">Fixture</th>
-                  <th className="py-2.5 pr-3">Result</th>
-                  <th className="py-2.5 pr-3 text-right">xG (Diff)</th>
-                  <th className="py-2.5 pr-3 text-right">Poss / Pass%</th>
-                  <th className="py-2.5 pr-3 text-right">Shots / CCC</th>
-                  <th className="py-2.5 pr-3">Goal Timeline &amp; POTM</th>
-                  <th className="py-2.5">Tactical Audit &amp; Directives</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-xs">
-                {matches.map((m) => {
-                  const hasXg =
-                    typeof m.xGFor === 'number' &&
-                    typeof m.xGAgainst === 'number';
-                  const xgDelta = hasXg
-                    ? Number(((m.xGFor ?? 0) - (m.xGAgainst ?? 0)).toFixed(2))
-                    : null;
-                  const resultColor =
-                    m.result === 'W'
-                      ? 'text-emerald-700 dark:text-emerald-400'
-                      : m.result === 'D'
-                        ? 'text-amber-700 dark:text-amber-400'
-                        : 'text-red-600 dark:text-red-400';
+          <div className="divide-y divide-slate-200 dark:divide-slate-800">
+            {filteredMatches.map((m) => {
+              const seasonLabel = getFootballSeasonLabel(m.date);
+              const compBucket = classifyCompetition(m.competition);
+              const hasXg =
+                typeof m.xGFor === 'number' && typeof m.xGAgainst === 'number';
+              const resultBadge =
+                m.result === 'W'
+                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+                  : m.result === 'D'
+                    ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+                    : 'bg-rose-500/15 text-rose-300 border-rose-500/40';
 
-                  return (
-                    <tr
-                      key={m.id}
-                      className="hover:bg-slate-50 dark:hover:bg-slate-800/50 align-top"
-                    >
-                      <td className="py-3 pr-3 font-mono whitespace-nowrap">
-                        <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-slate-100">
-                          <span>Event #{m.eventNumber}</span>
-                          {m.source === 'FM_SAVE' && (
-                            <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded">
-                              .FM
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-slate-500 dark:text-slate-400">
-                          {m.date}
-                        </div>
-                      </td>
-                      <td className="py-3 pr-3 whitespace-nowrap">
-                        <div className="font-semibold text-slate-900 dark:text-slate-100">
-                          vs {m.opponent} ({m.venue})
-                        </div>
-                        <div className="text-slate-500 dark:text-slate-400">
-                          {m.competition}
-                        </div>
-                      </td>
-                      <td
-                        className={`py-3 pr-3 font-mono font-bold whitespace-nowrap ${resultColor}`}
+              return (
+                <div
+                  key={m.id}
+                  className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                >
+                  <div className="space-y-0.5 min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                      <span className="font-mono text-slate-400">{m.date}</span>
+                      <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-mono text-slate-300">
+                        {seasonLabel}
+                      </span>
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                          compBucket === 'League'
+                            ? 'bg-indigo-500/15 text-indigo-300'
+                            : 'bg-slate-800 text-slate-400'
+                        }`}
                       >
-                        {m.result} {m.score}
-                      </td>
-                      <td className="py-3 pr-3 text-right font-mono tabular-nums whitespace-nowrap">
-                        {hasXg ? (
-                          <>
-                            <div className="font-semibold text-slate-900 dark:text-slate-100">
-                              {(m.xGFor ?? 0).toFixed(2)} -{' '}
-                              {(m.xGAgainst ?? 0).toFixed(2)}
-                            </div>
-                            <div className="text-slate-500 dark:text-slate-400">
-                              {xgDelta !== null && xgDelta >= 0
-                                ? `+${xgDelta}`
-                                : xgDelta}
-                            </div>
-                          </>
-                        ) : (
-                          <span className="text-slate-500">—</span>
-                        )}
-                      </td>
-                      <td className="py-3 pr-3 text-right font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                        {typeof m.possession === 'number' ||
-                        typeof m.passCompletion === 'number'
-                          ? `${m.possession ?? '—'}% / ${m.passCompletion ?? '—'}%`
-                          : '—'}
-                      </td>
-                      <td className="py-3 pr-3 text-right font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                        <div>
-                          {m.shotsFor && m.shotsFor !== '—'
-                            ? `${m.shotsFor} vs ${m.shotsAgainst}`
-                            : '—'}
-                        </div>
-                        <div className="text-slate-500 dark:text-slate-400">
-                          {typeof m.cccFor === 'number'
-                            ? `CCC: ${m.cccFor} - ${m.cccAgainst ?? 0}`
-                            : ''}
-                        </div>
-                      </td>
-                      <td className="py-3 pr-3 min-w-[210px] space-y-1">
-                        <div className="text-slate-800 dark:text-slate-200">
-                          {m.goalTimeline}
-                        </div>
-                        <div className="text-emerald-700 dark:text-emerald-400 font-medium">
-                          {m.potm}
-                        </div>
-                      </td>
-                      <td className="py-3 text-slate-600 dark:text-slate-400 min-w-[260px] space-y-1">
-                        {m.defensiveWatchpoints &&
-                          m.defensiveWatchpoints !== '—' && (
-                            <div>{m.defensiveWatchpoints}</div>
-                          )}
-                        <div className="text-slate-800 dark:text-slate-300 font-medium">
-                          {m.tacticalAudit}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        {m.competition}
+                      </span>
+                    </div>
+                    <div className="text-sm font-bold text-slate-900 dark:text-white">
+                      vs {m.opponent}{' '}
+                      <span className="text-xs font-normal text-slate-400">
+                        ({m.venue === 'H' ? 'Home' : 'Away'})
+                      </span>
+                    </div>
+                    {(hasXg || m.possession !== null) && (
+                      <div className="text-[11px] font-mono text-slate-400">
+                        {hasXg
+                          ? `xG ${m.xGFor?.toFixed(2)} - ${m.xGAgainst?.toFixed(2)}`
+                          : ''}
+                        {m.possession !== null ? ` · Poss ${m.possession}%` : ''}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span
+                      className={`rounded-lg border px-2.5 py-1 text-xs font-mono font-bold ${resultBadge}`}
+                    >
+                      {m.result} {m.score}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

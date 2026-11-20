@@ -199,7 +199,7 @@ function formatMoney(amount: number | null | undefined): string {
       : abs >= 1_000
         ? `£${Math.round(abs / 1_000)}K`
         : `£${Math.round(abs).toLocaleString()}`;
-  return amount < 0 ? `(${formatted})` : formatted;
+  return amount < 0 ? `-${formatted}` : formatted;
 }
 
 function inferPersonalityLabel(dp: DecodedFmSavePlayer): string {

@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { PlayerRecord } from '../types/fm27';
-import { buildSquadTransferAudit } from './transferAudit';
+import {
+  buildSquadTransferAudit,
+  parseSignedMoneyString,
+} from './transferAudit';
 
 function makePlayer(overrides: Partial<PlayerRecord>): PlayerRecord {
   return {
@@ -52,8 +55,27 @@ function makePlayer(overrides: Partial<PlayerRecord>): PlayerRecord {
   };
 }
 
-test('buildSquadTransferAudit generates tailored Renew, Sell, Loan Out, and Let Expire verdicts', () => {
+test('parseSignedMoneyString accurately parses negative balances in both minus and parentheses formats', () => {
+  assert.equal(parseSignedMoneyString('(£749K)'), -749_000);
+  assert.equal(parseSignedMoneyString('-£749K'), -749_000);
+  assert.equal(parseSignedMoneyString('£1.50M'), 1_500_000);
+  assert.equal(parseSignedMoneyString('-£2.25M'), -2_250_000);
+});
+
+test('buildSquadTransferAudit detects negative club balance, protects expiring U21 assets, and guards thin depth', () => {
   const squad: PlayerRecord[] = [
+    makePlayer({
+      id: 'u21-expiring',
+      name: 'Wonderkid Prospect',
+      age: 19,
+      ability: 2.5,
+      potential: 4.5,
+      minutes: 0,
+      rating: null,
+      expires: '30/06/2028',
+      wagePw: 90,
+      status: 'Youth',
+    }),
     makePlayer({
       id: 'star-expiring',
       name: 'Key Starter',
@@ -63,8 +85,9 @@ test('buildSquadTransferAudit generates tailored Renew, Sell, Loan Out, and Let 
       wagePw: 300,
     }),
     makePlayer({
-      id: 'deadwood',
-      name: 'Unused High Earner',
+      id: 'thin-earner',
+      name: 'Only GK Earner',
+      position: 'GK',
       age: 27,
       ability: 2.5,
       potential: 2.5,
@@ -75,8 +98,8 @@ test('buildSquadTransferAudit generates tailored Renew, Sell, Loan Out, and Let 
       status: 'Rotation',
     }),
     makePlayer({
-      id: 'youth',
-      name: 'Teen Prospect',
+      id: 'youth-loan',
+      name: 'Loan Prospect',
       age: 18,
       ability: 2.0,
       potential: 4.0,
@@ -86,26 +109,21 @@ test('buildSquadTransferAudit generates tailored Renew, Sell, Loan Out, and Let 
       wagePw: 80,
       status: 'Youth',
     }),
-    makePlayer({
-      id: 'free-exit',
-      name: 'Expiring Surplus',
-      age: 28,
-      ability: 2.0,
-      potential: 2.0,
-      minutes: 15,
-      rating: 6.4,
-      expires: '30/06/2028',
-      wagePw: 220,
-      status: 'Surplus',
-    }),
   ];
 
-  const audit = buildSquadTransferAudit(squad, '15/09/2027');
-  const byId = Object.fromEntries(audit.playerAdvice.map((a) => [a.player.id, a]));
+  const audit = buildSquadTransferAudit(squad, '15/09/2027', {
+    balanceLabel: '(£749K)',
+    wagePayrollWeekly: 10257,
+    wageBudgetWeekly: 10203,
+  });
 
+  assert.equal(audit.clubProfile.isInDebt, true);
+  assert.equal(audit.clubProfile.balanceNum, -749_000);
+  assert.equal(audit.clubProfile.isOverWageBudget, true);
+
+  const byId = Object.fromEntries(audit.playerAdvice.map((a) => [a.player.id, a]));
+  assert.equal(byId['u21-expiring'].verdict, 'Protect Youth Asset');
   assert.equal(byId['star-expiring'].verdict, 'Renew Now');
-  assert.equal(byId['deadwood'].verdict, 'Sell / Transfer List');
-  assert.equal(byId['youth'].verdict, 'Loan Out');
-  assert.equal(byId['free-exit'].verdict, 'Let Expire');
-  assert.equal(audit.potentialWeeklySavings, 800);
+  assert.equal(byId['thin-earner'].verdict, 'Replace Before Selling');
+  assert.equal(byId['youth-loan'].verdict, 'Loan Out');
 });
