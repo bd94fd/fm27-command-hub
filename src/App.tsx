@@ -461,7 +461,7 @@ export default function App() {
             { id: 'tactics' as const, label: 'War Room & Playbook' },
             {
               id: 'recruitment' as const,
-              label: `Recruitment (${recruitmentCases.length})`,
+              label: 'Transfers & Audit',
             },
             ...(staff.length > 0
               ? [{ id: 'staff' as const, label: `Staff (${staff.length})` }]
@@ -751,6 +751,9 @@ export default function App() {
             shortlists={shortlists}
             players={players}
             saveDate={saveDate}
+            wageSpend={wageSpend}
+            balance={balance}
+            clubName={hydratedFmSave?.decodedPayload.meta.clubName}
             onAddCase={handleAddRecruitmentCase}
             onUpdateCase={handleUpdateRecruitmentCase}
             onDeleteCase={handleDeleteRecruitmentCase}
@@ -810,7 +813,7 @@ export default function App() {
             { id: 'sync', label: 'Analyst', icon: MessageSquare },
             { id: 'squad', label: 'Squad', icon: Users },
             { id: 'tactics', label: 'Tactics', icon: Shield },
-            { id: 'recruitment', label: 'Recruit', icon: Briefcase },
+            { id: 'recruitment', label: 'Transfers', icon: Briefcase },
             { id: 'setpieces', label: 'Corners', icon: Crosshair },
             { id: 'matches', label: 'Matches', icon: Trophy },
           ] as const
