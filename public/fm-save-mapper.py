@@ -15,6 +15,7 @@ import gc
 import json
 import os
 import sys
+import time
 import warnings
 from datetime import date, time as dt_time
 from typing import Any
@@ -533,6 +534,7 @@ def step_club_extras_and_release_gamedb() -> str:
 
 def step_season_stats() -> str:
     save = _STATE["save"]
+    club_uid = _STATE["club_uid"]
     squad_uids = _STATE["squad_uids"]
     players_out = _STATE["players_out"]
     if not squad_uids:
@@ -540,21 +542,70 @@ def step_season_stats() -> str:
 
     overall_by_uid: dict[int, Any] = {}
     league_by_uid: dict[int, Any] = {}
+    t0 = time.monotonic()
+    timed_out = False
+
+    def _consume_stat_row(row: Any) -> None:
+        p_uid = getattr(row, "player_uid", None)
+        if p_uid not in squad_uids:
+            return
+        kind_str = str(getattr(row, "kind", "")).lower()
+        mins = getattr(row, "minutes", 0) or 0
+        if "overall" in kind_str:
+            existing = overall_by_uid.get(p_uid)
+            if existing is None or mins > (getattr(existing, "minutes", 0) or 0):
+                overall_by_uid[p_uid] = row
+        elif "league" in kind_str:
+            existing = league_by_uid.get(p_uid)
+            if existing is None or mins > (getattr(existing, "minutes", 0) or 0):
+                league_by_uid[p_uid] = row
+
     try:
-        for row in save.player_season_stats():
-            p_uid = getattr(row, "player_uid", None)
-            if p_uid not in squad_uids:
-                continue
-            kind_str = str(getattr(row, "kind", "")).lower()
-            mins = getattr(row, "minutes", 0) or 0
-            if "overall" in kind_str:
-                existing = overall_by_uid.get(p_uid)
-                if existing is None or mins > (getattr(existing, "minutes", 0) or 0):
-                    overall_by_uid[p_uid] = row
-            elif "league" in kind_str:
-                existing = league_by_uid.get(p_uid)
-                if existing is None or mins > (getattr(existing, "minutes", 0) or 0):
-                    league_by_uid[p_uid] = row
+        stats_table = save.player_season_stats()
+        used_scoped = False
+
+        # Fast path 1: club-scoped query if supported by fmsave table
+        if club_uid is not None and hasattr(stats_table, "where"):
+            try:
+                scoped_rows = stats_table.where(club_uid=club_uid)
+                for row in scoped_rows:
+                    _consume_stat_row(row)
+                if overall_by_uid or league_by_uid:
+                    used_scoped = True
+            except Exception:
+                used_scoped = False
+
+        # Fast path 2: indexed per-player lookup if supported
+        if not used_scoped and hasattr(stats_table, "where"):
+            try:
+                sample_uid = next(iter(squad_uids))
+                _ = list(stats_table.where(player_uid=sample_uid))
+                for uid in squad_uids:
+                    if time.monotonic() - t0 > 35.0:
+                        timed_out = True
+                        break
+                    for row in stats_table.where(player_uid=uid):
+                        _consume_stat_row(row)
+                used_scoped = True
+            except Exception:
+                used_scoped = False
+
+        # Fallback: single linear pass with early exit & 35s mobile safety cap
+        if not used_scoped:
+            seen_count = 0
+            for row in stats_table:
+                seen_count += 1
+                if (seen_count & 2047) == 0 and (time.monotonic() - t0) > 35.0:
+                    timed_out = True
+                    break
+                _consume_stat_row(row)
+                if len(overall_by_uid) >= len(squad_uids):
+                    break
+
+        if timed_out:
+            _STATE["warnings"].append(
+                "player_season_stats: mobile 35s time cap reached (partial season stats applied)"
+            )
     except Exception as exc:
         _STATE["warnings"].append(f"player_season_stats: {type(exc).__name__}")
 
@@ -605,12 +656,35 @@ def step_fixtures() -> str:
 
     club_fixtures = []
     if club_uid is not None:
+        t0 = time.monotonic()
         try:
-            for f in save.fixtures():
-                is_home = (f.home_club_uid == club_uid and f.home_team_slot in (None, 0))
-                is_away = (f.away_club_uid == club_uid and f.away_team_slot in (None, 0))
-                if is_home or is_away:
-                    club_fixtures.append(f)
+            fix_table = save.fixtures()
+            used_scoped = False
+            if hasattr(fix_table, "where"):
+                try:
+                    home_list = list(fix_table.where(home_club_uid=club_uid))
+                    away_list = list(fix_table.where(away_club_uid=club_uid))
+                    for f in home_list:
+                        if getattr(f, "home_team_slot", None) in (None, 0):
+                            club_fixtures.append(f)
+                    for f in away_list:
+                        if getattr(f, "away_team_slot", None) in (None, 0):
+                            club_fixtures.append(f)
+                    used_scoped = True
+                except Exception:
+                    used_scoped = False
+
+            if not used_scoped:
+                seen = 0
+                for f in fix_table:
+                    seen += 1
+                    if (seen & 2047) == 0 and (time.monotonic() - t0) > 35.0:
+                        _STATE["warnings"].append("fixtures: mobile 35s time cap reached")
+                        break
+                    is_home = (f.home_club_uid == club_uid and f.home_team_slot in (None, 0))
+                    is_away = (f.away_club_uid == club_uid and f.away_team_slot in (None, 0))
+                    if is_home or is_away:
+                        club_fixtures.append(f)
         except Exception as exc:
             _STATE["warnings"].append(f"fixtures: {type(exc).__name__}")
 
