@@ -63,7 +63,9 @@ import {
   isScoutTargetTracked,
   loadTrackedScoutTargets,
   toggleTrackedScoutTarget,
+  PersistedCustomSlot,
 } from './services/fmStorage';
+import { FormationPresetKey } from './utils/bestXiSolver';
 import { RecruitmentTarget } from './types/fmSave';
 
 type ActiveTab =
@@ -169,6 +171,11 @@ export default function App() {
   const managerName =
     hydratedFmSave?.decodedPayload.meta.managerName || '--';
 
+  const [activeShape, setActiveShape] =
+    useState<FormationPresetKey>('4-3-3 DM Wide');
+  const [customSlots, setCustomSlots] = useState<PersistedCustomSlot[]>([]);
+  const [applyToAnalystOnly, setApplyToAnalystOnly] = useState<boolean>(false);
+
   // Restore saved state from previous session on initial mount
   useEffect(() => {
     const saved = loadPersistedFmState();
@@ -190,6 +197,11 @@ export default function App() {
       if (saved.wageSpend) setWageSpend(saved.wageSpend);
       if (saved.balance) setBalance(saved.balance);
       if (saved.hydratedFmSave) setHydratedFmSave(saved.hydratedFmSave);
+      if (saved.activeShape) setActiveShape(saved.activeShape);
+      if (saved.customSlots) setCustomSlots(saved.customSlots);
+      if (typeof saved.applyToAnalystOnly === 'boolean') {
+        setApplyToAnalystOnly(saved.applyToAnalystOnly);
+      }
       setIsRestoredFromMemory(true);
     }
   }, []);
@@ -216,6 +228,9 @@ export default function App() {
         recruitmentCases,
         shortlists,
         hydratedFmSave,
+        activeShape,
+        customSlots,
+        applyToAnalystOnly,
       });
       setIsRestoredFromMemory(true);
     }
@@ -231,6 +246,9 @@ export default function App() {
     wageSpend,
     balance,
     hydratedFmSave,
+    activeShape,
+    customSlots,
+    applyToAnalystOnly,
   ]);
 
   const summary = computeCompetitiveSummary(matches);
@@ -802,6 +820,13 @@ export default function App() {
             clubName={clubName}
             activeSuspensions={hydratedFmSave?.activeSuspensions ?? []}
             competitionRules={hydratedFmSave?.competitionRules ?? null}
+            hydratedFmSave={hydratedFmSave}
+            activeShape={activeShape}
+            customSlots={customSlots}
+            applyToAnalystOnly={applyToAnalystOnly}
+            onChangeShape={setActiveShape}
+            onChangeCustomSlots={setCustomSlots}
+            onChangeApplyToAnalystOnly={setApplyToAnalystOnly}
           />
         )}
 

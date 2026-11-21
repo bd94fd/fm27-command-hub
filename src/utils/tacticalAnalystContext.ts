@@ -96,6 +96,20 @@ export interface ExtendedPlayerAutoUpdate {
   notes: string;
 }
 
+export interface ActiveLineupOverrideSlot {
+  slotId: string;
+  playerName: string;
+  ipRole: string;
+  oopRole: string;
+  condition?: number | null;
+}
+
+export interface ActiveLineupOverride {
+  shape: string;
+  applyToAnalystOnly?: boolean;
+  slots: ActiveLineupOverrideSlot[];
+}
+
 export interface LiveAnalystStateInput {
   clubName: string;
   managerName: string;
@@ -110,6 +124,7 @@ export interface LiveAnalystStateInput {
   staff?: StaffRecord[];
   recruitmentCases?: RecruitmentCase[];
   userQuery?: string;
+  activeLineupOverride?: ActiveLineupOverride | null;
 }
 
 export const FM27_ENGINE_KNOWLEDGE_BASE = `=== FOOTBALL MANAGER 27 (PATCH 27.1.0) MATCH ENGINE & BOBBY DEAN PLAYBOOK v2.0 MASTER CODEX ===
@@ -300,8 +315,22 @@ export function buildLiveTacticalAnalystContext(
 
   sections.push(clubLines.join('\n'));
 
-  // 3. Compact War Room XI & Set-Piece Specialists
-  if (tacticalPlan.startingXI.length > 0) {
+  // 3. Compact War Room XI (or Custom Active Lineup Override) & Set-Piece Specialists
+  if (
+    state.activeLineupOverride &&
+    state.activeLineupOverride.slots.length > 0
+  ) {
+    const ov = state.activeLineupOverride;
+    const ovCompact = ov.slots
+      .map(
+        (s) =>
+          `${s.slotId}:${s.playerName}(${s.ipRole}/${s.oopRole},C${s.condition ?? '?'}%)`
+      )
+      .join(' | ');
+    sections.push(
+      `=== ACTIVE PITCH BUILDER LINEUP OVERRIDE (${ov.shape}${ov.applyToAnalystOnly ? ' · Analyst-Only' : ''}) ===\n${ovCompact}`
+    );
+  } else if (tacticalPlan.startingXI.length > 0) {
     const xiCompact = tacticalPlan.startingXI
       .map(
         (s) =>

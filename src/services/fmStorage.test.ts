@@ -12,6 +12,11 @@ import {
   toggleTrackedScoutTarget,
   removeTrackedScoutTarget,
   isScoutTargetTracked,
+  CURRENT_SCHEMA_VERSION,
+  migratePersistedState,
+  validateStateSchema,
+  exportBackupJson,
+  importBackupJson,
 } from './fmStorage';
 import { PlayerRecord, MatchLogEntry } from '../types/fm27';
 import { RecruitmentTarget } from '../types/fmSave';
@@ -242,4 +247,89 @@ test('fmStorage persists Shortlist tracked targets with add/remove toggling', ()
   const afterRemove = removeTrackedScoutTarget(targetB.uid);
   assert.equal(afterRemove.length, 0);
   assert.equal(loadTrackedScoutTargets().length, 0);
+});
+
+test('fmStorage v2 migrates v1 state and persists customSlots, activeShape, applyToAnalystOnly, and archivedSaveSnapshots', () => {
+  mockLocalStorage.clear();
+
+  const legacyV1Payload = {
+    version: 1,
+    lastSyncedAt: '2027-09-18T12:00:00.000Z',
+    saveDate: '18/09/2027',
+    nextFixture: 'Dessel Sport',
+    leagueStandingSub: '#3',
+    wageSpend: '£9.7K',
+    balance: '£-710K',
+    players: [samplePlayer],
+    matches: [sampleMatch],
+    hydratedFmSave: null,
+  };
+
+  const migrated = migratePersistedState(legacyV1Payload);
+  assert.ok(migrated);
+  assert.equal(migrated.schemaVersion, CURRENT_SCHEMA_VERSION);
+  assert.equal(migrated.activeShape, '4-3-3 DM Wide');
+  assert.deepEqual(migrated.customSlots, []);
+  assert.equal(migrated.applyToAnalystOnly, false);
+  assert.deepEqual(migrated.archivedSaveSnapshots, []);
+  assert.equal(migrated.players[0].name, 'Mbey Epolo');
+
+  savePersistedFmState({
+    ...migrated,
+    activeShape: '4-2-3-1 DM AM Wide',
+    customSlots: [
+      {
+        slotId: 'ST',
+        playerId: samplePlayer.id,
+        ipRole: 'Channel Forward',
+        oopRole: 'Central Outlet Centre Forward',
+      },
+    ],
+    applyToAnalystOnly: true,
+    archivedSaveSnapshots: [
+      {
+        id: 'snap-1',
+        saveDate: '18/09/2027',
+        clubName: 'KVV Zelzate',
+        savedAt: '2027-09-18T12:00:00.000Z',
+        playersCount: 1,
+        matchesCount: 1,
+      },
+    ],
+  });
+
+  const exported = exportBackupJson();
+  assert.ok(exported);
+  mockLocalStorage.clear();
+
+  const imported = importBackupJson(exported);
+  assert.equal(imported.ok, true);
+  assert.equal(imported.errors.length, 0);
+  assert.equal(imported.state?.schemaVersion, 2);
+  assert.equal(imported.state?.activeShape, '4-2-3-1 DM AM Wide');
+  assert.equal(imported.state?.customSlots?.length, 1);
+  assert.equal(imported.state?.applyToAnalystOnly, true);
+  assert.equal(imported.state?.archivedSaveSnapshots?.length, 1);
+});
+
+test('fmStorage validateStateSchema and importBackupJson reject malformed payloads cleanly', () => {
+  const invalidShape = validateStateSchema({
+    players: [],
+    matches: [],
+    activeShape: '9-0-1-Invalid',
+  });
+  assert.equal(invalidShape.valid, false);
+  assert.ok(invalidShape.errors.some((e) => e.includes('activeShape')));
+
+  const invalidSlots = validateStateSchema({
+    players: [],
+    matches: [],
+    customSlots: [{ slotId: 123 }],
+  });
+  assert.equal(invalidSlots.valid, false);
+
+  const badJson = importBackupJson('{not valid json');
+  assert.equal(badJson.ok, false);
+  assert.equal(badJson.state, null);
+  assert.ok(badJson.errors.length > 0);
 });

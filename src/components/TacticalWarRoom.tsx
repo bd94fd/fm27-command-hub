@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Shield,
   AlertTriangle,
@@ -13,6 +13,11 @@ import {
   CompetitionRegistrationRules,
 } from '../types/fmSave';
 import { buildDynamicTacticalPlan } from '../utils/fmSyncEngine';
+import { HydratedSaveState } from '../utils/fmSaveHydrator';
+import { FormationPresetKey, SolvedSlot } from '../utils/bestXiSolver';
+import { PersistedCustomSlot } from '../services/fmStorage';
+import { InteractivePitchBuilder } from './InteractivePitchBuilder';
+import { MatchPrepCard } from './MatchPrepCard';
 
 interface TacticalWarRoomProps {
   players: PlayerRecord[];
@@ -21,6 +26,14 @@ interface TacticalWarRoomProps {
   clubName: string;
   activeSuspensions?: ActiveSuspensionRecord[];
   competitionRules?: CompetitionRegistrationRules | null;
+  hydratedFmSave?: HydratedSaveState | null;
+  activeShape?: FormationPresetKey;
+  customSlots?: PersistedCustomSlot[];
+  applyToAnalystOnly?: boolean;
+  onChangeShape?: (shape: FormationPresetKey) => void;
+  onChangeCustomSlots?: (slots: PersistedCustomSlot[]) => void;
+  onChangeApplyToAnalystOnly?: (val: boolean) => void;
+  onSolvedLineupChange?: (slots: SolvedSlot[]) => void;
 }
 
 export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
@@ -30,7 +43,41 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
   clubName,
   activeSuspensions = [],
   competitionRules = null,
+  hydratedFmSave = null,
+  activeShape: controlledShape,
+  customSlots: controlledCustomSlots,
+  applyToAnalystOnly: controlledApplyOnly,
+  onChangeShape,
+  onChangeCustomSlots,
+  onChangeApplyToAnalystOnly,
+  onSolvedLineupChange,
 }) => {
+  const [localShape, setLocalShape] = useState<FormationPresetKey>('4-3-3 DM Wide');
+  const [localCustomSlots, setLocalCustomSlots] = useState<PersistedCustomSlot[]>([]);
+  const [localApplyOnly, setLocalApplyOnly] = useState<boolean>(false);
+  const [solvedSlots, setSolvedSlots] = useState<SolvedSlot[]>([]);
+
+  const activeShape = controlledShape ?? localShape;
+  const customSlots = controlledCustomSlots ?? localCustomSlots;
+  const applyToAnalystOnly = controlledApplyOnly ?? localApplyOnly;
+
+  const handleShapeChange = (shape: FormationPresetKey) => {
+    setLocalShape(shape);
+    onChangeShape?.(shape);
+  };
+  const handleCustomSlotsChange = (slots: PersistedCustomSlot[]) => {
+    setLocalCustomSlots(slots);
+    onChangeCustomSlots?.(slots);
+  };
+  const handleApplyOnlyChange = (val: boolean) => {
+    setLocalApplyOnly(val);
+    onChangeApplyToAnalystOnly?.(val);
+  };
+  const handleSolvedLineupChange = (slots: SolvedSlot[]) => {
+    setSolvedSlots(slots);
+    onSolvedLineupChange?.(slots);
+  };
+
   const tacticalPlan = buildDynamicTacticalPlan(players);
   const hasSquad = players.length > 0;
   const displayClub =
@@ -52,6 +99,29 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
 
   return (
     <div className="space-y-8">
+      {/* Pass 2 (v2.1): Matchday Prep Card (Clean empty state when awaiting .fm save) */}
+      <MatchPrepCard
+        players={players}
+        activeSlots={solvedSlots}
+        hydratedFmSave={hydratedFmSave}
+        activeSuspensions={combinedSuspensions}
+        clubName={clubName}
+      />
+
+      {/* Pass 2 (v2.1): Interactive Dual-Phase Pitch Builder */}
+      {hasSquad && (
+        <InteractivePitchBuilder
+          players={players}
+          activeSuspensions={combinedSuspensions}
+          activeShape={activeShape}
+          customSlots={customSlots}
+          applyToAnalystOnly={applyToAnalystOnly}
+          onChangeShape={handleShapeChange}
+          onChangeCustomSlots={handleCustomSlotsChange}
+          onChangeApplyToAnalystOnly={handleApplyOnlyChange}
+          onSolvedLineupChange={handleSolvedLineupChange}
+        />
+      )}
       {/* Generic Bobby Dean FM27 Playbook v2.0 Reference (Always Available) */}
       <div className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-4 border-b border-slate-200 dark:border-slate-800">
