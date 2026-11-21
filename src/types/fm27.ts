@@ -52,6 +52,7 @@ export interface PlayerRecord {
   scoutBadges?: ScoutBadge[];
   last5Form?: FormTrend;
   last5Ratings?: PlayerMatchRating[];
+  statsSource?: 'Season Stats' | 'From Recent Matches';
   seasonHistory?: SeasonHistoryEntry[];
   attributes: {
     // Core required outfield attributes

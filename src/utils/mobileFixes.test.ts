@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import {
@@ -19,6 +20,11 @@ import {
   buildLiveTacticalAnalystContext,
   MAX_LIVE_ANALYST_CONTEXT_CHARS,
 } from './tacticalAnalystContext';
+import {
+  aggregateRecentMatchProduction,
+  hydrateAppFromDecodedFmSave,
+  resolveSquadStatusFromPlayingTime,
+} from './fmSaveHydrator';
 import { PlayerRecord } from '../types/fm27';
 import { RecruitmentTarget } from '../types/fmSave';
 
@@ -306,9 +312,32 @@ test('Issue 2 & 3: Python fm-save-mapper resolves nationalities via save.nations
   assert.equal(sanitizeReaderNotes([rawWarn, rawWarn]).length, 1);
 
   // Execute live Python test against public/fm-save-mapper.py helpers using venv or system python3
-  const pythonBin = fs.existsSync('/opt/fmsave-venv/bin/python3')
-    ? '/opt/fmsave-venv/bin/python3'
-    : 'python3';
+  // Inject a clean temporary stub fmsave module via PYTHONPATH when fmsave isn't installed
+  const runMapperPy = (pyScript: string): string => {
+    const pythonBin = fs.existsSync('/opt/fmsave-venv/bin/python3')
+      ? '/opt/fmsave-venv/bin/python3'
+      : 'python3';
+    const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fmsave-stub-'));
+    try {
+      fs.writeFileSync(
+        path.join(stubDir, 'fmsave.py'),
+        'def open(*args, **kwargs):\n    raise NotImplementedError("stub fmsave")\n',
+        'utf8'
+      );
+      const existingPyPath = process.env.PYTHONPATH || '';
+      const pyPath = existingPyPath
+        ? `${existingPyPath}${path.delimiter}${stubDir}`
+        : stubDir;
+      return execFileSync(pythonBin, ['-c', pyScript], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        timeout: 15_000,
+        env: { ...process.env, PYTHONPATH: pyPath },
+      });
+    } finally {
+      fs.rmSync(stubDir, { recursive: true, force: true });
+    }
+  };
 
   const pyTestScript = `
 import importlib.util, json, types
@@ -385,11 +414,7 @@ print(json.dumps({
 }))
 `;
 
-  const rawOut = execFileSync(pythonBin, ['-c', pyTestScript], {
-    cwd: process.cwd(),
-    encoding: 'utf8',
-    timeout: 15_000,
-  });
+  const rawOut = runMapperPy(pyTestScript);
   const result = JSON.parse(rawOut.trim()) as {
     total: number;
     vetCount: number;
@@ -411,4 +436,274 @@ print(json.dumps({
   assert.equal(result.hasReflexes, true);
   assert.equal(result.nonStrictRes, 'non_strict_ok');
   assert.doesNotMatch(result.cleanPyNote, /https?:\/\/|github\.com/i);
+});
+
+test('Fixes 2, 3, 4 & 5 (Python): Exact-key nationality resolution, contract bonus/clause separation, 52-attr scout profiles, and FM27 27.1 fast-path skip + 35s native history budget', () => {
+  const pythonBin = fs.existsSync('/opt/fmsave-venv/bin/python3')
+    ? '/opt/fmsave-venv/bin/python3'
+    : 'python3';
+  const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fmsave-stub-'));
+  let rawOut = '';
+  try {
+    fs.writeFileSync(
+      path.join(stubDir, 'fmsave.py'),
+      'def open(*args, **kwargs):\n    raise NotImplementedError("stub fmsave")\n',
+      'utf8'
+    );
+    const existingPyPath = process.env.PYTHONPATH || '';
+    const pyPath = existingPyPath
+      ? `${existingPyPath}${path.delimiter}${stubDir}`
+      : stubDir;
+
+    const pyScript = `
+import importlib.util, json, types
+spec = importlib.util.spec_from_file_location("mapper", "public/fm-save-mapper.py")
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+mod.step_close()
+
+# Fix 2: Exact-key nationality matching (Kosovo, Algeria, Mauritania, Burkina Faso, Mali) — NEVER by list index
+class NationRow:
+    def __init__(self, nation_id, database_id):
+        self.nation_id = nation_id
+        self.database_id = database_id
+
+class NatSave:
+    def nations(self):
+        # Deliberately non-sequential save-local nation_ids that would fail list-index lookup
+        return [
+            NationRow(42, 804),   # Kosovo
+            NationRow(11, 1),     # Algeria
+            NationRow(77, 31),    # Mauritania
+            NationRow(19, 5),     # Burkina Faso
+            NationRow(88, 30),    # Mali
+            NationRow(1, 757),    # Belgium (save-local id=1 MUST NOT collide with Algeria db_id=1!)
+        ]
+
+lookup = mod._build_nation_lookup(NatSave())
+class NatPlayer:
+    def __init__(self, nid):
+        self.nation_id = nid
+nat_results = {
+    "kosovo": mod._resolve_player_nationality(NatPlayer(42), lookup),
+    "algeria": mod._resolve_player_nationality(NatPlayer(11), lookup),
+    "mauritania": mod._resolve_player_nationality(NatPlayer(77), lookup),
+    "burkina": mod._resolve_player_nationality(NatPlayer(19), lookup),
+    "mali": mod._resolve_player_nationality(NatPlayer(88), lookup),
+    "belgium_no_collision": mod._resolve_player_nationality(NatPlayer(1), lookup),
+    "unmapped_not_algeria": mod._resolve_player_nationality(NatPlayer(5), lookup),
+}
+
+# Fix 3: Separate Match Bonuses from true Release Clauses
+class FakeClause:
+    def __init__(self, kind, value, parameter=None):
+        self.kind = kind
+        self.value = value
+        self.parameter = parameter
+
+class FakeContract:
+    squad_status = "REGULAR_STARTER"
+    clauses = [
+        FakeClause("APPEARANCE_FEE", 250),
+        FakeClause("SHUTOUT_BONUS", 150),
+        FakeClause("UNUSED_SUBSTITUTE_FEE", 75),
+        FakeClause("SEASONAL_LANDMARK_COMBINED_GOALS_AND_ASSISTS", 1000),
+        FakeClause("OPTIONAL_EXTENSION_BY_CLUB", None, parameter=2),
+        FakeClause("MINIMUM_FEE_RELEASE", 500000),
+    ]
+
+cd = mod._extract_contract_details(FakeContract())
+
+# Fix 4: Full 52 visible attributes, positionRatings, traits, scoutBadges, domestic + prime boost
+mod.step_close()
+mod._STATE["players_out"] = [{"nation": "Belgium", "wagePw": 1500, "position": "ST", "attributes": {"pace": 12}}]
+class FullAttrs:
+    def __init__(self, v=13):
+        for k in ("corners","crossing","dribbling","finishing","first_touch","free_kick_taking",
+                  "heading","long_shots","long_throws","marking","passing","penalty_taking",
+                  "tackling","technique","aggression","anticipation","bravery","composure",
+                  "concentration","decisions","determination","flair","leadership","off_the_ball",
+                  "positioning","teamwork","vision","work_rate","acceleration","agility","balance",
+                  "jumping_reach","natural_fitness","pace","stamina","strength","aerial_reach",
+                  "command_of_area","communication","eccentricity","handling","kicking","one_on_ones",
+                  "punching","reflexes","rushing_out","throwing"):
+            setattr(self, k, v)
+
+class ScoutPlayer:
+    def __init__(self, uid, name, age, nation_id):
+        self.uid = uid
+        self.name = name
+        self.age = age
+        self.nation_id = nation_id
+        self.club_uid = None
+        self.contract = None
+        self.natural_positions = ("ST",)
+        self.accomplished_positions = ("AMR",)
+        self.positions = {"st": 20, "amr": 16}
+        self.attributes = FullAttrs(14)
+        self.personality = None
+        self.traits = ("Places Shots",)
+
+class ScoutSave:
+    def nations(self):
+        return [NationRow(1, 757), NationRow(2, 769)]
+    def players(self):
+        return [
+            ScoutPlayer(1, "Veteran 35", 35, 2),
+            ScoutPlayer(2, "Foreign Prime", 23, 2),
+            ScoutPlayer(3, "Domestic Prime", 23, 1),
+        ]
+
+targets = mod._scan_recruitment_targets_group4(ScoutSave(), club_uid=999, game_date=None, wage_budget_weekly=5000)
+top_target = targets[0]
+
+# Fix 5: FM27 27.1 fast-path skip + 10s browser / 35s native history budgets
+class Fm27Save:
+    info = types.SimpleNamespace(game="FM27", build="27.1.0")
+fm27_skip = mod._is_fm27_27_1_unsupported_stats_build(Fm27Save())
+class Fm26Save:
+    info = types.SimpleNamespace(game="FM26", build="26.4.0")
+fm26_skip = mod._is_fm27_27_1_unsupported_stats_build(Fm26Save())
+
+print(json.dumps({
+    "natResults": nat_results,
+    "contractDetails": cd,
+    "topTargetName": top_target["name"],
+    "topTargetAttrCount": len(top_target["attributes"]),
+    "topTargetPosRatings": top_target.get("positionRatings"),
+    "topTargetTraits": top_target.get("traits"),
+    "hasRawCaPa": ("ca" in top_target or "pa" in top_target),
+    "fm27Skip": fm27_skip,
+    "fm26Skip": fm26_skip,
+    "browserHistoryBudget": mod.SEASON_HISTORY_BUDGET_SEC,
+    "nativeHistoryBudget": mod.NATIVE_SEASON_HISTORY_BUDGET_SEC,
+}))
+`;
+    rawOut = execFileSync(pythonBin, ['-c', pyScript], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      timeout: 15_000,
+      env: { ...process.env, PYTHONPATH: pyPath },
+    });
+  } finally {
+    fs.rmSync(stubDir, { recursive: true, force: true });
+  }
+
+  const res = JSON.parse(rawOut.trim());
+  // Fix 2 assertions
+  assert.equal(res.natResults.kosovo, 'Kosovo');
+  assert.equal(res.natResults.algeria, 'Algeria');
+  assert.equal(res.natResults.mauritania, 'Mauritania');
+  assert.equal(res.natResults.burkina, 'Burkina Faso');
+  assert.equal(res.natResults.mali, 'Mali');
+  assert.equal(res.natResults.belgium_no_collision, 'Belgium');
+  assert.equal(res.natResults.unmapped_not_algeria, 'Unknown');
+
+  // Fix 3 assertions
+  assert.equal(res.contractDetails.promisedPlayingTime, 'Regular Starter');
+  assert.equal(res.contractDetails.releaseClauses.length, 1);
+  assert.equal(res.contractDetails.releaseClauses[0].type, 'Minimum Fee Release');
+  assert.equal(res.contractDetails.releaseClauses[0].amount, 500000);
+  assert.equal(res.contractDetails.bonuses.appearanceFee, 250);
+  assert.equal(res.contractDetails.bonuses.cleanSheetBonus, 150);
+  assert.equal(res.contractDetails.bonuses.unusedSubFee, 75);
+  assert.equal(res.contractDetails.bonuses.goalBonus, 1000);
+  assert.equal(res.contractDetails.optionalExtensionYears, 2);
+
+  // Fix 4 assertions
+  assert.equal(res.topTargetName, 'Domestic Prime');
+  assert.ok(res.topTargetAttrCount >= 52, `Expected >=52 attributes, got ${res.topTargetAttrCount}`);
+  assert.deepEqual(res.topTargetPosRatings, { ST: 20, AMR: 16 });
+  assert.deepEqual(res.topTargetTraits, ['Places Shots']);
+  assert.equal(res.hasRawCaPa, false);
+
+  // Fix 5 Python assertions
+  assert.equal(res.fm27Skip, true);
+  assert.equal(res.fm26Skip, false);
+  assert.equal(res.browserHistoryBudget, 10);
+  assert.equal(res.nativeHistoryBudget, 35);
+});
+
+test('Fixes 3 & 5 (TypeScript): promisedPlayingTime single source of truth for Squad Status and Recent-Match Production Fallback', () => {
+  // Fix 3: promisedPlayingTime -> Squad Status
+  assert.equal(resolveSquadStatusFromPlayingTime('Star Player', 'Surplus'), 'Starter');
+  assert.equal(resolveSquadStatusFromPlayingTime('Regular Starter', 'Surplus'), 'Starter');
+  assert.equal(resolveSquadStatusFromPlayingTime('Squad Player', 'Starter'), 'Rotation');
+  assert.equal(resolveSquadStatusFromPlayingTime('Future Prospect', 'Rotation'), 'Youth');
+  assert.equal(resolveSquadStatusFromPlayingTime('Surplus To Requirements', 'Starter'), 'Surplus');
+
+  // Fix 5: Recent-Match Production Fallback helper
+  const agg = aggregateRecentMatchProduction([
+    { date: '2026-10-01', opponent: 'Club A', rating: 7.4, goals: 1, assists: 0, minutes: 90 },
+    { date: '2026-10-08', opponent: 'Club B', rating: 6.8, goals: 0, assists: 1, minutes: 75 },
+    { date: '2026-10-15', opponent: 'Club C', rating: 7.7, goals: 2, assists: 1, minutes: 90 },
+  ]);
+  assert.equal(agg.apps, '3');
+  assert.equal(agg.minutes, 255);
+  assert.equal(agg.rating, 7.3);
+  assert.equal(agg.goals, 3);
+  assert.equal(agg.assists, 2);
+  assert.equal(agg.source, 'From Recent Matches');
+
+  // End-to-end hydration check: empty season stats + present playerMatchStats + Regular Starter playing time
+  const hydrated = hydrateAppFromDecodedFmSave(
+    {
+      meta: {
+        fileName: 'test.fm',
+        fileSizeMb: 50,
+        decodedAtIso: '2026-11-21T00:00:00Z',
+        game: 'FM27',
+        build: '27.1.0',
+        gameDateDmy: '21/11/2026',
+        clubUid: 100,
+        clubName: 'KVV Zelzate',
+        managerName: 'Bobby Dean',
+      },
+      players: [
+        {
+          uid: 501,
+          name: 'Recent Form Striker',
+          age: 24,
+          position: 'ST',
+          apps: '0',
+          minutes: 0,
+          rating: null,
+          goals: 0,
+          assists: 0,
+          contractDetails: {
+            promisedPlayingTime: 'Regular Starter',
+            releaseClauses: [],
+            optionalExtensionYears: 0,
+            bonuses: { appearanceFee: 200 },
+            loanWageContributionPct: null,
+          },
+        },
+      ],
+      playerMatchStats: {
+        '501': [
+          { date: '2026-11-01', opponent: 'Opp 1', rating: 7.5, goals: 1, assists: 1, minutes: 90 },
+          { date: '2026-11-08', opponent: 'Opp 2', rating: 7.1, goals: 1, assists: 0, minutes: 80 },
+        ],
+      },
+      playedMatches: [],
+      upcomingFixtures: [],
+      staff: [],
+      tactics: [],
+      activeInjuries: [],
+      mentoring: [],
+      warnings: [],
+    } as unknown as Parameters<typeof hydrateAppFromDecodedFmSave>[0],
+    [],
+    []
+  );
+
+  assert.equal(hydrated.updatedSquad.length, 1);
+  const p = hydrated.updatedSquad[0];
+  assert.equal(p.status, 'Starter');
+  assert.equal(p.apps, '2');
+  assert.equal(p.minutes, 170);
+  assert.equal(p.rating, 7.3);
+  assert.equal(p.goals, 2);
+  assert.equal(p.assists, 1);
+  assert.equal(p.statsSource, 'From Recent Matches');
 });

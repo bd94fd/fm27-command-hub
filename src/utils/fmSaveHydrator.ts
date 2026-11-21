@@ -607,6 +607,91 @@ function inferPreferredFoot(
   return 'Right';
 }
 
+/**
+ * Single source of truth for Squad Status derived from Promised Playing Time,
+ * preventing Squad Status from contradicting Promised Playing Time.
+ */
+export function resolveSquadStatusFromPlayingTime(
+  promisedPlayingTime: string | null | undefined,
+  fallback: PlayerRecord['status'] = 'Rotation'
+): PlayerRecord['status'] {
+  if (!promisedPlayingTime || !promisedPlayingTime.trim()) return fallback;
+  const norm = promisedPlayingTime.trim().toLowerCase();
+  if (
+    norm.includes('star') ||
+    norm.includes('important') ||
+    norm.includes('regular starter') ||
+    norm.includes('first choice')
+  ) {
+    return 'Starter';
+  }
+  if (norm.includes('surplus') || norm.includes('not needed')) {
+    return 'Surplus';
+  }
+  if (
+    norm.includes('prospect') ||
+    norm.includes('youngster') ||
+    norm.includes('b team') ||
+    norm.includes('youth')
+  ) {
+    return 'Youth';
+  }
+  if (
+    norm.includes('squad') ||
+    norm.includes('impact') ||
+    norm.includes('fringe') ||
+    norm.includes('backup') ||
+    norm.includes('cup goalkeeper') ||
+    norm.includes('rotation')
+  ) {
+    return 'Rotation';
+  }
+  return fallback;
+}
+
+/**
+ * Aggregate Apps, Minutes, Avg Rating, Goals, and Assists from recorded recent
+ * player_match_stats when player_season_stats is unavailable.
+ */
+export function aggregateRecentMatchProduction(ratings: PlayerMatchRating[]): {
+  apps: string;
+  minutes: number;
+  rating: number | null;
+  goals: number;
+  assists: number;
+  source: 'From Recent Matches';
+} {
+  const appsCount = ratings.length;
+  let minutes = 0;
+  let goals = 0;
+  let assists = 0;
+  const validRatings: number[] = [];
+  for (const r of ratings) {
+    minutes += Math.max(0, Number(r.minutes) || 0);
+    goals += Math.max(0, Number(r.goals) || 0);
+    assists += Math.max(0, Number(r.assists) || 0);
+    if (typeof r.rating === 'number' && Number.isFinite(r.rating) && r.rating > 0) {
+      validRatings.push(r.rating);
+    }
+  }
+  const avgRating =
+    validRatings.length > 0
+      ? Number(
+          (
+            validRatings.reduce((acc, val) => acc + val, 0) / validRatings.length
+          ).toFixed(2)
+        )
+      : null;
+  return {
+    apps: String(appsCount),
+    minutes,
+    rating: avgRating,
+    goals,
+    assists,
+    source: 'From Recent Matches',
+  };
+}
+
 function computeRelativeStarRating(value: number, squadMedian: number): number {
   if (!value || value <= 0) return 2.5;
   const baseline = squadMedian > 0 ? squadMedian : 90;
@@ -839,12 +924,33 @@ export function hydrateAppFromDecodedFmSave(
       next.scoutBadges = badges;
     }
 
-    // Pass 0 Group 2: Last-5 Form & Season History
+    // Pass 0 Group 2: Last-5 Form & Season History + Recent-Match Production Fallback
     const pRatings =
       dp.last5Ratings || lookupUidRecord(decoded.playerMatchStats, dp.uid);
     if (pRatings && pRatings.length > 0) {
       next.last5Ratings = pRatings;
       next.last5Form = calculateLast5Form(pRatings);
+      const hasSeasonStats =
+        (Number(dp.minutes) || 0) > 0 ||
+        (dp.apps && dp.apps !== '0') ||
+        (dp.rating !== null && dp.rating !== undefined && dp.rating > 0);
+      if (!hasSeasonStats) {
+        const agg = aggregateRecentMatchProduction(pRatings);
+        next.apps = agg.apps;
+        next.minutes = agg.minutes;
+        next.rating = agg.rating;
+        next.goals = agg.goals;
+        next.assists = agg.assists;
+        next.statsSource = 'From Recent Matches';
+      } else {
+        next.statsSource = 'Season Stats';
+      }
+    }
+    if (dp.contractDetails?.promisedPlayingTime) {
+      next.status = resolveSquadStatusFromPlayingTime(
+        dp.contractDetails.promisedPlayingTime,
+        next.status
+      );
     }
     const pHistory =
       dp.seasonHistory || lookupUidRecord(decoded.playerSeasonHistory, dp.uid);
@@ -902,7 +1008,7 @@ export function hydrateAppFromDecodedFmSave(
         };
     const { ipRole, oopRole } = inferFm27Roles(dp.position || 'UTL', clampedAttrs);
     const { abilityStars, potentialStars } = getPlayerStars(dp);
-    const assignedStatus: PlayerRecord['status'] =
+    const fallbackStatus: PlayerRecord['status'] =
       dp.minutes > 180 || abilityStars >= 3.5
         ? 'Starter'
         : dp.minutes > 0 || abilityStars >= 2.5
@@ -910,11 +1016,24 @@ export function hydrateAppFromDecodedFmSave(
           : dp.age && dp.age <= 21
             ? 'Youth'
             : 'Surplus';
+    const assignedStatus: PlayerRecord['status'] = resolveSquadStatusFromPlayingTime(
+      dp.contractDetails?.promisedPlayingTime,
+      fallbackStatus
+    );
 
     const pRatings =
       dp.last5Ratings || lookupUidRecord(decoded.playerMatchStats, dp.uid) || [];
     const pHistory =
       dp.seasonHistory || lookupUidRecord(decoded.playerSeasonHistory, dp.uid) || [];
+
+    const hasSeasonStats =
+      (Number(dp.minutes) || 0) > 0 ||
+      (dp.apps && dp.apps !== '0') ||
+      (dp.rating !== null && dp.rating !== undefined && dp.rating > 0);
+    const recentAgg =
+      !hasSeasonStats && pRatings.length > 0
+        ? aggregateRecentMatchProduction(pRatings)
+        : null;
 
     mergedSquad.push({
       id: `fm-uid-${dp.uid}`,
@@ -923,13 +1042,18 @@ export function hydrateAppFromDecodedFmSave(
       name: dp.name || 'Unknown Player',
       position: dp.position || dp.primaryPosition || 'UTL',
       secondaryPositions: dp.secondaryPositions || [],
-      apps: dp.apps || '0',
-      minutes: Number(dp.minutes) || 0,
-      rating: dp.rating ?? null,
-      goals: Number(dp.goals) || 0,
+      apps: recentAgg ? recentAgg.apps : dp.apps || '0',
+      minutes: recentAgg ? recentAgg.minutes : Number(dp.minutes) || 0,
+      rating: recentAgg ? recentAgg.rating : (dp.rating ?? null),
+      goals: recentAgg ? recentAgg.goals : Number(dp.goals) || 0,
       xG: Number(dp.xG) || 0,
       xGPer90: Number(dp.xGPer90) || 0,
-      assists: Number(dp.assists) || 0,
+      assists: recentAgg ? recentAgg.assists : Number(dp.assists) || 0,
+      statsSource: recentAgg
+        ? 'From Recent Matches'
+        : hasSeasonStats
+          ? 'Season Stats'
+          : undefined,
       xA: Number(dp.xA) || 0,
       xAPer90: Number(dp.xAPer90) || 0,
       drbPer90: Number(dp.drbPer90) || 0,

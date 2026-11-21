@@ -48,6 +48,7 @@ DIVISION_BENCHMARK_BUDGET_SEC = 4.0
 SEASON_STATS_BUDGET_SEC = 12.0
 PLAYER_MATCH_STATS_BUDGET_SEC = 12.0
 SEASON_HISTORY_BUDGET_SEC = 10.0
+NATIVE_SEASON_HISTORY_BUDGET_SEC = 35.0
 CONTRACTS_SUSPENSIONS_BUDGET_SEC = 8.0
 
 _STATE: dict[str, Any] = {
@@ -136,7 +137,7 @@ FM_NATION_DB_ID_NAMES: dict[int, str] = {
     792: "San Marino", 793: "Scotland", 794: "Slovakia", 795: "Slovenia",
     796: "Spain", 797: "Sweden", 798: "Switzerland", 799: "Turkey",
     800: "Ukraine", 801: "Wales", 802: "Serbia", 803: "Montenegro",
-    804: "Kosovo",
+    804: "Kosovo", 219991: "Kosovo", 2000018151: "Kosovo",
     # South America (CONMEBOL)
     1649: "Argentina", 1650: "Bolivia", 1651: "Brazil", 1652: "Chile",
     1653: "Colombia", 1654: "Ecuador", 1655: "Paraguay", 1656: "Peru",
@@ -314,8 +315,34 @@ def _safe_call(fn: Any, label: str = "section", default: Any = ()):
         return default
 
 
+def _is_fm27_27_1_unsupported_stats_build(save: Any) -> bool:
+    """Detect FM27 27.1.x builds where upstream fmsave raises unbypassable ReaderCheckError
+    on player_season_stats / team_match_stats so we fast-path skip ~67s of wasted decoding."""
+    if save is None:
+        return False
+    info = getattr(save, "info", None)
+    if info is None:
+        return False
+    game_str = str(getattr(info, "game", "") or "").lower()
+    build_str = str(getattr(info, "build", "") or "").lower()
+    return ("27" in game_str or build_str.startswith("27.")) and build_str.startswith("27.1")
+
+
+def _extract_nation_row_key(n: Any) -> int | None:
+    """Extract the exact save-local nation key from a save.nations() row (NEVER list index)."""
+    for attr in ("nation_id", "nation_uid", "uid", "unique_id"):
+        val = getattr(n, attr, None)
+        if val is not None:
+            parsed = _int(val, None)
+            if parsed is not None:
+                return parsed
+    return None
+
+
 def _build_nation_lookup(save: Any) -> dict[int, str]:
-    """Build nation_id -> country name map from save.nations() via _safe_call."""
+    """Build exact nation_key -> country name map from save.nations() via _safe_call.
+    Maps strictly by exact matching key (nation_id / nation_uid / uid / unique_id) —
+    NEVER by list index and NEVER by polluting the map with colliding database_id keys."""
     cached = _STATE.get("nation_lookup")
     if isinstance(cached, dict) and cached:
         return cached
@@ -324,12 +351,10 @@ def _build_nation_lookup(save: Any) -> dict[int, str]:
     if callable(nations_fn):
         rows = _safe_call(nations_fn, "nations", default=()) or ()
         for n in rows:
-            n_id = _int(
-                getattr(n, "nation_id", None)
-                if getattr(n, "nation_id", None) is not None
-                else getattr(n, "uid", None)
-            )
-            db_id = _int(getattr(n, "database_id", None))
+            n_key = _extract_nation_row_key(n)
+            if n_key is None:
+                continue
+            db_id = _int(getattr(n, "database_id", None), None)
             explicit_name = (
                 getattr(n, "name", None)
                 or getattr(n, "short_name", None)
@@ -340,13 +365,8 @@ def _build_nation_lookup(save: Any) -> dict[int, str]:
                 resolved = explicit_name.strip()
             elif db_id is not None and db_id in FM_NATION_DB_ID_NAMES:
                 resolved = FM_NATION_DB_ID_NAMES[db_id]
-            elif n_id is not None and n_id in FM_NATION_DB_ID_NAMES:
-                resolved = FM_NATION_DB_ID_NAMES[n_id]
             if resolved:
-                if n_id is not None:
-                    lookup[n_id] = resolved
-                if db_id is not None and db_id not in lookup:
-                    lookup[db_id] = resolved
+                lookup[n_key] = resolved
     _STATE["nation_lookup"] = lookup
     return lookup
 
@@ -365,15 +385,18 @@ def _resolve_player_nationality(
         nat_name = getattr(nat_obj, "name", None)
         if isinstance(nat_name, str) and nat_name.strip():
             return nat_name.strip()
-    n_id = _int(getattr(p, "nation_id", None))
-    if n_id is not None:
-        if nation_lookup and n_id in nation_lookup:
-            return nation_lookup[n_id]
-        if n_id in FM_NATION_DB_ID_NAMES:
-            return FM_NATION_DB_ID_NAMES[n_id]
-    club_n_id = _int(getattr(p, "club_nation_id", None))
-    if club_n_id is not None and nation_lookup and club_n_id in nation_lookup:
-        return nation_lookup[club_n_id]
+    n_key: int | None = None
+    for attr in ("nation_id", "nationality_uid", "nation_uid"):
+        raw = getattr(p, attr, None)
+        if raw is not None:
+            n_key = _int(raw, None)
+            if n_key is not None:
+                break
+    if n_key is not None:
+        if nation_lookup and n_key in nation_lookup:
+            return nation_lookup[n_key]
+        # Never look up a save-local nation_id in FM_NATION_DB_ID_NAMES (causes Algeria/Mali/etc. mismatches)
+        return default
     return default
 
 
@@ -882,21 +905,62 @@ def step_open(
 
 
 def _extract_contract_details(contract_obj: Any, player_obj: Any = None) -> dict[str, Any]:
-    """Pass 1 Tier-1: Extract promised playing time, release clauses, optional extensions,
-    bonuses, and loan wage contribution % safely without exposing raw hidden values."""
+    """Pass 1 Tier-1: Extract promised playing time, true release clauses, optional extensions,
+    match bonuses, and loan wage contribution % safely without exposing raw hidden values."""
     promised = (
         _label(_first_attr(contract_obj, ("playing_time", "promised_playing_time", "squad_status", "agreed_playing_time")))
         or _label(_first_attr(player_obj, ("agreed_playing_time", "squad_status")))
         or "Squad Player"
     )
     release_clauses: list[dict[str, Any]] = []
+    bonuses: dict[str, Any] = {}
+    ext_years = _int(
+        _first_attr(
+            contract_obj,
+            ("optional_extension_years", "club_option_years", "extension_years", "optional_contract_extension"),
+        ),
+        0,
+    ) or 0
+    if ext_years < 0:
+        ext_years = 0
+
     raw_clauses = _first_attr(contract_obj, ("clauses", "release_clauses", "contract_clauses")) if contract_obj is not None else None
     if isinstance(raw_clauses, (list, tuple)):
-        for cl in raw_clauses[:10]:
-            cl_type = _label(_first_attr(cl, ("clause_type", "type", "name", "kind"))) or "Release Clause"
+        for cl in raw_clauses[:20]:
+            cl_type = _label(_first_attr(cl, ("clause_type", "type", "name", "kind"))) or ""
+            cl_type_lower = cl_type.lower()
             cl_amt = _int(_first_attr(cl, ("amount", "value", "fee", "minimum_fee")), None)
-            if cl_amt is not None and cl_amt > 0:
-                release_clauses.append({"type": cl_type, "amount": cl_amt})
+            cl_param = _int(_first_attr(cl, ("parameter", "years")), None)
+
+            # Separate Match Bonuses from true Release Clauses
+            if "appearance" in cl_type_lower:
+                if cl_amt is not None and cl_amt > 0:
+                    bonuses["appearanceFee"] = cl_amt
+                continue
+            if "unused" in cl_type_lower and "sub" in cl_type_lower:
+                if cl_amt is not None and cl_amt > 0:
+                    bonuses["unusedSubFee"] = cl_amt
+                continue
+            if "clean sheet" in cl_type_lower or "shutout" in cl_type_lower:
+                if cl_amt is not None and cl_amt > 0:
+                    bonuses["cleanSheetBonus"] = cl_amt
+                continue
+            if "goal" in cl_type_lower and ("bonus" in cl_type_lower or "landmark" in cl_type_lower):
+                if cl_amt is not None and cl_amt > 0:
+                    bonuses["goalBonus"] = cl_amt
+                continue
+            if "optional extension" in cl_type_lower:
+                if ext_years == 0 and cl_param is not None and cl_param > 0:
+                    ext_years = cl_param
+                continue
+            if any(tok in cl_type_lower for tok in ("bonus", "salary", "wage", "cap")):
+                continue
+
+            # True Release Clauses only
+            if any(tok in cl_type_lower for tok in ("release", "minimum fee", "buyout")):
+                if cl_amt is not None and cl_amt > 0:
+                    release_clauses.append({"type": cl_type or "Release Clause", "amount": cl_amt})
+
     if contract_obj is not None:
         for attr_name, label_txt in (
             ("minimum_fee_release_clause", "Minimum Fee Release"),
@@ -909,28 +973,17 @@ def _extract_contract_details(contract_obj: Any, player_obj: Any = None) -> dict
             if amt is not None and amt > 0 and not any(c["type"] == label_txt for c in release_clauses):
                 release_clauses.append({"type": label_txt, "amount": amt})
 
-    ext_years = _int(
-        _first_attr(
-            contract_obj,
-            ("optional_extension_years", "club_option_years", "extension_years", "optional_contract_extension"),
-        ),
-        0,
-    ) or 0
-    if ext_years < 0:
-        ext_years = 0
-
-    bonuses: dict[str, Any] = {}
     app_fee = _int(_first_attr(contract_obj, ("appearance_fee", "appearance_bonus")), None)
     goal_bonus = _int(_first_attr(contract_obj, ("goal_bonus",)), None)
-    cs_bonus = _int(_first_attr(contract_obj, ("clean_sheet_bonus",)), None)
+    cs_bonus = _int(_first_attr(contract_obj, ("clean_sheet_bonus", "shutout_bonus")), None)
     unused_fee = _int(_first_attr(contract_obj, ("unused_sub_fee", "unused_substitute_fee")), None)
-    if app_fee is not None and app_fee > 0:
+    if app_fee is not None and app_fee > 0 and "appearanceFee" not in bonuses:
         bonuses["appearanceFee"] = app_fee
-    if goal_bonus is not None and goal_bonus > 0:
+    if goal_bonus is not None and goal_bonus > 0 and "goalBonus" not in bonuses:
         bonuses["goalBonus"] = goal_bonus
-    if cs_bonus is not None and cs_bonus > 0:
+    if cs_bonus is not None and cs_bonus > 0 and "cleanSheetBonus" not in bonuses:
         bonuses["cleanSheetBonus"] = cs_bonus
-    if unused_fee is not None and unused_fee > 0:
+    if unused_fee is not None and unused_fee > 0 and "unusedSubFee" not in bonuses:
         bonuses["unusedSubFee"] = unused_fee
 
     loan_pct = _int(
@@ -1779,43 +1832,29 @@ def _scan_recruitment_targets_group4(
             primary_pos = nat_pos[0] if nat_pos else (acc_pos[0] if acc_pos else "MC")
             pos_grp = _classify_pos_group_py(primary_pos)
 
-            attr_dict = {
-                "pace": _ra(attrs, p, "pace"),
-                "acceleration": _ra(attrs, p, "acceleration"),
-                "stamina": _ra(attrs, p, "stamina"),
-                "strength": _ra(attrs, p, "strength"),
-                "agility": _ra(attrs, p, "agility"),
-                "balance": _ra(attrs, p, "balance"),
-                "jumpingReach": _ra(attrs, p, "jumping_reach"),
-                "naturalFitness": _ra(attrs, p, "natural_fitness"),
-                "finishing": _ra(attrs, p, "finishing"),
-                "offTheBall": _ra(attrs, p, "off_the_ball"),
-                "composure": _ra(attrs, p, "composure"),
-                "passing": _ra(attrs, p, "passing"),
-                "decisions": _ra(attrs, p, "decisions"),
-                "workRate": _ra(attrs, p, "work_rate"),
-                "vision": _ra(attrs, p, "vision"),
-                "dribbling": _ra(attrs, p, "dribbling"),
-                "crossing": _ra(attrs, p, "crossing"),
-                "technique": _ra(attrs, p, "technique"),
-                "firstTouch": _ra(attrs, p, "first_touch"),
-                "tackling": _ra(attrs, p, "tackling"),
-                "marking": _ra(attrs, p, "marking"),
-                "positioning": _ra(attrs, p, "positioning"),
-                "anticipation": _ra(attrs, p, "anticipation"),
-                "concentration": _ra(attrs, p, "concentration"),
-                "heading": _ra(attrs, p, "heading"),
-                "determination": _ra(attrs, p, "determination"),
-                "teamwork": _ra(attrs, p, "teamwork"),
-                "flair": _ra(attrs, p, "flair"),
-                "reflexes": _ra(attrs, p, "reflexes"),
-                "handling": _ra(attrs, p, "handling"),
-                "aerialReach": _ra(attrs, p, "aerial_reach"),
-                "commandOfArea": _ra(attrs, p, "command_of_area"),
-                "oneOnOnes": _ra(attrs, p, "one_on_ones"),
-                "kicking": _ra(attrs, p, "kicking"),
-                "communication": _ra(attrs, p, "communication"),
-            }
+            # Full 52 visible attributes (ZERO raw CA/PA)
+            attr_dict = _extract_52_attributes(p, attrs)
+
+            # Positional familiarity map (1-20)
+            raw_pos_map = getattr(p, "positions", None) or getattr(p, "position_ratings", None)
+            pos_ratings: dict[str, int] = {}
+            if raw_pos_map is not None:
+                for pos_key in (
+                    "gk", "dl", "dc", "dr", "wbl", "dm", "wbr", "ml", "mc", "mr",
+                    "aml", "amc", "amr", "st", "GK", "DL", "DC", "DR", "WBL", "DM",
+                    "WBR", "ML", "MC", "MR", "AML", "AMC", "AMR", "ST",
+                ):
+                    pv = (
+                        raw_pos_map.get(pos_key)
+                        if isinstance(raw_pos_map, dict)
+                        else getattr(raw_pos_map, pos_key, None)
+                    )
+                    if pv is not None:
+                        pos_ratings[pos_key.upper()] = _clamp_attr(pv, 1)
+            for np_code in nat_pos:
+                pos_ratings.setdefault(str(np_code).upper(), 20)
+            for ap_code in acc_pos:
+                pos_ratings.setdefault(str(ap_code).upper(), 16)
 
             # Reject slow/uninitialized placeholders (outfield pace floor for veterans & general)
             if pos_grp != "GK" and age >= 30 and attr_dict["pace"] < 10:
@@ -1826,15 +1865,34 @@ def _scan_recruitment_targets_group4(
             if vis_quality < max(7.5, squad_med - 2.5):
                 continue
 
-            # Prime-age weighting: prioritize 17-29 (strong boost for 18-26), penalize 30+
+            # Prime/U28 age weighting: strongly favor 18-28 over 34-36yo veterans
             if 18 <= age <= 26:
-                age_bonus = 1.6
-            elif 17 <= age <= 29:
-                age_bonus = 0.8
+                age_bonus = 1.8
+            elif 27 <= age <= 28:
+                age_bonus = 1.1
+            elif age in (17, 29):
+                age_bonus = 0.5
+            elif 30 <= age <= 33:
+                age_bonus = -1.8
             else:
-                age_bonus = -1.5
+                age_bonus = -3.5
 
-            rank_score = (vis_quality - squad_med) * 2.0 + vis_quality + age_bonus
+            resolved_nation = _resolve_player_nationality(p, nation_lookup, default="Unknown")
+            # Domestic / club-nation boost
+            domestic_bonus = 0.0
+            club_nation_name = None
+            if players_out:
+                nation_counts: dict[str, int] = {}
+                for sp in players_out:
+                    sn = sp.get("nation")
+                    if isinstance(sn, str) and sn and sn not in ("Unknown", "FM"):
+                        nation_counts[sn] = nation_counts.get(sn, 0) + 1
+                if nation_counts:
+                    club_nation_name = max(nation_counts.items(), key=lambda kv: kv[1])[0]
+            if club_nation_name and resolved_nation == club_nation_name:
+                domestic_bonus = 1.2
+
+            rank_score = (vis_quality - squad_med) * 2.0 + vis_quality + age_bonus + domestic_bonus
 
             attr_dict["keyPace"] = attr_dict["pace"]
             attr_dict["keyVision"] = attr_dict["vision"]
@@ -1845,8 +1903,9 @@ def _scan_recruitment_targets_group4(
                 "uid": _int(getattr(p, "uid", None), 0) or 0,
                 "name": str(p_name),
                 "age": age,
-                "nationality": _resolve_player_nationality(p, nation_lookup, default="Unknown"),
+                "nationality": resolved_nation,
                 "primaryPosition": primary_pos,
+                "positionRatings": pos_ratings if pos_ratings else None,
                 "currentClub": "Free Agent" if is_free_agent else (getattr(p, "club_name", None) or "Expiring Contract"),
                 "isFreeAgent": is_free_agent,
                 "contractExpiryMonths": 0 if is_free_agent else int(contract_months),
@@ -2777,6 +2836,21 @@ def step_4_1_season_stats(fast_sync: bool | None = None) -> str:
             if len(league_matched_uids) >= len(squad_uids):
                 break
 
+    if _is_fm27_27_1_unsupported_stats_build(save):
+        _record_warning(
+            "player_season_stats: fast-path skipped on FM27 27.1 build (upstream fmsave layout check); using recent match stats fallback"
+        )
+        _STATE["step_timings_ms"]["step_4_1_season_stats"] = 0
+        return json.dumps({
+            "skipped": True,
+            "fastPathSkipped": True,
+            "matched": 0,
+            "squadCount": len(squad_uids),
+            "elapsedSec": 0.0,
+            "elapsedMs": 0,
+            "timedOut": False,
+        })
+
     try:
         primary_iter, fallback_table, used_scoped = _open_table_stream(
             save,
@@ -3252,28 +3326,36 @@ def step_fixtures(fast_sync: bool | None = None) -> str:
     team_match_stats: list[dict[str, Any]] = []
     tms_by_key: dict[str, dict[str, Any]] = {}
     if not use_fast and club_uid is not None and save is not None:
-        tms_t0 = time.monotonic()
         tms_rows: list[Any] = []
+        primary_iter = None
+        fallback_table = None
+        used_scoped = False
+        if _is_fm27_27_1_unsupported_stats_build(save):
+            _record_warning(
+                "team_match_stats: fast-path skipped on FM27 27.1 build (upstream fmsave layout check)"
+            )
+        else:
+            tms_t0 = time.monotonic()
 
-        def _scan_tms(stream: Any) -> None:
-            seen = 0
-            for row in stream:
-                seen += 1
-                if (seen & 255) == 0 and (time.monotonic() - tms_t0) >= PLAYER_MATCH_STATS_BUDGET_SEC:
-                    _STATE["warnings"].append(
-                        f"team_match_stats: {PLAYER_MATCH_STATS_BUDGET_SEC:.0f}s budget reached ({len(tms_rows)} rows)"
-                    )
-                    break
-                t_uid = getattr(row, "club_uid", None) or getattr(row, "team_id", None)
-                if t_uid == club_uid:
-                    tms_rows.append(row)
+            def _scan_tms(stream: Any) -> None:
+                seen = 0
+                for row in stream:
+                    seen += 1
+                    if (seen & 255) == 0 and (time.monotonic() - tms_t0) >= PLAYER_MATCH_STATS_BUDGET_SEC:
+                        _STATE["warnings"].append(
+                            f"team_match_stats: {PLAYER_MATCH_STATS_BUDGET_SEC:.0f}s budget reached ({len(tms_rows)} rows)"
+                        )
+                        break
+                    t_uid = getattr(row, "club_uid", None) or getattr(row, "team_id", None)
+                    if t_uid == club_uid:
+                        tms_rows.append(row)
 
-        primary_iter, fallback_table, used_scoped = _open_table_stream(
-            save,
-            "team_match_stats",
-            club_uid=club_uid,
-            try_where_club=True,
-        )
+            primary_iter, fallback_table, used_scoped = _open_table_stream(
+                save,
+                "team_match_stats",
+                club_uid=club_uid,
+                try_where_club=True,
+            )
         if primary_iter is not None:
             try:
                 _scan_tms(primary_iter)
@@ -3449,6 +3531,12 @@ def step_team_match_stats(fast_sync: bool | None = None) -> str:
 
     save = _STATE["save"]
     club_uid = _STATE["club_uid"]
+    if _is_fm27_27_1_unsupported_stats_build(save):
+        _record_warning(
+            "team_match_stats: fast-path skipped on FM27 27.1 build (upstream fmsave layout check)"
+        )
+        _STATE["step_timings_ms"]["step_4_team_match_stats"] = 0
+        return json.dumps({"skipped": True, "fastPathSkipped": True, "teamMatchStatsCount": 0, "elapsedMs": 0})
     team_match_stats: list[dict[str, Any]] = []
     tms_by_key: dict[str, dict[str, Any]] = {}
     if club_uid is not None and save is not None:
@@ -4076,6 +4164,9 @@ def _run_cli(argv: list[str] | None = None) -> int:
                     sys.stderr.flush()
             except Exception:
                 pass
+
+        global SEASON_HISTORY_BUDGET_SEC
+        SEASON_HISTORY_BUDGET_SEC = NATIVE_SEASON_HISTORY_BUDGET_SEC
 
         payload = extract_fm_save_payload(
             save_file,
