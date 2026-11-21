@@ -152,10 +152,13 @@ test('Issue 1: parseJsonApiResponse safely handles HTML <!doctype> 504/404/200 w
   assert.equal(ok.analysisMarkdown, 'Tactical audit ready');
 });
 
-test('Issue 1: server.ts enforces gemini-2.5-flash, response.text getter, 25s timeout 504, and JSON 404 before Vite/SPA', () => {
+test('Issue 1: server.ts enforces gemini-3.5-flash-lite/gemini-3.5-flash, response.text getter, 25s timeout 504, and JSON 404 before Vite/SPA', () => {
   const serverSrc = fs.readFileSync(path.resolve(process.cwd(), 'server.ts'), 'utf8');
 
-  assert.match(serverSrc, /'gemini-2\.5-flash'/);
+  assert.match(serverSrc, /'gemini-3\.5-flash-lite'/);
+  assert.match(serverSrc, /'gemini-3\.5-flash'/);
+  assert.doesNotMatch(serverSrc, /'gemini-2\.5-flash'/);
+  assert.doesNotMatch(serverSrc, /'gemini-2\.5-flash-lite'/);
   assert.match(serverSrc, /ANALYST_TIMEOUT_MS\s*=\s*25_000/);
   assert.match(serverSrc, /AbortSignal\.timeout/);
   assert.match(serverSrc, /res\.status\(504\)\.json/);

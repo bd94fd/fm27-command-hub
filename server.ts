@@ -382,31 +382,30 @@ function startAsyncNativeFmDecodeJob(
 
 const ANALYST_TIMEOUT_MS = 25_000;
 
-const RETIRED_MODELS = new Set([
-  'gemini-1.5-pro',
-  'gemini-1.5-flash',
-  'gemini-3.8-flash',
-  'gemini-3.8-pro',
-  'gemini-3.5-flash',
-  'gemini-3.5-pro',
-]);
+const RETIRED_MODEL_PATTERN = /^(?:models\/)?gemini-(?:1\.5|2\.0|2\.5|3\.8)-/i;
+
+function isRetiredGeminiModel(model: string): boolean {
+  const trimmed = model.trim();
+  if (!trimmed) return true;
+  return RETIRED_MODEL_PATTERN.test(trimmed);
+}
 
 function resolveActiveModel(envVal: string | undefined, fallback: string): string {
   const trimmed = (envVal || '').trim();
-  if (!trimmed || RETIRED_MODELS.has(trimmed)) return fallback;
+  if (!trimmed || isRetiredGeminiModel(trimmed)) return fallback;
   return trimmed;
 }
 
-const DEFAULT_GEMINI_MODEL = resolveActiveModel(
-  process.env.GEMINI_MODEL,
-  'gemini-2.5-flash'
-);
 const FAST_GEMINI_MODEL = resolveActiveModel(
   process.env.GEMINI_FAST_MODEL,
-  'gemini-2.5-flash'
+  'gemini-3.5-flash-lite'
+);
+const DEFAULT_GEMINI_MODEL = resolveActiveModel(
+  process.env.GEMINI_MODEL,
+  'gemini-3.5-flash'
 );
 
-const MODEL_FALLBACK_CHAIN = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+const MODEL_FALLBACK_CHAIN = ['gemini-3.5-flash-lite'];
 
 class AnalystTimeoutError extends Error {
   constructor(timeoutMs: number) {
@@ -434,9 +433,10 @@ async function generateContentWithFallback(
   params: Omit<Parameters<GoogleGenAI['models']['generateContent']>[0], 'model'>,
   timeoutMs = ANALYST_TIMEOUT_MS
 ) {
+  const activePreferred = resolveActiveModel(preferredModel, FAST_GEMINI_MODEL);
   const candidates = Array.from(
-    new Set([preferredModel, ...MODEL_FALLBACK_CHAIN])
-  );
+    new Set([activePreferred, ...MODEL_FALLBACK_CHAIN])
+  ).filter((m) => !isRetiredGeminiModel(m));
   const deadline = Date.now() + timeoutMs;
   let lastError: unknown;
 

@@ -163,7 +163,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   const [showReaderNotes, setShowReaderNotes] = useState<boolean>(false);
   const [lastStepTimingsMs, setLastStepTimingsMs] = useState<Record<string, number>>({});
   const [reasoningMode, setReasoningMode] =
-    useState<AnalystReasoningMode>('deep_high');
+    useState<AnalystReasoningMode>('fast_lite');
   const [messageInput, setMessageInput] = useState('');
   const [uploadedImages, setUploadedImages] = useState<
     Array<{ base64: string; mimeType: string; name: string }>
@@ -1115,14 +1115,14 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                 }
                 className="min-w-0 flex-1 sm:flex-none max-w-full px-2.5 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 rounded-lg"
               >
+                <option value="fast_lite">
+                  Rapid Touchline Co-Pilot (Gemini 3.5 Flash Lite — Default)
+                </option>
                 <option value="deep_high">
-                  Deep Tactical Reasoning (Gemini 4 High)
+                  Deep Tactical Reasoning (Gemini 3.5 Flash)
                 </option>
                 <option value="max_xhigh">
-                  Max Engine &amp; Squad Synthesis (Gemini 4 XHigh)
-                </option>
-                <option value="fast_lite">
-                  Rapid Touchline Co-Pilot (Flash Lite)
+                  Max Engine &amp; Squad Synthesis (Gemini 3.5 Flash)
                 </option>
               </select>
             </div>
