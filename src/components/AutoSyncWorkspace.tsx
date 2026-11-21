@@ -65,6 +65,8 @@ import {
   parseJsonApiResponse,
   sanitizeReaderNotes,
 } from '../utils/apiResponse';
+import { useWorkspaceSync } from '../hooks/useWorkspaceSync';
+import { WorkspaceSyncControls } from './sync/WorkspaceSyncControls';
 
 export type PlayerAutoUpdate = ExtendedPlayerAutoUpdate;
 
@@ -225,265 +227,42 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     return () => window.clearInterval(timer);
   }, [Boolean(fmDecodeStage)]);
 
-  // Collapsible Google Workspace Connection Settings
-  const [showGoogleSettings, setShowGoogleSettings] = useState(false);
-  const [googleUser, setGoogleUser] = useState<User | null>(null);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
-
-  const [docUrlOrId, setDocUrlOrId] = useState<string>(() => {
-    try {
-      return (
-        localStorage.getItem('fm27_command_hub_doc_id') ||
-        localStorage.getItem('kvv_zelzate_doc_id') ||
-        ''
-      );
-    } catch {
-      return '';
-    }
-  });
-  const [sheetUrlOrId, setSheetUrlOrId] = useState<string>(() => {
-    try {
-      return (
-        localStorage.getItem('fm27_command_hub_sheet_id') ||
-        localStorage.getItem('kvv_zelzate_sheet_id') ||
-        ''
-      );
-    } catch {
-      return '';
-    }
-  });
-
-  const [docInfo, setDocInfo] = useState<GoogleDocInfo | null>(null);
-  const [sheetMeta, setSheetMeta] = useState<GoogleSheetMetadata | null>(null);
-  const [selectedMatchLogTab, setSelectedMatchLogTab] = useState<string>('');
-  const [selectedChroniclesTab, setSelectedChroniclesTab] = useState<string>('');
-  const [workspaceStatus, setWorkspaceStatus] = useState<string | null>(null);
-  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
-  const [isSyncingWorkspace, setIsSyncingWorkspace] = useState(false);
-
-  const [pendingMutation, setPendingMutation] =
-    useState<PendingWorkspaceMutation | null>(null);
-
-  useEffect(() => {
-    const unsub = initAuth(
-      (user, token) => {
-        setGoogleUser(user);
-        setAccessToken(token);
-      },
-      () => {
-        setGoogleUser(null);
-        setAccessToken(null);
-      }
-    );
-    return () => unsub();
-  }, []);
-
-  const handleDocUrlChange = (val: string) => {
-    setDocUrlOrId(val);
-    try {
-      localStorage.setItem('fm27_command_hub_doc_id', val);
-    } catch {
-      // ignore
-    }
-  };
-
-  const handleSheetUrlChange = (val: string) => {
-    setSheetUrlOrId(val);
-    try {
-      localStorage.setItem('fm27_command_hub_sheet_id', val);
-    } catch {
-      // ignore
-    }
-  };
-
-  const handleGoogleLogin = async () => {
-    setIsLoggingIn(true);
-    setWorkspaceError(null);
-    try {
-      const res = await googleSignIn();
-      if (res) {
-        setGoogleUser(res.user);
-        setAccessToken(res.accessToken);
-        setShowGoogleSettings(true);
-        setWorkspaceStatus(
-          `Signed in as ${res.user.email || res.user.displayName || 'Google User'}. Paste your Google Sheet & Doc URLs below once to enable direct 1-click updates.`
-        );
-      }
-    } catch (err: unknown) {
-      setWorkspaceError(
-        err instanceof Error
-          ? err.message
-          : 'Google Sign-In failed. Please try again.'
-      );
-    } finally {
-      setIsLoggingIn(false);
-    }
-  };
-
-  const handleGoogleLogout = async () => {
-    await logout();
-    setGoogleUser(null);
-    setAccessToken(null);
-    setDocInfo(null);
-    setSheetMeta(null);
-    setWorkspaceStatus('Signed out of Google Workspace.');
-  };
-
-  const handleVerifyFiles = async () => {
-    const token = accessToken || (await getAccessToken());
-    if (!token) {
-      setWorkspaceError('Please click "Sign in with Google" first.');
-      return;
-    }
-    if (!docUrlOrId.trim() && !sheetUrlOrId.trim()) {
-      setWorkspaceError(
-        'Paste your Google Doc URL/ID or Google Sheet URL/ID first.'
-      );
-      return;
-    }
-
-    setIsSyncingWorkspace(true);
-    setWorkspaceError(null);
-    setWorkspaceStatus(null);
-
-    try {
-      const messages: string[] = [];
-      if (docUrlOrId.trim()) {
-        const info = await fetchGoogleDocInfo(docUrlOrId, token);
-        setDocInfo(info);
-        messages.push(`Connected Doc: "${info.title}"`);
-      }
-      if (sheetUrlOrId.trim()) {
-        const meta = await fetchGoogleSheetMetadata(sheetUrlOrId, token);
-        setSheetMeta(meta);
-        if (meta.sheetNames.length > 0) {
-          const matchTab =
-            meta.sheetNames.find((n) => /1g|match|tactic|master/i.test(n)) ||
-            meta.sheetNames[0];
-          const chronTab =
-            meta.sheetNames.find((n) => /chronicle|tab 10|history/i.test(n)) ||
-            meta.sheetNames[meta.sheetNames.length - 1];
-          setSelectedMatchLogTab(matchTab);
-          setSelectedChroniclesTab(chronTab);
-        }
-        messages.push(
-          `Connected Sheet: "${meta.title}" (${meta.sheetNames.length} tabs)`
-        );
-      }
-      setWorkspaceStatus(messages.join(' · '));
-    } catch (err: unknown) {
-      setWorkspaceError(
-        err instanceof Error
-          ? err.message
-          : 'Failed to inspect Google Doc or Sheet.'
-      );
-    } finally {
-      setIsSyncingWorkspace(false);
-    }
-  };
+  // Google Workspace Connection, Diff-Preview & Audit Log Sync Hook
+  const {
+    showGoogleSettings,
+    setShowGoogleSettings,
+    googleUser,
+    accessToken,
+    isLoggingIn,
+    docUrlOrId,
+    sheetUrlOrId,
+    docInfo,
+    sheetMeta,
+    selectedMatchLogTab,
+    setSelectedMatchLogTab,
+    selectedChroniclesTab,
+    setSelectedChroniclesTab,
+    workspaceStatus,
+    workspaceError,
+    isSyncingWorkspace,
+    pendingSync,
+    auditLogs,
+    handleDocUrlChange,
+    handleSheetUrlChange,
+    handleGoogleLogin,
+    handleGoogleLogout,
+    handleVerifyFiles,
+    requestSync,
+    confirmPendingSync,
+    cancelPendingSync,
+  } = useWorkspaceSync();
 
   const handleRequestDirectPush = (payload: PendingWorkspaceMutation) => {
-    setWorkspaceError(null);
-    if (!accessToken) {
+    if (!accessToken || (!docUrlOrId.trim() && !sheetUrlOrId.trim())) {
       setShowGoogleSettings(true);
-      setWorkspaceError(
-        'Click "Sign in with Google" and paste your Sheet/Doc link once to push directly.'
-      );
       return;
     }
-    if (!docUrlOrId.trim() && !sheetUrlOrId.trim()) {
-      setShowGoogleSettings(true);
-      setWorkspaceError(
-        'Paste your Google Sheet URL or Google Doc URL in the connection drawer above.'
-      );
-      return;
-    }
-    setPendingMutation(payload);
-  };
-
-  const executeConfirmedWorkspaceMutation = async () => {
-    if (!pendingMutation) return;
-    const cp = pendingMutation;
-    setPendingMutation(null);
-
-    const token = accessToken || (await getAccessToken());
-    if (!token) {
-      setWorkspaceError('Google session expired. Please sign in again.');
-      return;
-    }
-
-    setIsSyncingWorkspace(true);
-    setWorkspaceError(null);
-    setWorkspaceStatus(null);
-
-    try {
-      const results: string[] = [];
-
-      if (docUrlOrId.trim() && cp.docEventBulletBlock) {
-        const res = await appendEventToGoogleDoc(
-          docUrlOrId,
-          cp.docEventBulletBlock,
-          token
-        );
-        results.push(`Updated Google Doc "${res.title}"`);
-      }
-
-      if (sheetUrlOrId.trim()) {
-        let matchTab = selectedMatchLogTab;
-        let chronTab = selectedChroniclesTab;
-        if (!matchTab || !chronTab) {
-          const meta = await fetchGoogleSheetMetadata(sheetUrlOrId, token);
-          setSheetMeta(meta);
-          matchTab =
-            meta.sheetNames.find((n) => /1g|match|tactic|master/i.test(n)) ||
-            meta.sheetNames[0] ||
-            'Sheet1';
-          chronTab =
-            meta.sheetNames.find((n) => /chronicle|tab 10|history/i.test(n)) ||
-            meta.sheetNames[meta.sheetNames.length - 1] ||
-            matchTab;
-          setSelectedMatchLogTab(matchTab);
-          setSelectedChroniclesTab(chronTab);
-        }
-
-        if (cp.sheetRowValues && cp.sheetRowValues.length > 0) {
-          await appendRowToGoogleSheet(
-            sheetUrlOrId,
-            matchTab,
-            cp.sheetRowValues,
-            token
-          );
-        }
-
-        if (
-          chronTab &&
-          chronTab !== matchTab &&
-          cp.chronicleRowValues &&
-          cp.chronicleRowValues.length > 0
-        ) {
-          await appendRowToGoogleSheet(
-            sheetUrlOrId,
-            chronTab,
-            cp.chronicleRowValues,
-            token
-          );
-          results.push(`Updated Google Sheet tabs "${matchTab}" & "${chronTab}"`);
-        } else {
-          results.push(`Updated Google Sheet tab "${matchTab}"`);
-        }
-      }
-
-      setWorkspaceStatus(results.join(' · '));
-    } catch (err: unknown) {
-      setWorkspaceError(
-        err instanceof Error
-          ? err.message
-          : 'Failed to sync with Google Docs / Sheets.'
-      );
-    } finally {
-      setIsSyncingWorkspace(false);
-    }
+    requestSync(payload);
   };
 
   const dispatchToAnalyst = async (params: {
@@ -1002,72 +781,14 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Explicit User Confirmation Modal for Google Docs & Sheets Direct Mutations */}
-      {pendingMutation && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="confirm-sync-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4"
-        >
-          <div className="w-full max-w-lg rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-xl">
-            <div className="flex items-start justify-between gap-4 pb-3 border-b border-slate-200 dark:border-slate-800">
-              <h3
-                id="confirm-sync-title"
-                className="text-base font-bold text-slate-900 dark:text-slate-100"
-              >
-                Push Event #{pendingMutation.eventNumber} (
-                {pendingMutation.title}) to Google Sheet &amp; Doc?
-              </h3>
-              <button
-                type="button"
-                aria-label="Close confirmation dialog"
-                onClick={() => setPendingMutation(null)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <p className="text-xs text-slate-600 dark:text-slate-300 mt-3">
-              Confirming will write this analysis directly to your linked Google
-              Workspace files:
-            </p>
-            <ul className="mt-3 space-y-1.5 text-xs text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-950 p-3 rounded-lg border border-slate-200 dark:border-slate-800 list-disc pl-5">
-              {docUrlOrId.trim() && (
-                <li>
-                  Google Doc ({docInfo?.title || 'Linked Doc'}): Insert Event #
-                  {pendingMutation.eventNumber} above [INSERT NEXT CHRONOLOGICAL
-                  EVENT HERE].
-                </li>
-              )}
-              {sheetUrlOrId.trim() && (
-                <li>
-                  Google Sheet ({sheetMeta?.title || 'Linked Sheet'}): Append
-                  new row to &ldquo;{selectedMatchLogTab || 'Master Tab'}&rdquo;
-                  and &ldquo;{selectedChroniclesTab || 'Chronicles Tab'}&rdquo;.
-                </li>
-              )}
-            </ul>
-            <div className="mt-5 flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setPendingMutation(null)}
-                className="px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={executeConfirmedWorkspaceMutation}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg cursor-pointer"
-              >
-                <CloudUpload className="w-3.5 h-3.5" />
-                Confirm &amp; Update Google Files
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Google Workspace Diff-Preview Confirmation Modal & Audit Log History Drawer */}
+      <WorkspaceSyncControls
+        pendingSync={pendingSync}
+        isSyncing={isSyncingWorkspace}
+        auditLogs={auditLogs}
+        onConfirmSync={confirmPendingSync}
+        onCancelSync={cancelPendingSync}
+      />
 
       {/* SINGLE STREAMLINED WORKSPACE: Interactive Back-and-Forth Tactical Co-Pilot */}
       <div
