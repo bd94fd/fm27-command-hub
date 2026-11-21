@@ -144,4 +144,55 @@ describe('server routes & JSON 404', () => {
     });
     assert.equal(unauthRes.status, 401);
   });
+
+  it('serves POST /api/fm27/match-debrief with structured tactical debrief schema', async () => {
+    const config = loadServerConfig({ GEMINI_API_KEY: 'test-key' } as NodeJS.ProcessEnv);
+    const geminiService = new GeminiService({
+      config,
+      clientFactory: () => ({
+        models: {
+          list: async () => ({
+            models: [{ name: 'models/gemini-3.5-flash-lite' }],
+          }),
+          generateContent: (async () => ({
+            get text() {
+              return JSON.stringify({
+                headlineVerdict: 'Clinical 2-0 home win outperforming xG.',
+                xgAndExecutionAudit: 'xG 1.84 vs 0.62 with 56% possession.',
+                primaryTacticalFlaws: ['Left half-space transition gap after 65m.'],
+                subOptimalRoleCombinations: ['Switch AML to Tracking Winger OOP.'],
+                inGameAdjustmentRecommendations: ['Trigger 62m stamina double-sub.'],
+              });
+            },
+          })) as never,
+        },
+      }),
+    });
+
+    const app = await createApp({ config, geminiService, serveFrontend: false });
+    const srv = await startTestServer(app);
+    activeClose = srv.close;
+
+    const res = await fetch(`${srv.baseUrl}/api/fm27/match-debrief`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clubName: 'KVV Zelzate',
+        activeShape: '4-3-3 DM Wide',
+        matchSummary: {
+          opponent: 'KVK Ninove',
+          result: 'W',
+          score: '2 - 0',
+          xGFor: 1.84,
+          xGAgainst: 0.62,
+        },
+      }),
+    });
+
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as Record<string, unknown>;
+    assert.equal(body.headlineVerdict, 'Clinical 2-0 home win outperforming xG.');
+    assert.ok(Array.isArray(body.primaryTacticalFlaws));
+  });
 });
+

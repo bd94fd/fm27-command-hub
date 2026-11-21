@@ -282,8 +282,11 @@ export function savePersistedFmState(
     };
   };
 
+  const fullPayload = buildPayload();
+  void savePersistedFmStateToIndexedDb(fullPayload);
+
   try {
-    window.localStorage.setItem(FM27_STORAGE_KEY, JSON.stringify(buildPayload()));
+    window.localStorage.setItem(FM27_STORAGE_KEY, JSON.stringify(fullPayload));
     return true;
   } catch (err) {
     try {
@@ -294,6 +297,98 @@ export function savePersistedFmState(
       return false;
     }
   }
+}
+
+const IDB_DB_NAME = 'fm27_command_hub_idb';
+const IDB_STORE_NAME = 'hub_state';
+
+function openFm27IndexedDb(): Promise<IDBDatabase | null> {
+  if (typeof window === 'undefined' || !('indexedDB' in window)) {
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    try {
+      const req = window.indexedDB.open(IDB_DB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(IDB_STORE_NAME)) {
+          db.createObjectStore(IDB_STORE_NAME);
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+export async function savePersistedFmStateToIndexedDb(
+  payload: FmHubPersistedState
+): Promise<boolean> {
+  const db = await openFm27IndexedDb();
+  if (!db) return false;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
+      tx.objectStore(IDB_STORE_NAME).put(payload, FM27_STORAGE_KEY);
+      tx.oncomplete = () => {
+        db.close();
+        resolve(true);
+      };
+      tx.onerror = () => {
+        db.close();
+        resolve(false);
+      };
+    } catch {
+      db.close();
+      resolve(false);
+    }
+  });
+}
+
+export async function loadPersistedFmStateFromIndexedDb(): Promise<FmHubPersistedState | null> {
+  const db = await openFm27IndexedDb();
+  if (!db) return null;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(IDB_STORE_NAME, 'readonly');
+      const req = tx.objectStore(IDB_STORE_NAME).get(FM27_STORAGE_KEY);
+      req.onsuccess = () => {
+        db.close();
+        resolve(req.result ? migratePersistedState(req.result) : null);
+      };
+      req.onerror = () => {
+        db.close();
+        resolve(null);
+      };
+    } catch {
+      db.close();
+      resolve(null);
+    }
+  });
+}
+
+export async function clearPersistedFmStateFromIndexedDb(): Promise<void> {
+  const db = await openFm27IndexedDb();
+  if (!db) return;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
+      tx.objectStore(IDB_STORE_NAME).delete(FM27_STORAGE_KEY);
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onerror = () => {
+        db.close();
+        resolve();
+      };
+    } catch {
+      db.close();
+      resolve();
+    }
+  });
 }
 
 /**
@@ -348,6 +443,7 @@ export function loadPreviousSnapshot(): FmHubPreviousSnapshot | null {
  * Completely wipe stored save memory to return to clean "Awaiting .fm Save" state.
  */
 export function clearPersistedFmState(): void {
+  void clearPersistedFmStateFromIndexedDb();
   if (typeof window === 'undefined' || !window.localStorage) return;
   try {
     window.localStorage.removeItem(FM27_STORAGE_KEY);

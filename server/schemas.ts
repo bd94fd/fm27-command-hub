@@ -255,3 +255,44 @@ export const TACTICAL_CHAT_SCHEMA: Schema = {
     'isMatchResult',
   ],
 };
+
+export const MATCH_DEBRIEF_SCHEMA: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    headlineVerdict: {
+      type: Type.STRING,
+      description: '1-sentence post-match tactical headline verdict',
+    },
+    xgAndExecutionAudit: {
+      type: Type.STRING,
+      description:
+        'Concise xG, shot quality, possession, and clinicality comparison',
+    },
+    primaryTacticalFlaws: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description:
+        '2-3 specific tactical or transition flaws detected from the match metrics',
+    },
+    subOptimalRoleCombinations: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description:
+        '2-3 FM27 Dual-Phase IP/OOP role pairing warnings or improvements',
+    },
+    inGameAdjustmentRecommendations: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description:
+        '3 actionable in-game tactical adjustments for the next fixture',
+    },
+  },
+  required: [
+    'headlineVerdict',
+    'xgAndExecutionAudit',
+    'primaryTacticalFlaws',
+    'subOptimalRoleCombinations',
+    'inGameAdjustmentRecommendations',
+  ],
+};
+

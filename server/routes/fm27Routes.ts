@@ -11,11 +11,13 @@ import {
 } from '../geminiService.ts';
 import {
   buildAnalyzeScreenshotSystemPrompt,
+  buildMatchDebriefSystemPrompt,
   buildTacticalChatSystemPrompt,
   normalizePersona,
 } from '../prompts.ts';
 import {
   ANALYZE_SCREENSHOT_SCHEMA,
+  MATCH_DEBRIEF_SCHEMA,
   TACTICAL_CHAT_SCHEMA,
 } from '../schemas.ts';
 import { createSecurityGuard } from '../middleware/securityGuard.ts';
@@ -257,5 +259,78 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
     }
   });
 
+  router.post('/fm27/match-debrief', guard, async (req, res) => {
+    try {
+      const { clubName, matchSummary, activeShape } = req.body as {
+        clubName?: string;
+        matchSummary?: Record<string, unknown>;
+        activeShape?: string;
+      };
+
+      if (!gemini.hasApiKey()) {
+        return res.status(500).json({
+          error:
+            'GEMINI_API_KEY is missing. Set GEMINI_API_KEY in your environment variables.',
+        });
+      }
+
+      const targetClub =
+        clubName && clubName !== '--' ? clubName : 'the managed club';
+      const systemPrompt = buildMatchDebriefSystemPrompt(targetClub);
+      const compactPayload = JSON.stringify(
+        {
+          clubName: targetClub,
+          activeShape: activeShape || '4-3-3 DM Wide',
+          match: matchSummary || {},
+        },
+        null,
+        2
+      );
+
+      const response = await gemini.generateContent(
+        {
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                {
+                  text: `Generate a structured FM27 Patch 27.1.0 Post-Match Tactical Debrief for this match:\n${compactPayload}`,
+                },
+              ],
+            },
+          ],
+          config: {
+            systemInstruction: systemPrompt,
+            responseMimeType: 'application/json',
+            responseSchema: MATCH_DEBRIEF_SCHEMA,
+          },
+        },
+        {
+          reasoningMode: 'fast_lite',
+        }
+      );
+
+      const rawText = (response.text ?? '{}').trim();
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(rawText);
+      } catch {
+        return res.status(502).json({
+          error: 'The Tactical Analyst returned malformed debrief JSON.',
+        });
+      }
+      return res.json(parsed);
+    } catch (error: unknown) {
+      if (error instanceof AnalystTimeoutError) {
+        return res.status(504).json({ error: error.message });
+      }
+      if (error instanceof AnalystOverloadError || isTransientOverloadError(error)) {
+        return res.status(503).json({ error: formatFriendlyGeminiError(error) });
+      }
+      return res.status(500).json({ error: formatFriendlyGeminiError(error) });
+    }
+  });
+
   return router;
 }
+

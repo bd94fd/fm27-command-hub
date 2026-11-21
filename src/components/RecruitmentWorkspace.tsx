@@ -53,6 +53,15 @@ import {
   removeTrackedScoutTarget,
   toggleTrackedScoutTarget,
 } from '../services/fmStorage';
+import {
+  ClubDnaPillarWeights,
+  DEFAULT_CLUB_DNA_WEIGHTS,
+  evaluatePlayerClubDna,
+  loadPersistedClubDnaWeights,
+  savePersistedClubDnaWeights,
+  STRATEGIC_DNA_ARCHETYPES,
+  StrategicDnaArchetypeId,
+} from '../utils/clubDnaEngine';
 
 interface RecruitmentWorkspaceProps {
   cases: RecruitmentCase[];
@@ -146,8 +155,18 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
   const [targetFilter, setTargetFilter] = useState<ScoutContractFilter>('ALL');
   const [targetPosGroup, setTargetPosGroup] = useState<ScoutPositionGroup>('ALL');
   const [exactPosFilter, setExactPosFilter] = useState<string>('ALL');
+  const [dnaArchetypeFilter, setDnaArchetypeFilter] = useState<
+    'ALL' | StrategicDnaArchetypeId
+  >('ALL');
+  const [clubDnaWeights, setClubDnaWeights] = useState<ClubDnaPillarWeights>(
+    () => loadPersistedClubDnaWeights()
+  );
+  const [showDnaTuner, setShowDnaTuner] = useState<boolean>(false);
+  const [contractHorizonTier, setContractHorizonTier] = useState<
+    'ALL' | 'CRITICAL_6M' | 'WARNING_12M' | 'WATCH_18M' | 'SECURE_18M_PLUS'
+  >('ALL');
   const [targetSortBy, setTargetSortBy] = useState<
-    'GAP_FIT' | 'ROLE_FIT' | 'ARCHETYPE' | 'AGE' | 'WAGE'
+    'GAP_FIT' | 'CLUB_DNA' | 'ROLE_FIT' | 'ARCHETYPE' | 'AGE' | 'WAGE'
   >('GAP_FIT');
   const [visibleTargetCount, setVisibleTargetCount] = useState<number>(24);
   const [targetAgeBand, setTargetAgeBand] = useState<ScoutAgeBand>('ALL');
@@ -157,6 +176,23 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
   );
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [compareTarget, setCompareTarget] = useState<RecruitmentTarget | null>(null);
+
+  const handleUpdateDnaWeight = (
+    key: keyof ClubDnaPillarWeights,
+    val: number
+  ) => {
+    const next = {
+      ...clubDnaWeights,
+      [key]: Math.max(0, Math.min(100, val)),
+    };
+    setClubDnaWeights(next);
+    savePersistedClubDnaWeights(next);
+  };
+
+  const handleResetDnaWeights = () => {
+    setClubDnaWeights({ ...DEFAULT_CLUB_DNA_WEIGHTS });
+    savePersistedClubDnaWeights({ ...DEFAULT_CLUB_DNA_WEIGHTS });
+  };
 
   const firstTeamPlayers = useMemo(
     () => players.filter((p) => p.teamSlot === undefined || p.teamSlot === 0),
@@ -273,12 +309,30 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
       genuineGapsOnly,
       searchQuery: search,
     });
+    const withDna = base.map((item) => ({
+      ...item,
+      dna: evaluatePlayerClubDna(
+        item.target.primaryPosition,
+        item.target.attributes,
+        clubDnaWeights,
+        divisionBenchmarks
+      ),
+    }));
     const posFiltered =
       exactPosFilter === 'ALL'
-        ? base
-        : base.filter((item) => item.depth.slot === exactPosFilter);
-    if (targetSortBy === 'GAP_FIT') return posFiltered;
-    return [...posFiltered].sort((a, b) => {
+        ? withDna
+        : withDna.filter((item) => item.depth.slot === exactPosFilter);
+    const dnaFiltered =
+      dnaArchetypeFilter === 'ALL'
+        ? posFiltered
+        : posFiltered.filter(
+            (item) => item.dna.bestArchetypeId === dnaArchetypeFilter
+          );
+    if (targetSortBy === 'GAP_FIT') return dnaFiltered;
+    return [...dnaFiltered].sort((a, b) => {
+      if (targetSortBy === 'CLUB_DNA') {
+        return b.dna.overallDnaScore - a.dna.overallDnaScore;
+      }
       if (targetSortBy === 'ROLE_FIT') {
         return b.bestRole.fitPct - a.bestRole.fitPct;
       }
@@ -298,6 +352,9 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
     auditPlayers,
     targetPosGroup,
     exactPosFilter,
+    dnaArchetypeFilter,
+    clubDnaWeights,
+    divisionBenchmarks,
     targetSortBy,
     targetAgeBand,
     targetFilter,
@@ -369,6 +426,62 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
       ),
     [audit.playerAdvice]
   );
+
+  // Phase 2.3 (v3.0): 4-Tier Contract Horizon & Wage Risk Monitor (6m / 12m / 18m / 18m+)
+  const contractHorizonSummary = useMemo(() => {
+    const critical6m = audit.playerAdvice.filter(
+      (i) => i.monthsLeft !== null && i.monthsLeft <= 6
+    );
+    const warning12m = audit.playerAdvice.filter(
+      (i) => i.monthsLeft !== null && i.monthsLeft > 6 && i.monthsLeft <= 12
+    );
+    const watch18m = audit.playerAdvice.filter(
+      (i) => i.monthsLeft !== null && i.monthsLeft > 12 && i.monthsLeft <= 18
+    );
+    const secure18mPlus = audit.playerAdvice.filter(
+      (i) => i.monthsLeft === null || i.monthsLeft > 18
+    );
+
+    const wageAtRisk12m = [...critical6m, ...warning12m].reduce(
+      (sum, i) => sum + (i.player.wagePw || 0),
+      0
+    );
+    const keyAssetsAtRisk = [...critical6m, ...warning12m].filter(
+      (i) =>
+        i.verdict === 'Renew Now' ||
+        i.verdict === 'Protect Youth Asset' ||
+        i.player.ability >= 3.5
+    );
+    const projectedWageFreed = [...critical6m, ...warning12m]
+      .filter(
+        (i) =>
+          i.verdict === 'Let Expire' ||
+          i.verdict === 'Sell / Transfer List'
+      )
+      .reduce((sum, i) => sum + (i.player.wagePw || 0), 0);
+
+    const activeList =
+      contractHorizonTier === 'CRITICAL_6M'
+        ? critical6m
+        : contractHorizonTier === 'WARNING_12M'
+          ? warning12m
+          : contractHorizonTier === 'WATCH_18M'
+            ? watch18m
+            : contractHorizonTier === 'SECURE_18M_PLUS'
+              ? secure18mPlus
+              : [...critical6m, ...warning12m, ...watch18m];
+
+    return {
+      critical6m,
+      warning12m,
+      watch18m,
+      secure18mPlus,
+      wageAtRisk12m,
+      keyAssetsAtRisk,
+      projectedWageFreed,
+      activeList,
+    };
+  }, [audit.playerAdvice, contractHorizonTier]);
 
   const thinPositions = useMemo(
     () => audit.positionalNeeds.filter((b) => b.status === 'Need Signing'),
@@ -783,16 +896,114 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
             </div>
           )}
 
-          {/* VIEW 2: EXPIRING CONTRACTS TIMELINE */}
+          {/* VIEW 2: PHASE 2.3 (v3.0) CONTRACT HORIZON & WAGE RISK MONITOR */}
           {view === 'contracts' && (
-            <div className="space-y-2.5">
-              {expiringAdvice.length === 0 ? (
+            <div className="space-y-3">
+              {/* 4-Tier Contract Horizon KPI Matrix */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                {[
+                  {
+                    id: 'CRITICAL_6M' as const,
+                    title: 'Critical (≤ 6 Months)',
+                    count: contractHorizonSummary.critical6m.length,
+                    desc: 'Eligible for Bosman pre-contracts now',
+                    cls: 'border-rose-500/45 bg-rose-950/25 text-rose-300',
+                  },
+                  {
+                    id: 'WARNING_12M' as const,
+                    title: 'Warning (6–12 Months)',
+                    count: contractHorizonSummary.warning12m.length,
+                    desc: 'Final contract year — renew or cash in',
+                    cls: 'border-amber-500/40 bg-amber-950/20 text-amber-300',
+                  },
+                  {
+                    id: 'WATCH_18M' as const,
+                    title: 'Watch (12–18 Months)',
+                    count: contractHorizonSummary.watch18m.length,
+                    desc: 'Peak transfer-value decision window',
+                    cls: 'border-sky-500/35 bg-sky-950/20 text-sky-300',
+                  },
+                  {
+                    id: 'SECURE_18M_PLUS' as const,
+                    title: 'Secure (18+ Months)',
+                    count: contractHorizonSummary.secure18mPlus.length,
+                    desc: 'Long-term contract security locked',
+                    cls: 'border-emerald-500/35 bg-emerald-950/20 text-emerald-300',
+                  },
+                ].map((tier) => (
+                  <button
+                    key={tier.id}
+                    type="button"
+                    onClick={() =>
+                      setContractHorizonTier((curr) =>
+                        curr === tier.id ? 'ALL' : tier.id
+                      )
+                    }
+                    className={`rounded-xl border p-3.5 text-left transition cursor-pointer ${tier.cls} ${
+                      contractHorizonTier === tier.id
+                        ? 'ring-2 ring-white/70'
+                        : 'opacity-90 hover:opacity-100'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold">{tier.title}</span>
+                      <span className="font-mono text-base font-extrabold">
+                        {tier.count}
+                      </span>
+                    </div>
+                    <div className="text-[11px] opacity-80 mt-1">
+                      {tier.desc}
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Wage Budget Risk & Free-Transfer Loss Summary Strip */}
+              <div className="rounded-xl border border-slate-800 bg-slate-900/75 px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-slate-300">
+                    12m Wage at Risk:{' '}
+                    <strong className="font-mono text-amber-300">
+                      £{contractHorizonSummary.wageAtRisk12m.toLocaleString()}/wk
+                    </strong>
+                  </span>
+                  <span className="text-slate-300">
+                    Key Assets Expiring ≤12m:{' '}
+                    <strong className="font-mono text-rose-300">
+                      {contractHorizonSummary.keyAssetsAtRisk.length}
+                    </strong>
+                  </span>
+                  <span className="text-slate-300">
+                    Projected Wage Freed (Release/Sell):{' '}
+                    <strong className="font-mono text-emerald-300">
+                      £{contractHorizonSummary.projectedWageFreed.toLocaleString()}/wk
+                    </strong>
+                  </span>
+                </div>
+                {contractHorizonTier !== 'ALL' && (
+                  <button
+                    type="button"
+                    onClick={() => setContractHorizonTier('ALL')}
+                    className="rounded-lg bg-slate-800 hover:bg-slate-700 px-2.5 py-1 text-[11px] font-semibold text-slate-200 cursor-pointer"
+                  >
+                    Show All ≤18m ({contractHorizonSummary.critical6m.length + contractHorizonSummary.warning12m.length + contractHorizonSummary.watch18m.length})
+                  </button>
+                )}
+              </div>
+
+              {contractHorizonSummary.activeList.length === 0 ? (
                 <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 text-center text-xs text-slate-400">
-                  No players expiring within the next 12 months.
+                  No players in the selected contract horizon tier.
                 </div>
               ) : (
-                expiringAdvice.map((item) => {
+                contractHorizonSummary.activeList.map((item) => {
                   const p = item.player;
+                  const horizonBadge =
+                    item.monthsLeft !== null && item.monthsLeft <= 6
+                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                      : item.monthsLeft !== null && item.monthsLeft <= 12
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                        : 'bg-sky-500/15 text-sky-300 border-sky-500/35';
                   return (
                     <div
                       key={p.id}
@@ -811,16 +1022,25 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                             ({p.position} · Age {p.age} · {p.ability.toFixed(1)}★/{p.potential.toFixed(1)}★)
                           </span>
                         </button>
-                        <span
-                          className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${verdictBadgeClass(
-                            item.verdict
-                          )}`}
-                        >
-                          {item.verdict}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={`rounded-md border px-2 py-0.5 text-[10px] font-mono font-bold ${horizonBadge}`}
+                          >
+                            {item.monthsLeft !== null
+                              ? `${item.monthsLeft}m Horizon`
+                              : '18m+'}
+                          </span>
+                          <span
+                            className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${verdictBadgeClass(
+                              item.verdict
+                            )}`}
+                          >
+                            {item.verdict}
+                          </span>
+                        </div>
                       </div>
                       <div className="text-xs text-amber-300 font-mono">
-                        Expires {p.expires} ({item.monthsLeft}m left) · £{p.wagePw}/wk · {p.minutes}m · {p.personality}
+                        Expires {p.expires} ({item.monthsLeft ?? '--'}m left) · £{p.wagePw}/wk · {p.minutes}m · {p.personality}
                       </div>
                       <div className="text-xs text-slate-300">
                         {item.recommendedMove}
@@ -911,7 +1131,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
             </div>
           )}
 
-          {/* VIEW 4: PASS 0 GROUP 4 SCOUTED FREE AGENTS & EXPIRING <= 6M */}
+          {/* VIEW 4: PASS 0 GROUP 4 SCOUTED FREE AGENTS & EXPIRING <= 6M + PHASE 2 CLUB DNA ENGINE */}
           {view === 'targets' && (
             <div className="space-y-3">
               {/* Interactive Scouted Filter Bar */}
@@ -960,6 +1180,116 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                     ))}
                   </div>
                 </div>
+
+                {/* Phase 2 (v3.0): Configurable Club DNA Archetypes & Pillar Weight Tuner */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] font-bold text-emerald-300 mr-1">
+                      Club DNA:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDnaArchetypeFilter('ALL');
+                        setVisibleTargetCount(24);
+                      }}
+                      className={`rounded-lg px-2 py-0.5 text-[11px] font-semibold border transition cursor-pointer ${
+                        dnaArchetypeFilter === 'ALL'
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                          : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
+                      }`}
+                    >
+                      All DNA
+                    </button>
+                    {STRATEGIC_DNA_ARCHETYPES.map((arch) => (
+                      <button
+                        key={arch.id}
+                        type="button"
+                        onClick={() => {
+                          setDnaArchetypeFilter(arch.id);
+                          setVisibleTargetCount(24);
+                        }}
+                        className={`rounded-lg px-2 py-0.5 text-[11px] font-semibold border transition cursor-pointer ${
+                          dnaArchetypeFilter === arch.id
+                            ? archetypeBadgeClass(arch.badgeTone)
+                            : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
+                        }`}
+                      >
+                        {arch.shortLabel}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowDnaTuner((v) => !v)}
+                    className="rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700 px-2.5 py-1 text-[11px] font-semibold text-emerald-300 transition cursor-pointer"
+                  >
+                    {showDnaTuner ? 'Hide DNA Weight Sliders' : 'Tune Club DNA Weights'}
+                  </button>
+                </div>
+
+                {showDnaTuner && (
+                  <div className="rounded-xl border border-emerald-500/30 bg-slate-950/90 p-3 space-y-2.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-emerald-300">
+                        Custom Club DNA 4-Pillar Weight Matrix (0–100 + Division Benchmark Calibration)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleResetDnaWeights}
+                        className="text-[11px] text-slate-400 hover:text-white underline cursor-pointer"
+                      >
+                        Reset Default DNA
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                      {(
+                        [
+                          {
+                            key: 'physicalIntensity',
+                            label: 'Physical Intensity (Pac/Acc/Sta)',
+                          },
+                          {
+                            key: 'technicalSecurity',
+                            label: 'Technical Security (Pas/1st/Drb)',
+                          },
+                          {
+                            key: 'tacticalDiscipline',
+                            label: 'Tactical Discipline (Dec/Pos/Ant)',
+                          },
+                          {
+                            key: 'aerialDominance',
+                            label: 'Aerial Dominance (Jum/Str/Hea)',
+                          },
+                        ] as const
+                      ).map((pillar) => (
+                        <div key={pillar.key} className="space-y-1">
+                          <div className="flex justify-between text-[11px]">
+                            <span className="text-slate-300">{pillar.label}</span>
+                            <span className="font-mono font-bold text-emerald-300">
+                              {clubDnaWeights[pillar.key]}
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={5}
+                            value={clubDnaWeights[pillar.key]}
+                            onChange={(e) =>
+                              handleUpdateDnaWeight(
+                                pillar.key,
+                                Number(e.target.value)
+                              )
+                            }
+                            className="w-full accent-emerald-500"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -1011,12 +1341,21 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                       aria-label="Sort Scouted Targets"
                       value={targetSortBy}
                       onChange={(e) => {
-                        setTargetSortBy(e.target.value as 'GAP_FIT' | 'ROLE_FIT' | 'ARCHETYPE' | 'AGE' | 'WAGE');
+                        setTargetSortBy(
+                          e.target.value as
+                            | 'GAP_FIT'
+                            | 'CLUB_DNA'
+                            | 'ROLE_FIT'
+                            | 'ARCHETYPE'
+                            | 'AGE'
+                            | 'WAGE'
+                        );
                         setVisibleTargetCount(24);
                       }}
                       className="rounded-lg bg-slate-950 border border-slate-700 px-2 py-1 text-[11px] font-semibold text-slate-200 focus:border-emerald-500 focus:outline-none"
                     >
                       <option value="GAP_FIT">Sort: Gap &amp; Role Fit</option>
+                      <option value="CLUB_DNA">Sort: Club DNA Score (0–100)</option>
                       <option value="ROLE_FIT">Sort: Best Role Fit %</option>
                       <option value="ARCHETYPE">Sort: Playbook Archetype</option>
                       <option value="AGE">Sort: Youngest First</option>
@@ -1062,6 +1401,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                       target,
                       bestRole,
                       archetype,
+                      dna,
                       relevantAttributes,
                       depth,
                       contractDisplay,
@@ -1109,8 +1449,15 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                             </span>
                           </div>
 
-                          {/* Playbook v2.0 Archetype + Free Trial Badge + Best Role & Wage */}
+                          {/* Club DNA v3.0 Archetype + Playbook v2.0 + Free Trial Badge + Best Role & Wage */}
                           <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                            <span
+                              className={`rounded border px-2 py-0.5 font-bold ${archetypeBadgeClass(
+                                dna.badgeTone
+                              )}`}
+                            >
+                              DNA: {dna.bestArchetypeShortLabel} · {dna.overallDnaScore}/100
+                            </span>
                             <span
                               className={`rounded border px-2 py-0.5 font-semibold ${archetypeBadgeClass(
                                 archetype.badgeTone

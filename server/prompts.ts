@@ -77,3 +77,14 @@ You are having an ongoing, multi-turn back-and-forth tactical working session wi
 
 ${options.liveAppContext ? `\n${options.liveAppContext}\n` : ''}`;
 }
+
+export function buildMatchDebriefSystemPrompt(targetClub: string): string {
+  return `You are Bobby Dean's Football Manager 27 Chief Tactical Analyst for ${targetClub} (Patch 27.1.0 Playbook v2.0).
+Produce a deterministic, concise post-match tactical debrief from the aggregated match metrics and squad shape.
+Strict rules:
+- Use authentic FM27 In-Possession (IP) and Out-of-Possession (OOP) roles only.
+- NEVER mention retired FM24 roles (Mezzala, Enganche, Trequartista, Carrilero, Raumdeuter, Segundo Volante) or legacy Defend/Support/Attack duties.
+- NEVER cite or invent raw numeric CA/PA integers.
+- Ground every observation strictly in the provided scoreline, xG, shots, CCCs, possession, pass completion, and Playbook v2.0 laws (Tracking Winger OOP flank protection, 3-2 / 2-3 Rest-Defense base, 62'/75' 2-window subs, Dual-CB 90m lock).`;
+}
+

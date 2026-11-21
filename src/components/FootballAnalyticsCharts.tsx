@@ -472,3 +472,204 @@ export const SquadAgeValueScatterPlot: React.FC<SquadAgeValueScatterPlotProps> =
     </div>
   );
 };
+
+export interface PizzaSliceDefinition {
+  key: keyof PlayerRecord['attributes'];
+  label: string;
+  category: 'Physical' | 'Technical' | 'Mental';
+}
+
+const OUTFIELD_PIZZA_SLICES: PizzaSliceDefinition[] = [
+  { key: 'pace', label: 'Pace', category: 'Physical' },
+  { key: 'acceleration', label: 'Accel', category: 'Physical' },
+  { key: 'stamina', label: 'Stamina', category: 'Physical' },
+  { key: 'jumpingReach', label: 'Jumping', category: 'Physical' },
+  { key: 'passing', label: 'Passing', category: 'Technical' },
+  { key: 'tackling', label: 'Tackling', category: 'Technical' },
+  { key: 'finishing', label: 'Finishing', category: 'Technical' },
+  { key: 'firstTouch', label: '1st Touch', category: 'Technical' },
+  { key: 'decisions', label: 'Decisions', category: 'Mental' },
+  { key: 'workRate', label: 'Work Rate', category: 'Mental' },
+  { key: 'offTheBall', label: 'Off Ball', category: 'Mental' },
+  { key: 'positioning', label: 'Position', category: 'Mental' },
+];
+
+const GK_PIZZA_SLICES: PizzaSliceDefinition[] = [
+  { key: 'agility', label: 'Agility', category: 'Physical' },
+  { key: 'jumpingReach', label: 'Jumping', category: 'Physical' },
+  { key: 'pace', label: 'Speed', category: 'Physical' },
+  { key: 'reflexes', label: 'Reflexes', category: 'Technical' },
+  { key: 'handling', label: 'Handling', category: 'Technical' },
+  { key: 'commandOfArea', label: 'Command', category: 'Technical' },
+  { key: 'aerialReach', label: 'Aerial', category: 'Technical' },
+  { key: 'oneOnOnes', label: '1v1s', category: 'Technical' },
+  { key: 'kicking', label: 'Kicking', category: 'Technical' },
+  { key: 'decisions', label: 'Decisions', category: 'Mental' },
+  { key: 'positioning', label: 'Position', category: 'Mental' },
+  { key: 'concentration', label: 'Focus', category: 'Mental' },
+];
+
+export function estimateAttributePercentile(
+  rawValue: number,
+  baselineMean = 11.5
+): number {
+  const val = Math.max(1, Math.min(20, Number(rawValue) || 10));
+  // Smooth logistic curve centered on division baseline mean
+  const z = (val - baselineMean) / 2.2;
+  const logistic = 1 / (1 + Math.exp(-z));
+  return Math.max(5, Math.min(99, Math.round(logistic * 100)));
+}
+
+function buildWedgePath(
+  cx: number,
+  cy: number,
+  r: number,
+  startAngle: number,
+  endAngle: number
+): string {
+  const x1 = cx + r * Math.cos(startAngle);
+  const y1 = cy + r * Math.sin(startAngle);
+  const x2 = cx + r * Math.cos(endAngle);
+  const y2 = cy + r * Math.sin(endAngle);
+  const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
+  return `M ${cx.toFixed(1)} ${cy.toFixed(1)} L ${x1.toFixed(1)} ${y1.toFixed(1)} A ${r.toFixed(1)} ${r.toFixed(1)} 0 ${largeArc} 1 ${x2.toFixed(1)} ${y2.toFixed(1)} Z`;
+}
+
+export interface RolePercentilePizzaChartProps {
+  player: PlayerRecord;
+  ipRoleName?: string;
+  oopRoleName?: string;
+  highlightedPrimaryKeys?: Set<string>;
+  size?: number;
+}
+
+export const RolePercentilePizzaChart: React.FC<RolePercentilePizzaChartProps> = ({
+  player,
+  ipRoleName,
+  oopRoleName,
+  highlightedPrimaryKeys,
+  size = 310,
+}) => {
+  const slices = isGkPlayer(player) ? GK_PIZZA_SLICES : OUTFIELD_PIZZA_SLICES;
+  const cx = size / 2;
+  const cy = size / 2;
+  const maxR = size * 0.33;
+  const sliceAngle = (Math.PI * 2) / slices.length;
+
+  const categoryColor = (cat: PizzaSliceDefinition['category']) => {
+    if (cat === 'Physical') return { fill: '#10b981', stroke: '#34d399' };
+    if (cat === 'Technical') return { fill: '#0ea5e9', stroke: '#38bdf8' };
+    return { fill: '#f59e0b', stroke: '#fbbf24' };
+  };
+
+  return (
+    <div className="flex flex-col items-center space-y-2">
+      <div className="text-center">
+        <div className="text-xs font-bold text-slate-200">
+          Role &amp; Positional Percentile Pizza ({player.position})
+        </div>
+        {(ipRoleName || oopRoleName) && (
+          <div className="text-[11px] text-slate-400">
+            IP: <span className="text-emerald-300 font-semibold">{ipRoleName || '--'}</span>
+            {' · '}OOP:{' '}
+            <span className="text-sky-300 font-semibold">{oopRoleName || '--'}</span>
+          </div>
+        )}
+      </div>
+
+      <svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        role="img"
+        aria-label={`Role and attribute percentile pizza chart for ${player.name}`}
+        className="overflow-visible"
+      >
+        {/* Background full wedges & concentric percentile rings */}
+        {[0.25, 0.5, 0.75, 1].map((frac) => (
+          <circle
+            key={frac}
+            cx={cx}
+            cy={cy}
+            r={maxR * frac}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={frac === 1 ? 1.1 : 0.7}
+            strokeDasharray={frac === 0.5 ? '2 2' : undefined}
+            className="text-slate-700/75"
+          />
+        ))}
+
+        {slices.map((slice, idx) => {
+          const startAngle = idx * sliceAngle - Math.PI / 2 + 0.03;
+          const endAngle = (idx + 1) * sliceAngle - Math.PI / 2 - 0.03;
+          const midAngle = (startAngle + endAngle) / 2;
+
+          const rawVal = Number(player.attributes?.[slice.key] ?? 10);
+          const pct = estimateAttributePercentile(rawVal);
+          const r = Math.max(maxR * 0.14, (pct / 100) * maxR);
+          const colors = categoryColor(slice.category);
+          const normKey = String(slice.key).toLowerCase().replace(/[^a-z]/g, '');
+          const isRoleKey = highlightedPrimaryKeys?.has(normKey) ?? false;
+
+          const lx = cx + (maxR + 24) * Math.cos(midAngle);
+          const ly = cy + (maxR + 22) * Math.sin(midAngle);
+
+          return (
+            <g key={slice.key}>
+              <path
+                d={buildWedgePath(cx, cy, maxR, startAngle, endAngle)}
+                fill="rgba(15, 23, 42, 0.45)"
+                stroke="rgba(51, 65, 85, 0.5)"
+                strokeWidth={0.6}
+              />
+              <path
+                d={buildWedgePath(cx, cy, r, startAngle, endAngle)}
+                fill={colors.fill}
+                fillOpacity={isRoleKey ? 0.85 : 0.62}
+                stroke={isRoleKey ? '#ffffff' : colors.stroke}
+                strokeWidth={isRoleKey ? 1.5 : 0.9}
+              />
+              <text
+                x={lx}
+                y={ly - 4}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                className={`text-[9px] font-semibold ${
+                  isRoleKey ? 'fill-white font-bold' : 'fill-slate-300'
+                }`}
+              >
+                {slice.label}
+              </text>
+              <text
+                x={lx}
+                y={ly + 6}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                className="fill-emerald-300 text-[8.5px] font-mono"
+              >
+                {rawVal} ({pct}p)
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+
+      <div className="flex flex-wrap items-center justify-center gap-3 text-[10px] text-slate-400">
+        <span className="inline-flex items-center gap-1">
+          <span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" /> Physical
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="h-2.5 w-2.5 rounded-sm bg-sky-500" /> Technical / GK
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="h-2.5 w-2.5 rounded-sm bg-amber-500" /> Mental
+        </span>
+        <span className="inline-flex items-center gap-1 text-slate-300">
+          <span className="h-2.5 w-2.5 rounded-sm border border-white bg-slate-700" /> White rim = Role Key Priority
+        </span>
+      </div>
+    </div>
+  );
+};
+

@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   BookOpen,
   FileSpreadsheet,
+  Smartphone,
 } from 'lucide-react';
 import { PLAYBOOK_V2_REFERENCE_RULES } from '../data/matchAndTacticsData';
 import { PlayerRecord } from '../types/fm27';
@@ -15,6 +16,7 @@ import { FormationPresetKey, SolvedSlot } from '../utils/bestXiSolver';
 import { PersistedCustomSlot } from '../services/fmStorage';
 import { InteractivePitchBuilder } from './InteractivePitchBuilder';
 import { MatchPrepCard } from './MatchPrepCard';
+import { MatchdayCompanionView } from './MatchdayCompanionView';
 
 interface TacticalWarRoomProps {
   players: PlayerRecord[];
@@ -54,6 +56,7 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
   const [localApplyOnly, setLocalApplyOnly] = useState<boolean>(false);
   const [solvedSlots, setSolvedSlots] = useState<SolvedSlot[]>([]);
   const [includeYouthInWarRoom, setIncludeYouthInWarRoom] = useState<boolean>(false);
+  const [companionMode, setCompanionMode] = useState<boolean>(false);
 
   const activeShape = controlledShape ?? localShape;
   const customSlots = controlledCustomSlots ?? localCustomSlots;
@@ -98,39 +101,68 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
 
   return (
     <div className="space-y-8">
-      {hasSquad && youthReservesCount > 0 && (
+      {hasSquad && (
         <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 rounded-xl border border-slate-800 bg-slate-900/75 text-xs">
           <div className="text-slate-300">
             <strong className="text-white">{displayClub} Squad Pool:</strong>{' '}
-            {includeYouthInWarRoom
-              ? `All ${players.length} players (First Team + Reserves/Youth)`
+            {includeYouthInWarRoom || youthReservesCount === 0
+              ? `All ${players.length} players`
               : `First Team Only (${firstTeamPlayers.length} senior players · ${youthReservesCount} Reserves/Youth hidden)`}
           </div>
-          <div className="flex items-center gap-1 p-0.5 rounded-lg bg-slate-950 border border-slate-800">
+          <div className="flex flex-wrap items-center gap-2">
+            {youthReservesCount > 0 && (
+              <div className="flex items-center gap-1 p-0.5 rounded-lg bg-slate-950 border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIncludeYouthInWarRoom(false)}
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+                    !includeYouthInWarRoom
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  First Team ({firstTeamPlayers.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIncludeYouthInWarRoom(true)}
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+                    includeYouthInWarRoom
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Include Youth ({players.length})
+                </button>
+              </div>
+            )}
+
             <button
               type="button"
-              onClick={() => setIncludeYouthInWarRoom(false)}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
-                !includeYouthInWarRoom
-                  ? 'bg-emerald-600 text-white'
-                  : 'text-slate-400 hover:text-slate-200'
+              onClick={() => setCompanionMode((v) => !v)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                companionMode
+                  ? 'bg-emerald-500 text-slate-950 border-white shadow-md'
+                  : 'bg-slate-950 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/15'
               }`}
             >
-              First Team ({firstTeamPlayers.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setIncludeYouthInWarRoom(true)}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
-                includeYouthInWarRoom
-                  ? 'bg-emerald-600 text-white'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Include Youth ({players.length})
+              <Smartphone className="w-3.5 h-3.5" />
+              {companionMode
+                ? 'Exit Matchday Companion'
+                : 'Matchday Companion (Phone View)'}
             </button>
           </div>
         </div>
+      )}
+
+      {hasSquad && companionMode && solvedSlots.length > 0 && (
+        <MatchdayCompanionView
+          clubName={displayClub}
+          nextFixture={nextFixture}
+          activeShape={activeShape}
+          slots={solvedSlots}
+          allPlayers={scopedPlayers}
+        />
       )}
 
       {/* Pass 2 (v2.1): Matchday Prep Card (Clean empty state when awaiting .fm save) */}

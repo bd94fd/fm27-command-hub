@@ -275,6 +275,79 @@ export const MatchPrepCard: React.FC<MatchPrepCardProps> = ({
     return cues;
   }, [nextFixtureObj, opponentStanding, leagueStanding]);
 
+  // Phase 3.2 (v3.0): Pre-Match Opposition Tactical Scouting & Counter-Adjustments
+  const oppositionIntel = useMemo(() => {
+    const oppName = nextFixtureObj?.opponent || opponentStanding?.clubName || null;
+    if (!oppName) return null;
+
+    const venue = nextFixtureObj?.venue || 'H';
+    const oppPos = opponentStanding?.position ?? null;
+    const totalTeams = leagueStanding?.totalTeams ?? 16;
+    const played = Math.max(1, opponentStanding?.played || 1);
+    const ppg = opponentStanding ? opponentStanding.points / played : 1.35;
+    const gdPerGame = opponentStanding ? opponentStanding.goalDiff / played : 0;
+
+    // Resolve full row if present in leagueStanding.rows
+    const fullRow: LeagueTableRow | undefined = leagueStanding?.rows?.find(
+      (r) =>
+        r.clubName.trim().toLowerCase() === oppName.trim().toLowerCase() ||
+        r.clubName.trim().toLowerCase().includes(oppName.trim().toLowerCase())
+    );
+    const gfPerGame =
+      fullRow && fullRow.played > 0 ? fullRow.goalsFor / fullRow.played : null;
+    const gaPerGame =
+      fullRow && fullRow.played > 0 ? fullRow.goalsAgainst / fullRow.played : null;
+
+    const tierLabel =
+      oppPos !== null && oppPos <= 4
+        ? 'Title / Promotion Contender'
+        : oppPos !== null && oppPos > totalTeams - 4
+          ? 'Relegation Low-Block Underdog'
+          : 'Mid-Table Direct Rival';
+
+    const threatProfile =
+      (gfPerGame !== null && gfPerGame >= 1.65) || gdPerGame >= 0.6
+        ? 'High-Scoring Vertical Transition Threat'
+        : (gaPerGame !== null && gaPerGame <= 1.0)
+          ? 'Compact Low-Block & Set-Piece Unit'
+          : 'Balanced Dual-Phase Structure';
+
+    const counterAdjustments: string[] = [];
+    if (tierLabel === 'Title / Promotion Contender' || venue === 'A') {
+      counterAdjustments.push(
+        'Rest-Defense Shape: Lock 2-3 Base (Screening DM + 2 Holding Full-Backs) and keep both wingers on Tracking Winger OOP.'
+      );
+      counterAdjustments.push(
+        'Transition Counter: Exploit space behind opponent wing-backs with Channel Forward IP + Inside Forward IP diagonal runs.'
+      );
+    } else if (tierLabel === 'Relegation Low-Block Underdog') {
+      counterAdjustments.push(
+        'Break Low Block: Use Positive Mentality + 3-2 Rest-Defense Base (allow 1 full-back to overlap while opposite full-back holds).'
+      );
+      counterAdjustments.push(
+        'Half-Space Creation: Pair Channel Midfielder IP + Inside Forward IP with Work Ball Into Box if shot quality drops.'
+      );
+    } else {
+      counterAdjustments.push(
+        'Zone 5 Control: Keep 3-man midfield triangle intact (1 Screening DM + 1 Box-to-Box + 1 Channel/Playmaker CM).'
+      );
+      counterAdjustments.push(
+        'Flank Security: Keep Tracking Winger OOP on both flanks and trigger 62m stamina refresh on lowest-condition wide runner.'
+      );
+    }
+
+    return {
+      oppName,
+      venue,
+      tierLabel,
+      threatProfile,
+      ppg: ppg.toFixed(2),
+      gfPerGame: gfPerGame !== null ? gfPerGame.toFixed(2) : null,
+      gaPerGame: gaPerGame !== null ? gaPerGame.toFixed(2) : null,
+      counterAdjustments,
+    };
+  }, [nextFixtureObj, opponentStanding, leagueStanding]);
+
   if (!hasLiveSave) {
     return (
       <div className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-center space-y-2">
@@ -345,6 +418,44 @@ export const MatchPrepCard: React.FC<MatchPrepCardProps> = ({
           )}
         </div>
       </div>
+
+      {/* Phase 3.2 (v3.0): Pre-Match Opposition Tactical Intelligence & Counter-Plan */}
+      {oppositionIntel && (
+        <div className="p-4 rounded-xl bg-slate-950/85 border border-emerald-500/30 space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-emerald-300">
+              <Compass className="w-4 h-4 text-emerald-400" />
+              Pre-Match Opposition Tactical Intelligence: {oppositionIntel.oppName}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-mono">
+              <span className="rounded bg-indigo-500/15 border border-indigo-500/35 px-2 py-0.5 text-indigo-300 font-semibold">
+                {oppositionIntel.tierLabel}
+              </span>
+              <span className="rounded bg-amber-500/15 border border-amber-500/35 px-2 py-0.5 text-amber-300">
+                {oppositionIntel.threatProfile}
+              </span>
+              <span className="rounded bg-slate-900 border border-slate-700 px-2 py-0.5 text-slate-300">
+                {oppositionIntel.ppg} PPG
+                {oppositionIntel.gfPerGame
+                  ? ` · ${oppositionIntel.gfPerGame} GF/g · ${oppositionIntel.gaPerGame} GA/g`
+                  : ''}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-slate-300">
+            {oppositionIntel.counterAdjustments.map((adj, idx) => (
+              <div
+                key={idx}
+                className="rounded-lg border border-slate-800 bg-slate-900/75 px-3 py-2 flex items-start gap-2"
+              >
+                <Shield className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                <span>{adj}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 3-Column Matchday Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

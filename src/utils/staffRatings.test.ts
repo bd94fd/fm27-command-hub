@@ -3,6 +3,7 @@ import test from 'node:test';
 import { StaffRecord } from '../types/fm27';
 import {
   calculateAllStaffRoleRatings,
+  evaluateBackroomDepartmentEfficiency,
   formatStars,
   getBestStaffRoleRating,
 } from './staffRatings';
@@ -51,3 +52,13 @@ test('calculateAllStaffRoleRatings ranks highest coaching specialty first', () =
   assert.ok(best.stars >= 4.0);
   assert.equal(formatStars(best.stars), `${best.stars.toFixed(1)}★`);
 });
+
+test('evaluateBackroomDepartmentEfficiency evaluates all 8 departments and flags weak GK/Medical', () => {
+  const depts = evaluateBackroomDepartmentEfficiency([sampleCoach]);
+  assert.equal(depts.length, 8);
+  const attacking = depts.find((d) => d.departmentId === 'attacking');
+  const gk = depts.find((d) => d.departmentId === 'goalkeeping');
+  assert.equal(attacking?.status, 'Elite');
+  assert.equal(gk?.status, 'Weak / Upgrade Needed');
+});
+

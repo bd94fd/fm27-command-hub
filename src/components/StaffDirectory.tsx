@@ -1,8 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { Briefcase, Search, Star, UserCheck } from 'lucide-react';
+import { AlertTriangle, Briefcase, Search, Star, UserCheck } from 'lucide-react';
 import { StaffRecord } from '../types/fm27';
 import { JobVacancyEntry } from '../types/fmSave';
-import { formatStars, getBestStaffRoleRating } from '../utils/staffRatings';
+import {
+  evaluateBackroomDepartmentEfficiency,
+  formatStars,
+  getBestStaffRoleRating,
+} from '../utils/staffRatings';
 
 interface StaffDirectoryProps {
   staff: StaffRecord[];
@@ -34,6 +38,19 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
       );
   }, [staff, search]);
 
+  const departmentSummaries = useMemo(
+    () => evaluateBackroomDepartmentEfficiency(staff),
+    [staff]
+  );
+
+  const weakDepartments = useMemo(
+    () =>
+      departmentSummaries.filter(
+        (d) => d.status === 'Weak / Upgrade Needed'
+      ),
+    [departmentSummaries]
+  );
+
   if (!staff || staff.length === 0) {
     return null;
   }
@@ -44,10 +61,10 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
         <div>
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
             <UserCheck className="h-5 w-5 text-sky-400" />
-            Backroom Staff Directory &amp; FM27 Star Ratings
+            Backroom Staff Directory &amp; Department Efficiency Engine
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            {staff.length} club-scoped staff members synced for {clubName || 'your club'} · Click any row for full coaching, scouting &amp; medical breakdown
+            {staff.length} club-scoped staff members synced for {clubName || 'your club'} · 8-Department Efficiency Matrix &amp; Star Ratings
           </p>
         </div>
 
@@ -61,6 +78,69 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
             placeholder="Filter staff name or role..."
             className="w-full rounded-xl border border-slate-700 bg-slate-950 py-2 pl-9 pr-3 text-xs text-slate-100 placeholder:text-slate-500"
           />
+        </div>
+      </div>
+
+      {/* Phase 2 (v3.0): 8-Department Backroom Efficiency Matrix */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-xs font-bold uppercase tracking-wider text-slate-300">
+            Backroom Department Efficiency Matrix (8 Core Units)
+          </div>
+          {weakDepartments.length > 0 ? (
+            <span className="inline-flex items-center gap-1 rounded-md bg-rose-500/15 border border-rose-500/35 px-2.5 py-0.5 text-[11px] font-semibold text-rose-300">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              {weakDepartments.length} Priority Hiring Gap
+              {weakDepartments.length === 1 ? '' : 's'}:{' '}
+              {weakDepartments.map((d) => d.label).join(', ')}
+            </span>
+          ) : (
+            <span className="rounded-md bg-emerald-500/15 border border-emerald-500/35 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-300">
+              All 8 Backroom Departments Rated ≥ 2.5★
+            </span>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+          {departmentSummaries.map((dept) => {
+            const toneCls =
+              dept.status === 'Elite'
+                ? 'border-emerald-500/35 bg-emerald-950/20'
+                : dept.status === 'Solid'
+                  ? 'border-sky-500/30 bg-slate-950/70'
+                  : 'border-rose-500/45 bg-rose-950/25';
+            const badgeCls =
+              dept.status === 'Elite'
+                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                : dept.status === 'Solid'
+                  ? 'bg-sky-500/15 text-sky-300 border-sky-500/35'
+                  : 'bg-rose-500/20 text-rose-300 border-rose-500/40';
+
+            return (
+              <div
+                key={dept.departmentId}
+                className={`rounded-xl border p-3 space-y-1.5 ${toneCls}`}
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-xs font-bold text-white truncate">
+                    {dept.label}
+                  </span>
+                  <span
+                    className={`rounded px-1.5 py-0.5 font-mono text-[11px] font-bold border ${badgeCls}`}
+                  >
+                    {formatStars(dept.stars)} ({dept.efficiencyScore})
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-300 truncate">
+                  Lead: <strong className="text-white">{dept.leadStaffName}</strong>{' '}
+                  <span className="text-slate-400">({dept.leadStaffRole})</span>
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  {dept.status}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 

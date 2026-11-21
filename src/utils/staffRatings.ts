@@ -162,3 +162,77 @@ export function getBestStaffRoleRating(staff: StaffRecord): StaffRoleRating {
 export function formatStars(stars: number): string {
   return `${stars.toFixed(1)}★`;
 }
+
+export interface BackroomDepartmentSummary {
+  departmentId: string;
+  label: string;
+  leadStaffName: string;
+  leadStaffRole: string;
+  stars: number;
+  efficiencyScore: number; // 0-100
+  status: 'Elite' | 'Solid' | 'Weak / Upgrade Needed';
+  recommendation: string;
+}
+
+const DEPARTMENT_SPECS: Array<{
+  id: string;
+  label: string;
+  ratingKeys: string[];
+}> = [
+  { id: 'attacking', label: 'Attacking Coaching', ratingKeys: ['att_tech', 'att_tac'] },
+  { id: 'defending', label: 'Defending Coaching', ratingKeys: ['def_tech', 'def_tac'] },
+  { id: 'possession', label: 'Possession & Tactical', ratingKeys: ['pos_tech', 'pos_tac'] },
+  { id: 'fitness', label: 'Strength & Quickness', ratingKeys: ['fitness'] },
+  { id: 'goalkeeping', label: 'Goalkeeping Coaching', ratingKeys: ['goalkeeping'] },
+  { id: 'set_pieces', label: 'Set Pieces Coaching', ratingKeys: ['set_pieces'] },
+  { id: 'scouting', label: 'Scouting & Recruitment', ratingKeys: ['scouting', 'analysis'] },
+  { id: 'medical', label: 'Medical & Sports Science', ratingKeys: ['medical'] },
+];
+
+/**
+ * Evaluates all 8 backroom departments across the club's synced staff list (inspired by fm-scoring)
+ * to highlight the top lead specialist per department and flag weak/understaffed areas.
+ */
+export function evaluateBackroomDepartmentEfficiency(
+  staffList: StaffRecord[]
+): BackroomDepartmentSummary[] {
+  return DEPARTMENT_SPECS.map((dept) => {
+    let bestLead: StaffRecord | null = null;
+    let bestRating: StaffRoleRating | null = null;
+
+    for (const member of staffList) {
+      const ratings = calculateAllStaffRoleRatings(member.attributes);
+      for (const r of ratings) {
+        if (!dept.ratingKeys.includes(r.key)) continue;
+        if (!bestRating || r.score > bestRating.score) {
+          bestRating = r;
+          bestLead = member;
+        }
+      }
+    }
+
+    const stars = bestRating ? bestRating.stars : 0.5;
+    const efficiencyScore = bestRating ? bestRating.score : 15;
+    const status: BackroomDepartmentSummary['status'] =
+      stars >= 3.5 ? 'Elite' : stars >= 2.5 ? 'Solid' : 'Weak / Upgrade Needed';
+
+    const recommendation =
+      status === 'Weak / Upgrade Needed'
+        ? `Priority hire needed for ${dept.label} (current lead ${stars.toFixed(1)}★ < 2.5★ threshold).`
+        : status === 'Solid'
+          ? `${dept.label} covered at ${stars.toFixed(1)}★ by ${bestLead?.name || 'Staff'}.`
+          : `High-efficiency department led by ${bestLead?.name || 'Staff'} (${stars.toFixed(1)}★).`;
+
+    return {
+      departmentId: dept.id,
+      label: dept.label,
+      leadStaffName: bestLead ? bestLead.name : 'Unassigned',
+      leadStaffRole: bestLead ? bestLead.role : '--',
+      stars,
+      efficiencyScore,
+      status,
+      recommendation,
+    };
+  });
+}
+

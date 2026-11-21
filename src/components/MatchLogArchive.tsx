@@ -1,7 +1,101 @@
 import React, { useMemo, useState } from 'react';
-import { Calendar, Filter, Trophy } from 'lucide-react';
+import { Calendar, Filter, Sparkles, Trophy } from 'lucide-react';
 import { MatchLogEntry } from '../types/fm27';
 import { computeCompetitiveSummary } from '../utils/fmSyncEngine';
+
+export interface PostMatchDebriefData {
+  headlineVerdict: string;
+  xgAndExecutionAudit: string;
+  primaryTacticalFlaws: string[];
+  subOptimalRoleCombinations: string[];
+  inGameAdjustmentRecommendations: string[];
+  source: 'Playbook v2.0 Engine' | 'Gemini 3.5 Tactical Analyst';
+}
+
+export function buildDeterministicPostMatchDebrief(
+  m: MatchLogEntry
+): PostMatchDebriefData {
+  const xgFor = typeof m.xGFor === 'number' ? m.xGFor : null;
+  const xgAg = typeof m.xGAgainst === 'number' ? m.xGAgainst : null;
+  const poss = typeof m.possession === 'number' ? m.possession : null;
+  const passPct = typeof m.passCompletion === 'number' ? m.passCompletion : null;
+
+  const [gfRaw, gaRaw] = (m.score || '0 - 0')
+    .split('-')
+    .map((s) => Number(s.trim()) || 0);
+  const gf = gfRaw ?? 0;
+  const ga = gaRaw ?? 0;
+
+  const xgDiff = xgFor !== null && xgAg !== null ? xgFor - xgAg : gf - ga;
+  const headlineVerdict =
+    m.result === 'W'
+      ? xgDiff >= 0.4
+        ? `Dominant ${m.score} win vs ${m.opponent} (+${xgDiff.toFixed(2)} xG margin).`
+        : `Clinical ${m.score} win vs ${m.opponent} overcoming tight xG margins.`
+      : m.result === 'D'
+        ? xgDiff >= 0.5
+          ? `Frustrating ${m.score} draw vs ${m.opponent} despite creating +${xgDiff.toFixed(2)} xG superiority.`
+          : `Hard-fought ${m.score} draw vs ${m.opponent} (${m.venue === 'H' ? 'Home' : 'Away'}).`
+        : xgDiff > 0.2
+          ? `Unlucky ${m.score} defeat vs ${m.opponent} despite winning the xG battle (${xgFor?.toFixed(2) ?? gf} vs ${xgAg?.toFixed(2) ?? ga}).`
+          : `Deserved ${m.score} defeat vs ${m.opponent}; defensive transition structure conceded high-quality chances.`;
+
+  const xgAndExecutionAudit = [
+    xgFor !== null && xgAg !== null
+      ? `xG: ${xgFor.toFixed(2)} For vs ${xgAg.toFixed(2)} Against (Finishing delta ${(gf - xgFor >= 0 ? '+' : '') + (gf - xgFor).toFixed(2)}G)`
+      : `Scoreline: ${m.score}`,
+    m.shotsFor && m.shotsFor !== '—' ? `Shots: ${m.shotsFor} vs ${m.shotsAgainst || '—'}` : null,
+    poss !== null ? `Possession: ${poss}%` : null,
+    passPct !== null ? `Pass Completion: ${passPct}%` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  const primaryTacticalFlaws: string[] = [];
+  if ((xgAg !== null && xgAg >= 1.35) || ga >= 2) {
+    primaryTacticalFlaws.push(
+      `Defensive transition leakage (${xgAg !== null ? `${xgAg.toFixed(2)} xGA` : `${ga} GA`}): opponent exploited half-space or wide overload behind full-backs.`
+    );
+  }
+  if ((xgFor !== null && xgFor < 0.95) || gf === 0) {
+    primaryTacticalFlaws.push(
+      `Low final-third box penetration (${xgFor !== null ? `${xgFor.toFixed(2)} xG` : '0 goals'}): striker isolated from wide & channel runners.`
+    );
+  }
+  if (poss !== null && poss < 45) {
+    primaryTacticalFlaws.push(
+      `Progression turnovers (${poss}% possession): midfield pivot bypassed under opponent counter-press.`
+    );
+  }
+  if (primaryTacticalFlaws.length === 0) {
+    primaryTacticalFlaws.push(
+      'Controlled both boxes cleanly; monitor 62m–75m wide stamina drop-off to prevent late set-piece concessions.'
+    );
+  }
+
+  const subOptimalRoleCombinations: string[] = [
+    'Ensure both AML and AMR remain on Tracking Winger OOP (never Wide Outlet Winger OOP) when protecting parity or leads.',
+    'Maintain a 2-3 or 3-2 Rest-Defense Base (Screening DM + Holding Full-Backs) so both flanks never vacate simultaneously.',
+  ];
+
+  const inGameAdjustmentRecommendations: string[] = [
+    ga >= 2
+      ? 'Drop OOP Defensive Line 1 notch & lock DM to Screening Defensive Midfielder OOP for the next fixture.'
+      : 'Keep Balanced Ground Build-Up + Short/Mixed GK Distribution to protect Zone 5 rest-defense.',
+    gf === 0
+      ? 'At 60m if level/behind: trigger "Play With More Urgency" + "Swap Wings" while keeping 3 midfielders on pitch.'
+      : 'Execute 2-Window Substitution Script (62m lowest-stamina wide/CM runners; 75m closer window without touching both CBs).',
+  ];
+
+  return {
+    headlineVerdict,
+    xgAndExecutionAudit,
+    primaryTacticalFlaws,
+    subOptimalRoleCombinations,
+    inGameAdjustmentRecommendations,
+    source: 'Playbook v2.0 Engine',
+  };
+}
 
 interface MatchLogArchiveProps {
   matches: MatchLogEntry[];
@@ -74,6 +168,62 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
 
   const [selectedSeason, setSelectedSeason] = useState<string>('');
   const [compFilter, setCompFilter] = useState<'ALL' | 'League' | 'Cup / Friendly'>('ALL');
+  const [openDebriefMatchId, setOpenDebriefMatchId] = useState<string | null>(
+    null
+  );
+  const [aiDebriefByMatchId, setAiDebriefByMatchId] = useState<
+    Record<string, PostMatchDebriefData>
+  >({});
+  const [loadingAiMatchId, setLoadingAiMatchId] = useState<string | null>(null);
+
+  const handleRequestAiDebrief = async (m: MatchLogEntry) => {
+    setLoadingAiMatchId(m.id);
+    try {
+      const res = await fetch('/api/fm27/match-debrief', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clubName: clubName || 'Managed Club',
+          matchSummary: {
+            date: m.date,
+            competition: m.competition,
+            opponent: m.opponent,
+            venue: m.venue,
+            result: m.result,
+            score: m.score,
+            xGFor: m.xGFor,
+            xGAgainst: m.xGAgainst,
+            possession: m.possession,
+            passCompletion: m.passCompletion,
+            shotsFor: m.shotsFor,
+            shotsAgainst: m.shotsAgainst,
+            cccFor: m.cccFor,
+            cccAgainst: m.cccAgainst,
+          },
+        }),
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as Partial<PostMatchDebriefData>;
+      if (data.headlineVerdict && Array.isArray(data.primaryTacticalFlaws)) {
+        setAiDebriefByMatchId((prev) => ({
+          ...prev,
+          [m.id]: {
+            headlineVerdict: data.headlineVerdict!,
+            xgAndExecutionAudit: data.xgAndExecutionAudit || '',
+            primaryTacticalFlaws: data.primaryTacticalFlaws || [],
+            subOptimalRoleCombinations: data.subOptimalRoleCombinations || [],
+            inGameAdjustmentRecommendations:
+              data.inGameAdjustmentRecommendations || [],
+            source: 'Gemini 3.5 Tactical Analyst',
+          },
+        }));
+      }
+    } catch {
+      // Fall back silently to deterministic Playbook v2.0 debrief
+    } finally {
+      setLoadingAiMatchId(null);
+    }
+  };
 
   const activeSeason = selectedSeason || currentSeason;
 
@@ -228,8 +378,8 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                 m.passCompletion !== null;
 
               return (
+                <React.Fragment key={m.id}>
                 <div
-                  key={m.id}
                   className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
                 >
                   <div className="space-y-1 min-w-0">
@@ -303,6 +453,22 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setOpenDebriefMatchId((curr) =>
+                          curr === m.id ? null : m.id
+                        )
+                      }
+                      className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold transition cursor-pointer ${
+                        openDebriefMatchId === m.id
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                          : 'bg-slate-950/70 text-slate-300 border-slate-700 hover:border-emerald-500/40'
+                      }`}
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                      {openDebriefMatchId === m.id ? 'Hide Debrief' : 'Post-Match Debrief'}
+                    </button>
                     <span
                       className={`rounded-lg border px-2.5 py-1 text-xs font-mono font-bold ${resultBadge}`}
                     >
@@ -310,6 +476,81 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                     </span>
                   </div>
                 </div>
+                {openDebriefMatchId === m.id &&
+                  (() => {
+                    const debrief =
+                      aiDebriefByMatchId[m.id] ||
+                      buildDeterministicPostMatchDebrief(m);
+                    return (
+                      <div className="mb-3 rounded-xl border border-emerald-500/30 bg-slate-950/90 p-3.5 space-y-2.5 text-xs">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <div className="font-bold text-emerald-300">
+                              {debrief.headlineVerdict}
+                            </div>
+                            <div className="text-[11px] font-mono text-slate-400 mt-0.5">
+                              {debrief.xgAndExecutionAudit}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="rounded bg-slate-900 border border-slate-700 px-2 py-0.5 text-[10px] font-mono text-slate-300">
+                              {debrief.source}
+                            </span>
+                            {!aiDebriefByMatchId[m.id] && (
+                              <button
+                                type="button"
+                                disabled={loadingAiMatchId === m.id}
+                                onClick={() => handleRequestAiDebrief(m)}
+                                className="rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 px-2.5 py-1 text-[11px] font-semibold text-white transition cursor-pointer"
+                              >
+                                {loadingAiMatchId === m.id
+                                  ? 'Analyzing...'
+                                  : 'Deep AI Debrief'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1">
+                          <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5 space-y-1">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-rose-300">
+                              Primary Tactical Flaws
+                            </div>
+                            <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-300">
+                              {debrief.primaryTacticalFlaws.map((f, idx) => (
+                                <li key={idx}>{f}</li>
+                              ))}
+                            </ul>
+                          </div>
+
+                          <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5 space-y-1">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-sky-300">
+                              Dual-Phase Role Audit
+                            </div>
+                            <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-300">
+                              {debrief.subOptimalRoleCombinations.map((r, idx) => (
+                                <li key={idx}>{r}</li>
+                              ))}
+                            </ul>
+                          </div>
+
+                          <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5 space-y-1">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-300">
+                              In-Game Adjustments
+                            </div>
+                            <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-300">
+                              {debrief.inGameAdjustmentRecommendations.map(
+                                (adj, idx) => (
+                                  <li key={idx}>{adj}</li>
+                                )
+                              )}
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </React.Fragment>
               );
             })}
           </div>

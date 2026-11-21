@@ -21,6 +21,10 @@ import {
   getPlaybookContractNotes,
   partitionContractClausesAndBonuses,
 } from '../utils/recruitmentHelpers';
+import {
+  AttributeRadarChart,
+  RolePercentilePizzaChart,
+} from './FootballAnalyticsCharts';
 
 interface PlayerDetailModalProps {
   player: PlayerRecord | null;
@@ -679,49 +683,69 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
           )}
 
           {activeTab === 'metrics' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-                <div className="text-[11px] uppercase tracking-wider text-slate-400">
-                  FM27 Engine Score
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+                  <div className="text-[11px] uppercase tracking-wider text-slate-400">
+                    FM27 Engine Score
+                  </div>
+                  <div className="mt-1 text-2xl font-bold text-emerald-400 font-mono">
+                    {engineMetrics.physicalEngineScore}/100
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-1">
+                    Custom physical + engine rating
+                  </div>
                 </div>
-                <div className="mt-1 text-2xl font-bold text-emerald-400 font-mono">
-                  {engineMetrics.physicalEngineScore}/100
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+                  <div className="text-[11px] uppercase tracking-wider text-slate-400">
+                    Top Sprint Speed
+                  </div>
+                  <div className="mt-1 text-2xl font-bold text-sky-300 font-mono">
+                    {engineMetrics.topSpeedMps} m/s
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-1">
+                    Pace {a.pace} · Acc {a.acceleration}
+                  </div>
                 </div>
-                <div className="text-[11px] text-slate-400 mt-1">
-                  Custom physical + engine rating
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+                  <div className="text-[11px] uppercase tracking-wider text-slate-400">
+                    Aerial Reach
+                  </div>
+                  <div className="mt-1 text-2xl font-bold text-amber-300 font-mono">
+                    +{engineMetrics.jumpHeightMeters} m
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-1">
+                    JR {a.jumpingReach} · Heading {a.heading ?? 10}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+                  <div className="text-[11px] uppercase tracking-wider text-slate-400">
+                    Condition / Sharpness
+                  </div>
+                  <div className="mt-1 text-2xl font-bold text-slate-100 font-mono">
+                    {player.condition ?? '--'}% / {player.sharpness ?? '--'}%
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-1">
+                    Stamina {a.stamina}/20
+                  </div>
                 </div>
               </div>
-              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-                <div className="text-[11px] uppercase tracking-wider text-slate-400">
-                  Top Sprint Speed
+
+              {/* Phase 1 (v3.0): Role & Positional Percentile Pizza Chart + 6-Axis Radar */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 flex items-center justify-center">
+                  <RolePercentilePizzaChart
+                    player={player}
+                    ipRoleName={effectiveIpRole}
+                    oopRoleName={effectiveOopRole}
+                    highlightedPrimaryKeys={highlightedKeys.keySet}
+                  />
                 </div>
-                <div className="mt-1 text-2xl font-bold text-sky-300 font-mono">
-                  {engineMetrics.topSpeedMps} m/s
-                </div>
-                <div className="text-[11px] text-slate-400 mt-1">
-                  Pace {a.pace} · Acc {a.acceleration}
-                </div>
-              </div>
-              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-                <div className="text-[11px] uppercase tracking-wider text-slate-400">
-                  Aerial Reach
-                </div>
-                <div className="mt-1 text-2xl font-bold text-amber-300 font-mono">
-                  +{engineMetrics.jumpHeightMeters} m
-                </div>
-                <div className="text-[11px] text-slate-400 mt-1">
-                  JR {a.jumpingReach} · Heading {a.heading ?? 10}
-                </div>
-              </div>
-              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-                <div className="text-[11px] uppercase tracking-wider text-slate-400">
-                  Condition / Sharpness
-                </div>
-                <div className="mt-1 text-2xl font-bold text-slate-100 font-mono">
-                  {player.condition ?? '--'}% / {player.sharpness ?? '--'}%
-                </div>
-                <div className="text-[11px] text-slate-400 mt-1">
-                  Stamina {a.stamina}/20
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 flex flex-col items-center justify-center">
+                  <div className="text-xs font-bold text-slate-200 mb-1">
+                    6-Axis Core Profile Radar
+                  </div>
+                  <AttributeRadarChart player={player} />
                 </div>
               </div>
             </div>

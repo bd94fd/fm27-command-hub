@@ -51,6 +51,7 @@ import { PlayerDetailModal } from './components/PlayerDetailModal';
 import { StaffDetailModal } from './components/StaffDetailModal';
 import {
   loadPersistedFmState,
+  loadPersistedFmStateFromIndexedDb,
   savePersistedFmState,
   clearPersistedFmState,
   recordPreviousSnapshot,
@@ -231,6 +232,20 @@ export default function App() {
       }
       setIsRestoredFromMemory(true);
     }
+
+    void loadPersistedFmStateFromIndexedDb().then((idbSaved) => {
+      if (!idbSaved) return;
+      const idbTargetCount =
+        idbSaved.hydratedFmSave?.recruitmentTargets?.length ?? 0;
+      const localTargetCount =
+        saved?.hydratedFmSave?.recruitmentTargets?.length ?? 0;
+      if (!saved || idbTargetCount > localTargetCount) {
+        if (idbSaved.players.length > 0) setPlayers(idbSaved.players);
+        if (idbSaved.matches.length > 0) setMatches(idbSaved.matches);
+        if (idbSaved.hydratedFmSave) setHydratedFmSave(idbSaved.hydratedFmSave);
+        setIsRestoredFromMemory(true);
+      }
+    });
   }, []);
 
   // Automatically persist non-empty state across browser refreshes & sessions

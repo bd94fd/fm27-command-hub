@@ -28,6 +28,10 @@ import {
   SolvedSlot,
 } from '../utils/bestXiSolver';
 import { PersistedCustomSlot } from '../services/fmStorage';
+import {
+  analyzeRestDefenseMatrix,
+  PitchPhaseMode,
+} from '../utils/restDefenseEngine';
 
 export interface PlaybookGuardrailAlert {
   id: string;
@@ -219,6 +223,8 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
   const [matchdayMode, setMatchdayMode] = useState(true);
   const [viewBTeam, setViewBTeam] = useState(false);
   const [selectedSlotId, setSelectedSlotId] = useState<string>('ST');
+  const [pitchPhaseMode, setPitchPhaseMode] =
+    useState<PitchPhaseMode>('rest-defense');
 
   const solved = useMemo(
     () =>
@@ -272,6 +278,16 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
   const guardrails = useMemo(
     () => evaluatePlaybookGuardrails(activeSlots, activeShape, activeSuspensions),
     [activeSlots, activeShape, activeSuspensions]
+  );
+
+  const restDefenseMatrix = useMemo(
+    () => analyzeRestDefenseMatrix(activeSlots, activeShape),
+    [activeSlots, activeShape]
+  );
+
+  const restNodeMap = useMemo(
+    () => new Map(restDefenseMatrix.nodes.map((n) => [n.slotId, n])),
+    [restDefenseMatrix]
   );
 
   const selectedSlot =
@@ -348,7 +364,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
           </h2>
           <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
             68 authentic FM27 IP/OOP roles · Familiarity-gated Best XI &amp;
-            Rotated B-Team solver · Live Playbook v2.0 guardrails.
+            Rotated B-Team solver · Dual-Phase Rest-Defense Matrix.
           </p>
         </div>
 
@@ -418,50 +434,199 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
         </div>
       </div>
 
+      {/* Phase 1 (v3.0): Dual-Phase & Rest-Defense Matrix Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="font-mono font-bold text-emerald-400">
+            {restDefenseMatrix.structureLabel}
+          </span>
+          <span
+            className={`rounded-md px-2 py-0.5 font-mono text-[11px] font-bold border ${
+              restDefenseMatrix.stabilityScore >= 75
+                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35'
+                : restDefenseMatrix.stabilityScore >= 58
+                  ? 'bg-amber-500/15 text-amber-300 border-amber-500/35'
+                  : 'bg-rose-500/15 text-rose-300 border-rose-500/35'
+            }`}
+          >
+            Transition Stability: {restDefenseMatrix.stabilityScore}/100
+          </span>
+          <span className="text-[11px] text-slate-400">
+            Base: {restDefenseMatrix.baseDefenderCount} CB +{' '}
+            {restDefenseMatrix.pivotScreenCount} Pivot · Shuttles:{' '}
+            {restDefenseMatrix.shuttleCount} · Outlets:{' '}
+            {restDefenseMatrix.outletCount}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1 p-0.5 rounded-lg bg-slate-900 border border-slate-800">
+          {(
+            [
+              { id: 'ip', label: 'IP Attack Shape' },
+              { id: 'oop', label: 'OOP Def Block' },
+              { id: 'rest-defense', label: 'Rest-Defense Matrix' },
+            ] as const
+          ).map((mode) => (
+            <button
+              key={mode.id}
+              type="button"
+              onClick={() => setPitchPhaseMode(mode.id)}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+                pitchPhaseMode === mode.id
+                  ? 'bg-emerald-600 text-white'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Main Grid: Pitch Canvas + Selected Slot Inspector */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Visual Pitch */}
-        <div className="lg:col-span-7 relative rounded-xl overflow-hidden border border-emerald-700/40 bg-gradient-to-b from-emerald-950 via-emerald-900 to-emerald-950 min-h-[430px] select-none">
-          {/* Pitch Markings */}
-          <div className="absolute inset-3 border border-emerald-400/25 rounded-lg pointer-events-none">
-            <div className="absolute top-1/2 left-0 right-0 h-px bg-emerald-400/25" />
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 rounded-full border border-emerald-400/25" />
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-36 h-12 border-b border-x border-emerald-400/25" />
-            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-36 h-12 border-t border-x border-emerald-400/25" />
+        <div className="lg:col-span-7 space-y-2.5">
+          <div className="relative rounded-xl overflow-hidden border border-emerald-700/40 bg-gradient-to-b from-emerald-950 via-emerald-900 to-emerald-950 min-h-[430px] select-none">
+            {/* Pitch Markings */}
+            <div className="absolute inset-3 border border-emerald-400/25 rounded-lg pointer-events-none">
+              <div className="absolute top-1/2 left-0 right-0 h-px bg-emerald-400/25" />
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 rounded-full border border-emerald-400/25" />
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-36 h-12 border-b border-x border-emerald-400/25" />
+              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-36 h-12 border-t border-x border-emerald-400/25" />
+            </div>
+
+            {/* Rest-Defense SVG Overlay (Base Polygon + Exposed Corridors + Transition Vectors) */}
+            {pitchPhaseMode === 'rest-defense' && (
+              <svg
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                className="absolute inset-0 w-full h-full pointer-events-none z-0"
+              >
+                {/* Exposed or Watch Lane Corridors */}
+                {restDefenseMatrix.lanes.map((lane) => {
+                  if (lane.status === 'Secure') return null;
+                  const fill =
+                    lane.status === 'Exposed'
+                      ? 'rgba(244, 63, 94, 0.16)'
+                      : 'rgba(245, 158, 11, 0.09)';
+                  return (
+                    <rect
+                      key={lane.lane}
+                      x={lane.xStart}
+                      y={38}
+                      width={lane.xEnd - lane.xStart}
+                      height={46}
+                      fill={fill}
+                    />
+                  );
+                })}
+
+                {/* Rest-Defense Base Shield Polygon */}
+                {restDefenseMatrix.basePolygonPoints.length >= 3 && (
+                  <polygon
+                    points={restDefenseMatrix.basePolygonPoints
+                      .map((pt) => `${pt.x},${pt.y}`)
+                      .join(' ')}
+                    fill="rgba(16, 185, 129, 0.22)"
+                    stroke="#34d399"
+                    strokeWidth={0.7}
+                    strokeDasharray="1.8 1.2"
+                  />
+                )}
+              </svg>
+            )}
+
+            {/* 11 Interactive Slot Nodes */}
+            {activeSlots.map((slot) => {
+              const isSelected = selectedSlot?.slotId === slot.slotId;
+              const hasWarning =
+                slot.warnings.length > 0 || !slot.isNaturalPosition;
+              const restNode = restNodeMap.get(slot.slotId);
+              const displayX =
+                pitchPhaseMode === 'ip'
+                  ? restNode?.ipX ?? slot.x
+                  : pitchPhaseMode === 'oop'
+                    ? restNode?.oopX ?? slot.x
+                    : restNode?.restX ?? slot.x;
+              const displayY =
+                pitchPhaseMode === 'ip'
+                  ? restNode?.ipY ?? slot.y
+                  : pitchPhaseMode === 'oop'
+                    ? restNode?.oopY ?? slot.y
+                    : restNode?.restY ?? slot.y;
+
+              const categoryRing =
+                pitchPhaseMode === 'rest-defense' && restNode
+                  ? restNode.category === 'BASE_ANCHOR'
+                    ? 'ring-2 ring-emerald-400/80'
+                    : restNode.category === 'TRANSITION_SHUTTLE'
+                      ? 'ring-1 ring-sky-400/70'
+                      : restNode.category === 'ATTACKING_OUTLET'
+                        ? 'ring-1 ring-purple-400/70'
+                        : ''
+                  : '';
+
+              return (
+                <button
+                  key={slot.slotId}
+                  type="button"
+                  onClick={() => setSelectedSlotId(slot.slotId)}
+                  style={{ left: `${displayX}%`, top: `${displayY}%` }}
+                  className={`absolute -translate-x-1/2 -translate-y-1/2 px-2 py-1.5 rounded-lg text-center transition-all duration-300 max-w-[118px] border ${categoryRing} ${
+                    isSelected
+                      ? 'bg-emerald-500 text-slate-950 border-white shadow-lg scale-105 z-20'
+                      : hasWarning
+                        ? 'bg-amber-950/90 text-amber-100 border-amber-400/70 hover:bg-amber-900 z-10'
+                        : 'bg-slate-950/85 text-slate-100 border-emerald-400/40 hover:border-emerald-300 z-10'
+                  }`}
+                >
+                  <div className="text-[10px] font-mono font-bold leading-tight">
+                    {slot.label}{' '}
+                    {slot.player ? `· ${slot.combinedFitPct}%` : '· --'}
+                  </div>
+                  <div className="text-[11px] font-semibold truncate max-w-[102px]">
+                    {slot.player
+                      ? slot.player.name.split(' ').slice(-1)[0]
+                      : 'Empty'}
+                  </div>
+                  <div className="text-[9px] opacity-80 truncate max-w-[102px]">
+                    {pitchPhaseMode === 'oop'
+                      ? slot.oopRole
+                      : pitchPhaseMode === 'rest-defense' && restNode
+                        ? restNode.categoryLabel
+                        : slot.ipRole}
+                  </div>
+                </button>
+              );
+            })}
           </div>
 
-          {/* 11 Interactive Slot Nodes */}
-          {activeSlots.map((slot) => {
-            const isSelected = selectedSlot?.slotId === slot.slotId;
-            const hasWarning =
-              slot.warnings.length > 0 || !slot.isNaturalPosition;
-            return (
-              <button
-                key={slot.slotId}
-                type="button"
-                onClick={() => setSelectedSlotId(slot.slotId)}
-                style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
-                className={`absolute -translate-x-1/2 -translate-y-1/2 px-2 py-1.5 rounded-lg text-center transition max-w-[116px] border ${
-                  isSelected
-                    ? 'bg-emerald-500 text-slate-950 border-white shadow-lg scale-105 z-20'
-                    : hasWarning
-                    ? 'bg-amber-950/90 text-amber-100 border-amber-400/70 hover:bg-amber-900 z-10'
-                    : 'bg-slate-950/85 text-slate-100 border-emerald-400/40 hover:border-emerald-300 z-10'
-                }`}
-              >
-                <div className="text-[10px] font-mono font-bold leading-tight">
-                  {slot.label}{' '}
-                  {slot.player ? `· ${slot.combinedFitPct}%` : '· --'}
+          {/* 5-Lane Rest-Defense Corridor Status Bar */}
+          <div className="grid grid-cols-5 gap-1.5">
+            {restDefenseMatrix.lanes.map((lane) => {
+              const badgeCls =
+                lane.status === 'Secure'
+                  ? 'border-emerald-500/35 bg-emerald-950/30 text-emerald-300'
+                  : lane.status === 'Watch'
+                    ? 'border-amber-500/35 bg-amber-950/30 text-amber-300'
+                    : 'border-rose-500/45 bg-rose-950/40 text-rose-300';
+              return (
+                <div
+                  key={lane.lane}
+                  title={lane.detail}
+                  className={`rounded-lg border px-2 py-1.5 text-center ${badgeCls}`}
+                >
+                  <div className="text-[10px] font-bold truncate">
+                    {lane.lane}
+                  </div>
+                  <div className="text-[10px] font-mono">
+                    {lane.status} ({lane.coverageCount})
+                  </div>
                 </div>
-                <div className="text-[11px] font-semibold truncate max-w-[100px]">
-                  {slot.player ? slot.player.name.split(' ').slice(-1)[0] : 'Empty'}
-                </div>
-                <div className="text-[9px] opacity-80 truncate max-w-[100px]">
-                  {slot.ipRole}
-                </div>
-              </button>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
 
         {/* Slot Role & Player Editor */}
