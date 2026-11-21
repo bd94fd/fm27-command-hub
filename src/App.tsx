@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import {
   BookOpen,
   Briefcase,
@@ -44,15 +44,11 @@ import {
   PlayerAutoUpdate,
 } from './components/AutoSyncWorkspace';
 import { TacticalWarRoom } from './components/TacticalWarRoom';
-import { SquadAnalyticsTable } from './components/SquadAnalyticsTable';
 import { SetPiecesAndTraining } from './components/SetPiecesAndTraining';
 import { MatchLogArchive } from './components/MatchLogArchive';
 import { LiveFmSaveProofCard } from './components/LiveFmSaveProofCard';
-import { RecruitmentWorkspace } from './components/RecruitmentWorkspace';
-import { StaffDirectory } from './components/StaffDirectory';
 import { PlayerDetailModal } from './components/PlayerDetailModal';
 import { StaffDetailModal } from './components/StaffDetailModal';
-import { KnowledgeBasePanel } from './components/KnowledgeBasePanel';
 import {
   loadPersistedFmState,
   savePersistedFmState,
@@ -67,6 +63,37 @@ import {
 } from './services/fmStorage';
 import { FormationPresetKey } from './utils/bestXiSolver';
 import { RecruitmentTarget } from './types/fmSave';
+import {
+  captureProgressionSnapshot,
+  clearProgressionArchive,
+} from './utils/progressionDiff';
+
+const SquadAnalyticsTable = lazy(() =>
+  import('./components/SquadAnalyticsTable').then((m) => ({
+    default: m.SquadAnalyticsTable,
+  }))
+);
+const RecruitmentWorkspace = lazy(() =>
+  import('./components/RecruitmentWorkspace').then((m) => ({
+    default: m.RecruitmentWorkspace,
+  }))
+);
+const StaffDirectory = lazy(() =>
+  import('./components/StaffDirectory').then((m) => ({
+    default: m.StaffDirectory,
+  }))
+);
+const KnowledgeBasePanel = lazy(() =>
+  import('./components/KnowledgeBasePanel').then((m) => ({
+    default: m.KnowledgeBasePanel,
+  }))
+);
+
+const LazyTabFallback: React.FC<{ label: string }> = ({ label }) => (
+  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-500 dark:text-slate-400">
+    Loading {label}...
+  </div>
+);
 
 type ActiveTab =
   | 'sync'
@@ -262,6 +289,7 @@ export default function App() {
 
     setConfirmResetPending(false);
     clearPersistedFmState();
+    clearProgressionArchive();
     setPlayers([]);
     setMatches([]);
     setStaff([]);
@@ -331,8 +359,20 @@ export default function App() {
     decoded: DecodedFmSavePayload
   ): HydratedSaveState => {
     recordPreviousSnapshot(saveDate, players, matches);
+    if (players.length > 0 && saveDate && saveDate !== '--') {
+      captureProgressionSnapshot(
+        saveDate,
+        hydratedFmSave?.decodedPayload.meta.clubName || 'Managed Club',
+        players
+      );
+    }
 
     const hydrated = hydrateAppFromDecodedFmSave(decoded, players, matches);
+    captureProgressionSnapshot(
+      hydrated.saveDateLabel,
+      decoded.meta.clubName || 'Managed Club',
+      hydrated.updatedSquad
+    );
     setHydratedFmSave(hydrated);
     setPlayers(hydrated.updatedSquad);
     setStaff(hydrated.updatedStaff || []);
@@ -831,65 +871,71 @@ export default function App() {
         )}
 
         {activeTab === 'squad' && (
-          <SquadAnalyticsTable
-            players={players}
-            clubName={hydratedFmSave?.decodedPayload.meta.clubName}
-            onSelectPlayer={setSelectedPlayer}
-          />
+          <Suspense fallback={<LazyTabFallback label="Squad Analytics" />}>
+            <SquadAnalyticsTable
+              players={players}
+              clubName={hydratedFmSave?.decodedPayload.meta.clubName}
+              onSelectPlayer={setSelectedPlayer}
+            />
+          </Suspense>
         )}
 
         {activeTab === 'recruitment' && (
-          <RecruitmentWorkspace
-            cases={recruitmentCases}
-            shortlists={shortlists}
-            players={players}
-            saveDate={saveDate}
-            wageSpend={wageSpend}
-            balance={balance}
-            clubName={hydratedFmSave?.decodedPayload.meta.clubName}
-            finances={
-              hydratedFmSave?.decodedPayload.finances
-                ? {
-                    balanceNum: hydratedFmSave.decodedPayload.finances.balance,
-                    wagePayrollWeekly:
-                      hydratedFmSave.decodedPayload.finances.wagePayrollWeekly,
-                    wageBudgetWeekly:
-                      hydratedFmSave.decodedPayload.finances.wageBudgetWeekly,
-                    transferBudgetRemaining:
-                      hydratedFmSave.decodedPayload.finances
-                        .transferBudgetRemaining,
-                  }
-                : null
-            }
-            financialRunway={hydratedFmSave?.financialRunway ?? null}
-            transferWindows={hydratedFmSave?.decodedPayload.transferWindows ?? null}
-            competitionRules={hydratedFmSave?.competitionRules ?? null}
-            divisionBenchmarks={hydratedFmSave?.divisionBenchmarks ?? null}
-            scoutedTargets={
-              hydratedFmSave?.recruitmentTargets ??
-              hydratedFmSave?.decodedPayload.recruitmentTargets ??
-              []
-            }
-            trackedTargets={trackedTargets}
-            onToggleTrackTarget={handleToggleTrackTarget}
-            onAskAnalyst={handleAskAnalystPrompt}
-            onAddCase={handleAddRecruitmentCase}
-            onUpdateCase={handleUpdateRecruitmentCase}
-            onDeleteCase={handleDeleteRecruitmentCase}
-            onCreateShortlist={handleCreateShortlist}
-            onDeleteShortlist={handleDeleteShortlist}
-            onRemoveFromShortlist={handleRemovePlayerFromShortlist}
-            onSelectPlayer={setSelectedPlayer}
-          />
+          <Suspense fallback={<LazyTabFallback label="Transfers & Audit" />}>
+            <RecruitmentWorkspace
+              cases={recruitmentCases}
+              shortlists={shortlists}
+              players={players}
+              saveDate={saveDate}
+              wageSpend={wageSpend}
+              balance={balance}
+              clubName={hydratedFmSave?.decodedPayload.meta.clubName}
+              finances={
+                hydratedFmSave?.decodedPayload.finances
+                  ? {
+                      balanceNum: hydratedFmSave.decodedPayload.finances.balance,
+                      wagePayrollWeekly:
+                        hydratedFmSave.decodedPayload.finances.wagePayrollWeekly,
+                      wageBudgetWeekly:
+                        hydratedFmSave.decodedPayload.finances.wageBudgetWeekly,
+                      transferBudgetRemaining:
+                        hydratedFmSave.decodedPayload.finances
+                          .transferBudgetRemaining,
+                    }
+                  : null
+              }
+              financialRunway={hydratedFmSave?.financialRunway ?? null}
+              transferWindows={hydratedFmSave?.decodedPayload.transferWindows ?? null}
+              competitionRules={hydratedFmSave?.competitionRules ?? null}
+              divisionBenchmarks={hydratedFmSave?.divisionBenchmarks ?? null}
+              scoutedTargets={
+                hydratedFmSave?.recruitmentTargets ??
+                hydratedFmSave?.decodedPayload.recruitmentTargets ??
+                []
+              }
+              trackedTargets={trackedTargets}
+              onToggleTrackTarget={handleToggleTrackTarget}
+              onAskAnalyst={handleAskAnalystPrompt}
+              onAddCase={handleAddRecruitmentCase}
+              onUpdateCase={handleUpdateRecruitmentCase}
+              onDeleteCase={handleDeleteRecruitmentCase}
+              onCreateShortlist={handleCreateShortlist}
+              onDeleteShortlist={handleDeleteShortlist}
+              onRemoveFromShortlist={handleRemovePlayerFromShortlist}
+              onSelectPlayer={setSelectedPlayer}
+            />
+          </Suspense>
         )}
 
         {activeTab === 'staff' && (
-          <StaffDirectory
-            staff={staff}
-            clubName={hydratedFmSave?.decodedPayload.meta.clubName}
-            jobVacancies={hydratedFmSave?.decodedPayload.jobVacancies ?? []}
-            onSelectStaff={setSelectedStaff}
-          />
+          <Suspense fallback={<LazyTabFallback label="Staff Directory" />}>
+            <StaffDirectory
+              staff={staff}
+              clubName={hydratedFmSave?.decodedPayload.meta.clubName}
+              jobVacancies={hydratedFmSave?.decodedPayload.jobVacancies ?? []}
+              onSelectStaff={setSelectedStaff}
+            />
+          </Suspense>
         )}
 
         {activeTab === 'setpieces' && (
@@ -985,11 +1031,15 @@ export default function App() {
         onClose={() => setSelectedStaff(null)}
       />
 
-      <KnowledgeBasePanel
-        isOpen={showKnowledgeBase}
-        onClose={() => setShowKnowledgeBase(false)}
-        players={players}
-      />
+      {showKnowledgeBase && (
+        <Suspense fallback={null}>
+          <KnowledgeBasePanel
+            isOpen={showKnowledgeBase}
+            onClose={() => setShowKnowledgeBase(false)}
+            players={players}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

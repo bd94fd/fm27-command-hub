@@ -1,7 +1,19 @@
 import React, { useState, useMemo } from 'react';
-import { BarChart3, GitCompare, Search, Table2, Users } from 'lucide-react';
+import {
+  BarChart3,
+  GitCompare,
+  Search,
+  Sparkles,
+  Table2,
+  TrendingUp,
+  Users,
+} from 'lucide-react';
 import { PlayerRecord } from '../types/fm27';
 import { computeFm27EngineMetrics } from '../utils/fmSyncEngine';
+import {
+  computeProgressionDiff,
+  loadProgressionArchive,
+} from '../utils/progressionDiff';
 import {
   AttributeRadarChart,
   SquadAgeValueScatterPlot,
@@ -13,7 +25,7 @@ interface SquadAnalyticsTableProps {
   onSelectPlayer?: (player: PlayerRecord) => void;
 }
 
-type SquadViewMode = 'table' | 'analytics' | 'compare';
+type SquadViewMode = 'table' | 'analytics' | 'compare' | 'progression';
 type PositionGroupFilter = 'ALL' | 'GK' | 'DEF' | 'MID' | 'FWD';
 
 function getPositionGroup(pos: string): Exclude<PositionGroupFilter, 'ALL'> {
@@ -64,6 +76,24 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
   const [radarPlayerId, setRadarPlayerId] = useState<string>('');
   const [compareAId, setCompareAId] = useState<string>('');
   const [compareBId, setCompareBId] = useState<string>('');
+  const [baselineIdx, setBaselineIdx] = useState<number>(0);
+
+  const progressionArchive = useMemo(
+    () => loadProgressionArchive(),
+    // Re-read when players change (e.g. after a new .fm save sync)
+    [players]
+  );
+
+  const progressionDiff = useMemo(() => {
+    if (progressionArchive.length < 2) return null;
+    const safeBaselineIdx = Math.max(
+      0,
+      Math.min(baselineIdx, progressionArchive.length - 2)
+    );
+    const baseline = progressionArchive[safeBaselineIdx];
+    const latest = progressionArchive[progressionArchive.length - 1];
+    return computeProgressionDiff(baseline, latest);
+  }, [progressionArchive, baselineIdx]);
 
   const availableExpiryYears = useMemo(() => {
     const years = new Set<string>();
@@ -185,6 +215,18 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
               >
                 <GitCompare className="w-3.5 h-3.5" />
                 Compare (2 Players)
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('progression')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                  viewMode === 'progression'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <TrendingUp className="w-3.5 h-3.5" />
+                Progression
               </button>
             </div>
           </div>
@@ -557,6 +599,193 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {viewMode === 'progression' && (
+          <div className="p-4 sm:p-5 space-y-5">
+            {progressionArchive.length < 2 || !progressionDiff ? (
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 p-6 text-center space-y-2">
+                <TrendingUp className="w-6 h-6 text-emerald-500 mx-auto" />
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  Awaiting Multi-Save Progression Baseline
+                </h3>
+                <p className="text-xs text-slate-600 dark:text-slate-400 max-w-md mx-auto">
+                  {progressionArchive.length === 1
+                    ? `1 snapshot captured (${progressionArchive[0].saveDate}). Sync a second .fm save from a later in-game date to unlock attribute risers/fallers, Mentoring Determination Jumps, and Youth Intake Radar.`
+                    : 'Sync at least two .fm saves from different in-game dates to track rolling 30-save progression diffs.'}
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div className="text-xs text-slate-600 dark:text-slate-400">
+                    Comparing{' '}
+                    <span className="font-mono font-semibold text-slate-900 dark:text-slate-100">
+                      {progressionDiff.baselineSaveDate}
+                    </span>{' '}
+                    &rarr;{' '}
+                    <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+                      {progressionDiff.latestSaveDate}
+                    </span>{' '}
+                    ({progressionArchive.length}/30 archived saves)
+                  </div>
+                  <label className="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
+                    <span>Baseline:</span>
+                    <select
+                      aria-label="Baseline snapshot"
+                      value={Math.min(baselineIdx, progressionArchive.length - 2)}
+                      onChange={(e) => setBaselineIdx(Number(e.target.value))}
+                      className="px-2.5 py-1 text-xs font-mono bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100"
+                    >
+                      {progressionArchive.slice(0, -1).map((snap, idx) => (
+                        <option key={snap.saveDate} value={idx}>
+                          {snap.saveDate} ({Object.keys(snap.players).length} players)
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                {/* Mentoring Determination Jumps */}
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-amber-500 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Mentoring Determination Jumps (+2 or more)
+                    </h3>
+                    <span className="text-xs font-mono text-amber-400">
+                      {progressionDiff.mentoringDeterminationJumps.length}
+                    </span>
+                  </div>
+                  {progressionDiff.mentoringDeterminationJumps.length === 0 ? (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      No Determination jumps of +2 or more between these saves.
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {progressionDiff.mentoringDeterminationJumps.map((j) => (
+                        <span
+                          key={`${j.uid}-${j.attributeName}`}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30"
+                        >
+                          <span>{j.playerName}</span>
+                          <span className="font-mono font-bold">
+                            {j.fromValue}&rarr;{j.toValue} (+{j.delta})
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Risers & Fallers */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-500">
+                        Top Attribute Risers
+                      </h3>
+                      <span className="text-xs font-mono text-emerald-400">
+                        {progressionDiff.risers.length}
+                      </span>
+                    </div>
+                    {progressionDiff.risers.length === 0 ? (
+                      <p className="text-xs text-slate-500">No attribute rises recorded.</p>
+                    ) : (
+                      <ul className="divide-y divide-slate-200 dark:divide-slate-800 text-xs">
+                        {progressionDiff.risers.slice(0, 12).map((r) => (
+                          <li
+                            key={`${r.uid}-${r.attributeName}`}
+                            className="py-1.5 flex items-center justify-between gap-2"
+                          >
+                            <span className="truncate text-slate-900 dark:text-slate-100">
+                              {r.playerName}{' '}
+                              <span className="text-slate-500">({r.attributeName})</span>
+                            </span>
+                            <span className="font-mono font-semibold text-emerald-500 shrink-0">
+                              {r.fromValue}&rarr;{r.toValue} (+{r.delta})
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-rose-400">
+                        Attribute Fallers
+                      </h3>
+                      <span className="text-xs font-mono text-rose-400">
+                        {progressionDiff.fallers.length}
+                      </span>
+                    </div>
+                    {progressionDiff.fallers.length === 0 ? (
+                      <p className="text-xs text-slate-500">No attribute declines recorded.</p>
+                    ) : (
+                      <ul className="divide-y divide-slate-200 dark:divide-slate-800 text-xs">
+                        {progressionDiff.fallers.slice(0, 12).map((f) => (
+                          <li
+                            key={`${f.uid}-${f.attributeName}`}
+                            className="py-1.5 flex items-center justify-between gap-2"
+                          >
+                            <span className="truncate text-slate-900 dark:text-slate-100">
+                              {f.playerName}{' '}
+                              <span className="text-slate-500">({f.attributeName})</span>
+                            </span>
+                            <span className="font-mono font-semibold text-rose-400 shrink-0">
+                              {f.fromValue}&rarr;{f.toValue} ({f.delta})
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+
+                {/* Youth Intake / Newgen Radar */}
+                <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-sky-400">
+                      Youth Intake &amp; Newgen Radar (Brand-New UIDs)
+                    </h3>
+                    <span className="text-xs font-mono text-sky-400">
+                      {progressionDiff.youthIntakeHighlights.length} U18 /{' '}
+                      {progressionDiff.newgenRadar.length} total
+                    </span>
+                  </div>
+                  {progressionDiff.newgenRadar.length === 0 ? (
+                    <p className="text-xs text-slate-500">
+                      No new player UIDs added since {progressionDiff.baselineSaveDate}.
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {progressionDiff.newgenRadar.map((n) => (
+                        <span
+                          key={n.uid}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs border ${
+                            n.isYouthIntakeHighlight
+                              ? 'bg-sky-500/15 text-sky-300 border-sky-500/40 font-semibold'
+                              : 'bg-slate-800/60 text-slate-300 border-slate-700'
+                          }`}
+                        >
+                          <span>{n.playerName}</span>
+                          <span className="text-[11px] opacity-80">
+                            {n.position} · Age {n.age}
+                          </span>
+                          {n.isYouthIntakeHighlight && (
+                            <span className="px-1.5 py-0.5 text-[10px] rounded bg-sky-500/30 text-sky-100">
+                              U18 INTAKE
+                            </span>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>

@@ -1,0 +1,17 @@
+{
+  "name": "FM27 Command & Auto-Sync Hub",
+  "short_name": "FM27 Hub",
+  "description": "Live Football Manager 27 tactical war room, squad analytics engine, and auto-sync command hub.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090D16",
+  "theme_color": "#0F172A",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
