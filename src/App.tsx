@@ -881,6 +881,9 @@ export default function App() {
       <PlayerDetailModal
         player={selectedPlayer}
         shortlists={shortlists}
+        isManagedClubPlayer={Boolean(
+          selectedPlayer && players.some((p) => p.id === selectedPlayer.id)
+        )}
         onClose={() => setSelectedPlayer(null)}
         onAddRecruitment={handleTrackPlayerInRecruitment}
         onAddToShortlist={handleAddPlayerToShortlist}

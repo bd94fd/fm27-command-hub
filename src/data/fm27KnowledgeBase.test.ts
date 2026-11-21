@@ -170,9 +170,8 @@ test('Pass 1: scorePlayerForFm27Role & rankSquadForFm27Role rank natural positio
   );
 
   const topStrikers = rankSquadForFm27Role([gk, cb, st], poacher, 3);
-  assert.equal(topStrikers.length, 3);
+  assert.equal(topStrikers.length, 1);
   assert.equal(topStrikers[0].player.id, 'st1');
   assert.equal(topStrikers[0].matchedPosition, true);
-  assert.ok(topStrikers[0].fitPct >= topStrikers[1].fitPct);
 });
 

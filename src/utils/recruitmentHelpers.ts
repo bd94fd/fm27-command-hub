@@ -20,7 +20,20 @@ export interface TargetRoleFit {
   fitPct: number;
 }
 
+export type ExactPositionSlot =
+  | 'GK'
+  | 'DL'
+  | 'DR'
+  | 'DC'
+  | 'DM'
+  | 'MC'
+  | 'AML'
+  | 'AMR'
+  | 'AMC'
+  | 'STC';
+
 export interface TargetDepthEvaluation {
+  slot: ExactPositionSlot;
   count: number;
   isGenuineGap: boolean;
   label: string;
@@ -42,11 +55,45 @@ export interface EnrichedRecruitmentTarget {
 
 type PositionSlot = 'GK' | 'DC' | 'FB' | 'DM_MC' | 'AM_W' | 'ST';
 
+export function classifyExactPositionSlot(position: string): ExactPositionSlot {
+  const p = (position || '').toUpperCase().trim();
+  if (!p) return 'MC';
+  if (p.includes('GK')) return 'GK';
+  if (/\bSTC\b|\bST\b|\bCF\b|ST\s*\(/i.test(p)) return 'STC';
+  if (p.includes('AML') || p.includes('AM (L') || p.includes('ML') || p.includes('M (L')) {
+    return 'AML';
+  }
+  if (p.includes('AMR') || p.includes('AM (R') || p.includes('MR') || p.includes('M (R')) {
+    return 'AMR';
+  }
+  if (p.includes('AMC') || p.includes('AM (C')) {
+    return 'AMC';
+  }
+  if (p.includes('DL') || p.includes('D (L') || p.includes('WBL') || p.includes('WB (L')) {
+    return 'DL';
+  }
+  if (p.includes('DR') || p.includes('D (R') || p.includes('WBR') || p.includes('WB (R')) {
+    return 'DR';
+  }
+  if (p.includes('DC') || p.includes('CB') || p.includes('D (C')) {
+    return 'DC';
+  }
+  if (p.includes('DM')) {
+    return 'DM';
+  }
+  if (p.includes('MC') || p.includes('M (C')) {
+    return 'MC';
+  }
+  if (p.startsWith('D')) return 'DC';
+  if (p.startsWith('A') || p.startsWith('F')) return 'STC';
+  return 'MC';
+}
+
 export function classifyPositionSlot(position: string): PositionSlot {
   const p = (position || '').toUpperCase().trim();
   if (!p) return 'DM_MC';
   if (p.includes('GK')) return 'GK';
-  if (/\bST\b|\bCF\b|ST\s*\(/i.test(p)) return 'ST';
+  if (/\bSTC\b|\bST\b|\bCF\b|ST\s*\(/i.test(p)) return 'ST';
   if (
     p.includes('AML') ||
     p.includes('AMR') ||
@@ -299,37 +346,156 @@ export function computeTargetBestRoleFit(target: RecruitmentTarget): TargetRoleF
   };
 }
 
+function getExactSlotFamiliarity(
+  positionRatings: Record<string, number>,
+  slot: ExactPositionSlot
+): number {
+  const upperMap = new Map<string, number>();
+  for (const [k, v] of Object.entries(positionRatings)) {
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      upperMap.set(k.toUpperCase(), v);
+    }
+  }
+  if (slot === 'STC') {
+    return Math.max(upperMap.get('STC') ?? 0, upperMap.get('ST') ?? 0, upperMap.get('CF') ?? 0);
+  }
+  if (slot === 'DC') {
+    return Math.max(upperMap.get('DC') ?? 0, upperMap.get('CB') ?? 0);
+  }
+  return upperMap.get(slot) ?? 0;
+}
+
 /**
- * Counts how many active club players can cover the target's position slot.
- * Only flags `isGenuineGap: true` when the club genuinely has <= 2 options.
- * When the club has 3+ options (e.g. 6), returns a neutral non-gap label.
+ * Counts how many senior/first-team club players have natural/accomplished familiarity (>= 15/20)
+ * at the target's exact position slot (GK, DL, DR, DC, DM, MC, AML, AMR, AMC, STC).
+ * Excludes Youth squad members so depth reflects genuine first-team cover.
+ * Only flags `isGenuineGap: true` when exact-slot senior depth is <= 2.
  */
 export function evaluateTargetSquadDepth(
   targetPosition: string,
   squadPlayers: PlayerRecord[]
 ): TargetDepthEvaluation {
-  const targetSlot = classifyPositionSlot(targetPosition);
+  const exactSlot = classifyExactPositionSlot(targetPosition);
   const count = squadPlayers.filter((p) => {
-    const allPos = [p.position, ...(p.secondaryPositions || [])]
-      .filter(Boolean)
-      .join(', ');
-    if (classifyPositionSlot(p.position) === targetSlot) return true;
-    // Also check secondary positions for exact slot coverage
-    const tokens = allPos
+    if (p.status === 'Youth') return false;
+
+    const hasRatings =
+      p.positionRatings &&
+      Object.values(p.positionRatings).some(
+        (v) => typeof v === 'number' && Number.isFinite(v)
+      );
+    if (hasRatings && p.positionRatings) {
+      return getExactSlotFamiliarity(p.positionRatings, exactSlot) >= 15;
+    }
+
+    if (classifyExactPositionSlot(p.position) === exactSlot) return true;
+    const secondary = (p.secondaryPositions || [])
+      .join(', ')
       .split(/[,/]+/)
       .map((s) => s.trim())
       .filter(Boolean);
-    return tokens.some((tok) => classifyPositionSlot(tok) === targetSlot);
+    return secondary.some((tok) => classifyExactPositionSlot(tok) === exactSlot);
   }).length;
 
   const isGenuineGap = count <= 2;
   return {
+    slot: exactSlot,
     count,
     isGenuineGap,
     label: isGenuineGap
       ? `Priority GAP · ${count} at club`
       : `Depth: ${count} at club`,
   };
+}
+
+export interface PartitionedContractTerms {
+  releaseClauses: Array<{ type: string; amount: number }>;
+  bonuses: {
+    appearanceFee: number | null;
+    goalBonus: number | null;
+    cleanSheetBonus: number | null;
+    unusedSubFee: number | null;
+  };
+  loanWageContributionPct: number | null;
+}
+
+/**
+ * Separates genuine Release Clauses from Match Bonuses (Appearance Fee, Goal Bonus,
+ * Clean Sheet Bonus, Unused Sub Fee) so match bonuses never appear inside Release Clauses.
+ */
+export function partitionContractClausesAndBonuses(
+  contractDetails?: PlayerRecord['contractDetails']
+): PartitionedContractTerms {
+  const bonuses = {
+    appearanceFee: contractDetails?.bonuses?.appearanceFee ?? null,
+    goalBonus: contractDetails?.bonuses?.goalBonus ?? null,
+    cleanSheetBonus: contractDetails?.bonuses?.cleanSheetBonus ?? null,
+    unusedSubFee: contractDetails?.bonuses?.unusedSubFee ?? null,
+  };
+
+  const releaseClauses: Array<{ type: string; amount: number }> = [];
+  for (const rc of contractDetails?.releaseClauses || []) {
+    const t = (rc.type || '').toLowerCase();
+    if (/appearance/.test(t)) {
+      if (!bonuses.appearanceFee && rc.amount > 0) bonuses.appearanceFee = rc.amount;
+    } else if (/goal\s*bonus/.test(t)) {
+      if (!bonuses.goalBonus && rc.amount > 0) bonuses.goalBonus = rc.amount;
+    } else if (/clean\s*sheet/.test(t)) {
+      if (!bonuses.cleanSheetBonus && rc.amount > 0) bonuses.cleanSheetBonus = rc.amount;
+    } else if (/unused\s*sub/.test(t)) {
+      if (!bonuses.unusedSubFee && rc.amount > 0) bonuses.unusedSubFee = rc.amount;
+    } else {
+      releaseClauses.push(rc);
+    }
+  }
+
+  return {
+    releaseClauses,
+    bonuses,
+    loanWageContributionPct:
+      typeof contractDetails?.loanWageContributionPct === 'number'
+        ? contractDetails.loanWageContributionPct
+        : null,
+  };
+}
+
+/**
+ * Generates Playbook v2.0 contract notes flagging bloated Unused Sub fees
+ * or low Release Clauses that require renegotiation.
+ */
+export function getPlaybookContractNotes(player: PlayerRecord): string[] {
+  const notes: string[] = [];
+  const { releaseClauses, bonuses } = partitionContractClausesAndBonuses(
+    player.contractDetails
+  );
+
+  if (
+    typeof bonuses.unusedSubFee === 'number' &&
+    bonuses.unusedSubFee > 0 &&
+    (bonuses.unusedSubFee >= 50 ||
+      (player.wagePw > 0 && bonuses.unusedSubFee >= player.wagePw * 0.1))
+  ) {
+    notes.push(
+      `Bloated Unused Sub Fee (£${bonuses.unusedSubFee.toLocaleString()}/match) — Playbook v2.0: strip or cap unused-sub bonuses in the next renewal to protect matchday cashflow.`
+    );
+  }
+
+  for (const rc of releaseClauses) {
+    if (rc.amount <= 0) continue;
+    const belowMarket =
+      typeof player.marketValue === 'number' &&
+      player.marketValue > 0 &&
+      rc.amount < player.marketValue * 0.85;
+    const lowForKeyAsset =
+      rc.amount <= 250000 && (player.ability >= 3.0 || player.potential >= 3.5);
+    if (belowMarket || lowForKeyAsset) {
+      notes.push(
+        `Low Release Clause (${rc.type}: £${rc.amount.toLocaleString()}) — Playbook v2.0: renegotiate or remove before rival bids trigger it below true value.`
+      );
+    }
+  }
+
+  return notes;
 }
 
 export function formatTargetContractSummary(

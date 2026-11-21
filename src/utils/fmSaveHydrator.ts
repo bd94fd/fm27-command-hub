@@ -1006,7 +1006,11 @@ export function hydrateAppFromDecodedFmSave(
           workRate: 10,
           offTheBall: 10,
         };
-    const { ipRole, oopRole } = inferFm27Roles(dp.position || 'UTL', clampedAttrs);
+    const { ipRole, oopRole } = inferFm27Roles(
+      dp.position || 'UTL',
+      clampedAttrs,
+      dp.positionRatings
+    );
     const { abilityStars, potentialStars } = getPlayerStars(dp);
     const fallbackStatus: PlayerRecord['status'] =
       dp.minutes > 180 || abilityStars >= 3.5

@@ -808,10 +808,11 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
 
                     <button
                       type="button"
+                      aria-pressed={genuineGapsOnly}
                       onClick={() => setGenuineGapsOnly((prev) => !prev)}
                       className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition cursor-pointer ${
                         genuineGapsOnly
-                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
+                          ? 'bg-emerald-500/25 text-emerald-200 border-emerald-400 ring-1 ring-emerald-400/40 shadow-sm shadow-emerald-500/20'
                           : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
                       }`}
                     >
@@ -933,11 +934,11 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                           <div className="flex items-center justify-between pt-1.5 border-t border-slate-800/80 text-[11px] gap-2">
                             {depth.isGenuineGap ? (
                               <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                                Priority GAP · {depth.count} at club
+                                {depth.label}
                               </span>
                             ) : (
                               <span className="inline-flex items-center rounded px-2 py-0.5 text-[10px] font-medium bg-slate-800/80 text-slate-400 border border-slate-700/80">
-                                Depth: {depth.count} at club
+                                {depth.label}
                               </span>
                             )}
                             <button

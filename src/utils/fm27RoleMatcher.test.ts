@@ -118,3 +118,98 @@ test('inferFm27Roles differentiates striker roles based on finishing vs accelera
   assert.equal(tf.ipRole, 'Target Forward');
   assert.equal(tf.oopRole, 'Central Outlet Centre Forward');
 });
+
+test('positional-familiarity gate excludes unnatural positions (AMC 20/20, MC 2/20) from MC role rankings and default roles', async () => {
+  const {
+    scorePlayerForFm27Role,
+    rankSquadForFm27Role,
+    resolveNaturalDefaultRoles,
+  } = await import('./fm27RoleMatcher');
+
+  const baseAttrs = {
+    pace: 13,
+    acceleration: 13,
+    stamina: 14,
+    jumpingReach: 10,
+    determination: 14,
+    passing: 16,
+    finishing: 13,
+    tackling: 10,
+    firstTouch: 15,
+    decisions: 15,
+    workRate: 14,
+    offTheBall: 15,
+    vision: 16,
+    technique: 15,
+    composure: 14,
+  };
+
+  const amcOnlyPlayer = {
+    id: 'p-amc',
+    number: 10,
+    name: 'AMC Specialist',
+    position: 'AM (C)',
+    apps: '10',
+    minutes: 900,
+    rating: 7.2,
+    goals: 5,
+    xG: 4.1,
+    xGPer90: 0.41,
+    assists: 4,
+    xA: 3.5,
+    xAPer90: 0.35,
+    drbPer90: 1.5,
+    prPassesPer90: 4.2,
+    hdrPct: 40,
+    intPer90: 0.8,
+    tckPct: 65,
+    personality: 'Professional',
+    age: 24,
+    ability: 4.0,
+    potential: 4.0,
+    expires: '2028-06-30',
+    nation: 'Belgium',
+    wagePw: 600,
+    status: 'Starter' as const,
+    positionRatings: { AMC: 20, MC: 2 },
+    attributes: baseAttrs,
+    ipRole: 'Central Midfielder', // Deliberately wrong unnatural role
+    oopRole: 'Pressing Central Midfielder',
+    notes: '',
+  };
+
+  const naturalMcPlayer = {
+    ...amcOnlyPlayer,
+    id: 'p-mc',
+    number: 8,
+    name: 'Natural MC',
+    position: 'M (C)',
+    ability: 3.0,
+    positionRatings: { MC: 18, AMC: 8 },
+    ipRole: 'Box-to-Box Midfielder',
+    oopRole: 'Pressing Central Midfielder',
+  };
+
+  const mcRole = IN_POSSESSION_ROLES.find(
+    (r) => r.positionGroup === 'Central Midfielder'
+  );
+  assert.ok(mcRole, 'Expected a Central Midfielder role in IN_POSSESSION_ROLES');
+
+  const amcScoreInMc = scorePlayerForFm27Role(amcOnlyPlayer, mcRole);
+  const mcScoreInMc = scorePlayerForFm27Role(naturalMcPlayer, mcRole);
+  assert.ok(
+    amcScoreInMc < 35 && mcScoreInMc > amcScoreInMc + 35,
+    `Expected unnatural MC (2/20) score (${amcScoreInMc}) to be heavily penalized vs natural MC (${mcScoreInMc})`
+  );
+
+  const ranked = rankSquadForFm27Role([amcOnlyPlayer, naturalMcPlayer], mcRole, 5);
+  assert.equal(ranked.length, 1);
+  assert.equal(ranked[0].player.id, 'p-mc');
+
+  const defaults = resolveNaturalDefaultRoles(amcOnlyPlayer);
+  const resolvedIp = IN_POSSESSION_ROLES.find((r) => r.name === defaults.ipRole);
+  const resolvedOop = OUT_OF_POSSESSION_ROLES.find((r) => r.name === defaults.oopRole);
+  assert.equal(resolvedIp?.positionGroup, 'Attacking Midfielder');
+  assert.equal(resolvedOop?.positionGroup, 'Attacking Midfielder');
+});
+

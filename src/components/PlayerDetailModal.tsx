@@ -10,11 +10,17 @@ import {
 } from 'lucide-react';
 import { PlayerRecord, ShortlistRecord } from '../types/fm27';
 import { computeFm27EngineMetrics } from '../utils/fmSyncEngine';
+import { resolveNaturalDefaultRoles } from '../utils/fm27RoleMatcher';
+import {
+  getPlaybookContractNotes,
+  partitionContractClausesAndBonuses,
+} from '../utils/recruitmentHelpers';
 import fm27RolesRaw from '../data/fm27Roles.json';
 
 interface PlayerDetailModalProps {
   player: PlayerRecord | null;
   shortlists: ShortlistRecord[];
+  isManagedClubPlayer?: boolean;
   onClose: () => void;
   onAddRecruitment: (player: PlayerRecord) => void;
   onAddToShortlist: (shortlistId: string, playerId: string) => void;
@@ -89,6 +95,7 @@ function normalizeAttrKey(s: string): string {
 export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
   player,
   shortlists,
+  isManagedClubPlayer = false,
   onClose,
   onAddRecruitment,
   onAddToShortlist,
@@ -99,8 +106,16 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
   const [selectedShortlistId, setSelectedShortlistId] = useState<string>('');
   const [shortlistFeedback, setShortlistFeedback] = useState<string | null>(null);
 
-  const effectiveIpRole = selectedIpRole || player?.ipRole || '';
-  const effectiveOopRole = selectedOopRole || player?.oopRole || '';
+  const naturalDefaults = useMemo(
+    () =>
+      player
+        ? resolveNaturalDefaultRoles(player)
+        : { ipRole: '', oopRole: '' },
+    [player]
+  );
+
+  const effectiveIpRole = selectedIpRole || naturalDefaults.ipRole;
+  const effectiveOopRole = selectedOopRole || naturalDefaults.oopRole;
 
   const highlightedKeys = useMemo(() => {
     const keySet = new Set<string>();
@@ -291,13 +306,15 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => onAddRecruitment(player)}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 px-3 py-1.5 text-xs font-medium text-indigo-300 transition"
-            >
-              <ClipboardPlus className="h-3.5 w-3.5" />
-              Track Target
-            </button>
+            {!isManagedClubPlayer && (
+              <button
+                onClick={() => onAddRecruitment(player)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 px-3 py-1.5 text-xs font-medium text-indigo-300 transition"
+              >
+                <ClipboardPlus className="h-3.5 w-3.5" />
+                Track Target
+              </button>
+            )}
             {shortlists.length > 0 && (
               <div className="flex items-center gap-1">
                 <select
@@ -485,7 +502,9 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     onChange={(e) => setSelectedIpRole(e.target.value)}
                     className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-200"
                   >
-                    <option value={player.ipRole}>{player.ipRole} (Assigned)</option>
+                    <option value={naturalDefaults.ipRole}>
+                      {naturalDefaults.ipRole} (Assigned)
+                    </option>
                     {IP_ROLE_LIST.map((r) => (
                       <option key={`ip-${r.name}`} value={r.name}>
                         {r.name}
@@ -502,7 +521,9 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     onChange={(e) => setSelectedOopRole(e.target.value)}
                     className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-200"
                   >
-                    <option value={player.oopRole}>{player.oopRole} (Assigned)</option>
+                    <option value={naturalDefaults.oopRole}>
+                      {naturalDefaults.oopRole} (Assigned)
+                    </option>
                     {OOP_ROLE_LIST.map((r) => (
                       <option key={`oop-${r.name}`} value={r.name}>
                         {r.name}
@@ -592,11 +613,15 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                   <div className="space-y-2 text-xs">
                     <div className="flex justify-between">
                       <span className="text-slate-400">In-Possession (IP):</span>
-                      <span className="font-semibold text-emerald-300">{player.ipRole}</span>
+                      <span className="font-semibold text-emerald-300">
+                        {naturalDefaults.ipRole}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-400">Out-of-Possession (OOP):</span>
-                      <span className="font-semibold text-sky-300">{player.oopRole}</span>
+                      <span className="font-semibold text-sky-300">
+                        {naturalDefaults.oopRole}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-400">Preferred Foot:</span>
@@ -733,74 +758,110 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                 </div>
               </div>
 
-              {/* Pass 1 Tier-1: Contract Clauses & Promised Playing Time */}
-              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-3 text-xs">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h4 className="font-bold uppercase tracking-wider text-slate-400">
-                    Contract Clauses &amp; Promised Playing Time
-                  </h4>
-                  <span className="rounded bg-indigo-500/15 border border-indigo-500/30 px-2 py-0.5 text-[11px] font-semibold text-indigo-300">
-                    {player.contractDetails?.promisedPlayingTime || player.status}
-                  </span>
-                </div>
+              {/* Pass 1 Tier-1: Contract Clauses, Match Bonuses & Promised Playing Time */}
+              {(() => {
+                const partitioned = partitionContractClausesAndBonuses(
+                  player.contractDetails
+                );
+                const contractNotes = getPlaybookContractNotes(player);
+                const hasAnyBonus = Boolean(
+                  partitioned.bonuses.appearanceFee ||
+                    partitioned.bonuses.goalBonus ||
+                    partitioned.bonuses.cleanSheetBonus ||
+                    partitioned.bonuses.unusedSubFee ||
+                    typeof partitioned.loanWageContributionPct === 'number'
+                );
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
-                    <div className="text-[10px] uppercase text-slate-400">
-                      Optional Club Extension
+                return (
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-3 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h4 className="font-bold uppercase tracking-wider text-slate-400">
+                        Contract Clauses, Match Bonuses &amp; Promised Playing Time
+                      </h4>
+                      <span className="rounded bg-indigo-500/15 border border-indigo-500/30 px-2 py-0.5 text-[11px] font-semibold text-indigo-300">
+                        {player.contractDetails?.promisedPlayingTime || player.status}
+                      </span>
                     </div>
-                    <div className="mt-0.5 font-mono font-semibold text-slate-100">
-                      {player.contractDetails?.optionalExtensionYears
-                        ? `+${player.contractDetails.optionalExtensionYears} year${player.contractDetails.optionalExtensionYears === 1 ? '' : 's'} (Club Option)`
-                        : 'None recorded'}
-                    </div>
-                  </div>
-                  <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
-                    <div className="text-[10px] uppercase text-slate-400">
-                      Release Clauses
-                    </div>
-                    {player.contractDetails?.releaseClauses &&
-                    player.contractDetails.releaseClauses.length > 0 ? (
-                      <div className="mt-0.5 space-y-0.5">
-                        {player.contractDetails.releaseClauses.map((rc, idx) => (
-                          <div key={`${rc.type}-${idx}`} className="font-mono text-amber-300">
-                            {rc.type}: £{rc.amount.toLocaleString()}
-                          </div>
-                        ))}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
+                        <div className="text-[10px] uppercase text-slate-400">
+                          Optional Club Extension
+                        </div>
+                        <div className="mt-0.5 font-mono font-semibold text-slate-100">
+                          {player.contractDetails?.optionalExtensionYears
+                            ? `+${player.contractDetails.optionalExtensionYears} year${player.contractDetails.optionalExtensionYears === 1 ? '' : 's'} (Club Option)`
+                            : 'None recorded'}
+                        </div>
                       </div>
-                    ) : (
-                      <div className="mt-0.5 text-slate-400">No release clauses</div>
+                      <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
+                        <div className="text-[10px] uppercase text-slate-400">
+                          Release Clauses
+                        </div>
+                        {partitioned.releaseClauses.length > 0 ? (
+                          <div className="mt-0.5 space-y-0.5">
+                            {partitioned.releaseClauses.map((rc, idx) => (
+                              <div key={`${rc.type}-${idx}`} className="font-mono text-amber-300">
+                                {rc.type}: £{rc.amount.toLocaleString()}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="mt-0.5 text-slate-400">No release clauses</div>
+                        )}
+                      </div>
+                      <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
+                        <div className="text-[10px] uppercase text-slate-400">
+                          Match Bonuses
+                        </div>
+                        <div className="mt-0.5 space-y-0.5 font-mono text-slate-200">
+                          {partitioned.bonuses.appearanceFee ? (
+                            <div>
+                              Appearance Fee: £{partitioned.bonuses.appearanceFee.toLocaleString()}
+                            </div>
+                          ) : null}
+                          {partitioned.bonuses.goalBonus ? (
+                            <div>
+                              Goal Bonus: £{partitioned.bonuses.goalBonus.toLocaleString()}
+                            </div>
+                          ) : null}
+                          {partitioned.bonuses.cleanSheetBonus ? (
+                            <div>
+                              Clean Sheet Bonus: £{partitioned.bonuses.cleanSheetBonus.toLocaleString()}
+                            </div>
+                          ) : null}
+                          {partitioned.bonuses.unusedSubFee ? (
+                            <div className="text-amber-300">
+                              Unused Sub Fee: £{partitioned.bonuses.unusedSubFee.toLocaleString()}
+                            </div>
+                          ) : null}
+                          {typeof partitioned.loanWageContributionPct === 'number' ? (
+                            <div className="text-sky-300">
+                              Loan Wage Split: {partitioned.loanWageContributionPct}%
+                            </div>
+                          ) : null}
+                          {!hasAnyBonus && (
+                            <span className="font-sans text-slate-400">Standard terms</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {contractNotes.length > 0 && (
+                      <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 space-y-1 text-amber-200">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-amber-300">
+                          Playbook v2.0 Contract Notes
+                        </div>
+                        <ul className="list-disc pl-4 space-y-0.5 text-[11px]">
+                          {contractNotes.map((note, idx) => (
+                            <li key={idx}>{note}</li>
+                          ))}
+                        </ul>
+                      </div>
                     )}
                   </div>
-                  <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
-                    <div className="text-[10px] uppercase text-slate-400">
-                      Bonuses &amp; Loan Split
-                    </div>
-                    <div className="mt-0.5 space-y-0.5 font-mono text-slate-200">
-                      {player.contractDetails?.bonuses?.appearanceFee ? (
-                        <div>App Fee: £{player.contractDetails.bonuses.appearanceFee.toLocaleString()}</div>
-                      ) : null}
-                      {player.contractDetails?.bonuses?.goalBonus ? (
-                        <div>Goal Bonus: £{player.contractDetails.bonuses.goalBonus.toLocaleString()}</div>
-                      ) : null}
-                      {player.contractDetails?.bonuses?.cleanSheetBonus ? (
-                        <div>Clean Sheet: £{player.contractDetails.bonuses.cleanSheetBonus.toLocaleString()}</div>
-                      ) : null}
-                      {typeof player.contractDetails?.loanWageContributionPct === 'number' ? (
-                        <div className="text-sky-300">
-                          Loan Wage Split: {player.contractDetails.loanWageContributionPct}%
-                        </div>
-                      ) : null}
-                      {!player.contractDetails?.bonuses?.appearanceFee &&
-                        !player.contractDetails?.bonuses?.goalBonus &&
-                        !player.contractDetails?.bonuses?.cleanSheetBonus &&
-                        typeof player.contractDetails?.loanWageContributionPct !== 'number' && (
-                          <span className="font-sans text-slate-400">Standard terms</span>
-                        )}
-                    </div>
-                  </div>
-                </div>
-              </div>
+                );
+              })()}
 
               {/* Pass 0 Group 2: Career Season History */}
               {seasonHistory.length > 0 && (

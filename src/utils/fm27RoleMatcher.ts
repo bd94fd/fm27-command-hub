@@ -29,9 +29,22 @@ export const OOP_ROLE_NAMES = new Set(OUT_OF_POSSESSION_ROLES.map((r) => r.name)
  */
 export function inferFm27Roles(
   position: string,
-  attributes?: Partial<PlayerRecord['attributes']> | null
+  attributes?: Partial<PlayerRecord['attributes']> | null,
+  positionRatings?: Record<string, number> | null
 ): { ipRole: string; oopRole: string } {
-  const p = (position || '').toUpperCase();
+  let effectivePos = (position || '').toUpperCase();
+  if (positionRatings) {
+    const entries = Object.entries(positionRatings).filter(
+      ([, v]) => typeof v === 'number' && Number.isFinite(v)
+    );
+    if (entries.length > 0) {
+      entries.sort((a, b) => b[1] - a[1]);
+      if (entries[0][1] >= 15) {
+        effectivePos = entries[0][0].toUpperCase();
+      }
+    }
+  }
+  const p = effectivePos;
   const attrs = attributes || {
     pace: 10,
     acceleration: 10,
@@ -291,10 +304,64 @@ export function doesPlayerMatchRolePositionGroup(
   return false;
 }
 
+export function getRolePositionFamiliarity(
+  player: Pick<PlayerRecord, 'position' | 'secondaryPositions' | 'positionRatings'>,
+  positionGroup: string
+): number | null {
+  const ratings = player.positionRatings;
+  if (!ratings) return null;
+  const numericEntries = Object.entries(ratings).filter(
+    ([, v]) => typeof v === 'number' && Number.isFinite(v)
+  );
+  if (numericEntries.length === 0) return null;
+
+  const upperMap = new Map<string, number>();
+  for (const [k, v] of numericEntries) {
+    upperMap.set(k.toUpperCase(), v);
+  }
+
+  const maxOf = (keys: string[]): number | null => {
+    let best: number | null = null;
+    for (const k of keys) {
+      const val = upperMap.get(k);
+      if (typeof val === 'number' && (best === null || val > best)) {
+        best = val;
+      }
+    }
+    return best;
+  };
+
+  const grp = (positionGroup || '').toUpperCase();
+  let val: number | null = null;
+  if (grp === 'GK' || grp.includes('GOALKEEPER')) {
+    val = maxOf(['GK']);
+  } else if (grp === 'DC' || grp.includes('CENTRE-BACK') || grp.includes('CENTER-BACK')) {
+    val = maxOf(['DC', 'CB']);
+  } else if (grp === 'DL/DR' || grp.includes('FULL-BACK')) {
+    val = maxOf(['DL', 'DR']);
+  } else if (grp === 'WBL/WBR' || grp.includes('WING-BACK')) {
+    val = maxOf(['WBL', 'WBR']) ?? maxOf(['DL', 'DR']);
+  } else if (grp === 'DM' || grp.includes('DEFENSIVE MIDFIELDER')) {
+    val = maxOf(['DM']);
+  } else if (grp === 'MC' || grp.includes('CENTRAL MIDFIELDER')) {
+    val = maxOf(['MC']);
+  } else if (grp === 'ML/MR' || grp.includes('WIDE MIDFIELDER')) {
+    val = maxOf(['ML', 'MR']);
+  } else if (grp === 'AMC' || grp.includes('ATTACKING MIDFIELDER')) {
+    val = maxOf(['AMC']);
+  } else if (grp === 'AML/AMR' || grp.includes('WINGER')) {
+    val = maxOf(['AML', 'AMR']);
+  } else if (grp === 'ST' || grp === 'STC' || grp.includes('STRIKER') || grp.includes('FORWARD')) {
+    val = maxOf(['ST', 'STC', 'CF']);
+  }
+
+  return val ?? 1;
+}
+
 /**
  * Computes a 0–100 role-fit percentage for a PlayerRecord against any pure FM27 IP/OOP role
  * from src/data/fm27Roles.json using weighted primary (2x) and secondary (1x) attributes
- * plus position-group suitability.
+ * plus a strong positional-familiarity gate/multiplier.
  */
 export function scorePlayerForFm27Role(
   player: PlayerRecord,
@@ -319,9 +386,22 @@ export function scorePlayerForFm27Role(
   const isGkPlayer = (player.position || '').toUpperCase().includes('GK');
   const roleGrpUpper = role.positionGroup.toUpperCase();
   const isGkRole = roleGrpUpper === 'GK' || roleGrpUpper.includes('GOALKEEPER');
+  const familiarity = getRolePositionFamiliarity(player, role.positionGroup);
 
   if (isGkRole !== isGkPlayer) {
-    baseScore *= 0.35;
+    baseScore *= 0.25;
+  } else if (familiarity !== null) {
+    if (familiarity >= 18) {
+      baseScore = Math.min(99, baseScore + 8);
+    } else if (familiarity >= 15) {
+      baseScore = Math.min(99, baseScore + 3);
+    } else if (familiarity >= 12) {
+      baseScore *= 0.75;
+    } else if (familiarity >= 9) {
+      baseScore *= 0.5;
+    } else {
+      baseScore *= 0.25;
+    }
   } else if (
     doesPlayerMatchRolePositionGroup(
       player.position,
@@ -331,7 +411,7 @@ export function scorePlayerForFm27Role(
   ) {
     baseScore = Math.min(99, baseScore + 8);
   } else {
-    baseScore = Math.max(20, baseScore - 10);
+    baseScore *= 0.4;
   }
 
   return Math.round(Math.min(99, Math.max(1, baseScore)));
@@ -349,19 +429,83 @@ export function rankSquadForFm27Role(
   limit = 5
 ): RankedRoleCandidate[] {
   return players
-    .map((player) => ({
-      player,
-      fitPct: scorePlayerForFm27Role(player, role),
-      matchedPosition: doesPlayerMatchRolePositionGroup(
-        player.position,
-        player.secondaryPositions,
-        role.positionGroup
-      ),
-    }))
+    .map((player) => {
+      const familiarity = getRolePositionFamiliarity(player, role.positionGroup);
+      const matchedPosition =
+        familiarity !== null
+          ? familiarity >= 15
+          : doesPlayerMatchRolePositionGroup(
+              player.position,
+              player.secondaryPositions,
+              role.positionGroup
+            );
+      return {
+        player,
+        fitPct: scorePlayerForFm27Role(player, role),
+        matchedPosition,
+      };
+    })
+    .filter((candidate) => candidate.matchedPosition)
     .sort((a, b) => {
       if (b.fitPct !== a.fitPct) return b.fitPct - a.fitPct;
       return b.player.ability - a.player.ability;
     })
     .slice(0, limit);
 }
+
+/**
+ * Resolves default IP/OOP roles for a player restricted to positions where the player
+ * has natural/accomplished familiarity (>= 15/20 when positionRatings is present).
+ */
+export function resolveNaturalDefaultRoles(
+  player: PlayerRecord
+): { ipRole: string; oopRole: string } {
+  const isNaturalForRole = (role: Fm27RoleItem): boolean => {
+    const fam = getRolePositionFamiliarity(player, role.positionGroup);
+    if (fam !== null) return fam >= 15;
+    return doesPlayerMatchRolePositionGroup(
+      player.position,
+      player.secondaryPositions,
+      role.positionGroup
+    );
+  };
+
+  const pickRole = (
+    currentName: string | undefined,
+    catalog: Fm27RoleItem[],
+    fallback: string
+  ): string => {
+    const existing = currentName
+      ? catalog.find((r) => r.name.toLowerCase() === currentName.toLowerCase())
+      : undefined;
+    if (existing && isNaturalForRole(existing)) {
+      return existing.name;
+    }
+
+    const naturalPool = catalog.filter(isNaturalForRole);
+    const pool = naturalPool.length > 0 ? naturalPool : catalog;
+    let bestName = fallback;
+    let bestScore = -1;
+    for (const role of pool) {
+      const score = scorePlayerForFm27Role(player, role);
+      if (score > bestScore) {
+        bestScore = score;
+        bestName = role.name;
+      }
+    }
+    return bestName;
+  };
+
+  const inferred = inferFm27Roles(
+    player.position,
+    player.attributes,
+    player.positionRatings
+  );
+
+  return {
+    ipRole: pickRole(player.ipRole, IN_POSSESSION_ROLES, inferred.ipRole),
+    oopRole: pickRole(player.oopRole, OUT_OF_POSSESSION_ROLES, inferred.oopRole),
+  };
+}
+
 
