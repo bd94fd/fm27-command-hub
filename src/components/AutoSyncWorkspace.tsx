@@ -625,7 +625,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             stage: 'read',
             label:
               serverDecodeAvailable === false
-                ? `Starting local Pyodide 3.14 + fmsave 0.14.1 reader for ${file.name}${fastSync ? ' (Fast Sync)' : ''}...`
+                ? `Starting local Pyodide 3.14 + fmsave 0.14.3 reader for ${file.name}${fastSync ? ' (Fast Sync)' : ''}...`
                 : `Uploading & decoding full save on server (${file.name})...`,
           });
           const decoded = await decodeFmSaveFile(

@@ -7,7 +7,7 @@
  */
 
 const PYODIDE_VERSION = '314.0.7';
-const FMSAVE_VERSION = '0.14.1';
+const FMSAVE_VERSION = '0.14.3';
 const PYODIDE_INDEX_URL = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
 const MOUNT_DIR = '/mnt_save';
 
@@ -52,7 +52,7 @@ async function ensureBooted(reply, origin) {
       const micropip = instance.pyimport('micropip');
       await micropip.install(`fmsave==${FMSAVE_VERSION}`);
 
-      const mapperUrl = new URL('/fm-save-mapper.py?v=14', origin || self.location.origin).href;
+      const mapperUrl = new URL('/fm-save-mapper.py?v=15', origin || self.location.origin).href;
       const mapperSource = await (await fetch(mapperUrl, { cache: 'no-cache' })).text();
       instance.FS.writeFile('/home/pyodide/fm_save_mapper.py', mapperSource);
       mapperModule = instance.pyimport('fm_save_mapper');

@@ -67,6 +67,9 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
 }) => {
   const [viewMode, setViewMode] = useState<SquadViewMode>('table');
   const [search, setSearch] = useState('');
+  const [squadUnitFilter, setSquadUnitFilter] = useState<
+    'FIRST_TEAM' | 'YOUTH_RESERVES' | 'ALL'
+  >('FIRST_TEAM');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [posFilter, setPosFilter] = useState<PositionGroupFilter>('ALL');
   const [expiryYearFilter, setExpiryYearFilter] = useState<string>('ALL');
@@ -77,6 +80,14 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
   const [compareAId, setCompareAId] = useState<string>('');
   const [compareBId, setCompareBId] = useState<string>('');
   const [baselineIdx, setBaselineIdx] = useState<number>(0);
+
+  const firstTeamCount = useMemo(
+    () => players.filter((p) => p.teamSlot === undefined || p.teamSlot === 0).length,
+    [players]
+  );
+  const youthReservesCount = players.length - firstTeamCount;
+  const effectiveUnitFilter =
+    youthReservesCount === 0 || firstTeamCount === 0 ? 'ALL' : squadUnitFilter;
 
   const progressionArchive = useMemo(
     () => loadProgressionArchive(),
@@ -108,6 +119,10 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
     const query = search.toLowerCase();
     return players
       .filter((p) => {
+        const isFirstTeam = p.teamSlot === undefined || p.teamSlot === 0;
+        const matchesUnit =
+          effectiveUnitFilter === 'ALL' ||
+          (effectiveUnitFilter === 'FIRST_TEAM' ? isFirstTeam : !isFirstTeam);
         const matchesSearch =
           (p.name || '').toLowerCase().includes(query) ||
           (p.position || '').toLowerCase().includes(query) ||
@@ -119,7 +134,7 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
         const matchesExpiry =
           expiryYearFilter === 'ALL' ||
           extractExpiryYear(p.expires) === expiryYearFilter;
-        return matchesSearch && matchesStatus && matchesPos && matchesExpiry;
+        return matchesUnit && matchesSearch && matchesStatus && matchesPos && matchesExpiry;
       })
       .sort((a, b) => {
         if (sortBy === 'stars') {
@@ -140,7 +155,7 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
         }
         return (b.wagePw || 0) - (a.wagePw || 0);
       });
-  }, [players, search, statusFilter, posFilter, expiryYearFilter, sortBy]);
+  }, [players, effectiveUnitFilter, search, statusFilter, posFilter, expiryYearFilter, sortBy]);
 
   const activeRadarPlayer = useMemo(() => {
     if (players.length === 0) return null;
@@ -233,6 +248,31 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
 
           {viewMode === 'table' && players.length > 0 && (
             <div className="flex flex-wrap items-center gap-2.5">
+              {youthReservesCount > 0 && firstTeamCount > 0 && (
+                <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
+                  {(
+                    [
+                      { id: 'FIRST_TEAM', label: `First Team (${firstTeamCount})` },
+                      { id: 'YOUTH_RESERVES', label: `Youth / Res (${youthReservesCount})` },
+                      { id: 'ALL', label: `All (${players.length})` },
+                    ] as const
+                  ).map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setSquadUnitFilter(opt.id)}
+                      className={`px-2.5 py-1 text-xs font-semibold rounded-md transition cursor-pointer ${
+                        squadUnitFilter === opt.id
+                          ? 'bg-emerald-600 text-white'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               <div className="relative">
                 <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input

@@ -34,22 +34,26 @@ from typing import Any
 
 import fmsave
 
-MAPPER_CACHE_BUSTER = "?v=14"
+MAPPER_CACHE_BUSTER = "?v=15"
+
+# Detect native server Python vs browser Pyodide (emscripten) for realistic budgets
+_IS_PYODIDE = sys.platform == "emscripten"
 
 # Step 3/6 strict per-table wall-clock budgets (seconds)
-FINANCES_BUDGET_SEC = 6.0
-STAFF_BUDGET_SEC = 8.0
-CLUB_OPS_TABLE_BUDGET_SEC = 6.0
-SCOUT_BUDGET_SEC = 6.0
-SCOUT_MAX_CANDIDATES = 60
-DIVISION_BENCHMARK_BUDGET_SEC = 4.0
+FINANCES_BUDGET_SEC = 8.0
+STAFF_BUDGET_SEC = 14.0 if not _IS_PYODIDE else 10.0
+CLUB_OPS_TABLE_BUDGET_SEC = 8.0
+SCOUT_BUDGET_SEC = 35.0 if not _IS_PYODIDE else 16.0
+SCOUT_MAX_CANDIDATES = 500
+SCOUT_PER_POSITION_CAP = 50
+DIVISION_BENCHMARK_BUDGET_SEC = 6.0
 
 # Step 4/6 strict per-table wall-clock budgets (seconds)
-SEASON_STATS_BUDGET_SEC = 12.0
-PLAYER_MATCH_STATS_BUDGET_SEC = 12.0
-SEASON_HISTORY_BUDGET_SEC = 10.0
+SEASON_STATS_BUDGET_SEC = 50.0 if not _IS_PYODIDE else 25.0
+PLAYER_MATCH_STATS_BUDGET_SEC = 35.0 if not _IS_PYODIDE else 18.0
+SEASON_HISTORY_BUDGET_SEC = 18.0 if not _IS_PYODIDE else 12.0
 NATIVE_SEASON_HISTORY_BUDGET_SEC = 35.0
-CONTRACTS_SUSPENSIONS_BUDGET_SEC = 8.0
+CONTRACTS_SUSPENSIONS_BUDGET_SEC = 12.0
 
 _STATE: dict[str, Any] = {
     "save": None,
@@ -59,6 +63,9 @@ _STATE: dict[str, Any] = {
     "club_name": None,
     "club_reputation": None,
     "club_division_id": None,
+    "manager_staff_uid": None,
+    "first_team_id": None,
+    "tactics_man_note_recorded": False,
     "import_scope": "managed_club_only",
     "fast_sync": False,
     "fast_sync_warning_recorded": False,
@@ -108,12 +115,12 @@ FM_NATION_DB_ID_NAMES: dict[int, str] = {
     15: "Egypt", 16: "Equatorial Guinea", 17: "Eritrea", 18: "Ethiopia",
     19: "Gabon", 20: "Gambia", 21: "Ghana", 22: "Guinea", 23: "Guinea-Bissau",
     24: "Kenya", 25: "Lesotho", 26: "Liberia", 27: "Libya", 28: "Madagascar",
-    29: "Malawi", 30: "Mali", 31: "Mauritania", 32: "Mauritius", 33: "Morocco",
-    34: "Mozambique", 35: "Namibia", 36: "Niger", 37: "Nigeria", 38: "Rwanda",
-    39: "Sao Tome & Principe", 40: "Senegal", 41: "Seychelles", 42: "Sierra Leone",
-    43: "Somalia", 44: "South Africa", 45: "Sudan", 46: "Eswatini", 47: "Tanzania",
-    48: "Togo", 49: "Tunisia", 50: "Uganda", 51: "DR Congo", 52: "Zambia",
-    53: "Zimbabwe",
+    29: "Malawi", 30: "Malawi", 31: "Mali", 32: "Mauritania", 33: "Mauritius",
+    34: "Morocco", 35: "Mozambique", 36: "Namibia", 37: "Niger", 38: "Nigeria",
+    39: "Rwanda", 40: "Sao Tome & Principe", 41: "Senegal", 42: "Seychelles",
+    43: "Sierra Leone", 44: "Somalia", 45: "South Africa", 46: "Sudan",
+    47: "Eswatini", 48: "Tanzania", 49: "Togo", 50: "Tunisia", 51: "Uganda",
+    52: "DR Congo", 53: "Zambia", 54: "Zimbabwe",
     # Asia & Oceania (AFC / OFC)
     106: "Australia", 110: "China", 115: "Iran", 116: "Iraq", 117: "Japan",
     129: "New Zealand", 132: "Qatar", 134: "Saudi Arabia", 135: "South Korea",
@@ -311,13 +318,33 @@ def _safe_call(fn: Any, label: str = "section", default: Any = ()):
                 return result if result is not None else default
             except Exception as retry_exc:  # noqa: BLE001
                 exc = retry_exc
+        if label in ("tactics", "selections", "set_pieces") and _is_reader_check_error(exc):
+            if not _STATE.get("tactics_man_note_recorded"):
+                _STATE["tactics_man_note_recorded"] = True
+                _record_warning(
+                    "FM27 27.1 tactics/set-pieces binary layout is not yet supported by fmsave; Tactical War Room & Best XI are built directly from your squad attributes and positions"
+                )
+            return default
         _record_warning(f"Section '{label}' unavailable ({type(exc).__name__})")
         return default
 
 
+def _fmsave_version_tuple() -> tuple[int, ...]:
+    raw = str(getattr(fmsave, "__version__", "0.0.0") or "0.0.0")
+    parts: list[int] = []
+    for tok in re.findall(r"\d+", raw)[:3]:
+        parts.append(int(tok))
+    while len(parts) < 3:
+        parts.append(0)
+    return tuple(parts)
+
+
 def _is_fm27_27_1_unsupported_stats_build(save: Any) -> bool:
-    """Detect FM27 27.1.x builds where upstream fmsave raises unbypassable ReaderCheckError
-    on player_season_stats / team_match_stats so we fast-path skip ~67s of wasted decoding."""
+    """Detect FM27 27.1.x builds ONLY on older fmsave (< 0.14.3) where upstream fmsave
+    raised unbypassable ReaderCheckError on player_season_stats / team_match_stats.
+    fmsave 0.14.3+ decodes both tables cleanly on FM27 27.1.0."""
+    if _fmsave_version_tuple() >= (0, 14, 3):
+        return False
     if save is None:
         return False
     info = getattr(save, "info", None)
@@ -648,6 +675,9 @@ def step_close() -> None:
     _STATE["club_name"] = None
     _STATE["club_reputation"] = None
     _STATE["club_division_id"] = None
+    _STATE["manager_staff_uid"] = None
+    _STATE["first_team_id"] = None
+    _STATE["tactics_man_note_recorded"] = False
     _STATE["import_scope"] = "managed_club_only"
     _STATE["fast_sync"] = False
     _STATE["fast_sync_warning_recorded"] = False
@@ -837,6 +867,7 @@ def step_open(
     club_uid = getattr(target_club, "club_uid", None) if target_club else None
     club_name = getattr(target_club, "club_name", None) if target_club else None
     manager_name = getattr(target_club, "manager_name", None) if target_club else None
+    manager_staff_uid = _int(getattr(target_club, "manager_staff_uid", None), None) if target_club else None
     club_balance = _int(getattr(target_club, "balance", None)) if target_club else None
     club_rep = _int(_first_attr(target_club, ("reputation", "club_reputation")), None)
     club_div_id = _int(
@@ -898,6 +929,7 @@ def step_open(
     _STATE["club_name"] = club_name
     _STATE["club_reputation"] = club_rep
     _STATE["club_division_id"] = club_div_id
+    _STATE["manager_staff_uid"] = manager_staff_uid
     _STATE["game_date"] = game_date
     _record_step_timing("step_1_open", t0)
 
@@ -1391,6 +1423,22 @@ def _extract_typed_competition_rules(
         _first_attr(target, ("matchday_subs_limit", "max_substitutes", "subs_used_limit", "substitutes_allowed")),
         None,
     )
+    out["fixturesPerClub"] = _int(
+        _first_attr(target, ("fixtures_per_club", "matches_per_team")),
+        None,
+    )
+    out["promotionPlaces"] = _int(
+        _first_attr(target, ("promotion_places", "automatic_promotion_places")),
+        None,
+    )
+    out["playoffPlaces"] = _int(
+        _first_attr(target, ("playoff_places", "promotion_playoff_places")),
+        None,
+    )
+    out["relegationPlaces"] = _int(
+        _first_attr(target, ("relegation_places", "automatic_relegation_places")),
+        None,
+    )
     return out
 
 
@@ -1733,16 +1781,53 @@ def _compute_squad_group_medians(players_out: list[dict[str, Any]]) -> dict[str,
     return medians
 
 
+def _classify_exact_pos_slot_py(pos: str) -> str:
+    p = (pos or "").upper().strip()
+    if "GK" in p:
+        return "GK"
+    if "ST" in p or "CF" in p:
+        return "ST"
+    if "AML" in p or "ML" in p or "M (L" in p or "AM (L" in p:
+        return "AML"
+    if "AMR" in p or "MR" in p or "M (R" in p or "AM (R" in p:
+        return "AMR"
+    if "AMC" in p or "AM (C" in p:
+        return "AMC"
+    if "DL" in p or "WBL" in p or "D (L" in p:
+        return "DL"
+    if "DR" in p or "WBR" in p or "D (R" in p:
+        return "DR"
+    if "DC" in p or "CB" in p or "D (C" in p:
+        return "DC"
+    if "DM" in p:
+        return "DM"
+    return "MC"
+
+
+_EUROPEAN_NATIONS = frozenset({
+    "Albania", "Andorra", "Armenia", "Austria", "Azerbaijan", "Belgium", "Belarus",
+    "Bosnia & Herzegovina", "Bulgaria", "Croatia", "Cyprus", "Czechia", "Denmark",
+    "England", "Estonia", "Faroe Islands", "Finland", "France", "Georgia", "Germany",
+    "Greece", "Hungary", "Iceland", "Israel", "Italy", "Kazakhstan", "Kosovo", "Latvia",
+    "Liechtenstein", "Lithuania", "Luxembourg", "North Macedonia", "Malta", "Netherlands",
+    "Northern Ireland", "Norway", "Poland", "Portugal", "Republic of Ireland", "Romania",
+    "Russia", "San Marino", "Scotland", "Serbia", "Slovakia", "Slovenia", "Spain",
+    "Sweden", "Switzerland", "Turkey", "Ukraine", "Wales", "Montenegro",
+})
+
+
 def _scan_recruitment_targets_group4(
     save: Any,
     club_uid: int | None,
     game_date: Any,
     wage_budget_weekly: int | None,
 ) -> list[dict[str, Any]]:
-    """Group 4: Time-capped scan for signable Free Agents and Contracts Expiring <= 6 Months
-    prioritizing realistic targets aged 17-29 (age 30+ capped at <= 15%), resolved nationalities
-    via save.nations(), position-appropriate visible attribute scoring vs squad median, and full
-    visible attributes for frontend FM27 role matching (ZERO raw CA/PA exposed)."""
+    """Group 4: Full-database scan for signable Free Agents and Contracts Expiring <= 12 Months
+    using 10 position-balanced top-N min-heaps (up to 500 targets across GK, DC, DL, DR, DM,
+    MC, AMC, AML, AMR, ST) with resolved nationalities, realistic club wage/reputation tiering,
+    and full 52 visible attributes (ZERO raw CA/PA exposed)."""
+    import heapq
+
     start_ts = time.monotonic()
     nation_lookup = _build_nation_lookup(save)
 
@@ -1751,50 +1836,50 @@ def _scan_recruitment_targets_group4(
     club_wages = [int(p.get("wagePw") or 0) for p in players_out if (p.get("wagePw") or 0) > 0]
     max_club_wage = max(club_wages) if club_wages else 2500
     if wage_budget_weekly and wage_budget_weekly > 0:
-        wage_ceiling = max(int(wage_budget_weekly * 0.22), int(max_club_wage * 1.8), 1500)
+        wage_ceiling = max(int(wage_budget_weekly * 0.25), int(max_club_wage * 2.0), 1800)
     else:
-        wage_ceiling = max(int(max_club_wage * 1.8), 2500)
+        wage_ceiling = max(int(max_club_wage * 2.0), 2500)
 
     club_rep = _STATE.get("club_reputation")
-    rep_max = (club_rep + 1500) if isinstance(club_rep, int) and club_rep > 0 else None
-    rep_min = max(0, club_rep - 2500) if isinstance(club_rep, int) and club_rep > 0 else None
+    rep_max = (club_rep + 1800) if isinstance(club_rep, int) and club_rep > 0 else None
+    rep_min = max(0, club_rep - 2800) if isinstance(club_rep, int) and club_rep > 0 else None
 
-    prime_pool: list[tuple[float, dict[str, Any]]] = []
-    veteran_pool: list[tuple[float, dict[str, Any]]] = []
-    pool_limit = SCOUT_MAX_CANDIDATES * 4
+    # Pre-compute managed club's dominant nationality ONCE before scanning 160k+ players
+    club_nation_name: str | None = None
+    if players_out:
+        nation_counts: dict[str, int] = {}
+        for sp in players_out:
+            sn = sp.get("nation")
+            if isinstance(sn, str) and sn and sn not in ("Unknown", "FM"):
+                nation_counts[sn] = nation_counts.get(sn, 0) + 1
+        if nation_counts:
+            club_nation_name = max(nation_counts.items(), key=lambda kv: kv[1])[0]
+    club_is_european = bool(club_nation_name and club_nation_name in _EUROPEAN_NATIONS)
 
-    def _ra(attrs_obj: Any, p_obj: Any, snake: str, default_val: int = 10) -> int:
-        val = _first_attr(attrs_obj, (snake,)) if attrs_obj else None
-        if val is None:
-            val = _first_attr(p_obj, (snake,))
-        return _clamp_attr(val, default_val)
+    pos_heaps: dict[str, list[tuple[float, int, dict[str, Any]]]] = {
+        slot: [] for slot in ("GK", "DC", "DL", "DR", "DM", "MC", "AMC", "AML", "AMR", "ST")
+    }
+    per_pos_cap = SCOUT_PER_POSITION_CAP
+    tie_counter = 0
+    evaluated_count = 0
 
     try:
         p_table = save.players()
         seen = 0
         for p in p_table:
             seen += 1
-            if (seen & 255) == 0 and (time.monotonic() - start_ts) >= SCOUT_BUDGET_SEC:
+            if (seen & 1023) == 0 and (time.monotonic() - start_ts) >= SCOUT_BUDGET_SEC:
                 _record_warning(
-                    f"recruitment_scan: {SCOUT_BUDGET_SEC:.1f}s budget reached ({len(prime_pool) + len(veteran_pool)} candidates evaluated)"
+                    f"recruitment_scan: {SCOUT_BUDGET_SEC:.0f}s budget reached ({seen} players scanned, {evaluated_count} realistic targets evaluated)"
                 )
-                break
-            if len(prime_pool) >= pool_limit:
                 break
 
             p_club_uid = getattr(p, "club_uid", None)
             if club_uid is not None and p_club_uid == club_uid:
                 continue
 
-            p_name = getattr(p, "name", None)
-            if not p_name:
-                continue
-
             age = _int(getattr(p, "age", None), 22) or 22
-            if age < 17 or age > 35:
-                continue
-            # Hard-limit veteran pool accumulation early so scan focuses on 17-29 targets
-            if age >= 30 and len(veteran_pool) >= 24:
+            if age < 16 or age > 34:
                 continue
 
             contract = getattr(p, "contract", None)
@@ -1807,11 +1892,10 @@ def _scan_recruitment_targets_group4(
                 contract_months = 0 if p_club_uid is None else 999
 
             is_free_agent = (p_club_uid is None) or (contract is None) or (contract_months == 0)
-            is_expiring = (not is_free_agent) and (0 < contract_months <= 6)
+            is_expiring = (not is_free_agent) and (0 < contract_months <= 12)
             if not (is_free_agent or is_expiring):
                 continue
 
-            # Reputation / wage tier match (zero raw CA/PA checked or exposed)
             p_wage = _int(
                 getattr(p, "demanded_wage", None)
                 or (getattr(contract, "wage", None) if contract else None),
@@ -1825,17 +1909,55 @@ def _scan_recruitment_targets_group4(
                 if p_rep > rep_max or (rep_min is not None and p_rep < rep_min):
                     continue
 
+            p_name = getattr(p, "name", None)
+            if not p_name:
+                continue
+
             attrs = getattr(p, "attributes", None)
-            pers = getattr(p, "personality", None)
             nat_pos = list(getattr(p, "natural_positions", None) or [])
             acc_pos = list(getattr(p, "accomplished_positions", None) or [])
             primary_pos = nat_pos[0] if nat_pos else (acc_pos[0] if acc_pos else "MC")
             pos_grp = _classify_pos_group_py(primary_pos)
+            exact_slot = _classify_exact_pos_slot_py(primary_pos)
 
-            # Full 52 visible attributes (ZERO raw CA/PA)
+            # Fast pre-scoring before full 52-attr allocation
             attr_dict = _extract_52_attributes(p, attrs)
+            if pos_grp != "GK" and age >= 30 and attr_dict["pace"] < 10:
+                continue
 
-            # Positional familiarity map (1-20)
+            vis_quality = _score_candidate_visible_quality(primary_pos, attr_dict)
+            squad_med = squad_medians.get(pos_grp, 10.5)
+            if vis_quality < max(7.5, squad_med - 2.5):
+                continue
+
+            # Prime/U28 age weighting: strongly favor 18-27 over 30+ veterans
+            if 18 <= age <= 25:
+                age_bonus = 2.0
+            elif 26 <= age <= 28:
+                age_bonus = 1.2
+            elif age in (16, 17, 29):
+                age_bonus = 0.6
+            elif 30 <= age <= 32:
+                age_bonus = -1.6
+            else:
+                age_bonus = -3.2
+
+            resolved_nation = _resolve_player_nationality(p, nation_lookup, default="Unknown")
+            region_bonus = 0.0
+            if club_nation_name and resolved_nation == club_nation_name:
+                region_bonus = 2.4
+            elif club_is_european and resolved_nation in _EUROPEAN_NATIONS:
+                region_bonus = 1.1
+
+            contract_bonus = 0.6 if is_free_agent else (0.3 if contract_months <= 6 else 0.0)
+            rank_score = (vis_quality - squad_med) * 2.0 + vis_quality + age_bonus + region_bonus + contract_bonus
+
+            bucket = pos_heaps[exact_slot]
+            evaluated_count += 1
+            if len(bucket) >= per_pos_cap and rank_score <= bucket[0][0]:
+                continue
+
+            pers = getattr(p, "personality", None)
             raw_pos_map = getattr(p, "positions", None) or getattr(p, "position_ratings", None)
             pos_ratings: dict[str, int] = {}
             if raw_pos_map is not None:
@@ -1855,44 +1977,6 @@ def _scan_recruitment_targets_group4(
                 pos_ratings.setdefault(str(np_code).upper(), 20)
             for ap_code in acc_pos:
                 pos_ratings.setdefault(str(ap_code).upper(), 16)
-
-            # Reject slow/uninitialized placeholders (outfield pace floor for veterans & general)
-            if pos_grp != "GK" and age >= 30 and attr_dict["pace"] < 10:
-                continue
-
-            vis_quality = _score_candidate_visible_quality(primary_pos, attr_dict)
-            squad_med = squad_medians.get(pos_grp, 10.5)
-            if vis_quality < max(7.5, squad_med - 2.5):
-                continue
-
-            # Prime/U28 age weighting: strongly favor 18-28 over 34-36yo veterans
-            if 18 <= age <= 26:
-                age_bonus = 1.8
-            elif 27 <= age <= 28:
-                age_bonus = 1.1
-            elif age in (17, 29):
-                age_bonus = 0.5
-            elif 30 <= age <= 33:
-                age_bonus = -1.8
-            else:
-                age_bonus = -3.5
-
-            resolved_nation = _resolve_player_nationality(p, nation_lookup, default="Unknown")
-            # Domestic / club-nation boost
-            domestic_bonus = 0.0
-            club_nation_name = None
-            if players_out:
-                nation_counts: dict[str, int] = {}
-                for sp in players_out:
-                    sn = sp.get("nation")
-                    if isinstance(sn, str) and sn and sn not in ("Unknown", "FM"):
-                        nation_counts[sn] = nation_counts.get(sn, 0) + 1
-                if nation_counts:
-                    club_nation_name = max(nation_counts.items(), key=lambda kv: kv[1])[0]
-            if club_nation_name and resolved_nation == club_nation_name:
-                domestic_bonus = 1.2
-
-            rank_score = (vis_quality - squad_med) * 2.0 + vis_quality + age_bonus + domestic_bonus
 
             attr_dict["keyPace"] = attr_dict["pace"]
             attr_dict["keyVision"] = attr_dict["vision"]
@@ -1916,30 +2000,37 @@ def _scan_recruitment_targets_group4(
                 "attributes": attr_dict,
             }
 
-            if age >= 30:
-                veteran_pool.append((rank_score, candidate))
+            tie_counter += 1
+            if len(bucket) < per_pos_cap:
+                heapq.heappush(bucket, (rank_score, tie_counter, candidate))
             else:
-                prime_pool.append((rank_score, candidate))
+                heapq.heapreplace(bucket, (rank_score, tie_counter, candidate))
     except Exception as exc:
         _record_warning(f"recruitment_scan: {type(exc).__name__}")
 
-    prime_pool.sort(key=lambda pair: pair[0], reverse=True)
-    veteran_pool.sort(key=lambda pair: pair[0], reverse=True)
+    prime_ranked: list[tuple[float, dict[str, Any]]] = []
+    vet_ranked: list[tuple[float, dict[str, Any]]] = []
+    for bucket in pos_heaps.values():
+        for score, _tie, cand in bucket:
+            if (cand.get("age") or 22) >= 30:
+                vet_ranked.append((score, cand))
+            else:
+                prime_ranked.append((score, cand))
 
-    # Cap age 30+ veterans strictly at <= 15% of final results
+    prime_ranked.sort(key=lambda pair: pair[0], reverse=True)
+    vet_ranked.sort(key=lambda pair: pair[0], reverse=True)
+
     max_total = SCOUT_MAX_CANDIDATES
-    prime_selected = [item for _, item in prime_pool[:max_total]]
-    max_vets_by_cap = int(max_total * 0.15)  # e.g. 9 out of 60
+    prime_selected = [cand for _, cand in prime_ranked[:max_total]]
+    max_vets_by_cap = int(max_total * 0.15)
     if len(prime_selected) < max_total:
-        # Ensure veterans never exceed 15% of the actual combined list length
         max_vets_for_actual = int((len(prime_selected) * 0.15) / 0.85)
         vet_slots = min(max_vets_by_cap, max_vets_for_actual, max_total - len(prime_selected))
     else:
-        # Reserve up to 15% slots for elite veterans only if they beat tail prime candidates
-        vet_slots = min(max_vets_by_cap, len(veteran_pool))
-        prime_selected = [item for _, item in prime_pool[: max_total - vet_slots]]
+        vet_slots = min(max_vets_by_cap, len(vet_ranked))
+        prime_selected = [cand for _, cand in prime_ranked[: max_total - vet_slots]]
 
-    vet_selected = [item for _, item in veteran_pool[: max(0, vet_slots)]]
+    vet_selected = [cand for _, cand in vet_ranked[: max(0, vet_slots)]]
     combined = prime_selected + vet_selected
     return combined[:max_total]
 
@@ -2498,16 +2589,38 @@ def step_3_3_facilities(fast_sync: bool | None = None) -> str:
 
     save = _STATE["save"]
     club_uid = _STATE["club_uid"]
-    facilities: Any = {"training": "Average", "youth": "Average"}
-    if save is not None:
+    facilities: dict[str, Any] = {}
+    if save is not None and club_uid is not None:
         try:
-            facilities = _extract_club_scoped_capped(
-                save, club_uid, "facilities", {"training": "Average", "youth": "Average"}, filter_by_club=True
-            )
+            fac_fn = getattr(save, "facilities", None)
+            if callable(fac_fn):
+                raw_fac = _safe_call(fac_fn, "facilities", default=[])
+                rows = []
+                if hasattr(raw_fac, "where"):
+                    try:
+                        rows = list(raw_fac.where(club_uid=club_uid))
+                    except Exception:
+                        rows = []
+                if not rows and raw_fac is not None:
+                    for item in raw_fac:
+                        if getattr(item, "club_uid", None) == club_uid:
+                            rows.append(item)
+                            break
+                if rows:
+                    f0 = rows[0]
+                    corp = _label(getattr(f0, "corporate_facilities", None))
+                    trn = _label(getattr(f0, "training_facilities", None) or getattr(f0, "training", None))
+                    yth = _label(getattr(f0, "youth_facilities", None) or getattr(f0, "youth", None))
+                    if corp:
+                        facilities["corporate"] = corp
+                    if trn:
+                        facilities["training"] = trn
+                    if yth:
+                        facilities["youth"] = yth
         except Exception as exc:
             _STATE["warnings"].append(f"facilities: {type(exc).__name__}")
 
-    _STATE["facilities"] = facilities if isinstance(facilities, dict) else {"summary": facilities}
+    _STATE["facilities"] = facilities
     gc.collect()
     elapsed_ms = _record_step_timing("step_3_3_facilities", t0)
     return json.dumps({"skipped": False, "elapsedMs": elapsed_ms})
@@ -2567,20 +2680,53 @@ def step_3_3_transfer_windows(fast_sync: bool | None = None) -> str:
         return json.dumps({"skipped": True, "elapsedMs": elapsed_ms})
 
     save = _STATE["save"]
-    club_uid = _STATE["club_uid"]
-    transfer_windows: Any = {"isOpen": False}
+    game_date = _STATE.get("game_date")
+    is_open = False
+    parsed_windows: list[dict[str, Any]] = []
     if save is not None:
         try:
-            transfer_windows = _extract_club_scoped_capped(
-                save, club_uid, "transfer_windows", {"isOpen": False}, filter_by_club=False
-            )
+            tw_fn = getattr(save, "transfer_windows", None)
+            if callable(tw_fn):
+                raw_tw = _safe_call(tw_fn, "transfer_windows", default=[]) or []
+                seen_keys: set[tuple[int, int, int, int]] = set()
+                for tw in raw_tw:
+                    sd = _int(getattr(tw, "start_day", None), None)
+                    sm = _int(getattr(tw, "start_month", None), None)
+                    ed = _int(getattr(tw, "end_day", None), None)
+                    em = _int(getattr(tw, "end_month", None), None)
+                    if not (sd and sm and ed and em):
+                        continue
+                    key = (sm, sd, em, ed)
+                    if key in seen_keys:
+                        continue
+                    seen_keys.add(key)
+                    if isinstance(game_date, date):
+                        g_md = (game_date.month, game_date.day)
+                        s_md = (sm, sd)
+                        e_md = (em, ed)
+                        if s_md <= e_md:
+                            if s_md <= g_md <= e_md:
+                                is_open = True
+                        else:
+                            if g_md >= s_md or g_md <= e_md:
+                                is_open = True
+                    if len(parsed_windows) < 12:
+                        parsed_windows.append({
+                            "startDay": sd,
+                            "startMonth": sm,
+                            "endDay": ed,
+                            "endMonth": em,
+                        })
         except Exception as exc:
             _STATE["warnings"].append(f"transfer_windows: {type(exc).__name__}")
 
-    _STATE["transfer_windows"] = transfer_windows if isinstance(transfer_windows, dict) else {"windows": transfer_windows}
+    _STATE["transfer_windows"] = {
+        "isOpen": is_open,
+        "windows": parsed_windows,
+    }
     gc.collect()
     elapsed_ms = _record_step_timing("step_3_3_transfer_windows", t0)
-    return json.dumps({"skipped": False, "elapsedMs": elapsed_ms})
+    return json.dumps({"skipped": False, "isOpen": is_open, "elapsedMs": elapsed_ms})
 
 
 def step_3_3_secondary_ops(fast_sync: bool | None = None) -> str:
@@ -2784,6 +2930,10 @@ def step_4_1_season_stats(fast_sync: bool | None = None) -> str:
         p_uid = getattr(row, "player_uid", None)
         if p_uid not in squad_uids:
             return
+        if _STATE.get("first_team_id") is None and getattr(row, "team_slot", None) in (None, 0):
+            tid = _int(getattr(row, "team_id", None), None)
+            if tid:
+                _STATE["first_team_id"] = tid
         kind_str = str(getattr(row, "kind", "")).lower()
         if "friendly" in kind_str or "non_competitive" in kind_str or "youth" in kind_str:
             return
@@ -2795,7 +2945,8 @@ def step_4_1_season_stats(fast_sync: bool | None = None) -> str:
         if current_season_year is not None and row_year > 0 and row_year < current_season_year:
             return
 
-        if is_league == 1 and (current_season_year is None or row_year == current_season_year):
+        new_mins = int(getattr(row, "minutes", 0) or 0)
+        if is_league == 1 and new_mins > 0 and (current_season_year is None or row_year == current_season_year):
             league_matched_uids.add(int(p_uid))
 
         existing = best_by_uid.get(p_uid)
@@ -2804,21 +2955,24 @@ def step_4_1_season_stats(fast_sync: bool | None = None) -> str:
             return
 
         ex_year, ex_is_league, ex_row = existing
+        old_mins = int(getattr(ex_row, "minutes", 0) or 0)
         if row_year > ex_year:
             best_by_uid[p_uid] = (row_year, is_league, row)
         elif row_year == ex_year:
-            if is_league > ex_is_league:
+            if new_mins > 0 and old_mins == 0:
+                best_by_uid[p_uid] = (row_year, is_league, row)
+            elif new_mins == 0 and old_mins > 0:
+                return
+            elif is_league > ex_is_league:
                 best_by_uid[p_uid] = (row_year, is_league, row)
             elif is_league == ex_is_league:
-                new_mins = getattr(row, "minutes", 0) or 0
-                old_mins = getattr(ex_row, "minutes", 0) or 0
                 if row_year > 0:
                     if new_mins > old_mins:
                         best_by_uid[p_uid] = (row_year, is_league, row)
                 else:
-                    if game_date and game_date.month in (7, 8, 9, 10) and old_mins > 900 and 0 <= new_mins <= 900:
+                    if game_date and game_date.month in (7, 8, 9, 10) and old_mins > 900 and 0 < new_mins <= 900:
                         best_by_uid[p_uid] = (row_year, is_league, row)
-                    elif new_mins > old_mins and new_mins <= 900:
+                    elif new_mins > old_mins:
                         best_by_uid[p_uid] = (row_year, is_league, row)
 
     def _scan_stream(stream: Any) -> None:
@@ -3527,8 +3681,8 @@ def step_fixtures(fast_sync: bool | None = None) -> str:
 
 
 def step_team_match_stats(fast_sync: bool | None = None) -> str:
-    """Stage 4 (Full Sync): Club-scoped team_match_stats (xG, shots, possession)
-    enriching already-extracted played_matches without delaying Stage 3 Fixtures."""
+    """Stage 4 (Full Sync): Club-scoped team_match_stats (xG, shots, possession, pass %, CCCs)
+    paired by (date, home_team_id, away_team_id) enriching played_matches in place."""
     t0 = time.monotonic()
     use_fast = _STATE.get("fast_sync", False) if fast_sync is None else bool(fast_sync)
     if use_fast:
@@ -3539,103 +3693,138 @@ def step_team_match_stats(fast_sync: bool | None = None) -> str:
 
     save = _STATE["save"]
     club_uid = _STATE["club_uid"]
+    first_team_id = _STATE.get("first_team_id")
     if _is_fm27_27_1_unsupported_stats_build(save):
         _record_warning(
-            "team_match_stats: fast-path skipped on FM27 27.1 build (upstream fmsave layout check)"
+            "team_match_stats: fast-path skipped on FM27 27.1 build (older fmsave)"
         )
         _STATE["step_timings_ms"]["step_4_team_match_stats"] = 0
         return json.dumps({"skipped": True, "fastPathSkipped": True, "teamMatchStatsCount": 0, "elapsedMs": 0})
+
     team_match_stats: list[dict[str, Any]] = []
     tms_by_key: dict[str, dict[str, Any]] = {}
     if club_uid is not None and save is not None:
         tms_t0 = time.monotonic()
-        tms_rows: list[Any] = []
+        grouped_matches: dict[tuple[str, int, int], dict[str, Any]] = {}
 
-        def _scan_tms(stream: Any) -> None:
-            seen = 0
-            for row in stream:
-                seen += 1
-                if (seen & 255) == 0 and (time.monotonic() - tms_t0) >= PLAYER_MATCH_STATS_BUDGET_SEC:
-                    _STATE["warnings"].append(
-                        f"team_match_stats: {PLAYER_MATCH_STATS_BUDGET_SEC:.0f}s budget reached ({len(tms_rows)} rows)"
-                    )
-                    break
-                t_uid = getattr(row, "club_uid", None) or getattr(row, "team_id", None)
-                if t_uid == club_uid:
-                    tms_rows.append(row)
+        try:
+            tms_table = _safe_call(save.team_match_stats, "team_match_stats", default=None)
+            if tms_table is not None:
+                seen = 0
+                for row in tms_table:
+                    seen += 1
+                    if (seen & 511) == 0 and (time.monotonic() - tms_t0) >= PLAYER_MATCH_STATS_BUDGET_SEC:
+                        _STATE["warnings"].append(
+                            f"team_match_stats: {PLAYER_MATCH_STATS_BUDGET_SEC:.0f}s budget reached ({len(grouped_matches)} matches)"
+                        )
+                        break
+                    r_home_tid = _int(getattr(row, "home_team_id", None), None)
+                    r_away_tid = _int(getattr(row, "away_team_id", None), None)
+                    r_tid = _int(getattr(row, "team_id", None), None)
+                    r_club_uid = _int(getattr(row, "club_uid", None), None)
 
-        primary_iter, fallback_table, used_scoped = _open_table_stream(
-            save,
-            "team_match_stats",
-            club_uid=club_uid,
-            try_where_club=True,
-        )
-        if primary_iter is not None:
-            try:
-                _scan_tms(primary_iter)
-            except Exception:
-                if fallback_table is not None:
-                    try:
-                        _scan_tms(fallback_table)
-                    except Exception:
-                        pass
-            else:
-                if (
-                    used_scoped
-                    and not tms_rows
-                    and fallback_table is not None
-                    and (time.monotonic() - tms_t0) < PLAYER_MATCH_STATS_BUDGET_SEC
-                ):
-                    try:
-                        _scan_tms(fallback_table)
-                    except Exception:
-                        pass
+                    is_our_match = False
+                    is_our_row = False
+                    if first_team_id is not None and (r_home_tid == first_team_id or r_away_tid == first_team_id):
+                        is_our_match = True
+                        is_our_row = (r_tid == first_team_id)
+                    elif r_club_uid == club_uid or (first_team_id is None and r_tid == club_uid):
+                        is_our_match = True
+                        is_our_row = True
 
-        for t_stat in tms_rows:
-            match_id = str(getattr(t_stat, "match_id", None) or getattr(t_stat, "fixture_id", None) or "")
-            date_iso = _iso(getattr(t_stat, "date", None)) or ""
-            opponent = str(getattr(t_stat, "opponent_name", None) or "Opponent")
-            is_home = bool(getattr(t_stat, "is_home", True))
-            xg_for = _float(getattr(t_stat, "xg_for", None) or getattr(t_stat, "expected_goals_for", None), None)
-            xg_against = _float(getattr(t_stat, "xg_against", None) or getattr(t_stat, "expected_goals_against", None), None)
-            shots = _int(getattr(t_stat, "shots", None) or getattr(t_stat, "shots_for", None), None)
-            shots_ot = _int(getattr(t_stat, "shots_on_target", None), None)
-            poss = _float(getattr(t_stat, "possession", None), None)
-            pass_pct = _float(getattr(t_stat, "pass_completion", None), None)
+                    if not is_our_match:
+                        continue
+
+                    date_iso = _iso(getattr(row, "date", None)) or ""
+                    gkey = (date_iso, r_home_tid or 0, r_away_tid or 0)
+                    slot = grouped_matches.setdefault(gkey, {"ours": None, "opp": None})
+                    if is_our_row:
+                        slot["ours"] = row
+                    else:
+                        slot["opp"] = row
+        except Exception as exc:
+            _STATE["warnings"].append(f"team_match_stats: {type(exc).__name__}")
+
+        for (date_iso, _ht, _at), pair in sorted(grouped_matches.items()):
+            ours = pair.get("ours")
+            opp = pair.get("opp")
+            if ours is None:
+                continue
+
+            match_id = str(getattr(ours, "match_id", None) or getattr(ours, "fixture_id", None) or f"{date_iso}-{_ht}-{_at}")
+            opponent = str(getattr(ours, "opponent_name", None) or "Opponent")
+            is_home = bool(getattr(ours, "is_home", True))
+            xg_for = _float(
+                getattr(ours, "expected_goals", None)
+                if getattr(ours, "expected_goals", None) is not None
+                else (getattr(ours, "xg_for", None) or getattr(ours, "expected_goals_for", None)),
+                None,
+            )
+            xg_against = _float(
+                getattr(opp, "expected_goals", None)
+                if opp is not None and getattr(opp, "expected_goals", None) is not None
+                else (getattr(ours, "xg_against", None) or getattr(ours, "expected_goals_against", None)),
+                None,
+            )
+            shots = _int(getattr(ours, "shots", None) or getattr(ours, "shots_for", None), None)
+            shots_ot = _int(getattr(ours, "shots_on_target", None), None)
+            opp_shots = _int(getattr(opp, "shots", None), None) if opp is not None else None
+            opp_shots_ot = _int(getattr(opp, "shots_on_target", None), None) if opp is not None else None
+            poss = _float(
+                getattr(ours, "possession_percent", None)
+                if getattr(ours, "possession_percent", None) is not None
+                else getattr(ours, "possession", None),
+                None,
+            )
+            passes_att = _int(getattr(ours, "passes_attempted", None), None)
+            passes_cmp = _int(getattr(ours, "passes_completed", None), None)
+            pass_pct = _float(getattr(ours, "pass_completion", None), None)
+            if pass_pct is None and passes_att and passes_att > 0 and passes_cmp is not None:
+                pass_pct = (passes_cmp / passes_att) * 100.0
+            ccc_for = _int(getattr(ours, "clear_cut_chances", None), None)
+            ccc_against = _int(getattr(opp, "clear_cut_chances", None), None) if opp is not None else None
+            dist_km = _float(getattr(ours, "distance_km", None), None)
 
             entry = {
                 "matchId": match_id,
                 "date": date_iso,
                 "opponent": opponent,
                 "isHome": is_home,
-                "goalsFor": _int(getattr(t_stat, "goals_for", 0), 0) or 0,
-                "goalsAgainst": _int(getattr(t_stat, "goals_against", 0), 0) or 0,
+                "goalsFor": _int(getattr(ours, "goals_for", 0), 0) or 0,
+                "goalsAgainst": _int(getattr(ours, "goals_against", 0), 0) or 0,
                 "xgFor": round(xg_for, 2) if xg_for is not None else None,
                 "xgAgainst": round(xg_against, 2) if xg_against is not None else None,
                 "shots": shots,
                 "shotsOnTarget": shots_ot,
+                "oppShots": opp_shots,
+                "oppShotsOnTarget": opp_shots_ot,
                 "possession": round(poss, 1) if poss is not None else None,
                 "passCompletion": round(pass_pct, 1) if pass_pct is not None else None,
+                "cccFor": ccc_for,
+                "cccAgainst": ccc_against,
+                "distanceKm": round(dist_km, 1) if dist_km is not None else None,
             }
             team_match_stats.append(entry)
             if match_id:
                 tms_by_key[f"id:{match_id}"] = entry
             if date_iso:
+                tms_by_key[f"date:{date_iso}:{is_home}"] = entry
                 tms_by_key[f"date:{date_iso}"] = entry
             tms_by_key[f"opp:{opponent.lower()}:{is_home}"] = entry
 
-    _STATE["team_match_stats"] = team_match_stats
+    _STATE["team_match_stats"] = team_match_stats[-30:]
 
     # Enrich already-extracted played_matches in place
     for pm in _STATE.get("played_matches", []):
         fid = str(pm.get("matchId") or "")
         date_iso = pm.get("dateIso") or ""
-        opp = (pm.get("opponent") or "").lower()
+        opp_name = (pm.get("opponent") or "").lower()
         is_home = pm.get("venue") == "H"
         tms = (
             (tms_by_key.get(f"id:{fid}") if fid else None)
+            or (tms_by_key.get(f"date:{date_iso}:{is_home}") if date_iso else None)
             or (tms_by_key.get(f"date:{date_iso}") if date_iso else None)
-            or tms_by_key.get(f"opp:{opp}:{is_home}")
+            or tms_by_key.get(f"opp:{opp_name}:{is_home}")
         )
         if not tms:
             continue
@@ -3653,6 +3842,18 @@ def step_team_match_stats(fast_sync: bool | None = None) -> str:
                 if tms.get("shotsOnTarget") is not None
                 else str(tms["shots"])
             )
+        if pm.get("shotsAgainst") is None and tms.get("oppShots") is not None:
+            pm["shotsAgainst"] = (
+                f"{tms['oppShots']} ({tms['oppShotsOnTarget']})"
+                if tms.get("oppShotsOnTarget") is not None
+                else str(tms["oppShots"])
+            )
+        if pm.get("cccFor") is None and tms.get("cccFor") is not None:
+            pm["cccFor"] = tms["cccFor"]
+        if pm.get("cccAgainst") is None and tms.get("cccAgainst") is not None:
+            pm["cccAgainst"] = tms["cccAgainst"]
+        if pm.get("distanceKm") is None and tms.get("distanceKm") is not None:
+            pm["distanceKm"] = tms["distanceKm"]
 
     gc.collect()
     elapsed_ms = _record_step_timing("step_4_team_match_stats", t0)
@@ -3738,6 +3939,10 @@ def step_league_table() -> str:
     if best_lt is not None and best_row is not None:
         lt = best_lt
         my_row = best_row
+        if _STATE.get("first_team_id") is None:
+            row_tid = _int(getattr(my_row, "team_id", None), None)
+            if row_tid:
+                _STATE["first_team_id"] = row_tid
         next_opp_name = upcoming_fixtures[0]["opponent"] if upcoming_fixtures else None
         next_opp_row = next(
             (r for r in lt.rows if next_opp_name and getattr(r, "club_name", None) and r.club_name.lower() == next_opp_name.lower()),

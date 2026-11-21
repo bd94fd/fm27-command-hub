@@ -28,7 +28,17 @@ import {
 import { normalizePlayerName } from './fmFileImporter';
 import { inferFm27Roles } from './fm27RoleMatcher';
 
-export const WORKER_CACHE_BUSTER = '?v=14';
+export const WORKER_CACHE_BUSTER = '?v=15';
+
+export function resolveSquadUnit(
+  teamSlot?: number | null
+): 'First Team' | 'Reserves' | 'U21' | 'U18' {
+  const slot = typeof teamSlot === 'number' && Number.isFinite(teamSlot) ? teamSlot : 0;
+  if (slot <= 0) return 'First Team';
+  if (slot === 1) return 'Reserves';
+  if (slot === 2) return 'U21';
+  return 'U18';
+}
 
 export function shouldDefaultFastSync(viewportWidth: number): boolean {
   return Number.isFinite(viewportWidth) && viewportWidth > 0 && viewportWidth < 768;
@@ -898,6 +908,13 @@ export function hydrateAppFromDecodedFmSave(
     } else if (existing.activeSuspensions) {
       next.activeSuspensions = [];
     }
+    if (typeof dp.teamSlot === 'number') {
+      next.teamSlot = dp.teamSlot;
+      next.squadUnit = resolveSquadUnit(dp.teamSlot);
+    }
+    if (typeof dp.onLoan === 'boolean') {
+      next.onLoan = dp.onLoan;
+    }
     if (Array.isArray(dp.secondaryPositions)) {
       next.secondaryPositions = dp.secondaryPositions;
     }
@@ -1091,6 +1108,9 @@ export function hydrateAppFromDecodedFmSave(
       marketValue: dp.marketValue ?? null,
       morale: dp.morale ?? null,
       status: assignedStatus,
+      teamSlot: typeof dp.teamSlot === 'number' ? dp.teamSlot : 0,
+      squadUnit: resolveSquadUnit(dp.teamSlot),
+      onLoan: Boolean(dp.onLoan),
       attributes: clampedAttrs,
       traits: dp.traits || [],
       scoutBadges: resolveScoutBadges(dp),
@@ -1331,7 +1351,7 @@ export function hydrateAppFromDecodedFmSave(
   const recruitmentTargets: RecruitmentTarget[] = (
     decoded.recruitmentTargets || []
   )
-    .slice(0, 60)
+    .slice(0, 500)
     .map((t) => {
       const cleanRecord = { ...(t as unknown as Record<string, unknown>) };
       delete cleanRecord.ca;

@@ -173,14 +173,78 @@ function isGoalkeeperPlayer(player: PlayerRecord): boolean {
   return (player.position || '').toUpperCase().includes('GK');
 }
 
-function isNaturalForPositionGroup(player: PlayerRecord, positionGroup: string): boolean {
-  const fam = getRolePositionFamiliarity(player, positionGroup);
-  if (fam !== null) return fam >= 15;
+function getFlankAwareFamiliarity(
+  player: PlayerRecord,
+  positionGroup: string,
+  flank?: 'L' | 'C' | 'R'
+): number | null {
+  const ratings = player.positionRatings;
+  const grp = (positionGroup || '').toUpperCase();
+
+  if (ratings && Object.values(ratings).some((v) => typeof v === 'number' && Number.isFinite(v))) {
+    const upper = new Map<string, number>();
+    for (const [k, v] of Object.entries(ratings)) {
+      if (typeof v === 'number' && Number.isFinite(v)) {
+        upper.set(k.toUpperCase(), v);
+      }
+    }
+    const maxOf = (keys: string[]) =>
+      Math.max(0, ...keys.map((k) => upper.get(k) ?? 0));
+
+    if (grp.includes('FULL-BACK') || grp.includes('WING-BACK')) {
+      if (flank === 'L') return maxOf(['DL', 'WBL']);
+      if (flank === 'R') return maxOf(['DR', 'WBR']);
+    }
+    if (grp.includes('WIDE MIDFIELDER') || grp.includes('WINGER')) {
+      if (flank === 'L') return maxOf(['AML', 'ML']);
+      if (flank === 'R') return maxOf(['AMR', 'MR']);
+    }
+  }
+
+  return getRolePositionFamiliarity(player, positionGroup);
+}
+
+function doesPlayerMatchFlankText(
+  player: PlayerRecord,
+  positionGroup: string,
+  flank?: 'L' | 'C' | 'R'
+): boolean {
+  const grp = (positionGroup || '').toUpperCase();
+  const combined = [player.position || '', ...(player.secondaryPositions || [])]
+    .join(' ')
+    .toUpperCase();
+
+  if (grp.includes('FULL-BACK') || grp.includes('WING-BACK')) {
+    if (flank === 'L') {
+      return /\b(DL|WBL|LB)\b|(?:D|WB)\s*\([RLC]*L/.test(combined);
+    }
+    if (flank === 'R') {
+      return /\b(DR|WBR|RB)\b|(?:D|WB)\s*\([RLC]*R/.test(combined);
+    }
+  }
+  if (grp.includes('WIDE MIDFIELDER') || grp.includes('WINGER')) {
+    if (flank === 'L') {
+      return /\b(AML|ML|LW)\b|(?:M|AM)\s*\([RLC]*L/.test(combined);
+    }
+    if (flank === 'R') {
+      return /\b(AMR|MR|RW)\b|(?:M|AM)\s*\([RLC]*R/.test(combined);
+    }
+  }
   return doesPlayerMatchRolePositionGroup(
     player.position,
     player.secondaryPositions,
     positionGroup
   );
+}
+
+function isNaturalForPositionGroup(
+  player: PlayerRecord,
+  positionGroup: string,
+  flank?: 'L' | 'C' | 'R'
+): boolean {
+  const fam = getFlankAwareFamiliarity(player, positionGroup, flank);
+  if (fam !== null) return fam >= 15;
+  return doesPlayerMatchFlankText(player, positionGroup, flank);
 }
 
 export function buildSuspensionLookup(
@@ -231,14 +295,18 @@ export function evaluatePlayerForSlot(
   player: PlayerRecord,
   positionGroup: string,
   ipRoleName: string,
-  oopRoleName: string
+  oopRoleName: string,
+  flank?: 'L' | 'C' | 'R'
 ): SlotScore {
   const ipRole = findIpRole(ipRoleName, positionGroup);
   const oopRole = findOopRole(oopRoleName, positionGroup);
   const ipFitPct = scorePlayerForFm27Role(player, ipRole);
   const oopFitPct = scorePlayerForFm27Role(player, oopRole);
-  const combinedFitPct = Math.round(ipFitPct * 0.55 + oopFitPct * 0.45);
-  const isNaturalPosition = isNaturalForPositionGroup(player, positionGroup);
+  const isNaturalPosition = isNaturalForPositionGroup(player, positionGroup, flank);
+  const rawCombined = Math.round(ipFitPct * 0.55 + oopFitPct * 0.45);
+  const combinedFitPct = isNaturalPosition
+    ? rawCombined
+    : Math.max(1, Math.round(rawCombined * 0.72));
   return { ipFitPct, oopFitPct, combinedFitPct, isNaturalPosition };
 }
 
@@ -260,10 +328,10 @@ function solveSingleLineup(
     if (aIsGk !== bIsGk) return aIsGk ? -1 : 1;
 
     const aNatCount = outfieldPool.filter((p) =>
-      isNaturalForPositionGroup(p, a.positionGroup)
+      isNaturalForPositionGroup(p, a.positionGroup, a.flank)
     ).length;
     const bNatCount = outfieldPool.filter((p) =>
-      isNaturalForPositionGroup(p, b.positionGroup)
+      isNaturalForPositionGroup(p, b.positionGroup, b.flank)
     ).length;
     if (aNatCount !== bNatCount) return aNatCount - bNatCount;
     return a.slotId.localeCompare(b.slotId);
@@ -282,10 +350,10 @@ function solveSingleLineup(
           : outfieldPool.filter((p) => !usedIds.has(p.id));
     } else {
       // Never place a GK in an outfield slot unless zero outfielders remain.
-      // Enforce strict positional familiarity (>= 15/20) first, falling back only if zero natural/accomplished candidates exist.
+      // Enforce strict flank-aware positional familiarity (>= 15/20) first, falling back only if zero natural/accomplished candidates exist.
       const availableOutfield = outfieldPool.filter((p) => !usedIds.has(p.id));
       const naturalOutfield = availableOutfield.filter((p) =>
-        isNaturalForPositionGroup(p, slot.positionGroup)
+        isNaturalForPositionGroup(p, slot.positionGroup, slot.flank)
       );
       if (naturalOutfield.length > 0) {
         candidates = naturalOutfield;
@@ -309,7 +377,8 @@ function solveSingleLineup(
           player,
           slot.positionGroup,
           slot.ipRole,
-          slot.oopRole
+          slot.oopRole,
+          slot.flank
         ),
       }))
       .sort((a, b) => {
@@ -348,10 +417,10 @@ function solveSingleLineup(
         const pB = assigned.get(sB.slotId);
         if (!pA || !pB) continue;
 
-        const curA = evaluatePlayerForSlot(pA, sA.positionGroup, sA.ipRole, sA.oopRole);
-        const curB = evaluatePlayerForSlot(pB, sB.positionGroup, sB.ipRole, sB.oopRole);
-        const swpA = evaluatePlayerForSlot(pB, sA.positionGroup, sA.ipRole, sA.oopRole);
-        const swpB = evaluatePlayerForSlot(pA, sB.positionGroup, sB.ipRole, sB.oopRole);
+        const curA = evaluatePlayerForSlot(pA, sA.positionGroup, sA.ipRole, sA.oopRole, sA.flank);
+        const curB = evaluatePlayerForSlot(pB, sB.positionGroup, sB.ipRole, sB.oopRole, sB.flank);
+        const swpA = evaluatePlayerForSlot(pB, sA.positionGroup, sA.ipRole, sA.oopRole, sA.flank);
+        const swpB = evaluatePlayerForSlot(pA, sB.positionGroup, sB.ipRole, sB.oopRole, sB.flank);
 
         const currentNaturalCount =
           (curA.isNaturalPosition ? 1 : 0) + (curB.isNaturalPosition ? 1 : 0);
@@ -402,7 +471,8 @@ function solveSingleLineup(
       player,
       slot.positionGroup,
       slot.ipRole,
-      slot.oopRole
+      slot.oopRole,
+      slot.flank
     );
     const warnings: string[] = [];
     if (!score.isNaturalPosition) {

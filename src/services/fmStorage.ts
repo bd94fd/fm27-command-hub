@@ -247,9 +247,29 @@ export function savePersistedFmState(
     return false;
   }
 
-  try {
-    const payload: FmHubPersistedState = {
+  const buildPayload = (maxTargets?: number): FmHubPersistedState => {
+    let compactHydrated = state.hydratedFmSave;
+    if (compactHydrated) {
+      const targets = Array.isArray(compactHydrated.recruitmentTargets)
+        ? typeof maxTargets === 'number'
+          ? compactHydrated.recruitmentTargets.slice(0, maxTargets)
+          : compactHydrated.recruitmentTargets
+        : [];
+      compactHydrated = {
+        ...compactHydrated,
+        recruitmentTargets: targets,
+        decodedPayload: compactHydrated.decodedPayload
+          ? {
+              ...compactHydrated.decodedPayload,
+              // Avoid duplicating 500 scouted targets inside localStorage
+              recruitmentTargets: [],
+            }
+          : compactHydrated.decodedPayload,
+      };
+    }
+    return {
       ...state,
+      hydratedFmSave: compactHydrated,
       version: 1,
       schemaVersion: CURRENT_SCHEMA_VERSION,
       lastSyncedAt: new Date().toISOString(),
@@ -260,11 +280,19 @@ export function savePersistedFmState(
         ? state.archivedSaveSnapshots
         : [],
     };
-    window.localStorage.setItem(FM27_STORAGE_KEY, JSON.stringify(payload));
+  };
+
+  try {
+    window.localStorage.setItem(FM27_STORAGE_KEY, JSON.stringify(buildPayload()));
     return true;
   } catch (err) {
-    console.warn('Failed to save FM27 state to localStorage:', err);
-    return false;
+    try {
+      window.localStorage.setItem(FM27_STORAGE_KEY, JSON.stringify(buildPayload(150)));
+      return true;
+    } catch {
+      console.warn('Failed to save FM27 state to localStorage:', err);
+      return false;
+    }
   }
 }
 

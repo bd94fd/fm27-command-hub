@@ -35,6 +35,10 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
 
   const staffCount = (d.staff || []).length;
   const targetsCount = (hydrated.recruitmentTargets || d.recruitmentTargets || []).length;
+  const firstTeamCount = d.players.filter((p) => !p.teamSlot || p.teamSlot === 0).length;
+  const youthCount = d.players.length - firstTeamCount;
+  const playersWithSeasonStats = d.players.filter((p) => (p.minutes || 0) > 0).length;
+  const matchesWithXg = d.playedMatches.filter((m) => m.xGFor !== null && m.xGFor !== undefined).length;
   const removedPlayers = hydrated.removedPlayers || [];
   const runway = hydrated.financialRunway || null;
   const stepTimings =
@@ -81,9 +85,16 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
             <span>&middot;</span>
             <span>
               Extracted:{' '}
-              <strong className="text-white">{d.players.length} players</strong>,{' '}
               <strong className="text-white">
-                {d.playedMatches.length} results
+                {firstTeamCount} First Team{youthCount > 0 ? ` + ${youthCount} Youth` : ''}
+              </strong>
+              ,{' '}
+              <strong className="text-white">
+                {playersWithSeasonStats} w/ season stats
+              </strong>
+              ,{' '}
+              <strong className="text-white">
+                {d.playedMatches.length} results{matchesWithXg > 0 ? ` (${matchesWithXg} w/ xG)` : ''}
               </strong>
               ,{' '}
               <strong className="text-white">
@@ -190,10 +201,10 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
           <button
             type="button"
             onClick={() => setShowReaderNotes((prev) => !prev)}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/30 text-[11px] font-medium text-amber-300 transition cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/80 hover:bg-slate-800 border border-slate-700 text-[11px] font-medium text-slate-300 transition cursor-pointer"
           >
-            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-            <span>FM27 27.1 Reader Notes ({warningsList.length})</span>
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span>Save Reader Info ({warningsList.length})</span>
             {showReaderNotes ? (
               <ChevronUp className="w-3.5 h-3.5 shrink-0" />
             ) : (

@@ -17,6 +17,7 @@ import { ActiveSuspensionRecord, LeagueTableRow } from '../types/fmSave';
 import { HydratedSaveState } from '../utils/fmSaveHydrator';
 import {
   buildSuspensionLookup,
+  evaluatePlayerForSlot,
   getPlayerSuspension,
   SolvedSlot,
 } from '../utils/bestXiSolver';
@@ -179,6 +180,7 @@ export const MatchPrepCard: React.FC<MatchPrepCardProps> = ({
 
     const window62: string[] = [];
     const window75: string[] = [];
+    const usedBenchIds = new Set<string>();
     let cbSubbedCount = 0;
 
     for (const slot of subCandidates) {
@@ -186,12 +188,40 @@ export const MatchPrepCard: React.FC<MatchPrepCardProps> = ({
       // Playbook v2.0 Law 2: NEVER sub both starting CBs when protecting a lead
       if (isCbSlot(slot) && cbSubbedCount >= 1) continue;
 
-      const replacement = bench.shift();
-      if (!replacement) break;
+      const availableBench = bench.filter((b) => !usedBenchIds.has(b.id));
+      if (availableBench.length === 0) break;
 
+      const rankedBench = availableBench
+        .map((candidate) => ({
+          candidate,
+          fit: evaluatePlayerForSlot(
+            candidate,
+            slot.positionGroup,
+            slot.ipRole,
+            slot.oopRole,
+            slot.flank
+          ),
+        }))
+        .sort((a, b) => {
+          if (a.fit.isNaturalPosition !== b.fit.isNaturalPosition) {
+            return a.fit.isNaturalPosition ? -1 : 1;
+          }
+          if (b.fit.combinedFitPct !== a.fit.combinedFitPct) {
+            return b.fit.combinedFitPct - a.fit.combinedFitPct;
+          }
+          return (b.candidate.condition ?? 85) - (a.candidate.condition ?? 85);
+        });
+
+      const bestMatch = rankedBench[0];
+      if (!bestMatch || (!bestMatch.fit.isNaturalPosition && bestMatch.fit.combinedFitPct < 45)) {
+        continue;
+      }
+
+      const replacement = bestMatch.candidate;
+      usedBenchIds.add(replacement.id);
       if (isCbSlot(slot)) cbSubbedCount++;
 
-      const line = `${replacement.name} ON for ${slot.player.name} (${slot.label}, Sta ${slot.player.attributes.stamina}, C${slot.player.condition ?? '?'}%)`;
+      const line = `${replacement.name} (${replacement.position}, ${bestMatch.fit.combinedFitPct}% fit) ON for ${slot.player.name} (${slot.label}, Sta ${slot.player.attributes.stamina}, C${slot.player.condition ?? '?'}%)`;
       if (window62.length < 2) {
         window62.push(line);
       } else if (window75.length < 2) {

@@ -155,6 +155,10 @@ export interface CompetitionRegistrationRules {
   maxForeignPlayers: number | null;
   u21Exempt: boolean | null;
   matchdaySubsLimit: number | null;
+  fixturesPerClub?: number | null;
+  promotionPlaces?: number | null;
+  playoffPlaces?: number | null;
+  relegationPlaces?: number | null;
 }
 
 export interface HydratedSquadPlayer {

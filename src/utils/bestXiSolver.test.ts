@@ -230,3 +230,34 @@ test('solveBestXi enforces >= 15/20 positional familiarity gate for ST, RW/LW, a
   assert.equal(rwSlot?.isNaturalPosition, true, 'RW must be a natural winger (>= 15/20)');
   assert.equal(lwSlot?.isNaturalPosition, true, 'LW must be a natural winger (>= 15/20)');
 });
+
+test('solveBestXi respects left vs right flanks for full-backs and wingers', () => {
+  const squad = buildFullSquad().filter(
+    (p) => !['DR', 'DL', 'AMR', 'AML'].includes(p.position)
+  );
+  const pureRb = makePlayer('rb-only', 'Pure RB', 'DR', {
+    ability: 4.5,
+    positionRatings: { DR: 20, DL: 1 },
+  });
+  const pureLb = makePlayer('lb-only', 'Pure LB', 'DL', {
+    ability: 3.5,
+    positionRatings: { DL: 20, DR: 1 },
+  });
+  const pureRw = makePlayer('rw-only', 'Pure RW', 'AMR', {
+    ability: 4.5,
+    positionRatings: { AMR: 20, AML: 1 },
+  });
+  const pureLw = makePlayer('lw-only', 'Pure LW', 'AML', {
+    ability: 3.5,
+    positionRatings: { AML: 20, AMR: 1 },
+  });
+
+  const res = solveBestXi([...squad, pureRb, pureLb, pureRw, pureLw], {
+    shape: '4-3-3 DM Wide',
+  });
+  assert.equal(res.startingXI.find((s) => s.slotId === 'DR')?.player?.id, 'rb-only');
+  assert.equal(res.startingXI.find((s) => s.slotId === 'DL')?.player?.id, 'lb-only');
+  assert.equal(res.startingXI.find((s) => s.slotId === 'AMR')?.player?.id, 'rw-only');
+  assert.equal(res.startingXI.find((s) => s.slotId === 'AML')?.player?.id, 'lw-only');
+});
+

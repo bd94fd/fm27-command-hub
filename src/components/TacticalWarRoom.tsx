@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import {
-  Shield,
   AlertTriangle,
-  CheckCircle2,
   BookOpen,
   FileSpreadsheet,
 } from 'lucide-react';
@@ -12,7 +10,6 @@ import {
   ActiveSuspensionRecord,
   CompetitionRegistrationRules,
 } from '../types/fmSave';
-import { buildDynamicTacticalPlan } from '../utils/fmSyncEngine';
 import { HydratedSaveState } from '../utils/fmSaveHydrator';
 import { FormationPresetKey, SolvedSlot } from '../utils/bestXiSolver';
 import { PersistedCustomSlot } from '../services/fmStorage';
@@ -56,6 +53,7 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
   const [localCustomSlots, setLocalCustomSlots] = useState<PersistedCustomSlot[]>([]);
   const [localApplyOnly, setLocalApplyOnly] = useState<boolean>(false);
   const [solvedSlots, setSolvedSlots] = useState<SolvedSlot[]>([]);
+  const [includeYouthInWarRoom, setIncludeYouthInWarRoom] = useState<boolean>(false);
 
   const activeShape = controlledShape ?? localShape;
   const customSlots = controlledCustomSlots ?? localCustomSlots;
@@ -78,7 +76,15 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
     onSolvedLineupChange?.(slots);
   };
 
-  const tacticalPlan = buildDynamicTacticalPlan(players);
+  const firstTeamPlayers = players.filter(
+    (p) => p.teamSlot === undefined || p.teamSlot === 0
+  );
+  const youthReservesCount = players.length - firstTeamPlayers.length;
+  const scopedPlayers =
+    includeYouthInWarRoom || firstTeamPlayers.length === 0
+      ? players
+      : firstTeamPlayers;
+
   const hasSquad = players.length > 0;
   const displayClub =
     clubName && clubName !== '--' && clubName !== 'Awaiting .fm Save'
@@ -88,30 +94,58 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
   const combinedSuspensions: ActiveSuspensionRecord[] =
     activeSuspensions.length > 0
       ? activeSuspensions
-      : players.flatMap((p) => p.activeSuspensions || []);
-
-  const banByPlayerUid = new Map<number, ActiveSuspensionRecord>();
-  const banByNameLower = new Map<string, ActiveSuspensionRecord>();
-  for (const b of combinedSuspensions) {
-    if (b.playerUid) banByPlayerUid.set(b.playerUid, b);
-    if (b.playerName) banByNameLower.set(b.playerName.toLowerCase(), b);
-  }
+      : scopedPlayers.flatMap((p) => p.activeSuspensions || []);
 
   return (
     <div className="space-y-8">
+      {hasSquad && youthReservesCount > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 rounded-xl border border-slate-800 bg-slate-900/75 text-xs">
+          <div className="text-slate-300">
+            <strong className="text-white">{displayClub} Squad Pool:</strong>{' '}
+            {includeYouthInWarRoom
+              ? `All ${players.length} players (First Team + Reserves/Youth)`
+              : `First Team Only (${firstTeamPlayers.length} senior players · ${youthReservesCount} Reserves/Youth hidden)`}
+          </div>
+          <div className="flex items-center gap-1 p-0.5 rounded-lg bg-slate-950 border border-slate-800">
+            <button
+              type="button"
+              onClick={() => setIncludeYouthInWarRoom(false)}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+                !includeYouthInWarRoom
+                  ? 'bg-emerald-600 text-white'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              First Team ({firstTeamPlayers.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setIncludeYouthInWarRoom(true)}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+                includeYouthInWarRoom
+                  ? 'bg-emerald-600 text-white'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Include Youth ({players.length})
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Pass 2 (v2.1): Matchday Prep Card (Clean empty state when awaiting .fm save) */}
       <MatchPrepCard
-        players={players}
+        players={scopedPlayers}
         activeSlots={solvedSlots}
         hydratedFmSave={hydratedFmSave}
         activeSuspensions={combinedSuspensions}
         clubName={clubName}
       />
 
-      {/* Pass 2 (v2.1): Interactive Dual-Phase Pitch Builder */}
+      {/* Pass 2 (v2.1): Single Authoritative Interactive Dual-Phase Pitch Builder */}
       {hasSquad && (
         <InteractivePitchBuilder
-          players={players}
+          players={scopedPlayers}
           activeSuspensions={combinedSuspensions}
           activeShape={activeShape}
           customSlots={customSlots}
@@ -236,213 +270,17 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
             </div>
           )}
 
-          {/* Dynamically Built Dual-Phase 4-3-3 Starting XI */}
-          <div className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-4 border-b border-slate-200 dark:border-slate-800">
-              <div>
-                <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                  {displayClub} · Recommended Dual-Phase 4-3-3 Starting XI (
-                  {nextFixture !== '--' ? `Next: ${nextFixture}` : saveDate})
-                </h2>
-                <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-                  Auto-constructed from your imported {players.length}-man
-                  squad&apos;s actual positions, Stamina, Pace, Acceleration,
-                  Jumping Reach, and Condition.
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
-                <span className="text-emerald-700 dark:text-emerald-400">
-                  Save Date: {saveDate} · Tracking Wingers OOP Active
-                </span>
-                {competitionRules?.matchdaySubsLimit && (
-                  <span className="rounded bg-sky-500/15 border border-sky-500/30 px-2 py-0.5 text-[11px] text-sky-300">
-                    Subs Limit: {competitionRules.matchdaySubsLimit}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="overflow-x-auto mt-4">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                    <th className="py-2.5 pr-4">Slot</th>
-                    <th className="py-2.5 pr-4">Recommended Starter</th>
-                    <th className="py-2.5 pr-4">In-Possession (IP) Role</th>
-                    <th className="py-2.5 pr-4">
-                      Out-of-Possession (OOP) Role
-                    </th>
-                    <th className="py-2.5 pr-4 text-right">
-                      Sta / Pac / Acc / JR
-                    </th>
-                    <th className="py-2.5 pr-4">Sub Window Plan</th>
-                    <th className="py-2.5">Playbook v2.0 Rationale</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-xs">
-                  {tacticalPlan.startingXI.map((item) => {
-                    const a = item.player.attributes;
-                    const activeBan =
-                      (item.player.uid ? banByPlayerUid.get(item.player.uid) : undefined) ||
-                      banByNameLower.get(item.player.name.toLowerCase()) ||
-                      item.player.activeSuspensions?.[0];
-                    return (
-                      <tr
-                        key={item.slotCode}
-                        className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 ${
-                          activeBan ? 'bg-rose-950/20' : ''
-                        }`}
-                      >
-                        <td className="py-2.5 pr-4 font-mono font-bold text-emerald-700 dark:text-emerald-400">
-                          {item.slotCode}
-                        </td>
-                        <td className="py-2.5 pr-4 font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap">
-                          <span>
-                            #{item.player.number} {item.player.name}
-                          </span>
-                          {activeBan && (
-                            <span className="ml-2 rounded bg-rose-500/20 border border-rose-500/50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-rose-300">
-                              BANNED ({activeBan.matchesRemaining}m)
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-2.5 pr-4 text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                          {item.ipRole}
-                        </td>
-                        <td className="py-2.5 pr-4 text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                          {item.oopRole}
-                        </td>
-                        <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-slate-900 dark:text-slate-100 whitespace-nowrap">
-                          {a.stamina}/{a.pace}/{a.acceleration}/{a.jumpingReach}
-                        </td>
-                        <td className="py-2.5 pr-4 font-mono text-emerald-700 dark:text-emerald-400 whitespace-nowrap">
-                          {item.subOffFor
-                            ? `${item.plannedMinutes}' → ${item.subOffFor}`
-                            : 'Full 90m'}
-                        </td>
-                        <td className="py-2.5 text-slate-600 dark:text-slate-400">
-                          {item.rationale}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Non-Negotiable Touchline Substitution Script Bar */}
-          <div className="p-5 bg-slate-100 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 rounded-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <Shield className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-              <div className="text-xs text-slate-700 dark:text-slate-300 space-y-1.5">
-                <div className="font-bold text-slate-900 dark:text-slate-100">
-                  Playbook v2.0 Touchline Substitution Script (2 Second-Half
-                  Stoppage Windows Max)
-                </div>
-                {tacticalPlan.subPlan.length > 0 ? (
-                  <div className="space-y-1">
-                    {tacticalPlan.subPlan.map((sub, idx) => (
-                      <div key={idx}>
-                        <strong>
-                          {sub.windowLabel} [{sub.slotCode}]:
-                        </strong>{' '}
-                        {sub.playerOn} on for {sub.playerOff} &mdash;{' '}
-                        {sub.reason}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div>
-                    Squad has 11 or fewer fit players — add bench options to
-                    populate 62m/75m substitutions.
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-2 text-xs font-semibold text-amber-700 dark:text-amber-400 shrink-0">
-              <AlertTriangle className="w-4 h-4" />
+          {competitionRules?.matchdaySubsLimit && (
+            <div className="px-4 py-2.5 rounded-xl border border-sky-500/30 bg-sky-950/20 text-xs text-sky-200 flex items-center justify-between">
               <span>
-                Dual-CB 90&apos; Lock: {tacticalPlan.cbPairNames} Never Both
-                Subbed Off
+                <strong>Competition Rule:</strong> Max {competitionRules.matchdaySubsLimit} matchday substitutions
+                {competitionRules.fixturesPerClub ? ` · ${competitionRules.fixturesPerClub}-match season` : ''}
+              </span>
+              <span className="font-mono text-[11px] text-sky-300">
+                Save Date: {saveDate}
               </span>
             </div>
-          </div>
-
-          {/* Dynamic Physical Stamina & Double-Gameweek Load Audit */}
-          <div className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-4 border-b border-slate-200 dark:border-slate-800">
-              <div>
-                <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                  Squad Stamina &amp; 180-Minute Double-Gameweek Load Audit
-                </h2>
-                <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-                  Enforcing the &le;125-minute outfield cap across back-to-back
-                  fixtures based on each player&apos;s actual Stamina and
-                  Condition.
-                </p>
-              </div>
-              <div className="flex items-center gap-2 text-xs font-mono text-emerald-700 dark:text-emerald-400">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>
-                  {tacticalPlan.loadRows.filter((r) => r.passedCap).length}/
-                  {tacticalPlan.loadRows.length} Starters Within Cap
-                </span>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto mt-4">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                    <th className="py-2.5 pr-4">Player (Slot)</th>
-                    <th className="py-2.5 pr-4 text-right">Stamina</th>
-                    <th className="py-2.5 pr-4 text-right">Season Mins</th>
-                    <th className="py-2.5 pr-4">Next Match Rotation Plan</th>
-                    <th className="py-2.5 pr-4 text-right">
-                      Projected 2-GW Load
-                    </th>
-                    <th className="py-2.5 text-right">Cap Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-xs">
-                  {tacticalPlan.loadRows.map((row) => (
-                    <tr
-                      key={row.playerId}
-                      className="hover:bg-slate-50 dark:hover:bg-slate-800/50"
-                    >
-                      <td className="py-2.5 pr-4 font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap">
-                        {row.playerName}
-                      </td>
-                      <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-slate-700 dark:text-slate-300">
-                        {row.stamina}
-                      </td>
-                      <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-slate-500 dark:text-slate-400">
-                        {row.seasonMinutes}m
-                      </td>
-                      <td className="py-2.5 pr-4 text-slate-700 dark:text-slate-300 font-medium">
-                        {row.rolePlan}
-                      </td>
-                      <td className="py-2.5 pr-4 text-right font-mono font-bold tabular-nums text-slate-900 dark:text-slate-100">
-                        {row.projectedDoubleGwMinutes}m / {row.capLimit}m
-                      </td>
-                      <td className="py-2.5 text-right font-mono whitespace-nowrap">
-                        {row.passedCap ? (
-                          <span className="text-emerald-700 dark:text-emerald-400 font-semibold">
-                            PASSED
-                          </span>
-                        ) : (
-                          <span className="text-red-600 dark:text-red-400 font-semibold">
-                            OVERLOAD
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          )}
         </>
       )}
     </div>

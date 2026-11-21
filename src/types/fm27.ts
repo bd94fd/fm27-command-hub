@@ -47,6 +47,9 @@ export interface PlayerRecord {
   marketValue?: number | null;
   morale?: string | null;
   status: 'Starter' | 'Rotation' | 'Injured' | 'Surplus' | 'Youth';
+  teamSlot?: number;
+  squadUnit?: 'First Team' | 'Reserves' | 'U21' | 'U18';
+  onLoan?: boolean;
   positionRatings?: Record<string, number> | null;
   traits?: string[];
   scoutBadges?: ScoutBadge[];

@@ -138,12 +138,18 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
   onSelectPlayer,
 }) => {
   const [view, setView] = useState<AuditView>('advice');
+  const [includeYouthInAudit, setIncludeYouthInAudit] = useState<boolean>(false);
   const [verdictFilter, setVerdictFilter] = useState<
     'ALL' | TransferActionVerdict
   >('ALL');
   const [search, setSearch] = useState('');
   const [targetFilter, setTargetFilter] = useState<ScoutContractFilter>('ALL');
   const [targetPosGroup, setTargetPosGroup] = useState<ScoutPositionGroup>('ALL');
+  const [exactPosFilter, setExactPosFilter] = useState<string>('ALL');
+  const [targetSortBy, setTargetSortBy] = useState<
+    'GAP_FIT' | 'ROLE_FIT' | 'ARCHETYPE' | 'AGE' | 'WAGE'
+  >('GAP_FIT');
+  const [visibleTargetCount, setVisibleTargetCount] = useState<number>(24);
   const [targetAgeBand, setTargetAgeBand] = useState<ScoutAgeBand>('ALL');
   const [genuineGapsOnly, setGenuineGapsOnly] = useState<boolean>(false);
   const [localTrackedTargets, setLocalTrackedTargets] = useState<RecruitmentTarget[]>(() =>
@@ -151,6 +157,19 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
   );
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [compareTarget, setCompareTarget] = useState<RecruitmentTarget | null>(null);
+
+  const firstTeamPlayers = useMemo(
+    () => players.filter((p) => p.teamSlot === undefined || p.teamSlot === 0),
+    [players]
+  );
+  const youthReservesCount = players.length - firstTeamPlayers.length;
+  const auditPlayers = useMemo(
+    () =>
+      includeYouthInAudit || firstTeamPlayers.length === 0
+        ? players
+        : firstTeamPlayers,
+    [includeYouthInAudit, firstTeamPlayers, players]
+  );
 
   const trackedTargets = controlledTrackedTargets ?? localTrackedTargets;
 
@@ -226,7 +245,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
       const arch = evaluatePlaybookArchetype(t.primaryPosition, t.attributes);
       const role = computeTargetBestRoleFit(t);
       const contract = formatTargetContractSummary(t);
-      const starter = findTopSeniorStarterForPosition(t.primaryPosition, players);
+      const starter = findTopSeniorStarterForPosition(t.primaryPosition, auditPlayers);
       return `- ${t.name} (${t.primaryPosition}, Age ${t.age}, ${t.nationality}) | ${arch.name} ${arch.score}% | Best Role: ${role.roleName} (${role.fitPct}%) | ${contract.primaryLabel}${contract.trialBadge ? ' [2-Week Free Trial]' : ''}${contract.wageLabel ? ` · ${contract.wageLabel}` : ''} | vs Starter: ${starter ? `${starter.name} (${starter.ability.toFixed(1)}★, £${starter.wagePw}/wk)` : 'None'}`;
     });
     const prompt = `Compare my persisted Shortlist (${trackedTargets.length} targets) against my current senior starters using Bobby Dean's Playbook v2.0 Section 7 recruitment archetypes and £0-budget free-trial rules. Rank who to trial/sign first and who to skip:\n${summaryLines.join('\n')}`;
@@ -235,41 +254,61 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
 
   const activeComparison = useMemo(() => {
     if (!compareTarget) return null;
-    const starter = findTopSeniorStarterForPosition(compareTarget.primaryPosition, players);
+    const starter = findTopSeniorStarterForPosition(compareTarget.primaryPosition, auditPlayers);
     if (!starter) return { target: compareTarget, starter: null, comparison: null };
     return {
       target: compareTarget,
       starter,
       comparison: buildTargetVsStarterComparison(compareTarget, starter),
     };
-  }, [compareTarget, players]);
+  }, [compareTarget, auditPlayers]);
 
-  const filteredScoutedTargets = useMemo(
-    () =>
-      enrichAndFilterScoutedTargets({
-        targets: scoutedTargets,
-        squadPlayers: players,
-        posGroup: targetPosGroup,
-        ageBand: targetAgeBand,
-        contractFilter: targetFilter,
-        genuineGapsOnly,
-        searchQuery: search,
-      }),
-    [
-      scoutedTargets,
-      players,
-      targetPosGroup,
-      targetAgeBand,
-      targetFilter,
+  const filteredScoutedTargets = useMemo(() => {
+    const base = enrichAndFilterScoutedTargets({
+      targets: scoutedTargets,
+      squadPlayers: auditPlayers,
+      posGroup: targetPosGroup,
+      ageBand: targetAgeBand,
+      contractFilter: targetFilter,
       genuineGapsOnly,
-      search,
-    ]
-  );
+      searchQuery: search,
+    });
+    const posFiltered =
+      exactPosFilter === 'ALL'
+        ? base
+        : base.filter((item) => item.depth.slot === exactPosFilter);
+    if (targetSortBy === 'GAP_FIT') return posFiltered;
+    return [...posFiltered].sort((a, b) => {
+      if (targetSortBy === 'ROLE_FIT') {
+        return b.bestRole.fitPct - a.bestRole.fitPct;
+      }
+      if (targetSortBy === 'ARCHETYPE') {
+        return b.archetype.score - a.archetype.score;
+      }
+      if (targetSortBy === 'AGE') {
+        return a.target.age - b.target.age || b.bestRole.fitPct - a.bestRole.fitPct;
+      }
+      return (
+        (a.target.demandedWageEur || 0) - (b.target.demandedWageEur || 0) ||
+        b.bestRole.fitPct - a.bestRole.fitPct
+      );
+    });
+  }, [
+    scoutedTargets,
+    auditPlayers,
+    targetPosGroup,
+    exactPosFilter,
+    targetSortBy,
+    targetAgeBand,
+    targetFilter,
+    genuineGapsOnly,
+    search,
+  ]);
 
   const audit = useMemo(
     () =>
       buildSquadTransferAudit(
-        players,
+        auditPlayers,
         saveDate,
         {
           ...finances,
@@ -278,7 +317,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
         },
         divisionBenchmarks
       ),
-    [players, saveDate, finances, balance, wageSpend, divisionBenchmarks]
+    [auditPlayers, saveDate, finances, balance, wageSpend, divisionBenchmarks]
   );
 
   const registrationCheck = useMemo(() => {
@@ -951,10 +990,46 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                       </button>
                     ))}
 
+                    <select
+                      aria-label="Exact Position"
+                      value={exactPosFilter}
+                      onChange={(e) => {
+                        setExactPosFilter(e.target.value);
+                        setVisibleTargetCount(24);
+                      }}
+                      className="rounded-lg bg-slate-950 border border-slate-700 px-2 py-1 text-[11px] font-semibold text-slate-200 focus:border-emerald-500 focus:outline-none"
+                    >
+                      <option value="ALL">All Exact Slots</option>
+                      {(['GK', 'DC', 'DL', 'DR', 'DM', 'MC', 'AMC', 'AML', 'AMR', 'STC'] as const).map((slot) => (
+                        <option key={slot} value={slot}>
+                          {slot}
+                        </option>
+                      ))}
+                    </select>
+
+                    <select
+                      aria-label="Sort Scouted Targets"
+                      value={targetSortBy}
+                      onChange={(e) => {
+                        setTargetSortBy(e.target.value as 'GAP_FIT' | 'ROLE_FIT' | 'ARCHETYPE' | 'AGE' | 'WAGE');
+                        setVisibleTargetCount(24);
+                      }}
+                      className="rounded-lg bg-slate-950 border border-slate-700 px-2 py-1 text-[11px] font-semibold text-slate-200 focus:border-emerald-500 focus:outline-none"
+                    >
+                      <option value="GAP_FIT">Sort: Gap &amp; Role Fit</option>
+                      <option value="ROLE_FIT">Sort: Best Role Fit %</option>
+                      <option value="ARCHETYPE">Sort: Playbook Archetype</option>
+                      <option value="AGE">Sort: Youngest First</option>
+                      <option value="WAGE">Sort: Lowest Wage</option>
+                    </select>
+
                     <button
                       type="button"
                       aria-pressed={genuineGapsOnly}
-                      onClick={() => setGenuineGapsOnly((prev) => !prev)}
+                      onClick={() => {
+                        setGenuineGapsOnly((prev) => !prev);
+                        setVisibleTargetCount(24);
+                      }}
                       className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition cursor-pointer ${
                         genuineGapsOnly
                           ? 'bg-emerald-500/25 text-emerald-200 border-emerald-400 ring-1 ring-emerald-400/40 shadow-sm shadow-emerald-500/20'
@@ -966,22 +1041,23 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                   </div>
 
                   <span className="text-[11px] text-slate-400">
-                    Showing {filteredScoutedTargets.length} · Sorted by Gap &amp; Role Fit · Zero raw CA/PA
+                    Showing {Math.min(visibleTargetCount, filteredScoutedTargets.length)} of {filteredScoutedTargets.length} matching ({scoutedTargets.length} in save pool) · Zero raw CA/PA
                   </span>
                 </div>
               </div>
 
               {scoutedTargets.length === 0 ? (
                 <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 text-center text-xs text-slate-400">
-                  No Free Agent or Expiring ≤6m targets decoded in this save yet. Drop a `.fm` save in the Analyst tab to run the Pass 0 recruitment scan.
+                  No Free Agent or Expiring ≤12m targets decoded in this save yet. Drop a `.fm` save in the Analyst tab to run the full-database recruitment scan.
                 </div>
               ) : filteredScoutedTargets.length === 0 ? (
                 <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 text-center text-xs text-slate-400">
                   No scouted targets match the active filters. Try clearing &ldquo;Genuine Gaps Only&rdquo; or broadening the position/age band.
                 </div>
               ) : (
+                <>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {filteredScoutedTargets.map(
+                  {filteredScoutedTargets.slice(0, visibleTargetCount).map(
                     ({
                       target,
                       bestRole,
@@ -1138,6 +1214,18 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                     }
                   )}
                 </div>
+                {visibleTargetCount < filteredScoutedTargets.length && (
+                  <div className="flex justify-center pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setVisibleTargetCount((prev) => prev + 24)}
+                      className="rounded-xl border border-emerald-500/40 bg-emerald-500/15 hover:bg-emerald-500/25 px-4 py-2 text-xs font-semibold text-emerald-200 transition cursor-pointer"
+                    >
+                      Load More Targets ({filteredScoutedTargets.length - visibleTargetCount} remaining)
+                    </button>
+                  </div>
+                )}
+                </>
               )}
             </div>
           )}

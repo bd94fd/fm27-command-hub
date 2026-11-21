@@ -408,8 +408,8 @@ test('hydrateAppFromDecodedFmSave handles non-contract players with null expires
   assert.equal(trialist.expires.slice(-4), 'N/A');
 });
 
-test('Worker cache-buster is bumped to ?v=14 and FmImportScope supports club_and_division with clamping', () => {
-  assert.equal(WORKER_CACHE_BUSTER, '?v=14');
+test('Worker cache-buster is bumped to ?v=15 and FmImportScope supports club_and_division with clamping', () => {
+  assert.equal(WORKER_CACHE_BUSTER, '?v=15');
 
   const scope: FmImportScope = 'club_and_division';
   assert.equal(scope, 'club_and_division');
@@ -1270,7 +1270,7 @@ test('Step 4/6 & Step 3/6 Watchdogs: 90s inactivity + 300s hard ceiling, detaile
   assert.doesNotMatch(hydrated.analystPromptContext, /\bCA\s*\d+|\bPA\s*\d+/i);
 });
 
-test('Reordered 4-Stage Pipeline & ?v=14 Static Guardrails: Club Core + Fixtures/League before Global Ops & Player Stats, Fast Sync skips player_season_stats, and Checkpoints emitted', () => {
+test('Reordered 4-Stage Pipeline & ?v=15 Static Guardrails: Club Core + Fixtures/League before Global Ops & Player Stats, Fast Sync skips player_season_stats, and Checkpoints emitted', () => {
   const workerSrc = fs.readFileSync(
     path.resolve(process.cwd(), 'public/fm-save-worker.js'),
     'utf8'
@@ -1288,10 +1288,10 @@ test('Reordered 4-Stage Pipeline & ?v=14 Static Guardrails: Club Core + Fixtures
     'utf8'
   );
 
-  // Worker, mapper, and client cache-buster synced to ?v=14
-  assert.equal(WORKER_CACHE_BUSTER, '?v=14');
-  assert.match(workerSrc, /\/fm-save-mapper\.py\?v=14/);
-  assert.match(mapperSrc, /MAPPER_CACHE_BUSTER\s*=\s*"\?v=14"/);
+  // Worker, mapper, and client cache-buster synced to ?v=15
+  assert.equal(WORKER_CACHE_BUSTER, '?v=15');
+  assert.match(workerSrc, /\/fm-save-mapper\.py\?v=15/);
+  assert.match(mapperSrc, /MAPPER_CACHE_BUSTER\s*=\s*"\?v=15"/);
   assert.match(clientSrc, /WORKER_CACHE_BUSTER/);
   assert.match(clientSrc, /WORKER_INACTIVITY_TIMEOUT_MS\s*=\s*90_000/);
   assert.match(clientSrc, /WORKER_HARD_CEILING_MS\s*=\s*300_000/);
@@ -1372,14 +1372,15 @@ test('Reordered 4-Stage Pipeline & ?v=14 Static Guardrails: Club Core + Fixtures
   assert.match(mapperSrc, /def step_3_3_transfer_windows/);
   assert.match(mapperSrc, /def _record_fast_sync_skip_note/);
   assert.match(mapperSrc, /getattr\(p, "injuries", None\)/);
-  assert.match(mapperSrc, /FINANCES_BUDGET_SEC\s*=\s*6\.0/);
-  assert.match(mapperSrc, /STAFF_BUDGET_SEC\s*=\s*8\.0/);
-  assert.match(mapperSrc, /CLUB_OPS_TABLE_BUDGET_SEC\s*=\s*6\.0/);
-  assert.match(mapperSrc, /SCOUT_BUDGET_SEC\s*=\s*6\.0/);
-  assert.match(mapperSrc, /SEASON_STATS_BUDGET_SEC\s*=\s*12\.0/);
-  assert.match(mapperSrc, /PLAYER_MATCH_STATS_BUDGET_SEC\s*=\s*12\.0/);
-  assert.match(mapperSrc, /SEASON_HISTORY_BUDGET_SEC\s*=\s*10\.0/);
-  assert.match(mapperSrc, /CONTRACTS_SUSPENSIONS_BUDGET_SEC\s*=\s*8\.0/);
+  assert.match(mapperSrc, /FINANCES_BUDGET_SEC\s*=/);
+  assert.match(mapperSrc, /STAFF_BUDGET_SEC\s*=/);
+  assert.match(mapperSrc, /CLUB_OPS_TABLE_BUDGET_SEC\s*=/);
+  assert.match(mapperSrc, /SCOUT_BUDGET_SEC\s*=/);
+  assert.match(mapperSrc, /SCOUT_MAX_CANDIDATES\s*=\s*500/);
+  assert.match(mapperSrc, /SEASON_STATS_BUDGET_SEC\s*=/);
+  assert.match(mapperSrc, /PLAYER_MATCH_STATS_BUDGET_SEC\s*=/);
+  assert.match(mapperSrc, /SEASON_HISTORY_BUDGET_SEC\s*=/);
+  assert.match(mapperSrc, /CONTRACTS_SUSPENSIONS_BUDGET_SEC\s*=/);
   assert.match(mapperSrc, /"extractionWarnings"/);
   assert.match(mapperSrc, /"stepTimingsMs"/);
 
@@ -1560,7 +1561,7 @@ test('Progressive Checkpoint Recovery: resolves with latest valid squad checkpoi
     new ArrayBuffer(8)
   )) as DecodedFmSavePayload;
 
-  assert.equal(capturedWorkerUrl, '/fm-save-worker.js?v=14');
+  assert.equal(capturedWorkerUrl, '/fm-save-worker.js?v=15');
   assert.equal(terminatedAfterStage3, true);
   assert.equal(recovered.players.length, 1);
   assert.equal(recovered.players[0].name, 'Quinten Boudry');

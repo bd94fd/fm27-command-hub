@@ -11,6 +11,8 @@ import {
 import { PlayerRecord, ShortlistRecord } from '../types/fm27';
 import { computeFm27EngineMetrics } from '../utils/fmSyncEngine';
 import {
+  FM27_ROLES,
+  FM27_ROLE_ATTR_MAP,
   getNaturalRolesForPlayer,
   resolveNaturalDefaultRoles,
 } from '../utils/fm27RoleMatcher';
@@ -19,7 +21,6 @@ import {
   getPlaybookContractNotes,
   partitionContractClausesAndBonuses,
 } from '../utils/recruitmentHelpers';
-import fm27RolesRaw from '../data/fm27Roles.json';
 
 interface PlayerDetailModalProps {
   player: PlayerRecord | null;
@@ -33,26 +34,6 @@ interface PlayerDetailModalProps {
 }
 
 type DetailTab = 'attributes' | 'positions' | 'metrics' | 'contract';
-
-interface CanonicalRole {
-  name: string;
-  phase?: 'IP' | 'OOP' | string;
-  keyAttributes?: string[];
-  preferableAttributes?: string[];
-}
-
-const ALL_ROLES: CanonicalRole[] = Array.isArray(fm27RolesRaw)
-  ? (fm27RolesRaw as CanonicalRole[])
-  : Object.values(fm27RolesRaw as Record<string, unknown>).flatMap((v) =>
-      Array.isArray(v) ? (v as CanonicalRole[]) : []
-    );
-
-const IP_ROLE_LIST = ALL_ROLES.filter(
-  (r) => !r.phase || r.phase.toUpperCase().includes('IN') || r.phase === 'IP'
-);
-const OOP_ROLE_LIST = ALL_ROLES.filter(
-  (r) => r.phase && (r.phase.toUpperCase().includes('OUT') || r.phase === 'OOP')
-);
 
 const PITCH_ROWS: Array<Array<{ code: string; label: string }>> = [
   [{ code: 'ST', label: 'ST' }],
@@ -151,7 +132,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
     const keySet = new Set<string>();
     const prefSet = new Set<string>();
     const matchRole = (name: string) =>
-      ALL_ROLES.find(
+      FM27_ROLES.find(
         (r) =>
           r.name.toLowerCase() === name.toLowerCase() ||
           name.toLowerCase().includes(r.name.toLowerCase())
@@ -160,11 +141,19 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
     for (const roleName of [effectiveIpRole, effectiveOopRole]) {
       if (!roleName) continue;
       const found = matchRole(roleName);
-      if (found) {
-        (found.keyAttributes || []).forEach((k) => keySet.add(normalizeAttrKey(k)));
-        (found.preferableAttributes || []).forEach((k) =>
-          prefSet.add(normalizeAttrKey(k))
-        );
+      if (found?.priorities) {
+        for (const [snakeKey, tier] of Object.entries(found.priorities)) {
+          const camelKey = FM27_ROLE_ATTR_MAP[snakeKey] || snakeKey;
+          const normKey = normalizeAttrKey(String(camelKey));
+          const normSnake = normalizeAttrKey(snakeKey);
+          if (tier === 'primary') {
+            keySet.add(normKey);
+            keySet.add(normSnake);
+          } else {
+            prefSet.add(normKey);
+            prefSet.add(normSnake);
+          }
+        }
       }
     }
     return { keySet, prefSet };
