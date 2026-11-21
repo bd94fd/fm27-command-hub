@@ -8,6 +8,7 @@ import {
   getAccessToken,
   googleSignIn,
   initAuth,
+  isUnauthorizedDomainError,
   logout,
   writeFullMasterBlueprintToDoc,
   type GoogleDocInfo,
@@ -122,6 +123,10 @@ export function useWorkspaceSync() {
         );
       }
     } catch (err: unknown) {
+      if (isUnauthorizedDomainError(err)) {
+        console.warn('Firebase Auth unauthorized domain (ignored in UI):', err);
+        return;
+      }
       setWorkspaceError(
         err instanceof Error
           ? err.message

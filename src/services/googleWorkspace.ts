@@ -24,23 +24,46 @@ for (const scope of SCOPES) {
 let isSigningIn = false;
 let cachedAccessToken: string | null = null;
 
+export function isUnauthorizedDomainError(error: unknown): boolean {
+  if (!error) return false;
+  if (
+    typeof error === 'object' &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'auth/unauthorized-domain'
+  ) {
+    return true;
+  }
+  const msg = error instanceof Error ? error.message : String(error);
+  return msg.includes('auth/unauthorized-domain');
+}
+
 export const initAuth = (
   onAuthSuccess?: (user: User, token: string) => void,
   onAuthFailure?: () => void
 ) => {
-  return onAuthStateChanged(auth, async (user: User | null) => {
-    if (user) {
-      if (cachedAccessToken) {
-        if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
-      } else if (!isSigningIn) {
+  return onAuthStateChanged(
+    auth,
+    async (user: User | null) => {
+      if (user) {
+        if (cachedAccessToken) {
+          if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
+        } else if (!isSigningIn) {
+          cachedAccessToken = null;
+          if (onAuthFailure) onAuthFailure();
+        }
+      } else {
         cachedAccessToken = null;
         if (onAuthFailure) onAuthFailure();
       }
-    } else {
-      cachedAccessToken = null;
-      if (onAuthFailure) onAuthFailure();
+    },
+    (error) => {
+      if (isUnauthorizedDomainError(error)) {
+        console.warn('Firebase Auth unauthorized domain (ignored in UI):', error);
+        return;
+      }
+      console.error('Firebase Auth state error:', error);
     }
-  });
+  );
 };
 
 export const googleSignIn = async (): Promise<{
@@ -57,6 +80,10 @@ export const googleSignIn = async (): Promise<{
     cachedAccessToken = credential.accessToken;
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (error) {
+    if (isUnauthorizedDomainError(error)) {
+      console.warn('Firebase Auth unauthorized domain (ignored in UI):', error);
+      return null;
+    }
     console.error('Google Sign-In error:', error);
     throw error;
   } finally {
