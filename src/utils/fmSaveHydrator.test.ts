@@ -2128,30 +2128,35 @@ test('Server-First Automatic Fallback: falls back seamlessly to browser Pyodide 
   assert.equal(fallbackOnJobError, false);
 });
 
-test('Server Chunked Decode Guardrails: Express server.ts (/init, /chunk, /finish, /job), public/fm-save-mapper.py CLI stderr progress, and zero new npm packages', () => {
+test('Server Chunked Decode Guardrails: Express server/routes/fmDecodeRoutes.ts (/init, /chunk, /finish, /job), public/fm-save-mapper.py CLI stderr progress, and zero new npm packages', () => {
   const serverSrc = fs.readFileSync(path.resolve(process.cwd(), 'server.ts'), 'utf8');
+  const decodeRouterSrc = fs.readFileSync(
+    path.resolve(process.cwd(), 'server/routes/fmDecodeRoutes.ts'),
+    'utf8'
+  );
   const mapperSrc = fs.readFileSync(
     path.resolve(process.cwd(), 'public/fm-save-mapper.py'),
     'utf8'
   );
   const pkgSrc = fs.readFileSync(path.resolve(process.cwd(), 'package.json'), 'utf8');
 
-  // Chunked upload routes (1 GB total cap, 8 MB raw chunk limit, lastActivityAt pruning, 300s decode timeout, stream stdout) — zero multer added
-  assert.match(serverSrc, /\/api\/fm27\/decode-status/);
-  assert.match(serverSrc, /\/api\/fm27\/decode-save\/init/);
-  assert.match(serverSrc, /\/api\/fm27\/decode-save\/chunk/);
-  assert.match(serverSrc, /\/api\/fm27\/decode-save\/finish/);
-  assert.match(serverSrc, /\/api\/fm27\/decode-save\/job\/:jobId/);
-  assert.match(serverSrc, /MAX_TOTAL_UPLOAD_BYTES\s*=\s*1024\s*\*\s*1024\s*\*\s*1024/);
-  assert.match(serverSrc, /SERVER_DECODE_TIMEOUT_MS\s*=\s*300_000/);
-  assert.match(serverSrc, /lastActivityAt/);
-  assert.match(serverSrc, /stdoutChunks\.push/);
-  assert.match(serverSrc, /express\.raw\(\{\s*type:\s*['"]application\/octet-stream['"]\s*,\s*limit:\s*['"]8mb['"]/);
-  assert.match(serverSrc, /fs\.promises\.appendFile/);
-  assert.match(serverSrc, /os\.tmpdir\(\)/);
-  assert.match(serverSrc, /shell:\s*false/);
-  assert.match(serverSrc, /fs\.promises\.unlink/);
-  assert.match(serverSrc, /status\(503\)/);
+  // Chunked upload routes mounted under /api (1 GB total cap, 8 MB raw chunk limit, lastActivityAt pruning, 300s decode timeout, stream stdout) — zero multer added
+  assert.match(serverSrc, /app\.use\(['"]\/api['"],\s*createFmDecodeRouter\(\)\)/);
+  assert.match(decodeRouterSrc, /\/fm27\/decode-status/);
+  assert.match(decodeRouterSrc, /\/fm27\/decode-save\/init/);
+  assert.match(decodeRouterSrc, /\/fm27\/decode-save\/chunk/);
+  assert.match(decodeRouterSrc, /\/fm27\/decode-save\/finish/);
+  assert.match(decodeRouterSrc, /\/fm27\/decode-save\/job\/:jobId/);
+  assert.match(decodeRouterSrc, /MAX_TOTAL_UPLOAD_BYTES\s*=\s*1024\s*\*\s*1024\s*\*\s*1024/);
+  assert.match(decodeRouterSrc, /SERVER_DECODE_TIMEOUT_MS\s*=\s*300_000/);
+  assert.match(decodeRouterSrc, /lastActivityAt/);
+  assert.match(decodeRouterSrc, /stdoutChunks\.push/);
+  assert.match(decodeRouterSrc, /express\.raw\(\{\s*type:\s*['"]application\/octet-stream['"]\s*,\s*limit:\s*['"]8mb['"]/);
+  assert.match(decodeRouterSrc, /fs\.promises\.appendFile/);
+  assert.match(decodeRouterSrc, /os\.tmpdir\(\)/);
+  assert.match(decodeRouterSrc, /shell:\s*false/);
+  assert.match(decodeRouterSrc, /fs\.promises\.unlink/);
+  assert.match(decodeRouterSrc, /status\(503\)/);
   assert.doesNotMatch(pkgSrc, /"multer"/);
 
   // Native Python CLI entry point emits flushed stderr progress and preserves Pyodide step_* functions

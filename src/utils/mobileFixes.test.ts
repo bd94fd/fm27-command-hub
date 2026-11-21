@@ -158,19 +158,25 @@ test('Issue 1: parseJsonApiResponse safely handles HTML <!doctype> 504/404/200 w
   assert.equal(ok.analysisMarkdown, 'Tactical audit ready');
 });
 
-test('Issue 1: server.ts enforces gemini-3.5-flash-lite/gemini-3.5-flash, response.text getter, 25s timeout 504, and JSON 404 before Vite/SPA', () => {
+test('Issue 1: server.ts + server/ modules enforce gemini-3.5-flash-lite/gemini-3.5-flash, response.text getter, 25s timeout 504, and JSON 404 before Vite/SPA', () => {
   const serverSrc = fs.readFileSync(path.resolve(process.cwd(), 'server.ts'), 'utf8');
+  const combinedServerSrc = [
+    serverSrc,
+    fs.readFileSync(path.resolve(process.cwd(), 'server/config.ts'), 'utf8'),
+    fs.readFileSync(path.resolve(process.cwd(), 'server/geminiService.ts'), 'utf8'),
+    fs.readFileSync(path.resolve(process.cwd(), 'server/routes/fm27Routes.ts'), 'utf8'),
+  ].join('\n');
 
-  assert.match(serverSrc, /'gemini-3\.5-flash-lite'/);
-  assert.match(serverSrc, /'gemini-3\.5-flash'/);
-  assert.doesNotMatch(serverSrc, /'gemini-2\.5-flash'/);
-  assert.doesNotMatch(serverSrc, /'gemini-2\.5-flash-lite'/);
-  assert.match(serverSrc, /ANALYST_TIMEOUT_MS\s*=\s*25_000/);
-  assert.match(serverSrc, /AbortSignal\.timeout/);
-  assert.match(serverSrc, /res\.status\(504\)\.json/);
-  assert.match(serverSrc, /response\.text/);
-  assert.doesNotMatch(serverSrc, /response\.text\(\)/);
-  assert.match(serverSrc, /'User-Agent':\s*'aistudio-build'/);
+  assert.match(combinedServerSrc, /'gemini-3\.5-flash-lite'/);
+  assert.match(combinedServerSrc, /'gemini-3\.5-flash'/);
+  assert.doesNotMatch(combinedServerSrc, /'gemini-2\.5-flash'/);
+  assert.doesNotMatch(combinedServerSrc, /'gemini-2\.5-flash-lite'/);
+  assert.match(combinedServerSrc, /DEFAULT_AI_TIMEOUT_MS\s*=\s*25_000/);
+  assert.match(combinedServerSrc, /AbortSignal\.timeout/);
+  assert.match(combinedServerSrc, /res\.status\(504\)\.json/);
+  assert.match(combinedServerSrc, /response\.text/);
+  assert.doesNotMatch(combinedServerSrc, /response\.text\(\)/);
+  assert.match(combinedServerSrc, /'User-Agent':\s*'aistudio-build'/);
 
   const idxApi404 = serverSrc.indexOf("app.all('/api/*'");
   const idxVite = serverSrc.indexOf('await createViteServer(');

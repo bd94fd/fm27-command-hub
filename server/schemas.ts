@@ -1,0 +1,257 @@
+import { Type, type Schema } from '@google/genai';
+
+export const ANALYZE_SCREENSHOT_SCHEMA: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    screenDetected: {
+      type: Type.STRING,
+      description: 'Detected FM27 screen type and in-game date',
+    },
+    inGameDate: {
+      type: Type.STRING,
+      description: 'In-game date in DD/MM/YYYY format',
+    },
+    competition: {
+      type: Type.STRING,
+      description: 'Competition and matchday',
+    },
+    opponent: {
+      type: Type.STRING,
+      description: 'Opponent club name',
+    },
+    venue: {
+      type: Type.STRING,
+      description: 'H for Home or A for Away',
+    },
+    result: {
+      type: Type.STRING,
+      description: 'W, D, or L from managed club perspective',
+    },
+    score: {
+      type: Type.STRING,
+      description: 'Scoreline from managed club perspective (e.g. 2 - 0)',
+    },
+    xGFor: {
+      type: Type.NUMBER,
+      description: 'Managed club expected goals if explicitly visible',
+    },
+    xGAgainst: {
+      type: Type.NUMBER,
+      description: 'Opponent expected goals if explicitly visible',
+    },
+    possession: {
+      type: Type.NUMBER,
+      description: 'Managed club possession percentage integer if visible',
+    },
+    passCompletion: {
+      type: Type.NUMBER,
+      description: 'Managed club pass completion percentage integer if visible',
+    },
+    shotsFor: {
+      type: Type.STRING,
+      description: 'Managed club shots (on target) string if visible',
+    },
+    shotsAgainst: {
+      type: Type.STRING,
+      description: 'Opponent shots (on target) string if visible',
+    },
+    cccFor: {
+      type: Type.NUMBER,
+      description: 'Managed club clear cut chances integer if visible',
+    },
+    cccAgainst: {
+      type: Type.NUMBER,
+      description: 'Opponent clear cut chances integer if visible',
+    },
+    goalTimeline: {
+      type: Type.STRING,
+      description: 'Minute-by-minute goal scorers and assists',
+    },
+    potm: {
+      type: Type.STRING,
+      description: 'Player of the Match name, rating, and key stats',
+    },
+    defensiveWatchpoints: {
+      type: Type.STRING,
+      description: 'Defensive unit ratings and tactical watchpoints',
+    },
+    headlineTitle: {
+      type: Type.STRING,
+      description: 'Match fixture or event title',
+    },
+    outcomeMetric: {
+      type: Type.STRING,
+      description: 'Result, scoreline, and xG summary',
+    },
+    executiveBullets: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description: '3-4 sharp tactical & Data Hub insights',
+    },
+    recommendedClicks: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description: '3 immediate in-game clicks before hitting Continue',
+    },
+    tacticalAuditSummary: {
+      type: Type.STRING,
+      description: '1-paragraph synthesis for Table 1G & Chronicles',
+    },
+  },
+  required: [
+    'screenDetected',
+    'inGameDate',
+    'headlineTitle',
+    'outcomeMetric',
+    'executiveBullets',
+    'recommendedClicks',
+    'tacticalAuditSummary',
+  ],
+};
+
+export const TACTICAL_CHAT_SCHEMA: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    screenDetected: {
+      type: Type.STRING,
+      description:
+        'Concise label of what you analyzed on this turn (e.g. "Tactical Follow-Up: Flank Overload & Role Pairing", "Live .fm Save Full Club Audit", "Data Hub Match Report", etc.)',
+    },
+    inGameDate: {
+      type: Type.STRING,
+      description: 'In-game date in DD/MM/YYYY format (or "--" if not yet loaded)',
+    },
+    analysisMarkdown: {
+      type: Type.STRING,
+      description:
+        'Clever, context-aware Markdown response directly answering the manager’s question or auditing the save/screenshot using FM27 Patch 27.1.0 physics, Dual-Phase IP/OOP mechanics, Playbook v2.0 rules, and the live squad/fixture data without fabricating any missing numbers.',
+    },
+    immediateClicks: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description: '3 concrete, numbered in-game clicks/actions tailored to this exact turn',
+    },
+    followUpQuestions: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description:
+        '3 smart, context-aware follow-up questions or tactical scenarios the manager can click next to continue this conversation',
+    },
+    targetSheetTable: {
+      type: Type.STRING,
+      description:
+        'Which Master Sheet table this update belongs to: TABLE_1G_MATCH_LOG, TABLE_1H_SCOUTING, TABLE_1I_TACTICAL_AUDIT, or GENERAL_CHRONICLE',
+    },
+    chronicleTitle: {
+      type: Type.STRING,
+      description: 'Title for Event # in Master Doc & Tab 10 Chronicles',
+    },
+    chronicleOutcomeMetric: {
+      type: Type.STRING,
+      description: 'Headline result, metric, or tactical decision summary for Chronicles',
+    },
+    docEventBulletBlock: {
+      type: Type.STRING,
+      description:
+        'Ready-to-insert flat bullet block (using ● and -) for Event # in Section 5 of the Master Google Doc above [INSERT NEXT CHRONOLOGICAL EVENT HERE]',
+    },
+    sheetRowValues: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description:
+        '6 or 7 column values matching the detected Master Sheet table row ready to append directly to Google Sheets',
+    },
+    isMatchResult: {
+      type: Type.BOOLEAN,
+      description:
+        'True ONLY if this submission reports a newly completed match result not already in the Match Log',
+    },
+    matchFields: {
+      type: Type.OBJECT,
+      properties: {
+        competition: { type: Type.STRING },
+        opponent: { type: Type.STRING },
+        venue: { type: Type.STRING },
+        result: { type: Type.STRING },
+        score: { type: Type.STRING },
+        xGFor: { type: Type.NUMBER },
+        xGAgainst: { type: Type.NUMBER },
+        possession: { type: Type.NUMBER },
+        passCompletion: { type: Type.NUMBER },
+        shotsFor: { type: Type.STRING },
+        shotsAgainst: { type: Type.STRING },
+        cccFor: { type: Type.NUMBER },
+        cccAgainst: { type: Type.NUMBER },
+        goalTimeline: { type: Type.STRING },
+        potm: { type: Type.STRING },
+        defensiveWatchpoints: { type: Type.STRING },
+        tacticalAudit: { type: Type.STRING },
+      },
+    },
+    playerUpdates: {
+      type: Type.ARRAY,
+      description:
+        'Any squad player IP/OOP role changes, status changes (Starter/Rotation/Youth/Injured), rating, goals, assists, minutes, condition, or tactical note updates agreed upon in this chat turn or extracted from a screenshot',
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          name: {
+            type: Type.STRING,
+            description: 'Exact player name from the squad',
+          },
+          ipRole: {
+            type: Type.STRING,
+            description: 'Updated In-Possession (IP) role if changed or recommended',
+          },
+          oopRole: {
+            type: Type.STRING,
+            description: 'Updated Out-of-Possession (OOP) role if changed or recommended',
+          },
+          status: {
+            type: Type.STRING,
+            description: 'Updated squad status if changed: Starter, Rotation, Youth, or Injured',
+          },
+          condition: {
+            type: Type.NUMBER,
+            description: 'Updated condition percentage (1-100) if explicitly reported',
+          },
+          rating: {
+            type: Type.NUMBER,
+            description: 'Updated or latest match rating if explicitly shown',
+          },
+          goalsAdded: {
+            type: Type.NUMBER,
+            description: 'Goals scored in a new match to add to total',
+          },
+          assistsAdded: {
+            type: Type.NUMBER,
+            description: 'Assists in a new match to add to total',
+          },
+          minutesAdded: {
+            type: Type.NUMBER,
+            description: 'Minutes played in a new match to add to total',
+          },
+          notes: {
+            type: Type.STRING,
+            description:
+              'Updated tactical, role, scouting, mentoring, or medical report note for this player',
+          },
+        },
+        required: ['name', 'notes'],
+      },
+    },
+  },
+  required: [
+    'screenDetected',
+    'inGameDate',
+    'analysisMarkdown',
+    'immediateClicks',
+    'followUpQuestions',
+    'targetSheetTable',
+    'chronicleTitle',
+    'chronicleOutcomeMetric',
+    'docEventBulletBlock',
+    'sheetRowValues',
+    'isMatchResult',
+  ],
+};
