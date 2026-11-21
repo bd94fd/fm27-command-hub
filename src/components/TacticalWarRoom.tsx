@@ -8,6 +8,10 @@ import {
 } from 'lucide-react';
 import { PLAYBOOK_V2_REFERENCE_RULES } from '../data/matchAndTacticsData';
 import { PlayerRecord } from '../types/fm27';
+import {
+  ActiveSuspensionRecord,
+  CompetitionRegistrationRules,
+} from '../types/fmSave';
 import { buildDynamicTacticalPlan } from '../utils/fmSyncEngine';
 
 interface TacticalWarRoomProps {
@@ -15,6 +19,8 @@ interface TacticalWarRoomProps {
   saveDate: string;
   nextFixture: string;
   clubName: string;
+  activeSuspensions?: ActiveSuspensionRecord[];
+  competitionRules?: CompetitionRegistrationRules | null;
 }
 
 export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
@@ -22,6 +28,8 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
   saveDate,
   nextFixture,
   clubName,
+  activeSuspensions = [],
+  competitionRules = null,
 }) => {
   const tacticalPlan = buildDynamicTacticalPlan(players);
   const hasSquad = players.length > 0;
@@ -29,6 +37,18 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
     clubName && clubName !== '--' && clubName !== 'Awaiting .fm Save'
       ? clubName
       : 'Managed Club';
+
+  const combinedSuspensions: ActiveSuspensionRecord[] =
+    activeSuspensions.length > 0
+      ? activeSuspensions
+      : players.flatMap((p) => p.activeSuspensions || []);
+
+  const banByPlayerUid = new Map<number, ActiveSuspensionRecord>();
+  const banByNameLower = new Map<string, ActiveSuspensionRecord>();
+  for (const b of combinedSuspensions) {
+    if (b.playerUid) banByPlayerUid.set(b.playerUid, b);
+    if (b.playerName) banByNameLower.set(b.playerName.toLowerCase(), b);
+  }
 
   return (
     <div className="space-y-8">
@@ -120,6 +140,32 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
         </div>
       ) : (
         <>
+          {/* Pass 1 Tier-1: Active Matchday Suspensions Alert */}
+          {combinedSuspensions.length > 0 && (
+            <div className="p-4 rounded-xl border border-rose-500/40 bg-rose-950/25 space-y-2">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-rose-300">
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>
+                  Active Disciplinary Suspensions ({combinedSuspensions.length}) — Do Not Select as Starters
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {combinedSuspensions.map((ban, idx) => (
+                  <div
+                    key={`${ban.playerUid}-${ban.competitionName}-${idx}`}
+                    className="rounded-lg border border-rose-500/40 bg-slate-950/70 px-3 py-1.5 text-xs text-rose-200"
+                  >
+                    <strong className="text-white">{ban.playerName}</strong>{' '}
+                    <span className="font-mono text-rose-300 font-bold">
+                      BANNED ({ban.matchesRemaining}m)
+                    </span>{' '}
+                    · {ban.competitionName} ({ban.scope}) — {ban.reason}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Dynamically Built Dual-Phase 4-3-3 Starting XI */}
           <div className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-4 border-b border-slate-200 dark:border-slate-800">
@@ -134,9 +180,16 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
                   Jumping Reach, and Condition.
                 </p>
               </div>
-              <span className="text-xs font-mono text-emerald-700 dark:text-emerald-400">
-                Save Date: {saveDate} · Tracking Wingers OOP Active
-              </span>
+              <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
+                <span className="text-emerald-700 dark:text-emerald-400">
+                  Save Date: {saveDate} · Tracking Wingers OOP Active
+                </span>
+                {competitionRules?.matchdaySubsLimit && (
+                  <span className="rounded bg-sky-500/15 border border-sky-500/30 px-2 py-0.5 text-[11px] text-sky-300">
+                    Subs Limit: {competitionRules.matchdaySubsLimit}
+                  </span>
+                )}
+              </div>
             </div>
 
             <div className="overflow-x-auto mt-4">
@@ -159,16 +212,29 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-xs">
                   {tacticalPlan.startingXI.map((item) => {
                     const a = item.player.attributes;
+                    const activeBan =
+                      (item.player.uid ? banByPlayerUid.get(item.player.uid) : undefined) ||
+                      banByNameLower.get(item.player.name.toLowerCase()) ||
+                      item.player.activeSuspensions?.[0];
                     return (
                       <tr
                         key={item.slotCode}
-                        className="hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                        className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 ${
+                          activeBan ? 'bg-rose-950/20' : ''
+                        }`}
                       >
                         <td className="py-2.5 pr-4 font-mono font-bold text-emerald-700 dark:text-emerald-400">
                           {item.slotCode}
                         </td>
                         <td className="py-2.5 pr-4 font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap">
-                          #{item.player.number} {item.player.name}
+                          <span>
+                            #{item.player.number} {item.player.name}
+                          </span>
+                          {activeBan && (
+                            <span className="ml-2 rounded bg-rose-500/20 border border-rose-500/50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-rose-300">
+                              BANNED ({activeBan.matchesRemaining}m)
+                            </span>
+                          )}
                         </td>
                         <td className="py-2.5 pr-4 text-slate-700 dark:text-slate-300 whitespace-nowrap">
                           {item.ipRole}

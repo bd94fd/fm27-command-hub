@@ -28,16 +28,62 @@ export interface Fm27AccuracyCheckResult {
 }
 
 interface RawRoleDef {
+  positionGroup: string;
   name: string;
-  phase?: string;
+  phase: 'In Possession' | 'Out of Possession';
+  priorities?: Record<string, string>;
 }
 
-const CANONICAL_ROLE_NAMES: string[] = Array.isArray(fm27RolesRaw)
-  ? (fm27RolesRaw as RawRoleDef[]).map((r) => r.name).filter(Boolean)
-  : Object.values(fm27RolesRaw as Record<string, unknown>)
-      .flatMap((v) => (Array.isArray(v) ? (v as RawRoleDef[]) : []))
-      .map((r) => r?.name)
-      .filter((n): n is string => Boolean(n));
+export interface Fm27RoleCatalogEntry {
+  id: string;
+  positionGroup: string;
+  name: string;
+  phase: 'IP' | 'OOP';
+  rawPhase: 'In Possession' | 'Out of Possession';
+  primaryAttributes: string[];
+  secondaryAttributes: string[];
+  priorities: Record<string, string>;
+}
+
+function formatAttrLabel(snake: string): string {
+  return snake
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+const RAW_ROLES: RawRoleDef[] = Array.isArray(fm27RolesRaw)
+  ? (fm27RolesRaw as unknown as RawRoleDef[])
+  : [];
+
+/**
+ * Pure FM27 Patch 27.1.0 Dual-Phase Role Catalog sourced strictly from src/data/fm27Roles.json.
+ * Zero legacy Defend/Support/Attack duties and zero retired FM24 roles.
+ */
+export const FM27_ROLE_CATALOG: Fm27RoleCatalogEntry[] = RAW_ROLES.map(
+  (r, idx) => {
+    const priorities = r.priorities || {};
+    const primaryAttributes: string[] = [];
+    const secondaryAttributes: string[] = [];
+    for (const [k, tier] of Object.entries(priorities)) {
+      if (tier === 'primary') primaryAttributes.push(formatAttrLabel(k));
+      else secondaryAttributes.push(formatAttrLabel(k));
+    }
+    const phase: 'IP' | 'OOP' =
+      r.phase === 'Out of Possession' ? 'OOP' : 'IP';
+    return {
+      id: `${phase.toLowerCase()}-${r.positionGroup.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${idx}`,
+      positionGroup: r.positionGroup,
+      name: r.name,
+      phase,
+      rawPhase: r.phase,
+      primaryAttributes,
+      secondaryAttributes,
+      priorities,
+    };
+  }
+);
+
+const CANONICAL_ROLE_NAMES: string[] = FM27_ROLE_CATALOG.map((r) => r.name);
 
 export const RETIRED_FM24_ROLES = [
   'Mezzala',
@@ -72,7 +118,7 @@ export const FM27_KNOWLEDGE_BASE: Fm27KnowledgeEntry[] = [
     summary:
       'FM27 replaces legacy FM24 role duties (Defend/Support/Attack) with separate In-Possession (IP) and Out-of-Possession (OOP) roles for every position slot.',
     keyFacts: [
-      'Every outfield slot requires an authentic IP role and an authentic OOP role from the 51-role FM27 catalog.',
+      'Every outfield slot requires an authentic IP role and an authentic OOP role from the 68-role FM27 dual-phase catalog.',
       'Retired FM24 roles (Mezzala, Enganche, Trequartista, Carrilero, Raumdeuter, Segundo Volante) and legacy Defend/Support/Attack duties do not exist in FM27.',
       'Tracking Winger (TW) OOP on both flanks prevents 2v1 full-back overlaps against attacking wing-backs, whereas Wide Outlet Winger OOP leaves flanks exposed in defensive transition.',
       'Outlet Centre Forward (OCF) OOP stays high as a counter-attacking reference while Pressing Forward OOP triggers high-line harassment.',

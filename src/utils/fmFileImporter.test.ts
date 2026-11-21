@@ -38,7 +38,7 @@ test('inspectFmSaveBuffer detects FMF binary header, version, date, and club met
 test('parseFmStructuredExport parses real FM27 Attributes CSV and merges attribute changes into squad', () => {
   const csvPath = path.resolve(
     process.cwd(),
-    'public/assets/aistudio/player-database_20261118_093343_11119b9e.csv'
+    'src/utils/__fixtures__/player-database_20261118_093343_11119b9e.csv'
   );
   const rawCsv = fs.readFileSync(csvPath, 'utf-8');
 
@@ -65,7 +65,7 @@ test('parseFmStructuredExport parses real FM27 Attributes CSV and merges attribu
 test('parseFmStructuredExport parses real FM27 Stats CSV and updates squad stats & ratings', () => {
   const csvPath = path.resolve(
     process.cwd(),
-    'public/assets/aistudio/player-database_20261118_093204_3aa9853a.csv'
+    'src/utils/__fixtures__/player-database_20261118_093204_3aa9853a.csv'
   );
   const rawCsv = fs.readFileSync(csvPath, 'utf-8');
 

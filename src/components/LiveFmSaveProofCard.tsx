@@ -5,8 +5,13 @@ import {
   ChevronUp,
   Database,
   AlertTriangle,
+  Clock,
 } from 'lucide-react';
-import { HydratedSaveState } from '../utils/fmSaveHydrator';
+import {
+  HydratedSaveState,
+  formatStepTimingLabel,
+} from '../utils/fmSaveHydrator';
+import { sanitizeReaderNotes } from '../utils/apiResponse';
 
 interface LiveFmSaveProofCardProps {
   hydrated: HydratedSaveState;
@@ -16,6 +21,7 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
   hydrated,
 }) => {
   const [showRawInspector, setShowRawInspector] = useState(false);
+  const [showReaderNotes, setShowReaderNotes] = useState(false);
   const { decodedPayload: d } = hydrated;
 
   const topPlayers = [...d.players]
@@ -31,6 +37,18 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
   const targetsCount = (hydrated.recruitmentTargets || d.recruitmentTargets || []).length;
   const removedPlayers = hydrated.removedPlayers || [];
   const runway = hydrated.financialRunway || null;
+  const stepTimings =
+    hydrated.stepTimingsMs && Object.keys(hydrated.stepTimingsMs).length > 0
+      ? hydrated.stepTimingsMs
+      : d.stepTimingsMs || {};
+  const timingEntries = Object.entries(stepTimings).filter(
+    ([, ms]) => typeof ms === 'number' && Number.isFinite(ms)
+  );
+  const rawWarningsList =
+    hydrated.extractionWarnings && hydrated.extractionWarnings.length > 0
+      ? hydrated.extractionWarnings
+      : d.extractionWarnings || d.warnings || [];
+  const warningsList = sanitizeReaderNotes(rawWarningsList);
 
   return (
     <section className="p-5 bg-emerald-950/30 border border-emerald-500/40 rounded-xl space-y-4">
@@ -139,13 +157,58 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
         </div>
       )}
 
-      {d.warnings && d.warnings.length > 0 && (
-        <div className="px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-300 flex items-center gap-2">
-          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-          <span>
-            Non-fatal table notes from fmsave {d.meta.fmsaveVersion}:{' '}
-            {d.warnings.join(' · ')}
+      {timingEntries.length > 0 && (
+        <div className="px-3 py-2 rounded-lg bg-slate-950/75 border border-slate-800 text-[11px] flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="inline-flex items-center gap-1 font-mono font-semibold uppercase tracking-wider text-emerald-400">
+            <Clock className="w-3.5 h-3.5 shrink-0" />
+            Decode Timings{hydrated.fastSync ? ' (Fast Sync)' : ''}:
           </span>
+          {timingEntries.map(([stepKey, ms]) => {
+            const isTotal = stepKey === 'totalDecodeMs';
+            const isSlow = !isTotal && ms >= 5000;
+            return (
+              <span
+                key={stepKey}
+                className={`font-mono tabular-nums ${
+                  isSlow
+                    ? 'text-amber-300 font-semibold'
+                    : isTotal
+                      ? 'text-emerald-300 font-bold'
+                      : 'text-slate-300'
+                }`}
+              >
+                {formatStepTimingLabel(stepKey)}:{' '}
+                {ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {warningsList.length > 0 && (
+        <div className="space-y-1.5">
+          <button
+            type="button"
+            onClick={() => setShowReaderNotes((prev) => !prev)}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/30 text-[11px] font-medium text-amber-300 transition cursor-pointer"
+          >
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+            <span>FM27 27.1 Reader Notes ({warningsList.length})</span>
+            {showReaderNotes ? (
+              <ChevronUp className="w-3.5 h-3.5 shrink-0" />
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+            )}
+          </button>
+          {showReaderNotes && (
+            <div className="px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/25 text-[11px] text-amber-200/90">
+              <ul className="list-disc pl-4 space-y-0.5">
+                {warningsList.map((note, idx) => (
+                  <li key={idx}>{note}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
@@ -336,7 +399,8 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
                   scoutBadges: p.scoutBadges || [],
                   traitsCount: (p.traits || []).length,
                 })),
-                warnings: d.warnings || [],
+                stepTimingsMs: stepTimings,
+                warnings: warningsList,
               },
               null,
               2

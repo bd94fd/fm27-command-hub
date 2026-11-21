@@ -3,8 +3,11 @@ import test from 'node:test';
 import { PlayerRecord } from '../types/fm27';
 import {
   buildSquadTransferAudit,
+  computeDynamicSquadTierBenchmarks,
   parseSignedMoneyString,
 } from './transferAudit';
+import { computeDynamicScatterScale } from '../components/FootballAnalyticsCharts';
+import { DivisionBenchmarks } from '../types/fmSave';
 
 function makePlayer(overrides: Partial<PlayerRecord>): PlayerRecord {
   return {
@@ -170,3 +173,111 @@ test('buildSquadTransferAudit recommends Sell + Youth Successor, Let Expire, Ren
   assert.equal(byId['cm-aging-expiring'].verdict, 'Let Expire');
   assert.equal(byId['gk-pricey-backup'].verdict, 'Replace Before Selling');
 });
+
+test('Pass 1: computeDynamicSquadTierBenchmarks scales to lower-league £350/wk squads and detects division deficits', () => {
+  const lowerLeagueSquad: PlayerRecord[] = [
+    makePlayer({
+      id: 'll-def',
+      name: 'Slow CB',
+      position: 'D (C)',
+      wagePw: 320,
+      ability: 3.0,
+      attributes: {
+        pace: 9,
+        acceleration: 9,
+        stamina: 11,
+        jumpingReach: 13,
+        determination: 12,
+        passing: 9,
+        finishing: 5,
+        tackling: 10,
+        firstTouch: 9,
+        decisions: 10,
+        workRate: 11,
+        offTheBall: 7,
+      },
+      contractDetails: {
+        promisedPlayingTime: 'Regular Starter',
+        optionalExtensionYears: 1,
+        releaseClauses: [{ type: 'Minimum Fee Release Clause', amount: 250000 }],
+        bonuses: {},
+        loanWageContributionPct: null,
+      },
+      activeSuspensions: [
+        {
+          playerUid: 101,
+          playerName: 'Slow CB',
+          matchesRemaining: 2,
+          competitionName: '1e Nationale VV',
+          reason: 'Red Card',
+          scope: 'league',
+        },
+      ],
+    }),
+    makePlayer({
+      id: 'll-mid',
+      name: 'Workhorse CM',
+      position: 'M (C)',
+      wagePw: 380,
+      ability: 3.5,
+    }),
+    makePlayer({
+      id: 'll-fwd',
+      name: 'Target ST',
+      position: 'ST (C)',
+      wagePw: 420,
+      ability: 4.0,
+    }),
+  ];
+
+  const divBenchmarks: DivisionBenchmarks = {
+    competitionName: '1e Nationale VV',
+    scope: 'club_and_division',
+    clubCount: 16,
+    byPositionGroup: {
+      GK: { sampleSize: 32, medianWeeklyWage: 300, medianAttributes: { reflexes: 12 } },
+      DEF: { sampleSize: 96, medianWeeklyWage: 340, medianAttributes: { pace: 12, tackling: 13, passing: 11 } },
+      MID: { sampleSize: 96, medianWeeklyWage: 360, medianAttributes: { passing: 12 } },
+      FWD: { sampleSize: 48, medianWeeklyWage: 400, medianAttributes: { finishing: 13 } },
+    },
+  };
+
+  const bench = computeDynamicSquadTierBenchmarks(lowerLeagueSquad, divBenchmarks);
+  assert.equal(bench.divisionCompared, true);
+  assert.ok(bench.medianPaidWeeklyWage >= 320 && bench.medianPaidWeeklyWage <= 420);
+  assert.ok(bench.divisionDeficits.some((d) => /DEF/i.test(d) && /pace|tackling/i.test(d)));
+
+  const audit = buildSquadTransferAudit(
+    lowerLeagueSquad,
+    '12/10/2027',
+    { balanceLabel: '-£400K', wagePayrollWeekly: 9200, wageBudgetWeekly: 10200 },
+    divBenchmarks
+  );
+  const defAdvice = audit.playerAdvice.find((a) => a.player.id === 'll-def');
+  assert.ok(defAdvice);
+  assert.ok(defAdvice.tags.some((t) => /Club Option \+1y/i.test(t)));
+  assert.ok(defAdvice.tags.some((t) => /Release Clause/i.test(t)));
+  assert.ok(defAdvice.tags.some((t) => /BANNED \(2m\)/i.test(t)));
+});
+
+test('Pass 1: computeDynamicScatterScale adapts dynamically to lower-league wages vs top-flight valuations with zero hardcoded €40M/€100M floors', () => {
+  const lowerLeague = [
+    makePlayer({ id: 'a', wagePw: 250, marketValue: 0 }),
+    makePlayer({ id: 'b', wagePw: 420, marketValue: 0 }),
+    makePlayer({ id: 'c', wagePw: 600, marketValue: 0 }),
+  ];
+  const llScale = computeDynamicScatterScale(lowerLeague);
+  assert.equal(llScale.metric, 'wagePw');
+  assert.ok(llScale.maxY >= 600 && llScale.maxY <= 1000, `Expected dynamic lower-league wage ceiling <= 1000, got ${llScale.maxY}`);
+  assert.match(llScale.formatTick(llScale.maxY), /\/wk$/);
+
+  const topFlight = [
+    makePlayer({ id: 'x', wagePw: 85000, marketValue: 18_500_000 }),
+    makePlayer({ id: 'y', wagePw: 120000, marketValue: 42_000_000 }),
+  ];
+  const tfScale = computeDynamicScatterScale(topFlight);
+  assert.equal(tfScale.metric, 'marketValue');
+  assert.ok(tfScale.maxY >= 42_000_000 && tfScale.maxY <= 60_000_000);
+  assert.match(tfScale.formatTick(tfScale.maxY), /M$/);
+});
+

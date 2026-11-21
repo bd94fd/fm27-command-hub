@@ -276,6 +276,11 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                 <span className="rounded-md bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-xs font-semibold text-amber-300">
                   {player.ability.toFixed(1)}★ / {player.potential.toFixed(1)}★ Pot
                 </span>
+                {player.activeSuspensions && player.activeSuspensions.length > 0 && (
+                  <span className="rounded-md bg-rose-500/20 border border-rose-500/50 px-2 py-0.5 text-xs font-bold uppercase text-rose-300">
+                    BANNED ({player.activeSuspensions[0].matchesRemaining}m)
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
                 Age {player.age} · {player.preferredFoot || 'Right'} Foot
@@ -355,6 +360,23 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
 
         {/* Body */}
         <div className="p-5 space-y-4">
+          {player.activeSuspensions && player.activeSuspensions.length > 0 && (
+            <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-xs text-rose-200 space-y-1">
+              <div className="font-bold uppercase tracking-wider text-rose-300">
+                Active Disciplinary Suspension — Do Not Select as Starter
+              </div>
+              {player.activeSuspensions.map((ban, idx) => (
+                <div key={`${ban.competitionName}-${idx}`}>
+                  Banned for{' '}
+                  <strong className="font-mono text-white">
+                    {ban.matchesRemaining} match{ban.matchesRemaining === 1 ? '' : 'es'}
+                  </strong>{' '}
+                  in <strong>{ban.competitionName}</strong> ({ban.scope}) — {ban.reason}.
+                </div>
+              ))}
+            </div>
+          )}
+
           {activeTab === 'attributes' && (
             <>
               {/* Pass 0: Scout Report Badges, Last 5 Form & Readable Player Traits */}
@@ -707,6 +729,75 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     <span className="font-mono text-amber-300">
                       {player.ability.toFixed(1)}★ / {player.potential.toFixed(1)}★
                     </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Pass 1 Tier-1: Contract Clauses & Promised Playing Time */}
+              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-3 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="font-bold uppercase tracking-wider text-slate-400">
+                    Contract Clauses &amp; Promised Playing Time
+                  </h4>
+                  <span className="rounded bg-indigo-500/15 border border-indigo-500/30 px-2 py-0.5 text-[11px] font-semibold text-indigo-300">
+                    {player.contractDetails?.promisedPlayingTime || player.status}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
+                    <div className="text-[10px] uppercase text-slate-400">
+                      Optional Club Extension
+                    </div>
+                    <div className="mt-0.5 font-mono font-semibold text-slate-100">
+                      {player.contractDetails?.optionalExtensionYears
+                        ? `+${player.contractDetails.optionalExtensionYears} year${player.contractDetails.optionalExtensionYears === 1 ? '' : 's'} (Club Option)`
+                        : 'None recorded'}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
+                    <div className="text-[10px] uppercase text-slate-400">
+                      Release Clauses
+                    </div>
+                    {player.contractDetails?.releaseClauses &&
+                    player.contractDetails.releaseClauses.length > 0 ? (
+                      <div className="mt-0.5 space-y-0.5">
+                        {player.contractDetails.releaseClauses.map((rc, idx) => (
+                          <div key={`${rc.type}-${idx}`} className="font-mono text-amber-300">
+                            {rc.type}: £{rc.amount.toLocaleString()}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-0.5 text-slate-400">No release clauses</div>
+                    )}
+                  </div>
+                  <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
+                    <div className="text-[10px] uppercase text-slate-400">
+                      Bonuses &amp; Loan Split
+                    </div>
+                    <div className="mt-0.5 space-y-0.5 font-mono text-slate-200">
+                      {player.contractDetails?.bonuses?.appearanceFee ? (
+                        <div>App Fee: £{player.contractDetails.bonuses.appearanceFee.toLocaleString()}</div>
+                      ) : null}
+                      {player.contractDetails?.bonuses?.goalBonus ? (
+                        <div>Goal Bonus: £{player.contractDetails.bonuses.goalBonus.toLocaleString()}</div>
+                      ) : null}
+                      {player.contractDetails?.bonuses?.cleanSheetBonus ? (
+                        <div>Clean Sheet: £{player.contractDetails.bonuses.cleanSheetBonus.toLocaleString()}</div>
+                      ) : null}
+                      {typeof player.contractDetails?.loanWageContributionPct === 'number' ? (
+                        <div className="text-sky-300">
+                          Loan Wage Split: {player.contractDetails.loanWageContributionPct}%
+                        </div>
+                      ) : null}
+                      {!player.contractDetails?.bonuses?.appearanceFee &&
+                        !player.contractDetails?.bonuses?.goalBonus &&
+                        !player.contractDetails?.bonuses?.cleanSheetBonus &&
+                        typeof player.contractDetails?.loanWageContributionPct !== 'number' && (
+                          <span className="font-sans text-slate-400">Standard terms</span>
+                        )}
+                    </div>
                   </div>
                 </div>
               </div>

@@ -1,23 +1,161 @@
 import { FmImportScope, Pass0ExtractionPayload } from '../types/fmSave';
 import { DecodedFmSavePayload, WORKER_CACHE_BUSTER } from '../utils/fmSaveHydrator';
 
+// Worker bundle uses WORKER_CACHE_BUSTER ('?v=14') from fmSaveHydrator.ts
+export const WORKER_INACTIVITY_TIMEOUT_MS = 90_000;
+export const WORKER_HARD_CEILING_MS = 300_000;
+
+export type FmSavePayloadUnion = Pass0ExtractionPayload | DecodedFmSavePayload;
+
+export interface CheckpointSnapshot<T extends FmSavePayloadUnion = FmSavePayloadUnion> {
+  stage: string;
+  payload: T;
+}
+
+export function isValidSquadCheckpoint(payload: unknown): payload is FmSavePayloadUnion {
+  if (!payload || typeof payload !== 'object') return false;
+  const candidate = payload as { players?: unknown; squad?: unknown };
+  if (Array.isArray(candidate.players) && candidate.players.length > 0) {
+    return true;
+  }
+  if (Array.isArray(candidate.squad) && candidate.squad.length > 0) {
+    return true;
+  }
+  return false;
+}
+
+export function formatCheckpointStageLabel(stage: string): string {
+  switch (stage) {
+    case 'stage_1_squad':
+      return 'Stage 1 (Club & Squad)';
+    case 'stage_2_club_core':
+      return 'Stage 2 (Finances, Staff, Tactics & Mentoring)';
+    case 'stage_3_fixtures_league':
+      return 'Stage 3 (Fixtures & Full Domestic League Table)';
+    default:
+      return stage || 'Squad Checkpoint';
+  }
+}
+
+export function buildCheckpointRecoveryWarning(
+  reason: 'inactivity' | 'ceiling' | 'error',
+  stalledStageLabel: string,
+  elapsedSec: number,
+  checkpointStage: string,
+  limitSec?: number
+): string {
+  const safeElapsed = Math.max(0, Number(elapsedSec.toFixed(1)));
+  const checkpointDesc = formatCheckpointStageLabel(checkpointStage);
+  if (reason === 'inactivity') {
+    const cap = limitSec ?? Math.round(WORKER_INACTIVITY_TIMEOUT_MS / 1000);
+    return `Checkpoint recovery (${checkpointDesc}): "${stalledStageLabel}" stalled for ${cap}s at ${safeElapsed}s total — terminated stuck worker and preserved decoded squad & earlier stages.`;
+  }
+  if (reason === 'ceiling') {
+    const cap = limitSec ?? Math.round(WORKER_HARD_CEILING_MS / 1000);
+    return `Checkpoint recovery (${checkpointDesc}): "${stalledStageLabel}" hit the ${cap}s hard ceiling at ${safeElapsed}s total — terminated stuck worker and preserved decoded squad & earlier stages.`;
+  }
+  return `Checkpoint recovery (${checkpointDesc}): "${stalledStageLabel}" failed at ${safeElapsed}s total — preserved decoded squad & earlier stages.`;
+}
+
+export function applyCheckpointRecoveryWarning<T extends FmSavePayloadUnion>(
+  checkpointPayload: T,
+  warning: string,
+  totalElapsedMs?: number
+): T {
+  const cloned = { ...(checkpointPayload as unknown as Record<string, unknown>) };
+  const existingExtraction = Array.isArray(cloned.extractionWarnings)
+    ? [...(cloned.extractionWarnings as string[])]
+    : [];
+  if (!existingExtraction.includes(warning)) {
+    existingExtraction.push(warning);
+  }
+  cloned.extractionWarnings = existingExtraction;
+
+  if ('warnings' in cloned || 'players' in cloned) {
+    const existingWarnings = Array.isArray(cloned.warnings)
+      ? [...(cloned.warnings as string[])]
+      : [];
+    if (!existingWarnings.includes(warning)) {
+      existingWarnings.push(warning);
+    }
+    cloned.warnings = existingWarnings;
+  }
+
+  if (typeof totalElapsedMs === 'number' && Number.isFinite(totalElapsedMs)) {
+    const existingTimings =
+      cloned.stepTimingsMs && typeof cloned.stepTimingsMs === 'object'
+        ? { ...(cloned.stepTimingsMs as Record<string, number>) }
+        : {};
+    existingTimings.totalDecodeMs = Math.max(0, Math.round(totalElapsedMs));
+    cloned.stepTimingsMs = existingTimings;
+  }
+
+  return cloned as unknown as T;
+}
+
+export function formatWorkerTimeoutMessage(
+  kind: 'inactivity' | 'ceiling',
+  lastStageLabel: string,
+  elapsedSec: number,
+  limitSec: number
+): string {
+  const safeElapsed = Math.max(0, Math.round(elapsedSec));
+  if (kind === 'inactivity') {
+    return `Save decoding stalled for ${limitSec}s with no progress during "${lastStageLabel}" (total elapsed: ${safeElapsed}s). Enable "Fast Sync (Club Core — Recommended on Mobile)" next to the .fm file picker for very large saves or mobile devices.`;
+  }
+  return `Save decoding exceeded the ${limitSec}s hard ceiling during "${lastStageLabel}" (total elapsed: ${safeElapsed}s). Enable "Fast Sync (Club Core — Recommended on Mobile)" next to the .fm file picker to decode squad, attributes, league table, fixtures, finances, and staff in seconds.`;
+}
+
 export interface WorkerProgressEvent {
   stage: 'boot' | 'install' | 'read' | 'parse';
   step?: string;
   label: string;
+  elapsedSec?: number;
+}
+
+export interface WorkerLike {
+  onmessage: ((event: MessageEvent) => void) | null;
+  onerror: ((err: ErrorEvent) => void) | null;
+  onmessageerror: ((event: MessageEvent) => void) | null;
+  postMessage(message: unknown, transfer: Transferable[]): void;
+  postMessage(message: unknown): void;
+  terminate: () => void;
+}
+
+export interface FmSaveWorkerClientOptions {
+  workerFactory?: (url: string) => WorkerLike;
+  inactivityTimeoutMs?: number;
+  hardCeilingMs?: number;
 }
 
 export class FmSaveWorkerClient {
-  private worker: Worker | null = null;
+  private worker: WorkerLike | null = null;
   private activeRequestId: number = 0;
-  private watchdogTimer: ReturnType<typeof setTimeout> | null = null;
+  private inactivityTimer: ReturnType<typeof setTimeout> | null = null;
+  private hardCeilingTimer: ReturnType<typeof setTimeout> | null = null;
   private isJobActive: boolean = false;
   private activeReject: ((err: Error) => void) | null = null;
+  private workerFactory: (url: string) => WorkerLike;
+  private inactivityTimeoutMs: number;
+  private hardCeilingMs: number;
 
-  private clearWatchdog() {
-    if (this.watchdogTimer !== null) {
-      clearTimeout(this.watchdogTimer);
-      this.watchdogTimer = null;
+  constructor(options?: FmSaveWorkerClientOptions) {
+    this.workerFactory =
+      options?.workerFactory ??
+      ((url: string) => new Worker(url, { type: 'module' }));
+    this.inactivityTimeoutMs =
+      options?.inactivityTimeoutMs ?? WORKER_INACTIVITY_TIMEOUT_MS;
+    this.hardCeilingMs = options?.hardCeilingMs ?? WORKER_HARD_CEILING_MS;
+  }
+
+  private clearWatchdogs() {
+    if (this.inactivityTimer !== null) {
+      clearTimeout(this.inactivityTimer);
+      this.inactivityTimer = null;
+    }
+    if (this.hardCeilingTimer !== null) {
+      clearTimeout(this.hardCeilingTimer);
+      this.hardCeilingTimer = null;
     }
   }
 
@@ -26,7 +164,7 @@ export class FmSaveWorkerClient {
   }
 
   public cancelActiveJob(reason: string = 'Superceded by new save drop') {
-    this.clearWatchdog();
+    this.clearWatchdogs();
     if (this.worker && this.isJobActive) {
       this.worker.terminate();
       this.worker = null;
@@ -45,119 +183,175 @@ export class FmSaveWorkerClient {
     options?: {
       clubHint?: string;
       scope?: FmImportScope;
+      fastSync?: boolean;
       onProgress?: (progress: WorkerProgressEvent) => void;
+      onCheckpoint?: (checkpoint: CheckpointSnapshot) => void;
     }
-  ): Promise<Pass0ExtractionPayload | DecodedFmSavePayload> {
+  ): Promise<FmSavePayloadUnion> {
     this.cancelActiveJob('New parse job initiated');
 
     const requestId = ++this.activeRequestId;
     this.isJobActive = true;
-    this.worker = new Worker(`/fm-save-worker.js${WORKER_CACHE_BUSTER}`, {
-      type: 'module',
-    });
+    this.worker = this.workerFactory(`/fm-save-worker.js${WORKER_CACHE_BUSTER}`);
 
-    return new Promise<Pass0ExtractionPayload | DecodedFmSavePayload>(
-      (resolve, reject) => {
-        const TIMEOUT_MS = 150_000; // 150 seconds watchdog budget
-        let lastStageLabel = 'Initializing local .fm reader';
+    return new Promise<FmSavePayloadUnion>((resolve, reject) => {
+      const startedAtMs = Date.now();
+      let lastStageLabel = 'Initializing local .fm reader';
+      let latestCheckpoint: CheckpointSnapshot | null = null;
 
-        const resetWatchdog = () => {
-          this.clearWatchdog();
-          this.watchdogTimer = setTimeout(() => {
-            if (this.activeRequestId === requestId) {
-              const timeoutErr = new Error(
-                `Processing timeout: Save file extraction exceeded 150 seconds budget during "${lastStageLabel}".`
-              );
-              this.activeReject = null;
-              if (this.worker) {
-                this.worker.terminate();
-                this.worker = null;
-              }
-              this.isJobActive = false;
-              reject(timeoutErr);
-            }
-          }, TIMEOUT_MS);
-        };
-
-        this.activeReject = reject;
-        resetWatchdog();
-
-        this.worker!.onmessage = (event: MessageEvent) => {
-          if (this.activeRequestId !== requestId) return;
-          const data = event.data || {};
-
-          if (data.type === 'stage') {
-            lastStageLabel = data.label || lastStageLabel;
-            resetWatchdog();
-            options?.onProgress?.({
-              stage: data.stage,
-              step: data.step,
-              label: data.label,
-            });
-            return;
-          }
-
-          this.clearWatchdog();
-          this.isJobActive = false;
-          this.activeReject = null;
-
-          if (data.success || data.type === 'result') {
-            resolve((data.payload || data.data) as Pass0ExtractionPayload | DecodedFmSavePayload);
-          } else {
-            reject(
-              new Error(
-                data.error || data.message || 'Unknown worker extraction error.'
-              )
-            );
-          }
-        };
-
-        this.worker!.onerror = (err: ErrorEvent) => {
-          if (this.activeRequestId !== requestId) return;
-          this.clearWatchdog();
-          this.isJobActive = false;
-          this.activeReject = null;
-          this.worker?.terminate();
+      const terminateStuckWorker = () => {
+        this.clearWatchdogs();
+        this.activeReject = null;
+        if (this.worker) {
+          this.worker.terminate();
           this.worker = null;
-          reject(new Error(`Worker execution failed: ${err.message}`));
-        };
+        }
+        this.isJobActive = false;
+      };
 
-        this.worker!.onmessageerror = () => {
-          if (this.activeRequestId !== requestId) return;
-          this.clearWatchdog();
-          this.isJobActive = false;
-          this.activeReject = null;
-          this.worker?.terminate();
-          this.worker = null;
-          reject(
-            new Error(
-              'Could not transfer decoded data from the local .fm reader worker.'
+      const recoverOrReject = (
+        reason: 'inactivity' | 'ceiling' | 'error',
+        errorMessage: string,
+        limitMs?: number
+      ) => {
+        if (this.activeRequestId !== requestId) return;
+        const elapsedMs = Date.now() - startedAtMs;
+        const elapsedSec = elapsedMs / 1000;
+        terminateStuckWorker();
+
+        if (latestCheckpoint && isValidSquadCheckpoint(latestCheckpoint.payload)) {
+          const warning = buildCheckpointRecoveryWarning(
+            reason,
+            lastStageLabel,
+            elapsedSec,
+            latestCheckpoint.stage,
+            limitMs !== undefined ? Math.round(limitMs / 1000) : undefined
+          );
+          resolve(
+            applyCheckpointRecoveryWarning(
+              latestCheckpoint.payload,
+              warning,
+              elapsedMs
             )
           );
-        };
+          return;
+        }
 
-        if (typeof File !== 'undefined' && fileOrBuffer instanceof File) {
-          this.worker!.postMessage({
-            type: 'parse_fm',
-            file: fileOrBuffer,
+        reject(new Error(errorMessage));
+      };
+
+      const failWithTimeout = (kind: 'inactivity' | 'ceiling', limitMs: number) => {
+        const elapsedSec = (Date.now() - startedAtMs) / 1000;
+        recoverOrReject(
+          kind,
+          formatWorkerTimeoutMessage(
+            kind,
+            lastStageLabel,
+            elapsedSec,
+            Math.round(limitMs / 1000)
+          ),
+          limitMs
+        );
+      };
+
+      const resetInactivityWatchdog = () => {
+        if (this.inactivityTimer !== null) {
+          clearTimeout(this.inactivityTimer);
+        }
+        this.inactivityTimer = setTimeout(
+          () => failWithTimeout('inactivity', this.inactivityTimeoutMs),
+          this.inactivityTimeoutMs
+        );
+      };
+
+      this.activeReject = reject;
+      resetInactivityWatchdog();
+      this.hardCeilingTimer = setTimeout(
+        () => failWithTimeout('ceiling', this.hardCeilingMs),
+        this.hardCeilingMs
+      );
+
+      this.worker!.onmessage = (event: MessageEvent) => {
+        if (this.activeRequestId !== requestId) return;
+        const data = event.data || {};
+        if (data.requestId !== undefined && data.requestId !== requestId) return;
+
+        if (data.type === 'stage') {
+          lastStageLabel = data.label || lastStageLabel;
+          resetInactivityWatchdog();
+          options?.onProgress?.({
+            stage: data.stage,
+            step: data.step,
+            label: data.label,
+            elapsedSec:
+              typeof data.elapsedSec === 'number'
+                ? data.elapsedSec
+                : Number(((Date.now() - startedAtMs) / 1000).toFixed(1)),
+          });
+          return;
+        }
+
+        if (data.type === 'checkpoint') {
+          resetInactivityWatchdog();
+          const cpPayload = data.payload || data.data;
+          if (isValidSquadCheckpoint(cpPayload)) {
+            latestCheckpoint = {
+              stage: String(data.stage || 'stage_1_squad'),
+              payload: cpPayload,
+            };
+            options?.onCheckpoint?.(latestCheckpoint);
+          }
+          return;
+        }
+
+        if (data.success || data.type === 'result') {
+          this.clearWatchdogs();
+          this.isJobActive = false;
+          this.activeReject = null;
+          resolve((data.payload || data.data) as FmSavePayloadUnion);
+          return;
+        }
+
+        recoverOrReject(
+          'error',
+          data.error || data.message || 'Unknown worker extraction error.'
+        );
+      };
+
+      this.worker!.onerror = (err: ErrorEvent) => {
+        recoverOrReject('error', `Worker execution failed: ${err.message}`);
+      };
+
+      this.worker!.onmessageerror = () => {
+        recoverOrReject(
+          'error',
+          'Could not transfer decoded data from the local .fm reader worker.'
+        );
+      };
+
+      if (typeof File !== 'undefined' && fileOrBuffer instanceof File) {
+        this.worker!.postMessage({
+          type: 'parse_fm',
+          file: fileOrBuffer,
+          requestId,
+          clubHint: options?.clubHint || '',
+          scope: options?.scope || 'managed_club_only',
+          fastSync: Boolean(options?.fastSync),
+        });
+      } else {
+        const buf = fileOrBuffer as ArrayBuffer;
+        this.worker!.postMessage(
+          {
+            type: 'parse',
             requestId,
+            buffer: buf,
             clubHint: options?.clubHint || '',
             scope: options?.scope || 'managed_club_only',
-          });
-        } else {
-          const buf = fileOrBuffer as ArrayBuffer;
-          this.worker!.postMessage(
-            {
-              type: 'parse',
-              requestId,
-              buffer: buf,
-              clubHint: options?.clubHint || '',
-              scope: options?.scope || 'managed_club_only',
-            },
-            [buf]
-          );
-        }
+            fastSync: Boolean(options?.fastSync),
+          },
+          [buf]
+        );
       }
-    );
+    });
   }
 }

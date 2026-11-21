@@ -9,6 +9,8 @@ import {
   calculateFinancialRunway,
   hydratePass0Payload,
   hydrateAndMatchSquad,
+  shouldDefaultFastSync,
+  formatStepTimingLabel,
 } from './fmSaveHydrator';
 import {
   FmImportScope,
@@ -19,9 +21,32 @@ import {
   clampConditionSharpness,
   parseFmStructuredTabExport,
 } from '../types/fmSave';
-import { buildTacticalAnalystContext } from './tacticalAnalystContext';
+import {
+  buildTacticalAnalystContext,
+  buildLiveTacticalAnalystContext,
+} from './tacticalAnalystContext';
+import fs from 'node:fs';
+import path from 'node:path';
+import {
+  FmSaveWorkerClient,
+  WORKER_INACTIVITY_TIMEOUT_MS,
+  WORKER_HARD_CEILING_MS,
+  formatWorkerTimeoutMessage,
+  isValidSquadCheckpoint,
+  buildCheckpointRecoveryWarning,
+  applyCheckpointRecoveryWarning,
+  type WorkerLike,
+} from '../workers/fmSaveWorkerClient';
 import { SQUAD_PLAYERS } from '../data/squadData';
 import { COMPETITIVE_MATCH_LOGS } from '../data/matchAndTacticsData';
+import {
+  checkServerDecodeStatus,
+  decodeFmSaveWithServerFirst,
+  FmSaveProgressStage,
+  SERVER_UPLOAD_CHUNK_BYTES,
+  SERVER_MAX_SAVE_BYTES,
+  SERVER_JOB_POLL_INTERVAL_MS,
+} from '../services/fmSaveReader';
 
 function makeFullAttributes(overrides: Partial<PlayerAttributes> = {}): PlayerAttributes {
   return {
@@ -383,8 +408,8 @@ test('hydrateAppFromDecodedFmSave handles non-contract players with null expires
   assert.equal(trialist.expires.slice(-4), 'N/A');
 });
 
-test('Pass 0 worker cache-buster is bumped to ?v=9 and FmImportScope supports club_and_division with clamping', () => {
-  assert.equal(WORKER_CACHE_BUSTER, '?v=9');
+test('Worker cache-buster is bumped to ?v=14 and FmImportScope supports club_and_division with clamping', () => {
+  assert.equal(WORKER_CACHE_BUSTER, '?v=14');
 
   const scope: FmImportScope = 'club_and_division';
   assert.equal(scope, 'club_and_division');
@@ -901,4 +926,1247 @@ test('Pass 0 Full Integration: hydrateAppFromDecodedFmSave + buildTacticalAnalys
   assert.match(pass0Context, /Places Shots/);
   assert.doesNotMatch(pass0Context, /\bCA\s*\d+|\bPA\s*\d+/i);
 });
+
+test('Pass 1 Tier-1: hydrates contracts, structured suspensions, full league table, division benchmarks, and registration rules with zero CA/PA', () => {
+  const pass1Decoded: DecodedFmSavePayload = {
+    meta: {
+      game: 'FM27',
+      build: '27.1.0',
+      knownBuild: true,
+      saveName: 'Zelzate_Pass1.fm',
+      gameDateIso: '2027-10-12',
+      gameDateDmy: '12/10/2027',
+      clubUid: 4165,
+      clubName: 'KVV Zelzate',
+      managerName: 'Bobby Dean',
+      balance: -520000,
+      fmsaveVersion: '0.14.1',
+      importScope: 'club_and_division',
+    },
+    players: [
+      {
+        uid: 3001,
+        name: 'Quinten Boudry',
+        position: 'D (C)',
+        age: 27,
+        abilityStars: 4.0,
+        potentialStars: 4.0,
+        condition: 95,
+        sharpness: 96,
+        wagePw: 480,
+        expires: '30/06/2028',
+        contractExpiryMonths: 8,
+        onLoan: false,
+        teamSlot: 0,
+        apps: '7',
+        minutes: 630,
+        rating: 7.31,
+        goals: 1,
+        xG: 0.7,
+        xGPer90: 0.1,
+        assists: 0,
+        xA: 0.1,
+        xAPer90: 0.01,
+        drbPer90: 0.2,
+        prPassesPer90: 3.8,
+        hdrPct: 76,
+        intPer90: 2.3,
+        tckPct: 84,
+        distanceKm: 70.5,
+        yellowCards: 5,
+        redCards: 1,
+        attributes: {
+          pace: 11,
+          acceleration: 11,
+          stamina: 13,
+          jumpingReach: 15,
+          determination: 16,
+          passing: 11,
+          finishing: 6,
+          tackling: 14,
+          firstTouch: 11,
+          decisions: 13,
+          workRate: 13,
+          offTheBall: 8,
+        },
+        hiddenPersonality: null,
+        suspensionsCount: 1,
+        contractDetails: {
+          promisedPlayingTime: 'Important Player',
+          optionalExtensionYears: 1,
+          releaseClauses: [
+            { type: 'Minimum Fee Release Clause', amount: 250000 },
+            { type: 'Relegation Release Clause', amount: 75000 },
+          ],
+          bonuses: {
+            appearanceFee: 45,
+            cleanSheetBonus: 60,
+          },
+          loanWageContributionPct: null,
+        },
+        activeSuspensions: [
+          {
+            playerUid: 3001,
+            playerName: 'Quinten Boudry',
+            matchesRemaining: 2,
+            competitionName: '1e Nationale VV',
+            reason: 'Straight Red Card',
+            scope: 'league',
+          },
+        ],
+      },
+    ],
+    activeSuspensions: [
+      {
+        playerUid: 3001,
+        playerName: 'Quinten Boudry',
+        matchesRemaining: 2,
+        competitionName: '1e Nationale VV',
+        reason: 'Straight Red Card',
+        scope: 'league',
+      },
+    ],
+    playedMatches: [],
+    upcomingFixtures: [
+      {
+        dateIso: '2027-10-16',
+        dateDmy: '16/10/2027',
+        competition: '1e Nationale VV',
+        opponent: 'Royal Knokke FC',
+        venue: 'H',
+      },
+    ],
+    leagueStanding: {
+      competitionName: '1e Nationale VV',
+      position: 4,
+      totalTeams: 16,
+      played: 7,
+      won: 4,
+      drawn: 1,
+      lost: 2,
+      goalsFor: 12,
+      goalsAgainst: 7,
+      goalDiff: 5,
+      points: 13,
+      nextOpponentStanding: null,
+      top5: [
+        { pos: 1, club: 'Royal Knokke FC', played: 7, pts: 18, gd: 10 },
+        { pos: 4, club: 'KVV Zelzate', played: 7, pts: 13, gd: 5 },
+      ],
+      rows: [
+        { position: 1, clubUid: 101, clubName: 'Royal Knokke FC', played: 7, won: 6, drawn: 0, lost: 1, goalsFor: 16, goalsAgainst: 6, goalDifference: 10, points: 18, form: ['W', 'W', 'W'] },
+        { position: 2, clubUid: 102, clubName: 'KVK Tienen', played: 7, won: 5, drawn: 1, lost: 1, goalsFor: 14, goalsAgainst: 7, goalDifference: 7, points: 16, form: ['W', 'D', 'W'] },
+        { position: 3, clubUid: 103, clubName: 'KFC Dessel Sport', played: 7, won: 4, drawn: 2, lost: 1, goalsFor: 11, goalsAgainst: 6, goalDifference: 5, points: 14, form: ['D', 'W', 'W'] },
+        { position: 4, clubUid: 4165, clubName: 'KVV Zelzate', played: 7, won: 4, drawn: 1, lost: 2, goalsFor: 12, goalsAgainst: 7, goalDifference: 5, points: 13, form: ['W', 'L', 'W'] },
+        { position: 16, clubUid: 116, clubName: 'KSC Lokeren B', played: 7, won: 1, drawn: 1, lost: 5, goalsFor: 4, goalsAgainst: 14, goalDifference: -10, points: 4, form: ['L', 'L', 'D'] },
+      ],
+    },
+    divisionBenchmarks: {
+      competitionName: '1e Nationale VV',
+      scope: 'club_and_division',
+      clubCount: 16,
+      byPositionGroup: {
+        GK: { sampleSize: 32, medianWeeklyWage: 320, medianAttributes: { reflexes: 12, handling: 11 } },
+        DEF: { sampleSize: 110, medianWeeklyWage: 350, medianAttributes: { pace: 12, tackling: 13, passing: 10, jumpingReach: 13 } },
+        MID: { sampleSize: 115, medianWeeklyWage: 370, medianAttributes: { passing: 12, stamina: 12, workRate: 12 } },
+        FWD: { sampleSize: 55, medianWeeklyWage: 410, medianAttributes: { pace: 13, finishing: 13, offTheBall: 13 } },
+      },
+    },
+    competitionRules: {
+      competitionName: '1e Nationale VV',
+      maxSquadSize: 25,
+      minHomegrownClub: 4,
+      minHomegrownNation: 8,
+      maxForeignPlayers: 5,
+      u21Exempt: true,
+      matchdaySubsLimit: 5,
+    },
+    finances: {
+      month: '2027-10-01',
+      balance: -520000,
+      wagePayrollWeekly: 9600,
+      wageBudgetWeekly: 10200,
+      transferBudgetRemaining: 0,
+    },
+    activeInjuries: [],
+    tactics: [
+      {
+        index: 0,
+        name: '4-3-3 Counter Positive',
+        styleName: 'Fluid Counter-Attack',
+        mentality: 'Positive',
+        inPossessionFormation: '4-3-3 DM Wide',
+        outOfPossessionFormation: '4-1-4-1',
+        slots: [
+          { slotIndex: 0, position: 'GK', ipRole: 'Ball-Playing Goalkeeper', oopRole: 'Sweeper Keeper' },
+          { slotIndex: 1, position: 'D (C)', ipRole: 'Centre-Back', oopRole: 'Stopping Centre-Back' },
+        ],
+      },
+    ],
+    mentoring: [],
+  };
+
+  const hydrated = hydrateAppFromDecodedFmSave(pass1Decoded, SQUAD_PLAYERS, []);
+
+  // Contract details & active suspensions hydrated onto PlayerRecord
+  const boudry = hydrated.updatedSquad.find((p) => p.name === 'Quinten Boudry');
+  assert.ok(boudry);
+  assert.equal(boudry.contractDetails?.promisedPlayingTime, 'Important Player');
+  assert.equal(boudry.contractDetails?.optionalExtensionYears, 1);
+  assert.equal(boudry.contractDetails?.releaseClauses.length, 2);
+  assert.equal(boudry.contractDetails?.releaseClauses[0].amount, 250000);
+  assert.equal(boudry.activeSuspensions?.length, 1);
+  assert.equal(boudry.activeSuspensions?.[0].matchesRemaining, 2);
+
+  // HydratedSaveState exposes Tier-1 fields
+  assert.equal(hydrated.activeSuspensions.length, 1);
+  assert.equal(hydrated.decodedPayload.leagueStanding?.rows?.length, 5);
+  assert.equal(hydrated.divisionBenchmarks?.clubCount, 16);
+  assert.equal(hydrated.competitionRules?.maxSquadSize, 25);
+  assert.equal(hydrated.competitionRules?.matchdaySubsLimit, 5);
+
+  // Analyst prompt context includes Tier-1 warnings and zero raw CA/PA
+  assert.match(hydrated.analystPromptContext, /BANNED|SUSPENDED/i);
+  assert.match(hydrated.analystPromptContext, /Quinten Boudry/);
+  assert.match(hydrated.analystPromptContext, /Important Player|Club Option|250/i);
+  assert.match(hydrated.analystPromptContext, /Max Squad 25|Registration|Subs 5/i);
+  assert.doesNotMatch(hydrated.analystPromptContext, /\bCA\s*\d+|\bPA\s*\d+/i);
+
+  // Live tactical analyst context propagates suspensions, clauses, rules, full table, and division benchmarks
+  const liveCtx = buildLiveTacticalAnalystContext({
+    clubName: 'KVV Zelzate',
+    managerName: 'Bobby Dean',
+    saveDate: hydrated.saveDateLabel,
+    nextFixture: hydrated.nextFixtureLabel || 'TBD',
+    leagueStandingSub: hydrated.leagueStandingLabel || '',
+    wageSpend: hydrated.wageComplianceLabel || '',
+    balance: hydrated.balanceLabel || '',
+    players: hydrated.updatedSquad,
+    matches: hydrated.updatedMatches,
+    staff: hydrated.updatedStaff,
+    hydratedFmSave: hydrated,
+  });
+  assert.match(liveCtx, /DO NOT SELECT AS STARTER/i);
+  assert.match(liveCtx, /ACTIVE SUSPENSIONS/i);
+  assert.match(liveCtx, /KSC Lokeren B/);
+  assert.match(liveCtx, /Division Benchmarks/i);
+  assert.match(liveCtx, /Competition Registration Rules/i);
+  assert.doesNotMatch(liveCtx, /\bCA\s*\d+|\bPA\s*\d+/i);
+});
+
+test('Step 4/6 & Step 3/6 Watchdogs: 90s inactivity + 300s hard ceiling, detailed timeout message formatting & Fast Sync + extractionWarnings hydration', () => {
+  // 1. Verify mobile-safe dual watchdog limits: 90s inactivity + 300s hard ceiling
+  assert.equal(WORKER_INACTIVITY_TIMEOUT_MS, 90_000);
+  assert.equal(WORKER_HARD_CEILING_MS, 300_000);
+
+  const inactivityMsg = formatWorkerTimeoutMessage(
+    'inactivity',
+    'Step 3/6: Competition rules (14.2s)...',
+    104.4,
+    90
+  );
+  assert.match(inactivityMsg, /90s/);
+  assert.match(inactivityMsg, /Step 3\/6: Competition rules/);
+  assert.match(inactivityMsg, /104s/);
+  assert.match(inactivityMsg, /Fast Sync/);
+
+  const ceilingMsg = formatWorkerTimeoutMessage(
+    'ceiling',
+    'Step 4/6 (3/4): Career history (299.8s)...',
+    300.1,
+    300
+  );
+  assert.match(ceilingMsg, /300s/);
+  assert.match(ceilingMsg, /Step 4\/6 \(3\/4\): Career history/);
+  assert.match(ceilingMsg, /Fast Sync/);
+
+  // 2. Verify non-fatal extractionWarnings + fastSync hydration preserves full squad & bans
+  const fastPayload: DecodedFmSavePayload = {
+    meta: {
+      game: 'FM27',
+      build: '27.1.0',
+      knownBuild: true,
+      saveName: 'huge_save.fm',
+      gameDateIso: '2027-11-18',
+      gameDateDmy: '18/11/2027',
+      clubUid: 4165,
+      clubName: 'KVV Zelzate',
+      managerName: 'Bobby Dean',
+      balance: 215000,
+      fmsaveVersion: '0.14.1',
+      fastSync: true,
+    },
+    fastSync: true,
+    extractionWarnings: [
+      'Fast Sync: skipped player_match_stats (Last-5 match history)',
+      'player_season_stats: 12s budget reached (35/47 players matched; squad & attributes intact)',
+    ],
+    warnings: [
+      'Fast Sync: skipped player_match_stats (Last-5 match history)',
+    ],
+    players: [
+      {
+        uid: 8801,
+        name: 'Quinten Boudry',
+        position: 'MC, DM',
+        age: 23,
+        nation: 'Belgium',
+        abilityStars: 4.0,
+        potentialStars: 4.5,
+        condition: 94,
+        sharpness: 91,
+        wagePw: 650,
+        expires: '30/06/2029',
+        onLoan: false,
+        teamSlot: 0,
+        apps: '11',
+        minutes: 960,
+        rating: 7.21,
+        goals: 3,
+        xG: 2.1,
+        xGPer90: 0.2,
+        assists: 4,
+        xA: 2.8,
+        xAPer90: 0.26,
+        drbPer90: 1.4,
+        prPassesPer90: 7.5,
+        hdrPct: 62,
+        intPer90: 2.3,
+        tckPct: 81,
+        distanceKm: 11.4,
+        yellowCards: 2,
+        redCards: 0,
+        attributes: makeFullAttributes({ pace: 14, stamina: 16, passing: 15 }),
+        scoutBadges: ['Consistent Performer'],
+        activeSuspensions: [
+          {
+            playerUid: 8801,
+            playerName: 'Quinten Boudry',
+            matchesRemaining: 1,
+            competitionName: 'Eerste Nationale VV',
+            scope: 'league',
+            reason: 'Yellow Card Accumulation',
+          },
+        ],
+        suspensionsCount: 1,
+      },
+    ],
+    playedMatches: [],
+    upcomingFixtures: [],
+    leagueStanding: null,
+    finances: null,
+    activeInjuries: [],
+    tactics: [],
+    mentoring: [],
+  };
+
+  const hydrated = hydrateAppFromDecodedFmSave(fastPayload, [], []);
+  assert.equal(hydrated.fastSync, true);
+  assert.equal(hydrated.extractionWarnings.length, 2);
+  assert.equal(hydrated.updatedSquad.length, 1);
+  assert.equal(hydrated.activeSuspensions.length, 1);
+  assert.match(hydrated.analystPromptContext, /FAST SYNC MODE/);
+  assert.match(hydrated.analystPromptContext, /player_season_stats: 12s budget reached/);
+  assert.doesNotMatch(hydrated.analystPromptContext, /\bCA\s*\d+|\bPA\s*\d+/i);
+});
+
+test('Reordered 4-Stage Pipeline & ?v=14 Static Guardrails: Club Core + Fixtures/League before Global Ops & Player Stats, Fast Sync skips player_season_stats, and Checkpoints emitted', () => {
+  const workerSrc = fs.readFileSync(
+    path.resolve(process.cwd(), 'public/fm-save-worker.js'),
+    'utf8'
+  );
+  const mapperSrc = fs.readFileSync(
+    path.resolve(process.cwd(), 'public/fm-save-mapper.py'),
+    'utf8'
+  );
+  const clientSrc = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/workers/fmSaveWorkerClient.ts'),
+    'utf8'
+  );
+  const readerSrc = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/services/fmSaveReader.ts'),
+    'utf8'
+  );
+
+  // Worker, mapper, and client cache-buster synced to ?v=14
+  assert.equal(WORKER_CACHE_BUSTER, '?v=14');
+  assert.match(workerSrc, /\/fm-save-mapper\.py\?v=14/);
+  assert.match(mapperSrc, /MAPPER_CACHE_BUSTER\s*=\s*"\?v=14"/);
+  assert.match(clientSrc, /WORKER_CACHE_BUSTER/);
+  assert.match(clientSrc, /WORKER_INACTIVITY_TIMEOUT_MS\s*=\s*90_000/);
+  assert.match(clientSrc, /WORKER_HARD_CEILING_MS\s*=\s*300_000/);
+  assert.match(readerSrc, /type === 'checkpoint'/);
+
+  // Progressive checkpoints emitted after Stage 1, Stage 2, and Stage 3
+  assert.match(workerSrc, /type:\s*'checkpoint'/);
+  assert.match(workerSrc, /emitCheckpoint\('stage_1_squad'\)/);
+  assert.match(workerSrc, /emitCheckpoint\('stage_2_club_core'\)/);
+  assert.match(workerSrc, /emitCheckpoint\('stage_3_fixtures_league'\)/);
+  assert.match(mapperSrc, /def step_snapshot_payload/);
+  assert.match(mapperSrc, /def step_league_table\(/);
+  assert.match(mapperSrc, /def step_finalize\(/);
+
+  // Verify exact reordered execution order in worker:
+  // Stage 1 (Squad) -> Stage 2 (Finances/Staff/Tactics) -> Stage 3 (Fixtures & League Table) -> Stage 4 (if !useFastSync: Global Ops, Market Scan, Player Stats)
+  const idxPlayers = workerSrc.indexOf('mapperModule.step_players()');
+  const idxCp1 = workerSrc.indexOf("emitCheckpoint('stage_1_squad')");
+  const idxFinances = workerSrc.indexOf('mapperModule.step_3_1_finances()');
+  const idxStaff = workerSrc.indexOf('mapperModule.step_3_2_staff()');
+  const idxTactics = workerSrc.indexOf('mapperModule.step_3_3_tactics_and_mentoring()');
+  const idxCp2 = workerSrc.indexOf("emitCheckpoint('stage_2_club_core')");
+  const idxFixtures = workerSrc.indexOf('mapperModule.step_fixtures(true)');
+  const idxLeagueTable = workerSrc.indexOf('mapperModule.step_league_table()');
+  const idxCp3 = workerSrc.indexOf("emitCheckpoint('stage_3_fixtures_league')");
+  const idxFullSyncGuard = workerSrc.indexOf('if (!useFastSync)');
+  const idxFacilities = workerSrc.indexOf('mapperModule.step_3_3_facilities(false)');
+  const idxCompRules = workerSrc.indexOf('mapperModule.step_3_3_competition_rules(false)');
+  const idxMarketScan = workerSrc.indexOf('mapperModule.step_3_4_market_scan_and_release_gamedb(false)');
+  const idxSeasonStats = workerSrc.indexOf('mapperModule.step_4_1_season_stats(false)');
+  const idxMatchStats = workerSrc.indexOf('mapperModule.step_4_2_player_match_stats(false)');
+  const idxCareerHistory = workerSrc.indexOf('mapperModule.step_4_3_season_history(false)');
+  const idxFinalize = workerSrc.indexOf('mapperModule.step_finalize()');
+
+  const orderedIndices = [
+    idxPlayers,
+    idxCp1,
+    idxFinances,
+    idxStaff,
+    idxTactics,
+    idxCp2,
+    idxFixtures,
+    idxLeagueTable,
+    idxCp3,
+    idxFullSyncGuard,
+    idxFacilities,
+    idxCompRules,
+    idxMarketScan,
+    idxSeasonStats,
+    idxMatchStats,
+    idxCareerHistory,
+    idxFinalize,
+  ];
+  for (let i = 0; i < orderedIndices.length; i++) {
+    assert.ok(orderedIndices[i] > 0, `Expected stage marker #${i} to exist in fm-save-worker.js`);
+    if (i > 0) {
+      assert.ok(
+        orderedIndices[i] > orderedIndices[i - 1],
+        `Expected stage marker #${i} (${orderedIndices[i]}) after #${i - 1} (${orderedIndices[i - 1]})`
+      );
+    }
+  }
+
+  // Stage 3 yields separately between Fixtures & match results and Domestic league table
+  assert.match(workerSrc, /Stage 3\/4 \(1\/2\): Fixtures & match results/);
+  assert.match(workerSrc, /Stage 3\/4 \(2\/2\): Domestic league table/);
+  assert.match(workerSrc, /await yieldTick\(\)/);
+
+  // Fast Sync skips player_season_stats in mapper and mentions it in concise warning
+  assert.match(mapperSrc, /def step_4_1_season_stats\(fast_sync:/);
+  assert.match(mapperSrc, /Fast Sync:.*player_season_stats/);
+  assert.match(mapperSrc, /import inspect/);
+  assert.match(mapperSrc, /inspect\.signature/);
+  assert.match(mapperSrc, /def step_3_3_tactics_and_mentoring/);
+  assert.match(mapperSrc, /def step_3_3_injuries/);
+  assert.match(mapperSrc, /def step_3_3_facilities/);
+  assert.match(mapperSrc, /def step_3_3_competition_rules/);
+  assert.match(mapperSrc, /def step_3_3_transfer_windows/);
+  assert.match(mapperSrc, /def _record_fast_sync_skip_note/);
+  assert.match(mapperSrc, /getattr\(p, "injuries", None\)/);
+  assert.match(mapperSrc, /FINANCES_BUDGET_SEC\s*=\s*6\.0/);
+  assert.match(mapperSrc, /STAFF_BUDGET_SEC\s*=\s*8\.0/);
+  assert.match(mapperSrc, /CLUB_OPS_TABLE_BUDGET_SEC\s*=\s*6\.0/);
+  assert.match(mapperSrc, /SCOUT_BUDGET_SEC\s*=\s*6\.0/);
+  assert.match(mapperSrc, /SEASON_STATS_BUDGET_SEC\s*=\s*12\.0/);
+  assert.match(mapperSrc, /PLAYER_MATCH_STATS_BUDGET_SEC\s*=\s*12\.0/);
+  assert.match(mapperSrc, /SEASON_HISTORY_BUDGET_SEC\s*=\s*10\.0/);
+  assert.match(mapperSrc, /CONTRACTS_SUSPENSIONS_BUDGET_SEC\s*=\s*8\.0/);
+  assert.match(mapperSrc, /"extractionWarnings"/);
+  assert.match(mapperSrc, /"stepTimingsMs"/);
+
+  // Guard against global list(...) materialization on massive Step 3 & Step 4 tables
+  assert.doesNotMatch(mapperSrc, /list\([^)]*save\.staff\(/);
+  assert.doesNotMatch(mapperSrc, /list\([^)]*save_instance\.finances\(/);
+  assert.doesNotMatch(mapperSrc, /list\([^)]*s_table/);
+  assert.doesNotMatch(mapperSrc, /list\([^)]*inj_table/);
+  assert.doesNotMatch(mapperSrc, /list\([^)]*fin_table/);
+  assert.doesNotMatch(mapperSrc, /list\([^)]*player_match_stats/);
+  assert.doesNotMatch(mapperSrc, /list\([^)]*player_season_history/);
+  assert.doesNotMatch(mapperSrc, /list\([^)]*player_season_stats/);
+  assert.doesNotMatch(mapperSrc, /list\([^)]*pms_table/);
+  assert.doesNotMatch(mapperSrc, /list\([^)]*psh_table/);
+  assert.doesNotMatch(mapperSrc, /list\([^)]*stats_table/);
+  assert.doesNotMatch(mapperSrc, /list\([^)]*c_table/);
+  assert.doesNotMatch(mapperSrc, /list\([^)]*susp_table/);
+});
+
+test('Progressive Checkpoint Recovery: resolves with latest valid squad checkpoint + warning on later-stage stall and hard-rejects pre-Stage-1 timeout', async () => {
+  // Pure helper checks
+  assert.equal(isValidSquadCheckpoint(null), false);
+  assert.equal(isValidSquadCheckpoint({ players: [] }), false);
+  assert.equal(isValidSquadCheckpoint({ players: [{ uid: 1, name: 'Mbey Epolo' }] }), true);
+
+  const sampleWarning = buildCheckpointRecoveryWarning(
+    'inactivity',
+    'Stage 4/4: player_season_stats for 47 players (18.4s)...',
+    108.4,
+    'stage_3_fixtures_league',
+    90
+  );
+  assert.match(sampleWarning, /Stage 3 \(Fixtures & Full Domestic League Table\)/);
+  assert.match(sampleWarning, /player_season_stats/);
+  assert.match(sampleWarning, /108\.4s/);
+
+  const stage3CheckpointPayload: DecodedFmSavePayload = {
+    meta: {
+      game: 'FM27',
+      build: '27.1.0',
+      knownBuild: true,
+      saveName: 'mobile_checkpoint.fm',
+      gameDateIso: '2027-11-22',
+      gameDateDmy: '22/11/2027',
+      clubUid: 4165,
+      clubName: 'KVV Zelzate',
+      managerName: 'Bobby Dean',
+      balance: 215000,
+      fmsaveVersion: '0.14.1',
+      fastSync: false,
+    },
+    players: [
+      {
+        uid: 8801,
+        name: 'Quinten Boudry',
+        position: 'D (C)',
+        age: 27,
+        abilityStars: 4.0,
+        potentialStars: 4.0,
+        condition: 95,
+        sharpness: 96,
+        wagePw: 480,
+        expires: '30/06/2029',
+        onLoan: false,
+        teamSlot: 0,
+        apps: '0',
+        minutes: 0,
+        rating: null,
+        goals: 0,
+        xG: 0,
+        xGPer90: 0,
+        assists: 0,
+        xA: 0,
+        xAPer90: 0,
+        drbPer90: 0,
+        prPassesPer90: 0,
+        hdrPct: 0,
+        intPer90: 0,
+        tckPct: 0,
+        distanceKm: 0,
+        yellowCards: 0,
+        redCards: 0,
+        attributes: makeFullAttributes({ pace: 12, tackling: 14, jumpingReach: 15 }),
+        scoutBadges: ['Consistent Performer'],
+        suspensionsCount: 0,
+      },
+    ],
+    playedMatches: [],
+    upcomingFixtures: [],
+    leagueStanding: {
+      competitionName: '1e Nationale VV',
+      position: 3,
+      totalTeams: 16,
+      played: 10,
+      won: 6,
+      drawn: 2,
+      lost: 2,
+      goalsFor: 18,
+      goalsAgainst: 9,
+      goalDiff: 9,
+      points: 20,
+      nextOpponentStanding: null,
+      top5: [],
+    },
+    finances: {
+      month: '2027-11-01',
+      balance: 215000,
+      wagePayrollWeekly: 9200,
+      wageBudgetWeekly: 10200,
+      transferBudgetRemaining: 0,
+    },
+    activeInjuries: [],
+    tactics: [],
+    mentoring: [],
+    extractionWarnings: [],
+    warnings: [],
+    stepTimingsMs: { step_1_open: 200, step_2_players: 450, step_5_2_league_table: 120 },
+  };
+
+  const patched = applyCheckpointRecoveryWarning(stage3CheckpointPayload, sampleWarning, 108_400);
+  assert.equal(patched.extractionWarnings?.length, 1);
+  assert.equal(stage3CheckpointPayload.extractionWarnings?.length, 0); // original not mutated
+  assert.equal(patched.stepTimingsMs?.totalDecodeMs, 108_400);
+
+  // 1) Inactivity timeout AFTER Stage 3 checkpoint -> MUST RESOLVE with checkpoint + warning & terminate worker
+  let terminatedAfterStage3 = false;
+  let capturedWorkerUrl = '';
+  const clientRecover = new FmSaveWorkerClient({
+    inactivityTimeoutMs: 60,
+    hardCeilingMs: 500,
+    workerFactory: (url: string): WorkerLike => {
+      capturedWorkerUrl = url;
+      const fakeWorker: WorkerLike = {
+        onmessage: null,
+        onerror: null,
+        onmessageerror: null,
+        terminate: () => {
+          terminatedAfterStage3 = true;
+        },
+        postMessage: (msg: unknown) => {
+          const { requestId } = msg as { requestId: number };
+          queueMicrotask(() => {
+            fakeWorker.onmessage?.({
+              data: {
+                type: 'stage',
+                requestId,
+                stage: 'parse',
+                step: 'Stage 1/4',
+                label: 'Stage 1/4: Extracting squad...',
+              },
+            } as MessageEvent);
+            fakeWorker.onmessage?.({
+              data: {
+                type: 'checkpoint',
+                requestId,
+                stage: 'stage_3_fixtures_league',
+                payload: stage3CheckpointPayload,
+              },
+            } as MessageEvent);
+            fakeWorker.onmessage?.({
+              data: {
+                type: 'stage',
+                requestId,
+                stage: 'parse',
+                step: 'Stage 4/4',
+                label: 'Stage 4/4: player_season_stats for 47 players (8.2s)...',
+              },
+            } as MessageEvent);
+            // Worker intentionally stalls here — inactivity watchdog fires at 60ms
+          });
+        },
+      };
+      return fakeWorker;
+    },
+  });
+
+  const recovered = (await clientRecover.parseFmSaveFile(
+    new ArrayBuffer(8)
+  )) as DecodedFmSavePayload;
+
+  assert.equal(capturedWorkerUrl, '/fm-save-worker.js?v=14');
+  assert.equal(terminatedAfterStage3, true);
+  assert.equal(recovered.players.length, 1);
+  assert.equal(recovered.players[0].name, 'Quinten Boudry');
+  assert.equal(recovered.leagueStanding?.position, 3);
+  assert.ok((recovered.extractionWarnings?.length ?? 0) >= 1);
+  assert.match(recovered.extractionWarnings![0], /Checkpoint recovery/);
+  assert.match(recovered.extractionWarnings![0], /player_season_stats/);
+  assert.match(recovered.extractionWarnings![0], /Stage 3 \(Fixtures & Full Domestic League Table\)/);
+  assert.equal('ca' in (recovered.players[0] as unknown as Record<string, unknown>), false);
+  assert.equal('pa' in (recovered.players[0] as unknown as Record<string, unknown>), false);
+
+  // 2) Hard ceiling timeout AFTER Stage 1 checkpoint -> MUST RESOLVE with Stage 1 squad checkpoint
+  let terminatedOnCeiling = false;
+  let tickTimer: ReturnType<typeof setInterval> | null = null;
+  const clientCeiling = new FmSaveWorkerClient({
+    inactivityTimeoutMs: 200,
+    hardCeilingMs: 90,
+    workerFactory: (): WorkerLike => {
+      const fakeWorker: WorkerLike = {
+        onmessage: null,
+        onerror: null,
+        onmessageerror: null,
+        terminate: () => {
+          terminatedOnCeiling = true;
+          if (tickTimer) {
+            clearInterval(tickTimer);
+            tickTimer = null;
+          }
+        },
+        postMessage: (msg: unknown) => {
+          const { requestId } = msg as { requestId: number };
+          queueMicrotask(() => {
+            fakeWorker.onmessage?.({
+              data: {
+                type: 'checkpoint',
+                requestId,
+                stage: 'stage_1_squad',
+                payload: stage3CheckpointPayload,
+              },
+            } as MessageEvent);
+            fakeWorker.onmessage?.({
+              data: {
+                type: 'stage',
+                requestId,
+                stage: 'parse',
+                step: 'Stage 4/4',
+                label: 'Stage 4/4: player_match_stats (Last-5 form)...',
+              },
+            } as MessageEvent);
+          });
+        },
+      };
+      return fakeWorker;
+    },
+  });
+
+  const ceilingRecovered = (await clientCeiling.parseFmSaveFile(
+    new ArrayBuffer(8)
+  )) as DecodedFmSavePayload;
+  assert.equal(terminatedOnCeiling, true);
+  assert.equal(ceilingRecovered.players.length, 1);
+  assert.match(ceilingRecovered.extractionWarnings![0], /hard ceiling/);
+  assert.match(ceilingRecovered.extractionWarnings![0], /player_match_stats/);
+
+  // 3) Timeout BEFORE Stage 1 Squad checkpoint -> MUST HARD REJECT
+  let terminatedPreStage1 = false;
+  const clientPreStage1 = new FmSaveWorkerClient({
+    inactivityTimeoutMs: 50,
+    hardCeilingMs: 400,
+    workerFactory: (): WorkerLike => {
+      const fakeWorker: WorkerLike = {
+        onmessage: null,
+        onerror: null,
+        onmessageerror: null,
+        terminate: () => {
+          terminatedPreStage1 = true;
+        },
+        postMessage: (msg: unknown) => {
+          const { requestId } = msg as { requestId: number };
+          queueMicrotask(() => {
+            fakeWorker.onmessage?.({
+              data: {
+                type: 'stage',
+                requestId,
+                stage: 'read',
+                step: 'Stage 1/4',
+                label: 'Stage 1/4: Opening save via zero-copy WORKERFS...',
+              },
+            } as MessageEvent);
+            // Stalls before Stage 1 checkpoint is ever emitted
+          });
+        },
+      };
+      return fakeWorker;
+    },
+  });
+
+  await assert.rejects(
+    () => clientPreStage1.parseFmSaveFile(new ArrayBuffer(8)),
+    /Stage 1\/4: Opening save via zero-copy WORKERFS/
+  );
+  assert.equal(terminatedPreStage1, true);
+});
+
+test('Fast Sync Defaults & Reordered Timing Labels: shouldDefaultFastSync auto-defaults ON below 768px and hydrates granular stepTimingsMs + warnings safely', () => {
+  // Mobile viewports (< 768px) default Fast Sync ON; desktop/tablet (>= 768px) default OFF
+  assert.equal(shouldDefaultFastSync(320), true);
+  assert.equal(shouldDefaultFastSync(390), true);
+  assert.equal(shouldDefaultFastSync(767), true);
+  assert.equal(shouldDefaultFastSync(768), false);
+  assert.equal(shouldDefaultFastSync(1024), false);
+  assert.equal(shouldDefaultFastSync(1440), false);
+  assert.equal(shouldDefaultFastSync(0), false);
+
+  // Timing label formatting for reordered Stage 1-4 keys
+  assert.equal(formatStepTimingLabel('step_3_1_finances'), '2.1 Finances');
+  assert.equal(formatStepTimingLabel('step_3_2_staff'), '2.2 Staff');
+  assert.equal(formatStepTimingLabel('step_3_3_tactics_mentoring'), '2.3 Tactics/Mentoring');
+  assert.equal(formatStepTimingLabel('step_5_fixtures'), '3.1 Fixtures');
+  assert.equal(formatStepTimingLabel('step_5_2_league_table'), '3.2 League Table');
+  assert.equal(formatStepTimingLabel('step_3_3_injuries'), '4.1 Global Injuries');
+  assert.equal(formatStepTimingLabel('step_3_3_facilities'), '4.2 Facilities');
+  assert.equal(formatStepTimingLabel('step_3_3_competition_rules'), '4.3 Comp Rules');
+  assert.equal(formatStepTimingLabel('step_3_3_transfer_windows'), '4.4 Transfer Windows');
+  assert.equal(formatStepTimingLabel('step_3_4_market_scan'), '4.6 Market Scan');
+  assert.equal(formatStepTimingLabel('step_4_team_match_stats'), '4.7 Team Match Stats');
+  assert.equal(formatStepTimingLabel('step_4_1_season_stats'), '4.8 Season Stats');
+  assert.equal(formatStepTimingLabel('totalDecodeMs'), 'Total');
+
+  // Hydration preserves stepTimingsMs and non-fatal warnings without exposing raw CA/PA
+  const payloadWithTimings: DecodedFmSavePayload = {
+    meta: {
+      game: 'FM27',
+      build: '27.1.0',
+      knownBuild: true,
+      saveName: 'mobile_fast_sync.fm',
+      gameDateIso: '2027-11-22',
+      gameDateDmy: '22/11/2027',
+      clubUid: 4165,
+      clubName: 'KVV Zelzate',
+      managerName: 'Bobby Dean',
+      balance: 185000,
+      fmsaveVersion: '0.14.1',
+      fastSync: true,
+    },
+    fastSync: true,
+    extractionWarnings: [
+      'Fast Sync: skipped global injuries, facilities, competition rules, transfer windows, optional club dumps, market scan, and player_season_stats / match / career history (core club data intact)',
+    ],
+    stepTimingsMs: {
+      step_1_open: 410,
+      step_2_players: 680,
+      step_3_1_finances: 220,
+      step_3_2_staff: 1350,
+      step_3_3_tactics_mentoring: 180,
+      step_5_fixtures: 310,
+      step_5_2_league_table: 145,
+      totalDecodeMs: 3295,
+    },
+    players: [],
+    playedMatches: [],
+    upcomingFixtures: [],
+    leagueStanding: null,
+    finances: null,
+    activeInjuries: [],
+    tactics: [],
+    mentoring: [],
+  };
+
+  const hydrated = hydrateAppFromDecodedFmSave(payloadWithTimings, [], []);
+  assert.equal(hydrated.fastSync, true);
+  assert.equal(hydrated.stepTimingsMs.step_3_2_staff, 1350);
+  assert.equal(hydrated.stepTimingsMs.totalDecodeMs, 3295);
+  assert.equal(hydrated.extractionWarnings.length, 1);
+  assert.match(hydrated.extractionWarnings[0], /player_season_stats/);
+  assert.doesNotMatch(hydrated.analystPromptContext, /\bCA\s*\d+|\bPA\s*\d+/i);
+});
+
+test('Server-First 4 MB Chunked Upload + 1 GB Cap + Async Job Polling: slices 9.5 MB file into 4 MB chunks, runs /init -> /chunk -> /finish -> /job polling with Full Sync on mobile, and enforces 1 GB limit with actual MB message', async () => {
+  assert.equal(SERVER_UPLOAD_CHUNK_BYTES, 4 * 1024 * 1024);
+  assert.equal(SERVER_MAX_SAVE_BYTES, 1024 * 1024 * 1024);
+  assert.equal(SERVER_JOB_POLL_INTERVAL_MS, 1_200);
+
+  const sampleServerPayload: DecodedFmSavePayload = {
+    meta: {
+      game: 'FM27',
+      build: '27.1.0',
+      knownBuild: true,
+      saveName: 'KVV_Zelzate_FullSync.fm',
+      gameDateIso: '2027-11-28',
+      gameDateDmy: '28/11/2027',
+      clubUid: 4165,
+      clubName: 'KVV Zelzate',
+      managerName: 'Bobby Dean',
+      balance: 310000,
+      fmsaveVersion: '0.14.2',
+      importScope: 'managed_club_only',
+      fastSync: false,
+      mountMode: 'NATIVE_SERVER',
+    },
+    fastSync: false,
+    extractionWarnings: [],
+    players: [
+      {
+        uid: 4101,
+        name: 'Mbey Epolo',
+        position: 'ST (C)',
+        age: 26,
+        abilityStars: 4.0,
+        potentialStars: 4.5,
+        condition: 95,
+        sharpness: 97,
+        wagePw: 650,
+        expires: '30/06/2029',
+        onLoan: false,
+        teamSlot: 0,
+        apps: '12',
+        minutes: 1020,
+        rating: 7.48,
+        goals: 11,
+        xG: 9.8,
+        xGPer90: 0.86,
+        assists: 2,
+        xA: 1.4,
+        xAPer90: 0.12,
+        drbPer90: 0.6,
+        prPassesPer90: 1.5,
+        hdrPct: 52,
+        intPer90: 0.3,
+        tckPct: 0,
+        distanceKm: 112.0,
+        yellowCards: 1,
+        redCards: 0,
+        attributes: makeFullAttributes({ finishing: 14, pace: 13 }),
+        scoutBadges: ['Consistent Performer', 'Big-Game Player'],
+        hiddenPersonality: null,
+        suspensionsCount: 0,
+      },
+    ],
+    playedMatches: [],
+    upcomingFixtures: [],
+    leagueStanding: null,
+    finances: null,
+    activeInjuries: [],
+    tactics: [],
+    mentoring: [],
+  };
+
+  const mockUploadId = '11111111-2222-4333-8444-555555555555';
+  const mockJobId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+  const chunkSizesReceived: number[] = [];
+  let bytesAccumulated = 0;
+  let finishPayloadReceived: Record<string, unknown> | null = null;
+  let pollCount = 0;
+  let browserFallbackCalled = false;
+  const stages: FmSaveProgressStage[] = [];
+
+  const mockFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const method = (init?.method || 'GET').toUpperCase();
+    const headers = (init?.headers || {}) as Record<string, string>;
+
+    if (url === '/api/fm27/decode-status') {
+      return new Response(
+        JSON.stringify({
+          serverDecodeAvailable: true,
+          pythonVersion: '3.14.10',
+          fmsaveVersion: '0.14.2',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (url === '/api/fm27/decode-save/init' && method === 'POST') {
+      return new Response(JSON.stringify({ uploadId: mockUploadId }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (url === '/api/fm27/decode-save/chunk' && method === 'POST') {
+      assert.equal(headers['Content-Type'], 'application/octet-stream');
+      assert.equal(headers['x-fm-upload-id'], mockUploadId);
+      const chunkBlob = init?.body as Blob;
+      chunkSizesReceived.push(chunkBlob.size);
+      bytesAccumulated += chunkBlob.size;
+      return new Response(
+        JSON.stringify({ ok: true, bytesReceived: bytesAccumulated }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (url === '/api/fm27/decode-save/finish' && method === 'POST') {
+      finishPayloadReceived = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>;
+      return new Response(JSON.stringify({ jobId: mockJobId }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (url === `/api/fm27/decode-save/job/${mockJobId}` && method === 'GET') {
+      pollCount += 1;
+      if (pollCount === 1) {
+        return new Response(
+          JSON.stringify({ status: 'running', progress: 'Extracting squad & 52 attributes...' }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      if (pollCount === 2) {
+        return new Response(
+          JSON.stringify({ status: 'running', progress: 'Reading fixtures, league table & match stats...' }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          status: 'done',
+          progress: 'Server Full Sync complete',
+          payload: sampleServerPayload,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    return new Response('Not Found', { status: 404 });
+  }) as typeof fetch;
+
+  const status = await checkServerDecodeStatus(mockFetch);
+  assert.equal(status.serverDecodeAvailable, true);
+  assert.equal(status.fmsaveVersion, '0.14.2');
+
+  // 9.5 MB binary -> MUST slice into exactly 3 chunks: 4 MB, 4 MB, 1.5 MB
+  const totalBytes = Math.round(9.5 * 1024 * 1024);
+  const blob = new Blob([new Uint8Array(totalBytes)], {
+    type: 'application/octet-stream',
+  });
+
+  const result = await decodeFmSaveWithServerFirst(
+    blob,
+    (stage) => stages.push(stage),
+    {
+      fileName: 'KVV_Zelzate_FullSync.fm',
+      clubHint: 'KVV Zelzate',
+      scope: 'managed_club_only',
+      viewportWidth: 390, // Mobile viewport — MUST STILL use Full Sync (fastSync=false) on server!
+      pollIntervalMs: 10,
+    },
+    {
+      fetchImpl: mockFetch,
+      browserFallback: async () => {
+        browserFallbackCalled = true;
+        throw new Error('Should not invoke browser fallback when server succeeds');
+      },
+    }
+  );
+
+  assert.equal(browserFallbackCalled, false);
+  assert.deepEqual(chunkSizesReceived, [
+    4 * 1024 * 1024,
+    4 * 1024 * 1024,
+    totalBytes - 8 * 1024 * 1024,
+  ]);
+  assert.equal(bytesAccumulated, totalBytes);
+  assert.ok(finishPayloadReceived, 'Expected POST /api/fm27/decode-save/finish');
+  assert.equal((finishPayloadReceived as Record<string, unknown>).uploadId, mockUploadId);
+  assert.equal((finishPayloadReceived as Record<string, unknown>).filename, 'KVV_Zelzate_FullSync.fm');
+  assert.equal((finishPayloadReceived as Record<string, unknown>).scope, 'club_only');
+  assert.equal((finishPayloadReceived as Record<string, unknown>).fastSync, false);
+  assert.equal(pollCount, 3);
+  assert.ok(
+    stages.some((s) => /Uploading save to server \(4\.0 \/ 9\.5 MB — 42%\)/i.test(s.label)),
+    'Expected MB/% 4 MB chunk upload progress update'
+  );
+  assert.ok(
+    stages.some((s) => /Extracting squad & 52 attributes/i.test(s.label)),
+    'Expected live server job progress update during polling'
+  );
+  assert.equal(result.players.length, 1);
+  assert.equal(result.fastSync, false);
+  assert.equal('ca' in (result.players[0] as unknown as Record<string, unknown>), false);
+  assert.equal('pa' in (result.players[0] as unknown as Record<string, unknown>), false);
+
+  // Oversized save (> 1 GB / 1024 MB) rejects cleanly with actual MB in message without invoking browser fallback
+  let fallbackOnOversize = false;
+  const fakeOversizeBlob = {
+    size: 1050 * 1024 * 1024,
+    slice: () => new Blob([]),
+  } as unknown as Blob;
+  await assert.rejects(
+    () =>
+      decodeFmSaveWithServerFirst(
+        fakeOversizeBlob,
+        undefined,
+        { fileName: 'giant_save.fm' },
+        {
+          fetchImpl: mockFetch,
+          browserFallback: async () => {
+            fallbackOnOversize = true;
+            return sampleServerPayload;
+          },
+        }
+      ),
+    /1050\.0 MB.*1024 MB \(1 GB\)/
+  );
+  assert.equal(fallbackOnOversize, false);
+});
+
+test('Server-First Automatic Fallback: falls back seamlessly to browser Pyodide on HTTP 503 or unreachable server, while propagating invalid-file job errors', async () => {
+  const fallbackPayload: DecodedFmSavePayload = {
+    meta: {
+      game: 'FM27',
+      build: '27.1.0',
+      knownBuild: true,
+      saveName: 'fallback_save.fm',
+      gameDateIso: '2027-11-28',
+      gameDateDmy: '28/11/2027',
+      clubUid: 4165,
+      clubName: 'KVV Zelzate',
+      managerName: 'Bobby Dean',
+      balance: 200000,
+      fmsaveVersion: '0.14.1',
+      fastSync: true,
+    },
+    fastSync: true,
+    players: [],
+    playedMatches: [],
+    upcomingFixtures: [],
+    leagueStanding: null,
+    finances: null,
+    activeInjuries: [],
+    tactics: [],
+    mentoring: [],
+  };
+
+  // Case 1: Status says available, but /init returns 503 -> MUST invoke browser fallback (with mobile Fast Sync auto-enabled)
+  const fallbackReceivedOptsList: Array<{ clubHint?: string; scope?: FmImportScope; fastSync?: boolean }> = [];
+  const stages503: FmSaveProgressStage[] = [];
+  const fetch503 = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === '/api/fm27/decode-status') {
+      return new Response(JSON.stringify({ serverDecodeAvailable: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return new Response(
+      JSON.stringify({ error: 'Native Python fmsave is not available on this server.', serverDecodeAvailable: false }),
+      { status: 503, headers: { 'Content-Type': 'application/json' } }
+    );
+  }) as typeof fetch;
+
+  const res503 = await decodeFmSaveWithServerFirst(
+    new Blob([new Uint8Array([1, 2, 3])]),
+    (s) => stages503.push(s),
+    {
+      fileName: 'fallback_save.fm',
+      scope: 'club_and_division',
+      viewportWidth: 390,
+      pollIntervalMs: 10,
+    },
+    {
+      fetchImpl: fetch503,
+      browserFallback: async (_file, _cb, opts) => {
+        fallbackReceivedOptsList.push(opts);
+        return fallbackPayload;
+      },
+    }
+  );
+
+  assert.equal(res503.meta.saveName, 'fallback_save.fm');
+  assert.equal(fallbackReceivedOptsList.length, 1, 'Expected browser fallback to run after 503');
+  assert.equal(fallbackReceivedOptsList[0].scope, 'club_and_division');
+  assert.equal(fallbackReceivedOptsList[0].fastSync, true, 'Mobile browser fallback should auto-enable Fast Sync');
+  assert.ok(
+    stages503.some((s) => /503.*falling back/i.test(s.label)),
+    'Expected 503 fallback progress update'
+  );
+
+  // Case 2: Status reports serverDecodeAvailable: false -> skips /init and falls back directly
+  let initAttempted = false;
+  let fallbackInvoked = false;
+  const fetchDisabled = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes('/decode-save/init')) initAttempted = true;
+    return new Response(JSON.stringify({ serverDecodeAvailable: false }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  await decodeFmSaveWithServerFirst(
+    new Blob([new Uint8Array([1, 2, 3])]),
+    undefined,
+    { fileName: 'disabled.fm', viewportWidth: 1440 },
+    {
+      fetchImpl: fetchDisabled,
+      browserFallback: async (_file, _cb, opts) => {
+        fallbackInvoked = true;
+        assert.equal(opts.fastSync, false, 'Desktop browser fallback defaults to Full Sync');
+        return fallbackPayload;
+      },
+    }
+  );
+  assert.equal(initAttempted, false);
+  assert.equal(fallbackInvoked, true);
+
+  // Case 3: Job returns { status: 'error', error: 'not a valid Football Manager (.fm) save file' } -> rejects cleanly WITHOUT triggering browser fallback
+  let fallbackOnJobError = false;
+  const mockUploadId = '22222222-3333-4444-8555-666666666666';
+  const mockJobId = 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff';
+  const fetchJobError = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === '/api/fm27/decode-status') {
+      return new Response(JSON.stringify({ serverDecodeAvailable: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (url === '/api/fm27/decode-save/init') {
+      return new Response(JSON.stringify({ uploadId: mockUploadId }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (url === '/api/fm27/decode-save/chunk') {
+      return new Response(JSON.stringify({ ok: true, bytesReceived: 3 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (url === '/api/fm27/decode-save/finish') {
+      return new Response(JSON.stringify({ jobId: mockJobId }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (url === `/api/fm27/decode-save/job/${mockJobId}`) {
+      return new Response(
+        JSON.stringify({
+          status: 'error',
+          error: 'This file is not a valid Football Manager (.fm) save file.',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    return new Response('Not Found', { status: 404 });
+  }) as typeof fetch;
+
+  await assert.rejects(
+    () =>
+      decodeFmSaveWithServerFirst(
+        new Blob([new Uint8Array([0, 1, 2])]),
+        undefined,
+        { fileName: 'not-a-save.txt', pollIntervalMs: 10 },
+        {
+          fetchImpl: fetchJobError,
+          browserFallback: async () => {
+            fallbackOnJobError = true;
+            return fallbackPayload;
+          },
+        }
+      ),
+    /not a valid Football Manager/i
+  );
+  assert.equal(fallbackOnJobError, false);
+});
+
+test('Server Chunked Decode Guardrails: Express server.ts (/init, /chunk, /finish, /job), public/fm-save-mapper.py CLI stderr progress, and zero new npm packages', () => {
+  const serverSrc = fs.readFileSync(path.resolve(process.cwd(), 'server.ts'), 'utf8');
+  const mapperSrc = fs.readFileSync(
+    path.resolve(process.cwd(), 'public/fm-save-mapper.py'),
+    'utf8'
+  );
+  const pkgSrc = fs.readFileSync(path.resolve(process.cwd(), 'package.json'), 'utf8');
+
+  // Chunked upload routes (1 GB total cap, 8 MB raw chunk limit, lastActivityAt pruning, 300s decode timeout, stream stdout) — zero multer added
+  assert.match(serverSrc, /\/api\/fm27\/decode-status/);
+  assert.match(serverSrc, /\/api\/fm27\/decode-save\/init/);
+  assert.match(serverSrc, /\/api\/fm27\/decode-save\/chunk/);
+  assert.match(serverSrc, /\/api\/fm27\/decode-save\/finish/);
+  assert.match(serverSrc, /\/api\/fm27\/decode-save\/job\/:jobId/);
+  assert.match(serverSrc, /MAX_TOTAL_UPLOAD_BYTES\s*=\s*1024\s*\*\s*1024\s*\*\s*1024/);
+  assert.match(serverSrc, /SERVER_DECODE_TIMEOUT_MS\s*=\s*300_000/);
+  assert.match(serverSrc, /lastActivityAt/);
+  assert.match(serverSrc, /stdoutChunks\.push/);
+  assert.match(serverSrc, /express\.raw\(\{\s*type:\s*['"]application\/octet-stream['"]\s*,\s*limit:\s*['"]8mb['"]/);
+  assert.match(serverSrc, /fs\.promises\.appendFile/);
+  assert.match(serverSrc, /os\.tmpdir\(\)/);
+  assert.match(serverSrc, /shell:\s*false/);
+  assert.match(serverSrc, /fs\.promises\.unlink/);
+  assert.match(serverSrc, /status\(503\)/);
+  assert.doesNotMatch(pkgSrc, /"multer"/);
+
+  // Native Python CLI entry point emits flushed stderr progress and preserves Pyodide step_* functions
+  assert.match(mapperSrc, /if __name__ == "__main__":/);
+  assert.match(mapperSrc, /--file/);
+  assert.match(mapperSrc, /--scope/);
+  assert.match(mapperSrc, /--fast-sync/);
+  assert.match(mapperSrc, /sys\.stderr\.write\(/);
+  assert.match(mapperSrc, /sys\.stderr\.flush\(\)/);
+  assert.match(mapperSrc, /def step_open\(/);
+  assert.match(mapperSrc, /def step_players\(/);
+  assert.match(mapperSrc, /def step_finalize\(/);
+});
+
+
+
+
 

@@ -16,6 +16,8 @@ import {
   ShortlistRecord,
 } from '../types/fm27';
 import {
+  CompetitionRegistrationRules,
+  DivisionBenchmarks,
   FinancialRunway,
   RecruitmentTarget,
   TransferWindowInfo,
@@ -25,6 +27,12 @@ import {
   ClubFinancialInput,
   TransferActionVerdict,
 } from '../utils/transferAudit';
+import {
+  enrichAndFilterScoutedTargets,
+  ScoutAgeBand,
+  ScoutContractFilter,
+  ScoutPositionGroup,
+} from '../utils/recruitmentHelpers';
 
 interface RecruitmentWorkspaceProps {
   cases: RecruitmentCase[];
@@ -37,6 +45,8 @@ interface RecruitmentWorkspaceProps {
   finances?: ClubFinancialInput | null;
   financialRunway?: FinancialRunway | null;
   transferWindows?: TransferWindowInfo | null;
+  competitionRules?: CompetitionRegistrationRules | null;
+  divisionBenchmarks?: DivisionBenchmarks | null;
   scoutedTargets?: RecruitmentTarget[];
   onAddCase: (entry: Omit<RecruitmentCase, 'id' | 'updatedAt'>) => void;
   onUpdateCase: (id: string, patch: Partial<RecruitmentCase>) => void;
@@ -78,6 +88,8 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
   finances,
   financialRunway = null,
   transferWindows = null,
+  competitionRules = null,
+  divisionBenchmarks = null,
   scoutedTargets = [],
   onAddCase,
   onSelectPlayer,
@@ -87,17 +99,72 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
     'ALL' | TransferActionVerdict
   >('ALL');
   const [search, setSearch] = useState('');
-  const [targetFilter, setTargetFilter] = useState<'ALL' | 'FREE' | 'EXPIRING'>('ALL');
+  const [targetFilter, setTargetFilter] = useState<ScoutContractFilter>('ALL');
+  const [targetPosGroup, setTargetPosGroup] = useState<ScoutPositionGroup>('ALL');
+  const [targetAgeBand, setTargetAgeBand] = useState<ScoutAgeBand>('ALL');
+  const [genuineGapsOnly, setGenuineGapsOnly] = useState<boolean>(false);
+
+  const filteredScoutedTargets = useMemo(
+    () =>
+      enrichAndFilterScoutedTargets({
+        targets: scoutedTargets,
+        squadPlayers: players,
+        posGroup: targetPosGroup,
+        ageBand: targetAgeBand,
+        contractFilter: targetFilter,
+        genuineGapsOnly,
+        searchQuery: search,
+      }),
+    [
+      scoutedTargets,
+      players,
+      targetPosGroup,
+      targetAgeBand,
+      targetFilter,
+      genuineGapsOnly,
+      search,
+    ]
+  );
 
   const audit = useMemo(
     () =>
-      buildSquadTransferAudit(players, saveDate, {
-        ...finances,
-        balanceLabel: balance,
-        wageSpendLabel: wageSpend,
-      }),
-    [players, saveDate, finances, balance, wageSpend]
+      buildSquadTransferAudit(
+        players,
+        saveDate,
+        {
+          ...finances,
+          balanceLabel: balance,
+          wageSpendLabel: wageSpend,
+        },
+        divisionBenchmarks
+      ),
+    [players, saveDate, finances, balance, wageSpend, divisionBenchmarks]
   );
+
+  const registrationCheck = useMemo(() => {
+    if (!competitionRules) return null;
+    const hasAnyRule =
+      competitionRules.maxSquadSize !== null ||
+      competitionRules.minHomegrownClub !== null ||
+      competitionRules.minHomegrownNation !== null ||
+      competitionRules.maxForeignPlayers !== null ||
+      competitionRules.matchdaySubsLimit !== null;
+    if (!hasAnyRule) return null;
+
+    const u21Count = players.filter((p) => (p.age || 25) <= 21).length;
+    const countableSenior = competitionRules.u21Exempt
+      ? players.length - u21Count
+      : players.length;
+    const overLimit =
+      competitionRules.maxSquadSize !== null &&
+      countableSenior > competitionRules.maxSquadSize;
+
+    return {
+      u21Count,
+      countableSenior,
+      overLimit,
+    };
+  }, [competitionRules, players]);
 
   const filteredAdvice = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -209,7 +276,57 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                   <span>{b}</span>
                 </li>
               ))}
+              {audit.tierBenchmarks.divisionDeficits.map((def, idx) => (
+                <li key={`div-${idx}`} className="flex items-start gap-1.5 text-amber-300">
+                  <span className="text-amber-400">•</span>
+                  <span>Division Benchmark Gap: {def}</span>
+                </li>
+              ))}
             </ul>
+          </div>
+        )}
+
+        {/* Pass 1 Tier-1: Competition Registration Compliance Strip */}
+        {competitionRules && registrationCheck && players.length > 0 && (
+          <div
+            className={`rounded-xl border px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs ${
+              registrationCheck.overLimit
+                ? 'border-rose-500/40 bg-rose-950/25 text-rose-200'
+                : 'border-sky-500/30 bg-sky-950/20 text-sky-200'
+            }`}
+          >
+            <div className="flex flex-wrap items-center gap-2 font-semibold">
+              <span className="uppercase tracking-wider text-[10px] px-1.5 py-0.5 rounded bg-slate-900/70 border border-slate-700 text-slate-200">
+                Registration Compliance · {competitionRules.competitionName || 'League'}
+              </span>
+              {competitionRules.maxSquadSize !== null && (
+                <span className="font-mono">
+                  {registrationCheck.countableSenior} / {competitionRules.maxSquadSize} Senior Slots
+                  {competitionRules.u21Exempt
+                    ? ` (${registrationCheck.u21Count} U21 Exempt)`
+                    : ''}
+                </span>
+              )}
+              {registrationCheck.overLimit && (
+                <span className="text-rose-300 font-bold">
+                  OVER LIMIT — trim or loan senior squad before registration lock
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-slate-300">
+              {competitionRules.minHomegrownClub !== null && (
+                <span>Min HGC: {competitionRules.minHomegrownClub}</span>
+              )}
+              {competitionRules.minHomegrownNation !== null && (
+                <span>Min HGN: {competitionRules.minHomegrownNation}</span>
+              )}
+              {competitionRules.maxForeignPlayers !== null && (
+                <span>Max Foreign: {competitionRules.maxForeignPlayers}</span>
+              )}
+              {competitionRules.matchdaySubsLimit !== null && (
+                <span>Matchday Subs: {competitionRules.matchdaySubsLimit}</span>
+              )}
+            </div>
           </div>
         )}
 
@@ -437,14 +554,27 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
 
                       {item.tags.length > 0 && (
                         <div className="flex flex-wrap gap-1">
-                          {item.tags.map((tag, idx) => (
-                            <span
-                              key={idx}
-                              className="rounded-md bg-slate-800/90 border border-slate-700/80 px-2 py-0.5 text-[10px] text-slate-300"
-                            >
-                              {tag}
-                            </span>
-                          ))}
+                          {item.tags.map((tag, idx) => {
+                            const isBannedTag = tag.startsWith('BANNED');
+                            const isOptionTag = tag.startsWith('Club Option');
+                            const isClauseTag = tag.startsWith('Release Clause');
+                            return (
+                              <span
+                                key={idx}
+                                className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${
+                                  isBannedTag
+                                    ? 'bg-rose-500/20 border-rose-500/50 text-rose-300 font-bold'
+                                    : isOptionTag
+                                      ? 'bg-sky-500/15 border-sky-500/40 text-sky-300'
+                                      : isClauseTag
+                                        ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                                        : 'bg-slate-800/90 border-slate-700/80 text-slate-300'
+                                }`}
+                              >
+                                {tag}
+                              </span>
+                            );
+                          })}
                         </div>
                       )}
 
@@ -600,71 +730,129 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
           {/* VIEW 4: PASS 0 GROUP 4 SCOUTED FREE AGENTS & EXPIRING <= 6M */}
           {view === 'targets' && (
             <div className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap gap-1.5">
-                  {(
-                    [
-                      { id: 'ALL', label: `All Identified (${scoutedTargets.length})` },
-                      {
-                        id: 'FREE',
-                        label: `Free Agents (${scoutedTargets.filter((t) => t.isFreeAgent).length})`,
-                      },
-                      {
-                        id: 'EXPIRING',
-                        label: `Expiring ≤6m (${scoutedTargets.filter((t) => !t.isFreeAgent).length})`,
-                      },
-                    ] as const
-                  ).map((btn) => (
+              {/* Interactive Scouted Filter Bar */}
+              <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  {/* Position Group Chips */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {(['ALL', 'GK', 'DEF', 'MID', 'FWD'] as const).map((grp) => (
+                      <button
+                        key={grp}
+                        type="button"
+                        onClick={() => setTargetPosGroup(grp)}
+                        className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition cursor-pointer ${
+                          targetPosGroup === grp
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                            : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
+                        }`}
+                      >
+                        {grp}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Age Band Chips */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {(
+                      [
+                        { id: 'ALL', label: 'All Ages' },
+                        { id: 'U23', label: 'U23' },
+                        { id: '23-28', label: '23–28' },
+                        { id: '29+', label: '29+' },
+                      ] as const
+                    ).map((band) => (
+                      <button
+                        key={band.id}
+                        type="button"
+                        onClick={() => setTargetAgeBand(band.id)}
+                        className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition cursor-pointer ${
+                          targetAgeBand === band.id
+                            ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                            : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
+                        }`}
+                      >
+                        {band.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {(
+                      [
+                        { id: 'ALL', label: `All (${scoutedTargets.length})` },
+                        {
+                          id: 'FREE',
+                          label: `Free Agents (${scoutedTargets.filter((t) => t.isFreeAgent).length})`,
+                        },
+                        {
+                          id: 'EXPIRING',
+                          label: `Expiring ≤6m (${scoutedTargets.filter((t) => !t.isFreeAgent).length})`,
+                        },
+                      ] as const
+                    ).map((btn) => (
+                      <button
+                        key={btn.id}
+                        type="button"
+                        onClick={() => setTargetFilter(btn.id)}
+                        className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition cursor-pointer ${
+                          targetFilter === btn.id
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                            : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
+                        }`}
+                      >
+                        {btn.label}
+                      </button>
+                    ))}
+
                     <button
-                      key={btn.id}
                       type="button"
-                      onClick={() => setTargetFilter(btn.id)}
+                      onClick={() => setGenuineGapsOnly((prev) => !prev)}
                       className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition cursor-pointer ${
-                        targetFilter === btn.id
-                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
+                        genuineGapsOnly
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
+                          : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
                       }`}
                     >
-                      {btn.label}
+                      {genuineGapsOnly ? '✓ Genuine Gaps Only' : 'Genuine Gaps Only'}
                     </button>
-                  ))}
+                  </div>
+
+                  <span className="text-[11px] text-slate-400">
+                    Showing {filteredScoutedTargets.length} · Sorted by Gap &amp; Role Fit · Zero raw CA/PA
+                  </span>
                 </div>
-                <span className="text-[11px] text-slate-400">
-                  Club-tier matched · Zero raw CA/PA exposed
-                </span>
               </div>
 
               {scoutedTargets.length === 0 ? (
                 <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 text-center text-xs text-slate-400">
                   No Free Agent or Expiring ≤6m targets decoded in this save yet. Drop a `.fm` save in the Analyst tab to run the Pass 0 recruitment scan.
                 </div>
+              ) : filteredScoutedTargets.length === 0 ? (
+                <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 text-center text-xs text-slate-400">
+                  No scouted targets match the active filters. Try clearing &ldquo;Genuine Gaps Only&rdquo; or broadening the position/age band.
+                </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {scoutedTargets
-                    .filter((t) =>
-                      targetFilter === 'ALL'
-                        ? true
-                        : targetFilter === 'FREE'
-                          ? t.isFreeAgent
-                          : !t.isFreeAgent
-                    )
-                    .map((target) => {
-                      const posToken = target.primaryPosition
-                        .toUpperCase()
-                        .split(/[^A-Z]/)[0];
-                      const depth = players.filter((p) =>
-                        p.position.toUpperCase().includes(posToken || target.primaryPosition.toUpperCase())
-                      ).length;
-                      const isWeakDepth = depth <= 1;
+                  {filteredScoutedTargets.map(
+                    ({
+                      target,
+                      bestRole,
+                      relevantAttributes,
+                      depth,
+                      contractDisplay,
+                    }) => {
                       const alreadyTracked = cases.some(
-                        (c) => c.playerName.toLowerCase() === target.name.toLowerCase()
+                        (c) =>
+                          c.playerName.toLowerCase() === target.name.toLowerCase()
                       );
 
                       return (
                         <div
                           key={target.uid || target.name}
                           className={`rounded-xl border p-4 space-y-2.5 ${
-                            isWeakDepth
+                            depth.isGenuineGap
                               ? 'border-amber-500/40 bg-amber-950/15'
                               : 'border-slate-800 bg-slate-900/70'
                           }`}
@@ -688,36 +876,45 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                                   : 'bg-amber-500/15 text-amber-300 border-amber-500/40'
                               }`}
                             >
-                              {target.isFreeAgent
-                                ? 'Free Agent'
-                                : `≤ ${target.contractExpiryMonths}m Contract`}
+                              {contractDisplay.primaryLabel}
                             </span>
                           </div>
 
-                          <div className="flex flex-wrap gap-1.5 text-[11px] font-mono text-slate-300">
-                            <span className="rounded bg-slate-950/80 border border-slate-800 px-2 py-0.5">
-                              Wage: £{target.demandedWageEur.toLocaleString()}/wk
+                          {/* Best FM27 Role + Fit % & Expiring Wage */}
+                          <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                            <span className="rounded bg-emerald-500/15 border border-emerald-500/35 px-2 py-0.5 font-semibold text-emerald-300">
+                              {bestRole.roleName} · {bestRole.fitPct}% Fit
                             </span>
-                            {(target.attributes.pace ?? target.attributes.keyPace) !== undefined && (
-                              <span className="rounded bg-slate-950/80 border border-slate-800 px-2 py-0.5">
-                                Pac {target.attributes.pace ?? target.attributes.keyPace}
+                            {contractDisplay.wageLabel && (
+                              <span className="rounded bg-slate-950/80 border border-slate-800 px-2 py-0.5 font-mono text-slate-300">
+                                Wage {contractDisplay.wageLabel}
                               </span>
                             )}
-                            {(target.attributes.stamina ?? target.attributes.keyStamina) !== undefined && (
-                              <span className="rounded bg-slate-950/80 border border-slate-800 px-2 py-0.5">
-                                Sta {target.attributes.stamina ?? target.attributes.keyStamina}
-                              </span>
-                            )}
-                            {(target.attributes.decisions ?? target.attributes.keyDecision) !== undefined && (
-                              <span className="rounded bg-slate-950/80 border border-slate-800 px-2 py-0.5">
-                                Dec {target.attributes.decisions ?? target.attributes.keyDecision}
-                              </span>
-                            )}
-                            {(target.attributes.vision ?? target.attributes.keyVision) !== undefined && (
-                              <span className="rounded bg-slate-950/80 border border-slate-800 px-2 py-0.5">
-                                Vis {target.attributes.vision ?? target.attributes.keyVision}
-                              </span>
-                            )}
+                          </div>
+
+                          {/* 4 Position-Relevant Attributes */}
+                          <div className="grid grid-cols-4 gap-1.5 text-[11px] font-mono text-slate-200">
+                            {relevantAttributes.map((attrChip) => (
+                              <div
+                                key={attrChip.label}
+                                className="rounded bg-slate-950/80 border border-slate-800 px-2 py-1 text-center"
+                              >
+                                <span className="text-slate-400 mr-1">
+                                  {attrChip.label}
+                                </span>
+                                <span
+                                  className={
+                                    attrChip.value >= 14
+                                      ? 'text-emerald-300 font-bold'
+                                      : attrChip.value >= 11
+                                        ? 'text-slate-100 font-semibold'
+                                        : 'text-slate-400'
+                                  }
+                                >
+                                  {attrChip.value}
+                                </span>
+                              </div>
+                            ))}
                           </div>
 
                           {target.scoutBadges && target.scoutBadges.length > 0 && (
@@ -733,17 +930,16 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                             </div>
                           )}
 
-                          <div className="flex items-center justify-between pt-1 border-t border-slate-800/80 text-[11px]">
-                            <span className="text-slate-400">
-                              Squad Depth GAP:{' '}
-                              <strong
-                                className={
-                                  isWeakDepth ? 'text-amber-300' : 'text-slate-200'
-                                }
-                              >
-                                {depth} active option{depth === 1 ? '' : 's'}
-                              </strong>
-                            </span>
+                          <div className="flex items-center justify-between pt-1.5 border-t border-slate-800/80 text-[11px] gap-2">
+                            {depth.isGenuineGap ? (
+                              <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                Priority GAP · {depth.count} at club
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center rounded px-2 py-0.5 text-[10px] font-medium bg-slate-800/80 text-slate-400 border border-slate-700/80">
+                                Depth: {depth.count} at club
+                              </span>
+                            )}
                             <button
                               type="button"
                               disabled={alreadyTracked}
@@ -754,8 +950,10 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                                   age: target.age,
                                   currentClub:
                                     target.currentClub ||
-                                    (target.isFreeAgent ? 'Free Agent' : 'Expiring Contract'),
-                                  targetIpRole: 'To Assign',
+                                    (target.isFreeAgent
+                                      ? 'Free Agent'
+                                      : 'Expiring Contract'),
+                                  targetIpRole: bestRole.roleName,
                                   targetOopRole: 'To Assign',
                                   interest: 'Interested',
                                   stage: 'Scouted',
@@ -768,17 +966,18 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                                     (target.isFreeAgent
                                       ? 'Free'
                                       : `<= ${target.contractExpiryMonths}m`),
-                                  notes: `Pass 0 Scouted Target (${target.nationality})`,
+                                  notes: `Scouted Target (${target.nationality}) · ${bestRole.roleName} (${bestRole.fitPct}% Fit)`,
                                 })
                               }
-                              className="rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 disabled:opacity-50 border border-emerald-500/30 px-2.5 py-1 text-[11px] font-semibold text-emerald-300 transition cursor-pointer"
+                              className="rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 disabled:opacity-50 border border-emerald-500/30 px-2.5 py-1 text-[11px] font-semibold text-emerald-300 transition cursor-pointer shrink-0"
                             >
                               {alreadyTracked ? 'Tracked' : '+ Track'}
                             </button>
                           </div>
                         </div>
                       );
-                    })}
+                    }
+                  )}
                 </div>
               )}
             </div>

@@ -52,7 +52,7 @@ async function ensureBooted(reply, origin) {
       const micropip = instance.pyimport('micropip');
       await micropip.install(`fmsave==${FMSAVE_VERSION}`);
 
-      const mapperUrl = new URL('/fm-save-mapper.py?v=9', origin || self.location.origin).href;
+      const mapperUrl = new URL('/fm-save-mapper.py?v=14', origin || self.location.origin).href;
       const mapperSource = await (await fetch(mapperUrl, { cache: 'no-cache' })).text();
       instance.FS.writeFile('/home/pyodide/fm_save_mapper.py', mapperSource);
       mapperModule = instance.pyimport('fm_save_mapper');
@@ -79,7 +79,8 @@ function safeUnmount(instance) {
 }
 
 self.onmessage = async (event) => {
-  const { type, file, requestId, clubHint, scope, origin } = event.data || {};
+  const { type, file, requestId, clubHint, scope, origin, fastSync } = event.data || {};
+  const useFastSync = Boolean(fastSync);
   const reply = (payload) => self.postMessage({ ...payload, requestId });
 
   if (type === 'warmup') {
@@ -98,11 +99,45 @@ self.onmessage = async (event) => {
   if ((type === 'parse_fm' || type === 'parse') && file) {
     let instance = null;
     let activeStep = 'Initialization';
+    const parseStartMs = Date.now();
+    const elapsedSec = () => Number(((Date.now() - parseStartMs) / 1000).toFixed(1));
     try {
       instance = await ensureBooted(reply, origin);
 
-      // Mount the browser File directly via zero-copy WORKERFS (no memory copying!)
-      activeStep = 'Step 1/6 (Mounting save directly via WORKERFS)';
+      const attachRuntimeMeta = (payload) => {
+        if (!payload || typeof payload !== 'object') return payload;
+        if (payload.meta) {
+          payload.meta.fileName = file.name;
+          payload.meta.fileSizeMb = Number(((file.size || 0) / (1024 * 1024)).toFixed(2));
+          payload.meta.decodedAtIso = new Date().toISOString();
+          if (scope) payload.meta.importScope = scope;
+          payload.meta.fastSync = useFastSync;
+          payload.meta.mountMode = 'WORKERFS';
+        }
+        payload.stepTimingsMs = {
+          ...(payload.stepTimingsMs || {}),
+          totalDecodeMs: Math.max(0, Date.now() - parseStartMs),
+        };
+        return payload;
+      };
+
+      const emitCheckpoint = (stageName) => {
+        try {
+          const snapshot = attachRuntimeMeta(
+            JSON.parse(mapperModule.step_snapshot_payload(stageName))
+          );
+          reply({
+            type: 'checkpoint',
+            stage: stageName,
+            payload: snapshot,
+          });
+        } catch {
+          // Non-fatal: continue extraction even if a checkpoint snapshot fails
+        }
+      };
+
+      // ── STAGE 1: Open save + Club & Squad (52 attrs, traits, badges, direct contract/bans/injuries)
+      activeStep = 'Stage 1/4: Opening save via WORKERFS';
       safeUnmount(instance);
       instance.FS.mkdirTree(MOUNT_DIR);
       instance.FS.mount(
@@ -116,77 +151,216 @@ self.onmessage = async (event) => {
       reply({
         type: 'stage',
         stage: 'read',
-        step: 'Step 1/6',
-        label: `Step 1/6: Opening ${file.name} (${totalMb} MB) via zero-copy WORKERFS...`,
+        step: 'Stage 1/4',
+        elapsedSec: elapsedSec(),
+        label: `Stage 1/4: Opening ${file.name} (${totalMb} MB) via zero-copy WORKERFS...`,
       });
       await yieldTick();
 
-      // Step 1/6: Open archive, borrow game_db ONCE, read metadata & managed club
-      const metaJson = mapperModule.step_open(savePath, clubHint || '');
+      const metaJson = mapperModule.step_open(
+        savePath,
+        clubHint || '',
+        scope || 'managed_club_only',
+        useFastSync
+      );
       const meta = JSON.parse(metaJson);
 
-      // Step 2/6: Group 1 — All 52 attributes, traits & Scout Report Badges
-      activeStep = 'Step 2/6 (Extracting 52 attributes, traits & Scout Badges)';
+      activeStep = 'Stage 1/4: Club & Squad (52 attributes, traits & Scout Badges)';
       reply({
         type: 'stage',
         stage: 'parse',
-        step: 'Step 2/6',
-        label: `Step 2/6: Opened ${meta.game} (${meta.gameDateDmy || 'live'} · ${meta.clubName}) — extracting 52 attributes, traits & Scout Badges...`,
+        step: 'Stage 1/4',
+        elapsedSec: elapsedSec(),
+        label: `Stage 1/4: Opened ${meta.game} (${meta.gameDateDmy || 'live'} · ${meta.clubName}) — extracting squad, 52 attributes, traits & direct contracts/bans/injuries (${elapsedSec()}s)...`,
       });
       await yieldTick();
       const pSummary = JSON.parse(mapperModule.step_players());
+      emitCheckpoint('stage_1_squad');
 
-      // Step 3/6: Groups 3–4 — Staff, 12m finances, facilities & time-capped free-agent scan
-      activeStep = 'Step 3/6 (Reading staff, 12m finances, facilities & recruitment targets)';
+      // ── STAGE 2: Finances / 12-month cash runway, Club Staff, Tactics & Mentoring
+      activeStep = 'Stage 2/4: Finances & 12-month cash runway';
       reply({
         type: 'stage',
         stage: 'parse',
-        step: 'Step 3/6',
-        label: `Step 3/6: Reading staff, 12-month cash runway, facilities & scanning free-agent/expiring targets (≤8s cap)...`,
+        step: 'Stage 2/4',
+        elapsedSec: elapsedSec(),
+        label: `Stage 2/4: Finances & 12-month cash runway (${elapsedSec()}s)...`,
       });
       await yieldTick();
-      mapperModule.step_club_extras_and_release_gamedb();
+      mapperModule.step_3_1_finances();
 
-      // Step 4/6: Group 2 — Season stats, Last-5 form ratings & career history
-      activeStep = 'Step 4/6 (Reading season stats, Last-5 form & career history)';
+      activeStep = 'Stage 2/4: Club staff';
       reply({
         type: 'stage',
         stage: 'parse',
-        step: 'Step 4/6',
-        label: `Step 4/6: Extracted ${pSummary.playerCount} players — matching season stats, Last-5 form & career history...`,
+        step: 'Stage 2/4',
+        elapsedSec: elapsedSec(),
+        label: `Stage 2/4: Club staff (${elapsedSec()}s)...`,
       });
       await yieldTick();
-      mapperModule.step_season_stats();
+      mapperModule.step_3_2_staff();
 
-      // Step 5/6: Group 2 — Match results, team xG/shots/possession & upcoming schedule
-      activeStep = 'Step 5/6 (Reading match results, team xG & schedule)';
+      activeStep = 'Stage 2/4: Tactics & mentoring';
       reply({
         type: 'stage',
         stage: 'parse',
-        step: 'Step 5/6',
-        label: `Step 5/6: Reading match results, team xG/shots/possession & upcoming fixtures from ${meta.gameDateDmy || 'save date'}...`,
+        step: 'Stage 2/4',
+        elapsedSec: elapsedSec(),
+        label: `Stage 2/4: Tactics & mentoring (${elapsedSec()}s)...`,
       });
       await yieldTick();
-      const fixSummary = JSON.parse(mapperModule.step_fixtures());
+      mapperModule.step_3_3_tactics_and_mentoring();
+      emitCheckpoint('stage_2_club_core');
 
-      // Step 6/6: Live league standings & finish
-      activeStep = 'Step 6/6 (Building live league standings)';
+      // ── STAGE 3: Fixtures & Full Domestic League Table (two separate JS-yielded steps)
+      activeStep = 'Stage 3/4 (1/2): Fixtures & match results';
       reply({
         type: 'stage',
         stage: 'parse',
-        step: 'Step 6/6',
-        label: `Step 6/6: Found ${fixSummary.playedCount} results & ${fixSummary.upcomingCount} fixtures — building live league table...`,
+        step: 'Stage 3/4 (1/2)',
+        elapsedSec: elapsedSec(),
+        label: `Stage 3/4 (1/2): Fixtures & match results (${elapsedSec()}s)...`,
       });
       await yieldTick();
-      const parsed = JSON.parse(mapperModule.step_league_table_and_finish());
+      const fixSummary = JSON.parse(mapperModule.step_fixtures(true));
 
-      if (parsed && parsed.meta) {
-        parsed.meta.fileName = file.name;
-        parsed.meta.fileSizeMb = Number(((file.size || 0) / (1024 * 1024)).toFixed(2));
-        parsed.meta.decodedAtIso = new Date().toISOString();
-        if (scope) parsed.meta.importScope = scope;
-        parsed.meta.mountMode = 'WORKERFS';
+      activeStep = 'Stage 3/4 (2/2): Domestic league table';
+      reply({
+        type: 'stage',
+        stage: 'parse',
+        step: 'Stage 3/4 (2/2)',
+        elapsedSec: elapsedSec(),
+        label: `Stage 3/4 (2/2): Domestic league table — ${fixSummary.playedCount} results & ${fixSummary.upcomingCount} fixtures (${elapsedSec()}s)...`,
+      });
+      await yieldTick();
+      mapperModule.step_league_table();
+      emitCheckpoint('stage_3_fixtures_league');
+
+      // ── STAGE 4: Full Sync ONLY — Global club ops, Group 4 market scan, & heavy Player Stats
+      if (!useFastSync) {
+        activeStep = 'Stage 4/4: Global injuries';
+        reply({
+          type: 'stage',
+          stage: 'parse',
+          step: 'Stage 4/4',
+          elapsedSec: elapsedSec(),
+          label: `Stage 4/4: Global injuries (${elapsedSec()}s)...`,
+        });
+        await yieldTick();
+        mapperModule.step_3_3_injuries(false);
+
+        activeStep = 'Stage 4/4: Facilities';
+        reply({
+          type: 'stage',
+          stage: 'parse',
+          step: 'Stage 4/4',
+          elapsedSec: elapsedSec(),
+          label: `Stage 4/4: Facilities (${elapsedSec()}s)...`,
+        });
+        await yieldTick();
+        mapperModule.step_3_3_facilities(false);
+
+        activeStep = 'Stage 4/4: Competition rules';
+        reply({
+          type: 'stage',
+          stage: 'parse',
+          step: 'Stage 4/4',
+          elapsedSec: elapsedSec(),
+          label: `Stage 4/4: Competition rules (${elapsedSec()}s)...`,
+        });
+        await yieldTick();
+        mapperModule.step_3_3_competition_rules(false);
+
+        activeStep = 'Stage 4/4: Transfer windows';
+        reply({
+          type: 'stage',
+          stage: 'parse',
+          step: 'Stage 4/4',
+          elapsedSec: elapsedSec(),
+          label: `Stage 4/4: Transfer windows (${elapsedSec()}s)...`,
+        });
+        await yieldTick();
+        mapperModule.step_3_3_transfer_windows(false);
+
+        activeStep = 'Stage 4/4: Sponsorships, set pieces & training';
+        reply({
+          type: 'stage',
+          stage: 'parse',
+          step: 'Stage 4/4',
+          elapsedSec: elapsedSec(),
+          label: `Stage 4/4: Sponsorships, set pieces & training (${elapsedSec()}s)...`,
+        });
+        await yieldTick();
+        mapperModule.step_3_3_secondary_ops(false);
+
+        activeStep = 'Stage 4/4: Free-agent & expiring market scan';
+        reply({
+          type: 'stage',
+          stage: 'parse',
+          step: 'Stage 4/4',
+          elapsedSec: elapsedSec(),
+          label: `Stage 4/4: Free-agent & expiring market scan (${elapsedSec()}s)...`,
+        });
+        await yieldTick();
+        mapperModule.step_3_4_market_scan_and_release_gamedb(false);
+
+        activeStep = 'Stage 4/4: Team match stats (xG, shots & possession)';
+        reply({
+          type: 'stage',
+          stage: 'parse',
+          step: 'Stage 4/4',
+          elapsedSec: elapsedSec(),
+          label: `Stage 4/4: Team match stats (${elapsedSec()}s)...`,
+        });
+        await yieldTick();
+        mapperModule.step_team_match_stats(false);
+
+        activeStep = 'Stage 4/4: player_season_stats';
+        reply({
+          type: 'stage',
+          stage: 'parse',
+          step: 'Stage 4/4',
+          elapsedSec: elapsedSec(),
+          label: `Stage 4/4: player_season_stats for ${pSummary.playerCount} players (${elapsedSec()}s)...`,
+        });
+        await yieldTick();
+        mapperModule.step_4_1_season_stats(false);
+
+        activeStep = 'Stage 4/4: player_match_stats (Last-5 form)';
+        reply({
+          type: 'stage',
+          stage: 'parse',
+          step: 'Stage 4/4',
+          elapsedSec: elapsedSec(),
+          label: `Stage 4/4: player_match_stats (Last-5 form) (${elapsedSec()}s)...`,
+        });
+        await yieldTick();
+        mapperModule.step_4_2_player_match_stats(false);
+
+        activeStep = 'Stage 4/4: player_season_history (Career history)';
+        reply({
+          type: 'stage',
+          stage: 'parse',
+          step: 'Stage 4/4',
+          elapsedSec: elapsedSec(),
+          label: `Stage 4/4: player_season_history (Career history) (${elapsedSec()}s)...`,
+        });
+        await yieldTick();
+        mapperModule.step_4_3_season_history(false);
+
+        activeStep = 'Stage 4/4: Contracts & bans backfill';
+        reply({
+          type: 'stage',
+          stage: 'parse',
+          step: 'Stage 4/4',
+          elapsedSec: elapsedSec(),
+          label: `Stage 4/4: Contracts & bans backfill (${elapsedSec()}s)...`,
+        });
+        await yieldTick();
+        mapperModule.step_4_4_contracts_and_suspensions(false);
       }
+
+      const parsed = attachRuntimeMeta(JSON.parse(mapperModule.step_finalize()));
 
       safeUnmount(instance);
       reply({ type: 'result', data: parsed });

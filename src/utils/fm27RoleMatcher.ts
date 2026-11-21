@@ -170,3 +170,198 @@ export function inferFm27Roles(
     oopRole: 'Pressing Central Midfielder',
   };
 }
+
+/**
+ * Maps snake_case attribute priority keys in src/data/fm27Roles.json
+ * to canonical camelCase keys on PlayerRecord['attributes'].
+ */
+export const FM27_ROLE_ATTR_MAP: Record<string, keyof PlayerRecord['attributes']> = {
+  aerial_ability: 'aerialReach',
+  command_of_area: 'commandOfArea',
+  communication: 'communication',
+  eccentricity: 'eccentricity',
+  handling: 'handling',
+  kicking: 'kicking',
+  one_on_ones: 'oneOnOnes',
+  reflexes: 'reflexes',
+  rushing_out: 'rushingOut',
+  tendency_to_punch: 'punching',
+  throwing: 'throwing',
+  corners: 'corners',
+  crossing: 'crossing',
+  dribbling: 'dribbling',
+  finishing: 'finishing',
+  first_touch: 'firstTouch',
+  free_kicks: 'freeKicks',
+  heading: 'heading',
+  long_shots: 'longShots',
+  long_throws: 'longThrows',
+  marking: 'marking',
+  passing: 'passing',
+  penalty_taking: 'penalties',
+  tackling: 'tackling',
+  technique: 'technique',
+  aggression: 'aggression',
+  anticipation: 'anticipation',
+  bravery: 'bravery',
+  composure: 'composure',
+  concentration: 'concentration',
+  decisions: 'decisions',
+  determination: 'determination',
+  flair: 'flair',
+  leadership: 'leadership',
+  off_the_ball: 'offTheBall',
+  positioning: 'positioning',
+  team_work: 'teamwork',
+  vision: 'vision',
+  work_rate: 'workRate',
+  acceleration: 'acceleration',
+  agility: 'agility',
+  balance: 'balance',
+  jumping: 'jumpingReach',
+  jumping_reach: 'jumpingReach',
+  natural_fitness: 'naturalFitness',
+  pace: 'pace',
+  stamina: 'stamina',
+  strength: 'strength',
+};
+
+export function doesPlayerMatchRolePositionGroup(
+  position: string,
+  secondaryPositions: string[] | undefined,
+  positionGroup: string
+): boolean {
+  const combined = [position || '', ...(secondaryPositions || [])]
+    .join(' ')
+    .toUpperCase();
+  const grp = (positionGroup || '').toUpperCase();
+  if (grp === 'GK' || grp.includes('GOALKEEPER')) return combined.includes('GK');
+  if (grp === 'DC' || grp.includes('CENTRE-BACK') || grp.includes('CENTER-BACK')) {
+    return /\b(DC|CB|D\s*\(C)\b/.test(combined) || combined.includes('DC') || combined.includes('D (C');
+  }
+  if (
+    grp === 'DL/DR' ||
+    grp === 'WBL/WBR' ||
+    grp.includes('FULL-BACK') ||
+    grp.includes('WING-BACK')
+  ) {
+    return (
+      combined.includes('DL') ||
+      combined.includes('DR') ||
+      combined.includes('WB') ||
+      combined.includes('D (L') ||
+      combined.includes('D (R')
+    );
+  }
+  if (grp === 'DM' || grp.includes('DEFENSIVE MIDFIELDER')) {
+    return combined.includes('DM');
+  }
+  if (grp === 'MC' || grp.includes('CENTRAL MIDFIELDER')) {
+    return combined.includes('MC') || combined.includes('M (C');
+  }
+  if (grp === 'ML/MR' || grp.includes('WIDE MIDFIELDER') || grp.includes('WINGER')) {
+    return (
+      combined.includes('ML') ||
+      combined.includes('MR') ||
+      combined.includes('M (L') ||
+      combined.includes('M (R') ||
+      combined.includes('AML') ||
+      combined.includes('AMR') ||
+      combined.includes('AM (L') ||
+      combined.includes('AM (R') ||
+      combined.includes('M/AM')
+    );
+  }
+  if (grp === 'AMC' || grp.includes('ATTACKING MIDFIELDER')) {
+    return combined.includes('AMC') || combined.includes('AM (C');
+  }
+  if (grp === 'AML/AMR') {
+    return (
+      combined.includes('AML') ||
+      combined.includes('AMR') ||
+      combined.includes('AM (L') ||
+      combined.includes('AM (R') ||
+      combined.includes('ML') ||
+      combined.includes('MR')
+    );
+  }
+  if (grp === 'ST' || grp.includes('STRIKER') || grp.includes('FORWARD')) {
+    return combined.includes('ST') || combined.includes('CF');
+  }
+  return false;
+}
+
+/**
+ * Computes a 0–100 role-fit percentage for a PlayerRecord against any pure FM27 IP/OOP role
+ * from src/data/fm27Roles.json using weighted primary (2x) and secondary (1x) attributes
+ * plus position-group suitability.
+ */
+export function scorePlayerForFm27Role(
+  player: PlayerRecord,
+  role: Fm27RoleItem
+): number {
+  const attrs = player.attributes;
+  const entries = Object.entries(role.priorities || {});
+  if (entries.length === 0) return 50;
+
+  let weightedSum = 0;
+  let totalWeight = 0;
+  for (const [snakeKey, tier] of entries) {
+    const camelKey = FM27_ROLE_ATTR_MAP[snakeKey];
+    const rawVal = camelKey ? attrs[camelKey] : undefined;
+    const val = typeof rawVal === 'number' && rawVal > 0 ? Math.min(20, Math.max(1, rawVal)) : 9;
+    const w = tier === 'primary' ? 2.0 : 1.0;
+    weightedSum += (val / 20) * 100 * w;
+    totalWeight += w;
+  }
+
+  let baseScore = totalWeight > 0 ? weightedSum / totalWeight : 50;
+  const isGkPlayer = (player.position || '').toUpperCase().includes('GK');
+  const roleGrpUpper = role.positionGroup.toUpperCase();
+  const isGkRole = roleGrpUpper === 'GK' || roleGrpUpper.includes('GOALKEEPER');
+
+  if (isGkRole !== isGkPlayer) {
+    baseScore *= 0.35;
+  } else if (
+    doesPlayerMatchRolePositionGroup(
+      player.position,
+      player.secondaryPositions,
+      role.positionGroup
+    )
+  ) {
+    baseScore = Math.min(99, baseScore + 8);
+  } else {
+    baseScore = Math.max(20, baseScore - 10);
+  }
+
+  return Math.round(Math.min(99, Math.max(1, baseScore)));
+}
+
+export interface RankedRoleCandidate {
+  player: PlayerRecord;
+  fitPct: number;
+  matchedPosition: boolean;
+}
+
+export function rankSquadForFm27Role(
+  players: PlayerRecord[],
+  role: Fm27RoleItem,
+  limit = 5
+): RankedRoleCandidate[] {
+  return players
+    .map((player) => ({
+      player,
+      fitPct: scorePlayerForFm27Role(player, role),
+      matchedPosition: doesPlayerMatchRolePositionGroup(
+        player.position,
+        player.secondaryPositions,
+        role.positionGroup
+      ),
+    }))
+    .sort((a, b) => {
+      if (b.fitPct !== a.fitPct) return b.fitPct - a.fitPct;
+      return b.player.ability - a.player.ability;
+    })
+    .slice(0, limit);
+}
+

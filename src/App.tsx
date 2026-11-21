@@ -94,6 +94,8 @@ export default function App() {
   );
   const [isRestoredFromMemory, setIsRestoredFromMemory] =
     useState<boolean>(false);
+  const [confirmResetPending, setConfirmResetPending] =
+    useState<boolean>(false);
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerRecord | null>(
     null
   );
@@ -181,14 +183,16 @@ export default function App() {
   const summary = computeCompetitiveSummary(matches);
 
   const handleClearMemory = () => {
-    const confirmed = window.confirm(
-      'Clear saved FM27 memory (squad, staff, matches, recruitment & shortlists) and return to clean "Awaiting .fm Save" state?'
-    );
-    if (!confirmed) return;
+    if (!confirmResetPending) {
+      setConfirmResetPending(true);
+      window.setTimeout(() => setConfirmResetPending(false), 5000);
+      return;
+    }
 
+    setConfirmResetPending(false);
     clearPersistedFmState();
-    setPlayers(SQUAD_PLAYERS);
-    setMatches(COMPETITIVE_MATCH_LOGS);
+    setPlayers([]);
+    setMatches([]);
     setStaff([]);
     setRecruitmentCases([]);
     setShortlists([]);
@@ -205,10 +209,7 @@ export default function App() {
 
   const handleExportBackup = () => {
     const json = exportFmStateBackupJson();
-    if (!json) {
-      alert('No save data currently in memory to export.');
-      return;
-    }
+    if (!json) return;
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -519,11 +520,21 @@ export default function App() {
               <button
                 type="button"
                 onClick={handleClearMemory}
-                title="Clear saved memory and return to clean Awaiting Save state"
-                className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-400 hover:text-red-400 bg-slate-800/80 hover:bg-red-950/40 border border-slate-700/80 hover:border-red-800/50 rounded-lg transition-colors cursor-pointer"
+                title={
+                  confirmResetPending
+                    ? 'Click again to wipe saved memory and return to Awaiting .fm Save'
+                    : 'Clear saved memory and return to clean Awaiting Save state'
+                }
+                className={`inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium rounded-lg border transition-colors cursor-pointer ${
+                  confirmResetPending
+                    ? 'text-rose-200 bg-rose-950/80 border-rose-500/60 hover:bg-rose-900/80'
+                    : 'text-slate-400 hover:text-red-400 bg-slate-800/80 hover:bg-red-950/40 border-slate-700/80 hover:border-red-800/50'
+                }`}
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span className="hidden lg:inline">Reset</span>
+                <span className={confirmResetPending ? 'inline' : 'hidden lg:inline'}>
+                  {confirmResetPending ? 'Confirm Reset?' : 'Reset'}
+                </span>
               </button>
             </>
           ) : (
@@ -734,6 +745,8 @@ export default function App() {
             saveDate={saveDate}
             nextFixture={nextFixture}
             clubName={clubName}
+            activeSuspensions={hydratedFmSave?.activeSuspensions ?? []}
+            competitionRules={hydratedFmSave?.competitionRules ?? null}
           />
         )}
 
@@ -770,6 +783,8 @@ export default function App() {
             }
             financialRunway={hydratedFmSave?.financialRunway ?? null}
             transferWindows={hydratedFmSave?.decodedPayload.transferWindows ?? null}
+            competitionRules={hydratedFmSave?.competitionRules ?? null}
+            divisionBenchmarks={hydratedFmSave?.divisionBenchmarks ?? null}
             scoutedTargets={
               hydratedFmSave?.recruitmentTargets ??
               hydratedFmSave?.decodedPayload.recruitmentTargets ??
@@ -879,6 +894,7 @@ export default function App() {
       <KnowledgeBasePanel
         isOpen={showKnowledgeBase}
         onClose={() => setShowKnowledgeBase(false)}
+        players={players}
       />
     </div>
   );

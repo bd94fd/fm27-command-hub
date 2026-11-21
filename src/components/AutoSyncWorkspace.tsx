@@ -12,6 +12,9 @@ import {
   RefreshCw,
   FileArchive,
   ShieldCheck,
+  Zap,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import {
@@ -30,10 +33,13 @@ import {
 import {
   DecodedFmSavePayload,
   HydratedSaveState,
+  shouldDefaultFastSync,
+  formatStepTimingLabel,
 } from '../utils/fmSaveHydrator';
 import {
   decodeFmSaveFile,
   cancelFmSaveDecode,
+  checkServerDecodeStatus,
   FmSaveProgressStage,
   FmImportScope,
 } from '../services/fmSaveReader';
@@ -55,6 +61,10 @@ import {
   buildLiveTacticalAnalystContext,
   ExtendedPlayerAutoUpdate,
 } from '../utils/tacticalAnalystContext';
+import {
+  parseJsonApiResponse,
+  sanitizeReaderNotes,
+} from '../utils/apiResponse';
 
 export type PlayerAutoUpdate = ExtendedPlayerAutoUpdate;
 
@@ -144,6 +154,14 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   const [turns, setTurns] = useState<ChatTurnPayload[]>([]);
   const [importScope, setImportScope] =
     useState<FmImportScope>('managed_club_only');
+  const [serverDecodeAvailable, setServerDecodeAvailable] = useState<boolean | null>(
+    null
+  );
+  const fastSyncManuallyToggledRef = useRef<boolean>(false);
+  const [fastSync, setFastSync] = useState<boolean>(false);
+  const [extractionWarnings, setExtractionWarnings] = useState<string[]>([]);
+  const [showReaderNotes, setShowReaderNotes] = useState<boolean>(false);
+  const [lastStepTimingsMs, setLastStepTimingsMs] = useState<Record<string, number>>({});
   const [reasoningMode, setReasoningMode] =
     useState<AnalystReasoningMode>('deep_high');
   const [messageInput, setMessageInput] = useState('');
@@ -158,6 +176,26 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   const [isSending, setIsSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const feedEndRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    checkServerDecodeStatus().then((status) => {
+      if (!active) return;
+      setServerDecodeAvailable(status.serverDecodeAvailable);
+      if (!fastSyncManuallyToggledRef.current) {
+        // Keep Full Sync (fastSync=false) whenever server decoding is available;
+        // only auto-enable Fast Sync on mobile when falling back to browser Pyodide.
+        if (status.serverDecodeAvailable) {
+          setFastSync(false);
+        } else if (typeof window !== 'undefined') {
+          setFastSync(shouldDefaultFastSync(window.innerWidth));
+        }
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (turns.length > 0 || isSending) {
@@ -590,10 +628,11 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to get Tactical Analyst response');
-      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data = await parseJsonApiResponse<any>(
+        res,
+        'Failed to get Tactical Analyst response'
+      );
 
       const assignedEventNum = nextEventNum;
 
@@ -767,18 +806,38 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
 
       if (lower.endsWith('.fm')) {
         try {
+          setExtractionWarnings([]);
+          setLastStepTimingsMs({});
           setFmDecodeStage({
-            stage: 'boot',
-            label: `Starting local Pyodide 3.14 + fmsave 0.14.1 reader for ${file.name}...`,
+            stage: 'read',
+            label:
+              serverDecodeAvailable === false
+                ? `Starting local Pyodide 3.14 + fmsave 0.14.1 reader for ${file.name}${fastSync ? ' (Fast Sync)' : ''}...`
+                : `Uploading & decoding full save on server (${file.name})...`,
           });
           const decoded = await decodeFmSaveFile(
             file,
             (stage) => {
               setFmDecodeStage(stage);
             },
-            { scope: importScope }
+            { scope: importScope, fastSync }
           );
           setFmDecodeStage(null);
+
+          const nonFatalWarnings = Array.from(
+            new Set([
+              ...(Array.isArray(decoded.extractionWarnings)
+                ? decoded.extractionWarnings
+                : []),
+              ...(Array.isArray(decoded.warnings) ? decoded.warnings : []),
+            ])
+          );
+          setExtractionWarnings(nonFatalWarnings);
+          setLastStepTimingsMs(
+            decoded.stepTimingsMs && typeof decoded.stepTimingsMs === 'object'
+              ? decoded.stepTimingsMs
+              : {}
+          );
 
           const hydrated = onApplyDecodedFmSave
             ? onApplyDecodedFmSave(decoded)
@@ -1014,32 +1073,36 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         }`}
       >
         {/* Top Header + Scope Selector + Compact Google Connection Toggle */}
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
-          <div>
+        <div className="flex flex-col gap-3.5 pb-4 border-b border-slate-200 dark:border-slate-800">
+          <div className="min-w-0">
             <div className="text-xs font-mono uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-              Bobby Dean Playbook v2.0 + Local Browser .FM Save Reader (Pyodide
-              3.14 · fmsave 0.14.1 · WORKERFS Zero-Copy)
+              {serverDecodeAvailable
+                ? 'Bobby Dean Playbook v2.0 + Native Server .FM Full Sync Engine (Python 3 · fmsave · Browser Fallback Ready)'
+                : 'Bobby Dean Playbook v2.0 + Local Browser .FM Save Reader (Pyodide 3.14 · fmsave · WORKERFS Zero-Copy)'}
             </div>
             <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 mt-0.5">
               FM27 Tactical Analyst Chat &amp; Direct .fm Save Sync
             </h2>
-            <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+            <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 max-w-4xl">
               Drop or select your{' '}
               <span className="font-mono text-emerald-400">.fm</span> save file
-              below (100% decoded locally in your browser — never uploaded to
-              any server). Automatically extracts your managed club, squad
-              attributes &amp; star ratings, season stats, fixtures, league table,
-              tactics, finances, and injuries, populates every tab, and builds
-              your tactical plan from the current in-game date forward.
+              below{' '}
+              {serverDecodeAvailable
+                ? '(decoded natively on this app server in Full Sync mode — 100% of tables extracted fast on mobile & desktop, temporary files deleted immediately after decode, with automatic browser Pyodide fallback).'
+                : '(decoded locally in your browser via Pyodide Web Worker when server decoding is unavailable).'}{' '}
+              Automatically extracts your managed club, squad attributes &amp;
+              star ratings, season stats, fixtures, league table, tactics,
+              finances, and injuries, populates every tab, and builds your
+              tactical plan from the current in-game date forward.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <div className="flex flex-wrap items-center gap-2.5 w-full min-w-0">
             {/* Analyst Reasoning Depth Selector */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 min-w-0 max-w-full w-full sm:w-auto">
               <label
                 htmlFor="analyst-reasoning-mode-select"
-                className="text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap"
+                className="text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap shrink-0"
               >
                 Analyst Brain:
               </label>
@@ -1050,7 +1113,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                 onChange={(e) =>
                   setReasoningMode(e.target.value as AnalystReasoningMode)
                 }
-                className="px-2.5 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 rounded-lg"
+                className="min-w-0 flex-1 sm:flex-none max-w-full px-2.5 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 rounded-lg"
               >
                 <option value="deep_high">
                   Deep Tactical Reasoning (Gemini 4 High)
@@ -1065,10 +1128,10 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             </div>
 
             {/* Scope Selector Before/When Importing */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 min-w-0 max-w-full w-full sm:w-auto">
               <label
                 htmlFor="fm-import-scope-select"
-                className="text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap"
+                className="text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap shrink-0"
               >
                 Import Scope:
               </label>
@@ -1079,7 +1142,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                 onChange={(e) =>
                   setImportScope(e.target.value as FmImportScope)
                 }
-                className="px-2.5 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 rounded-lg"
+                className="min-w-0 flex-1 sm:flex-none max-w-full px-2.5 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 rounded-lg"
               >
                 <option value="managed_club_only">
                   My Managed Club Only (Fastest for Mobile)
@@ -1395,14 +1458,28 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                   Drop your Football Manager{' '}
                   <span className="font-mono text-emerald-400">.fm</span> save
                   file anywhere in this workspace or click{' '}
-                  <strong>Import .fm Save / Image</strong> below. Your save is
-                  mounted via zero-copy <span className="font-mono">WORKERFS</span>{' '}
-                  inside a local Pyodide 3.14 Web Worker with{' '}
-                  <span className="font-mono">fmsave 0.14.1</span> (native zstd
-                  + automatic memory garbage collection between steps so mobile
-                  browsers never time out). You can also chat directly with the
-                  Tactical Analyst about any FM27 tactic, role pairing, or match
-                  scenario right now.
+                  <strong>Import .fm Save / Image</strong> below.{' '}
+                  {serverDecodeAvailable ? (
+                    <>
+                      Your save is decoded natively on the built-in Express
+                      server with Python 3 +{' '}
+                      <span className="font-mono">fmsave</span> in{' '}
+                      <strong>Full Sync</strong> mode (100% of Pass 0 &amp; Pass
+                      1 tables, nothing skipped, fast on mobile) and purged from
+                      temp storage immediately — with automatic local Pyodide
+                      browser fallback if needed.
+                    </>
+                  ) : (
+                    <>
+                      Your save is mounted via zero-copy{' '}
+                      <span className="font-mono">WORKERFS</span> inside a local
+                      Pyodide 3.14 Web Worker with{' '}
+                      <span className="font-mono">fmsave</span> (native zstd +
+                      Progressive Checkpoint Recovery).
+                    </>
+                  )}{' '}
+                  You can also chat directly with the Tactical Analyst about any
+                  FM27 tactic, role pairing, or match scenario right now.
                 </p>
               </div>
               <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
@@ -1421,9 +1498,32 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                     className="hidden"
                   />
                 </label>
+                <label
+                  htmlFor="fm-fast-sync-empty-toggle"
+                  className={`inline-flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-lg border cursor-pointer transition-colors select-none ${
+                    fastSync
+                      ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+                      : 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:border-slate-500'
+                  }`}
+                >
+                  <input
+                    id="fm-fast-sync-empty-toggle"
+                    type="checkbox"
+                    checked={fastSync}
+                    onChange={(e) => {
+                      fastSyncManuallyToggledRef.current = true;
+                      setFastSync(e.target.checked);
+                    }}
+                    className="accent-amber-500 w-3.5 h-3.5 cursor-pointer"
+                  />
+                  <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span>Fast Sync (Club Core — Recommended on Mobile)</span>
+                </label>
                 <span className="inline-flex items-center gap-1.5 text-[11px] font-mono text-slate-500 dark:text-slate-400">
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                  100% Local Browser Decode · Never Uploaded to Server
+                  {serverDecodeAvailable
+                    ? 'Native Server Full Sync Ready (100% Tables · Mobile-Fast)'
+                    : 'Local Browser Pyodide Fallback · Automatic Server Detection'}
                 </span>
               </div>
             </div>
@@ -1688,6 +1788,78 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             </div>
           )}
 
+          {Object.keys(lastStepTimingsMs).length > 0 && (
+            <div className="px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-[11px] flex flex-wrap items-center gap-x-2.5 gap-y-1">
+              <span className="font-mono font-semibold uppercase tracking-wider text-emerald-500">
+                Decode Timing:
+              </span>
+              {Object.entries(lastStepTimingsMs).map(([key, ms]) => {
+                const isSlow = key !== 'totalDecodeMs' && ms >= 5000;
+                return (
+                  <span
+                    key={key}
+                    className={`font-mono tabular-nums ${
+                      isSlow
+                        ? 'text-amber-400 font-semibold'
+                        : key === 'totalDecodeMs'
+                          ? 'text-emerald-400 font-semibold'
+                          : 'text-slate-600 dark:text-slate-400'
+                    }`}
+                  >
+                    {formatStepTimingLabel(key)}{' '}
+                    {ms === 0 && key !== 'totalDecodeMs'
+                      ? '0ms'
+                      : `${(ms / 1000).toFixed(1)}s`}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+
+          {(() => {
+            const cleanedNotes = sanitizeReaderNotes(extractionWarnings);
+            if (cleanedNotes.length === 0) return null;
+            return (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowReaderNotes((prev) => !prev)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/30 text-[11px] font-medium text-amber-300 transition cursor-pointer"
+                  >
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                    <span>FM27 27.1 Reader Notes ({cleanedNotes.length})</span>
+                    {showReaderNotes ? (
+                      <ChevronUp className="w-3.5 h-3.5 shrink-0" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Dismiss reader notes"
+                    onClick={() => {
+                      setExtractionWarnings([]);
+                      setShowReaderNotes(false);
+                    }}
+                    className="text-slate-400 hover:text-white cursor-pointer shrink-0 p-1"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                {showReaderNotes && (
+                  <div className="p-2.5 bg-amber-500/10 border border-amber-500/25 rounded-lg text-[11px] text-amber-200/90 space-y-1">
+                    <ul className="list-disc pl-4 space-y-0.5">
+                      {cleanedNotes.slice(0, 8).map((note, idx) => (
+                        <li key={idx}>{note}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {chatError && (
             <div className="p-2.5 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2 text-xs text-red-500">
               <AlertCircle className="w-4 h-4 shrink-0" />
@@ -1733,21 +1905,45 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           )}
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-3">
-            <label
-              htmlFor="chat-multi-file-upload"
-              className="inline-flex items-center justify-center gap-2 px-3.5 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 rounded-lg cursor-pointer shrink-0 transition-colors"
-            >
-              <Upload className="w-4 h-4 text-emerald-500" />
-              <span>Import .fm Save / Image</span>
-              <input
-                id="chat-multi-file-upload"
-                type="file"
-                accept=".fm,image/*,.csv,.html,.htm,.rtf,.txt"
-                multiple
-                onChange={handleFilesSelected}
-                className="hidden"
-              />
-            </label>
+            <div className="flex flex-col gap-1.5 shrink-0">
+              <label
+                htmlFor="chat-multi-file-upload"
+                className="inline-flex items-center justify-center gap-2 px-3.5 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 rounded-lg cursor-pointer transition-colors"
+              >
+                <Upload className="w-4 h-4 text-emerald-500" />
+                <span>Import .fm Save / Image</span>
+                <input
+                  id="chat-multi-file-upload"
+                  type="file"
+                  accept=".fm,image/*,.csv,.html,.htm,.rtf,.txt"
+                  multiple
+                  onChange={handleFilesSelected}
+                  className="hidden"
+                />
+              </label>
+              <label
+                htmlFor="fm-fast-sync-composer-toggle"
+                title="Auto-enabled on mobile (<768px). Skips global injuries, facilities, competition rules, transfer windows, optional club dumps, market scan, and player_season_stats / match / career history — keeps full squad, 52 attributes, traits, scout badges, direct contracts/bans/injuries, finances, club staff, tactics, mentoring, fixtures & full domestic league table."
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium rounded-lg border cursor-pointer transition-colors select-none ${
+                  fastSync
+                    ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+                    : 'bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-800 hover:border-slate-600'
+                }`}
+              >
+                <input
+                  id="fm-fast-sync-composer-toggle"
+                  type="checkbox"
+                  checked={fastSync}
+                  onChange={(e) => {
+                    fastSyncManuallyToggledRef.current = true;
+                    setFastSync(e.target.checked);
+                  }}
+                  className="accent-amber-500 w-3.5 h-3.5 cursor-pointer"
+                />
+                <Zap className="w-3 h-3 text-amber-400 shrink-0" />
+                <span>Fast Sync (Club Core — Recommended on Mobile)</span>
+              </label>
+            </div>
 
             <div className="flex-1">
               <textarea

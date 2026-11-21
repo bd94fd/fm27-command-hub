@@ -71,6 +71,92 @@ export interface InternalReliabilityFlags {
   versatility: number;
 }
 
+export interface ContractReleaseClause {
+  type: string;
+  amount: number;
+}
+
+export interface ContractBonuses {
+  appearanceFee?: number | null;
+  goalBonus?: number | null;
+  cleanSheetBonus?: number | null;
+  unusedSubFee?: number | null;
+}
+
+export interface ContractDetails {
+  promisedPlayingTime: string;
+  releaseClauses: ContractReleaseClause[];
+  optionalExtensionYears: number;
+  bonuses: ContractBonuses;
+  loanWageContributionPct: number | null;
+}
+
+export interface ActiveSuspensionRecord {
+  playerUid: number;
+  playerName?: string | null;
+  matchesRemaining: number;
+  competitionName: string;
+  scope: 'league' | 'cup' | 'continental' | 'all';
+  reason: string;
+}
+
+export interface LeagueTableRow {
+  position: number;
+  clubUid: number | null;
+  clubName: string;
+  played: number;
+  won: number;
+  drawn: number;
+  lost: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  goalDifference: number;
+  points: number;
+  form: string[];
+}
+
+export interface DivisionPositionBenchmark {
+  sampleSize: number;
+  medianWeeklyWage: number;
+  medianAttributes: Record<string, number>;
+}
+
+export interface DivisionBenchmarks {
+  competitionName: string;
+  scope: string;
+  clubCount: number;
+  byPositionGroup: Record<'GK' | 'DEF' | 'MID' | 'FWD', DivisionPositionBenchmark>;
+}
+
+export interface TacticSlotAssignment {
+  slotIndex: number;
+  position: string;
+  ipRole?: string | null;
+  oopRole?: string | null;
+  playerUid?: number | null;
+  playerName?: string | null;
+}
+
+export interface DeepTacticRecord {
+  index: number;
+  name: string;
+  styleName: string;
+  mentality: string;
+  inPossessionFormation?: string | null;
+  outOfPossessionFormation?: string | null;
+  slots?: TacticSlotAssignment[];
+}
+
+export interface CompetitionRegistrationRules {
+  competitionName?: string | null;
+  maxSquadSize: number | null;
+  minHomegrownClub: number | null;
+  minHomegrownNation: number | null;
+  maxForeignPlayers: number | null;
+  u21Exempt: boolean | null;
+  matchdaySubsLimit: number | null;
+}
+
 export interface HydratedSquadPlayer {
   uid: number;
   name: string;
@@ -85,6 +171,8 @@ export interface HydratedSquadPlayer {
   contractExpiryMonths: number;
   abilityStars?: number;
   potentialStars?: number;
+  contractDetails?: ContractDetails;
+  activeSuspensions?: ActiveSuspensionRecord[];
 }
 
 export interface PlayerMatchRating {
@@ -222,12 +310,19 @@ export interface Pass0ExtractionPayload {
   facilities: ClubFacilitiesSummary;
   sponsorships: SponsorshipDeal[];
   transferWindows: TransferWindowInfo;
-  competitionRules: Record<string, unknown>;
+  competitionRules: CompetitionRegistrationRules | Record<string, unknown>;
+  activeSuspensions?: ActiveSuspensionRecord[];
+  leagueTableRows?: LeagueTableRow[];
+  divisionBenchmarks?: DivisionBenchmarks | null;
+  tactics?: DeepTacticRecord[];
   selections: Record<string, unknown>;
   setPieces: Record<string, unknown>;
   training: Record<string, unknown>;
   jobVacancies: JobVacancyEntry[];
   recruitmentTargets: RecruitmentTarget[];
+  extractionWarnings?: string[];
+  fastSync?: boolean;
+  stepTimingsMs?: Record<string, number>;
 }
 
 export type FmImportScope =

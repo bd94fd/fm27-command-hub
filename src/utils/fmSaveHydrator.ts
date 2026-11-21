@@ -1,11 +1,17 @@
 import { MatchLogEntry, PlayerRecord, StaffRecord } from '../types/fm27';
 import {
+  ActiveSuspensionRecord,
   ClubFacilitiesSummary,
+  CompetitionRegistrationRules,
+  ContractDetails,
+  DeepTacticRecord,
+  DivisionBenchmarks,
   FinancialRunway,
   FormTrend,
   HydratedSquadPlayer,
   InternalReliabilityFlags,
   JobVacancyEntry,
+  LeagueTableRow,
   MonthlyFinance,
   Pass0ExtractionPayload,
   PlayerAttributes,
@@ -22,7 +28,40 @@ import {
 import { normalizePlayerName } from './fmFileImporter';
 import { inferFm27Roles } from './fm27RoleMatcher';
 
-export const WORKER_CACHE_BUSTER = '?v=9';
+export const WORKER_CACHE_BUSTER = '?v=14';
+
+export function shouldDefaultFastSync(viewportWidth: number): boolean {
+  return Number.isFinite(viewportWidth) && viewportWidth > 0 && viewportWidth < 768;
+}
+
+const STEP_TIMING_LABELS: Record<string, string> = {
+  step_1_open: 'Open Save',
+  step_2_players: 'Squad (52 Attrs)',
+  step_3_1_finances: '2.1 Finances',
+  step_3_2_staff: '2.2 Staff',
+  step_3_3_tactics_mentoring: '2.3 Tactics/Mentoring',
+  step_5_fixtures: '3.1 Fixtures',
+  step_5_1_fixtures: '3.1 Fixtures',
+  step_5_2_league_table: '3.2 League Table',
+  step_6_league_table: '3.2 League Table',
+  step_3_3_injuries: '4.1 Global Injuries',
+  step_3_3_facilities: '4.2 Facilities',
+  step_3_3_competition_rules: '4.3 Comp Rules',
+  step_3_3_transfer_windows: '4.4 Transfer Windows',
+  step_3_3_secondary_ops: '4.5 Secondary Ops',
+  step_3_3_club_ops: '4.x Club Ops',
+  step_3_4_market_scan: '4.6 Market Scan',
+  step_4_team_match_stats: '4.7 Team Match Stats',
+  step_4_1_season_stats: '4.8 Season Stats',
+  step_4_2_player_match_stats: '4.9 Match Form',
+  step_4_3_season_history: '4.10 Career History',
+  step_4_4_contracts_and_suspensions: '4.11 Contracts/Bans',
+  totalDecodeMs: 'Total',
+};
+
+export function formatStepTimingLabel(stepKey: string): string {
+  return STEP_TIMING_LABELS[stepKey] || stepKey.replace(/_/g, ' ');
+}
 
 export { normalizePlayerName };
 
@@ -176,6 +215,10 @@ export function hydratePass0Payload(rawJson: string): Pass0ExtractionPayload {
   return {
     clubUid: Number(parsed.clubUid) || 0,
     squad,
+    activeSuspensions: Array.isArray(parsed.activeSuspensions)
+      ? (parsed.activeSuspensions as ActiveSuspensionRecord[])
+      : [],
+    divisionBenchmarks: parsed.divisionBenchmarks || null,
     playerMatchStats: parsed.playerMatchStats || {},
     teamMatchStats: Array.isArray(parsed.teamMatchStats) ? parsed.teamMatchStats : [],
     playerSeasonHistory: parsed.playerSeasonHistory || {},
@@ -304,6 +347,7 @@ export interface DecodedFmSavePlayer {
   wagePw: number;
   expires: string | null;
   contractExpiryMonths?: number;
+  contractDetails?: ContractDetails | null;
   onLoan: boolean;
   teamSlot: number;
   apps: string;
@@ -337,6 +381,7 @@ export interface DecodedFmSavePlayer {
     temperament: number | null;
     loyalty: number | null;
   } | null;
+  activeSuspensions?: ActiveSuspensionRecord[];
   suspensionsCount: number;
 }
 
@@ -395,6 +440,7 @@ export interface DecodedFmSavePayload {
     fileSizeMb?: number;
     decodedAtIso?: string;
     importScope?: string;
+    fastSync?: boolean;
     mountMode?: string;
   };
   clubUid?: number | null;
@@ -436,6 +482,7 @@ export interface DecodedFmSavePayload {
       pts: number;
       gd: number;
     }>;
+    rows?: LeagueTableRow[];
   } | null;
   finances: {
     month: string | null;
@@ -454,12 +501,16 @@ export interface DecodedFmSavePayload {
     cause: string | null;
     kind: string;
   }>;
-  tactics: Array<{
-    index: number;
-    name: string;
-    styleName: string;
-    mentality: string;
-  }>;
+  activeSuspensions?: ActiveSuspensionRecord[];
+  divisionBenchmarks?: DivisionBenchmarks | null;
+  tactics: Array<
+    DeepTacticRecord & {
+      index: number;
+      name: string;
+      styleName: string;
+      mentality: string;
+    }
+  >;
   mentoring: Array<{
     groupNumber: number;
     label: string;
@@ -472,13 +523,16 @@ export interface DecodedFmSavePayload {
   facilities?: ClubFacilitiesSummary;
   sponsorships?: SponsorshipDeal[];
   transferWindows?: TransferWindowInfo;
-  competitionRules?: Record<string, unknown>;
+  competitionRules?: CompetitionRegistrationRules | Record<string, unknown>;
   selections?: Record<string, unknown>;
   setPieces?: Record<string, unknown>;
   training?: Record<string, unknown>;
   jobVacancies?: JobVacancyEntry[];
   recruitmentTargets?: RecruitmentTarget[];
+  fastSync?: boolean;
   warnings?: string[];
+  extractionWarnings?: string[];
+  stepTimingsMs?: Record<string, number>;
 }
 
 export interface HydratedSaveState {
@@ -500,6 +554,12 @@ export interface HydratedSaveState {
   balanceLabel: string | null;
   financialRunway: FinancialRunway | null;
   recruitmentTargets: RecruitmentTarget[];
+  activeSuspensions: ActiveSuspensionRecord[];
+  competitionRules: CompetitionRegistrationRules | null;
+  divisionBenchmarks: DivisionBenchmarks | null;
+  extractionWarnings: string[];
+  fastSync: boolean;
+  stepTimingsMs: Record<string, number>;
   analystPromptContext: string;
   decodedPayload: DecodedFmSavePayload;
 }
@@ -600,6 +660,31 @@ export function hydrateAppFromDecodedFmSave(
       byUid.set(p.uid, p);
     }
     byNorm.set(normalizePlayerName(p.name), p);
+  }
+
+  // Pass 1 Tier-1: Collect structured suspensions by playerUid
+  const activeSuspensionsList: ActiveSuspensionRecord[] = [];
+  const seenBanKey = new Set<string>();
+  const pushBan = (ban: ActiveSuspensionRecord) => {
+    if (!ban || typeof ban.matchesRemaining !== 'number' || ban.matchesRemaining <= 0) return;
+    const key = `${ban.playerUid}|${ban.competitionName}|${ban.matchesRemaining}`;
+    if (seenBanKey.has(key)) return;
+    seenBanKey.add(key);
+    activeSuspensionsList.push(ban);
+  };
+  for (const b of decoded.activeSuspensions || []) {
+    pushBan(b);
+  }
+  for (const dp of decoded.players) {
+    for (const b of dp.activeSuspensions || []) {
+      pushBan(b);
+    }
+  }
+  const bansByUid = new Map<number, ActiveSuspensionRecord[]>();
+  for (const ban of activeSuspensionsList) {
+    const arr = bansByUid.get(ban.playerUid) || [];
+    arr.push(ban);
+    bansByUid.set(ban.playerUid, arr);
   }
 
   const changedPlayers: Array<{ name: string; changes: string[] }> = [];
@@ -718,6 +803,15 @@ export function hydrateAppFromDecodedFmSave(
     }
     if (typeof dp.contractExpiryMonths === 'number') {
       next.contractExpiryMonths = dp.contractExpiryMonths;
+    }
+    if (dp.contractDetails) {
+      next.contractDetails = dp.contractDetails;
+    }
+    const pBans = bansByUid.get(dp.uid) || [];
+    if (pBans.length > 0) {
+      next.activeSuspensions = pBans;
+    } else if (existing.activeSuspensions) {
+      next.activeSuspensions = [];
     }
     if (Array.isArray(dp.secondaryPositions)) {
       next.secondaryPositions = dp.secondaryPositions;
@@ -862,6 +956,8 @@ export function hydrateAppFromDecodedFmSave(
       positionRatings: dp.positionRatings ?? null,
       expires: typeof dp.expires === 'string' && dp.expires.trim() ? dp.expires : 'N/A',
       contractExpiryMonths: dp.contractExpiryMonths,
+      contractDetails: dp.contractDetails ?? undefined,
+      activeSuspensions: bansByUid.get(dp.uid) || [],
       nation: (dp.nation && dp.nation.trim()) || 'FM',
       wagePw: Number(dp.wagePw) || 0,
       marketValue: dp.marketValue ?? null,
@@ -1175,7 +1271,26 @@ export function hydrateAppFromDecodedFmSave(
       const formStr = form
         ? ` | L5 Form: ${form.averageRating} (${form.trend})`
         : '';
-      return `- ${p.name} (${p.position}, Age ${p.age}, ${abilityStars.toFixed(1)}★/${potentialStars.toFixed(1)}★, £${p.wagePw}/wk exp ${p.expires}): Apps ${p.apps}, ${p.minutes}m, Rat ${p.rating ?? '-'}, ${p.goals}G (${p.xG} xG), ${p.assists}A (${p.xA} xA), Tck ${p.tckPct}%, Hdr ${p.hdrPct}% | ${attrStr}${formStr}${badgeStr}${traitStr}`;
+      const pBans = bansByUid.get(p.uid) || [];
+      const banStr =
+        pBans.length > 0
+          ? ` | [BANNED ${pBans.map((b) => `${b.matchesRemaining}m ${b.scope}`).join(', ')}]`
+          : '';
+      const cd = p.contractDetails;
+      const clauseParts: string[] = [];
+      if (cd?.promisedPlayingTime) clauseParts.push(`PT: ${cd.promisedPlayingTime}`);
+      if (cd?.optionalExtensionYears && cd.optionalExtensionYears > 0) {
+        clauseParts.push(`Club Opt +${cd.optionalExtensionYears}y`);
+      }
+      if (cd?.releaseClauses && cd.releaseClauses.length > 0) {
+        clauseParts.push(
+          cd.releaseClauses
+            .map((rc) => `${rc.type} ${formatMoney(rc.amount)}`)
+            .join(', ')
+        );
+      }
+      const clauseStr = clauseParts.length > 0 ? ` | Contract: ${clauseParts.join(' · ')}` : '';
+      return `- ${p.name} (${p.position}, Age ${p.age}, ${abilityStars.toFixed(1)}★/${potentialStars.toFixed(1)}★, £${p.wagePw}/wk exp ${p.expires}): Apps ${p.apps}, ${p.minutes}m, Rat ${p.rating ?? '-'}, ${p.goals}G (${p.xG} xG), ${p.assists}A (${p.xA} xA), Tck ${p.tckPct}%, Hdr ${p.hdrPct}% | ${attrStr}${formStr}${banStr}${clauseStr}${badgeStr}${traitStr}`;
     })
     .join('\n');
 
@@ -1205,6 +1320,52 @@ export function hydrateAppFromDecodedFmSave(
           )
           .join('\n')
       : '- No active injuries reported in save.';
+
+  const suspensionLines =
+    activeSuspensionsList.length > 0
+      ? activeSuspensionsList
+          .map(
+            (b) =>
+              `- ${b.playerName}: BANNED (${b.matchesRemaining}m remaining · ${b.competitionName} [${b.scope}] · ${b.reason}) — DO NOT SELECT AS STARTER`
+          )
+          .join('\n')
+      : '- No active disciplinary suspensions.';
+
+  const rawRules = decoded.competitionRules as Partial<CompetitionRegistrationRules> | undefined;
+  const typedRules: CompetitionRegistrationRules | null =
+    rawRules &&
+    (rawRules.competitionName ||
+      rawRules.maxSquadSize !== undefined ||
+      rawRules.matchdaySubsLimit !== undefined)
+      ? {
+          competitionName:
+            typeof rawRules.competitionName === 'string'
+              ? rawRules.competitionName
+              : decoded.leagueStanding?.competitionName || null,
+          maxSquadSize:
+            typeof rawRules.maxSquadSize === 'number' ? rawRules.maxSquadSize : null,
+          minHomegrownClub:
+            typeof rawRules.minHomegrownClub === 'number'
+              ? rawRules.minHomegrownClub
+              : null,
+          minHomegrownNation:
+            typeof rawRules.minHomegrownNation === 'number'
+              ? rawRules.minHomegrownNation
+              : null,
+          maxForeignPlayers:
+            typeof rawRules.maxForeignPlayers === 'number'
+              ? rawRules.maxForeignPlayers
+              : null,
+          u21Exempt:
+            typeof rawRules.u21Exempt === 'boolean' ? rawRules.u21Exempt : null,
+          matchdaySubsLimit:
+            typeof rawRules.matchdaySubsLimit === 'number'
+              ? rawRules.matchdaySubsLimit
+              : null,
+        }
+      : null;
+
+  const divisionBenchmarks = decoded.divisionBenchmarks || null;
 
   const mentoringLines =
     decoded.mentoring.length > 0
@@ -1237,6 +1398,30 @@ export function hydrateAppFromDecodedFmSave(
           .join(', ')}`
       : '';
 
+  const rulesSummaryParts: string[] = [];
+  if (typedRules?.maxSquadSize) rulesSummaryParts.push(`Max Squad ${typedRules.maxSquadSize}`);
+  if (typedRules?.minHomegrownClub) rulesSummaryParts.push(`Min HGC ${typedRules.minHomegrownClub}`);
+  if (typedRules?.minHomegrownNation) rulesSummaryParts.push(`Min HGN ${typedRules.minHomegrownNation}`);
+  if (typedRules?.maxForeignPlayers) rulesSummaryParts.push(`Max Foreign ${typedRules.maxForeignPlayers}`);
+  if (typedRules?.u21Exempt !== null && typedRules?.u21Exempt !== undefined) {
+    rulesSummaryParts.push(`U21 Exempt: ${typedRules.u21Exempt ? 'Yes' : 'No'}`);
+  }
+  if (typedRules?.matchdaySubsLimit) rulesSummaryParts.push(`Subs Limit ${typedRules.matchdaySubsLimit}`);
+  const rulesLine =
+    rulesSummaryParts.length > 0
+      ? `Registration & Competition Rules (${typedRules?.competitionName || 'League'}): ${rulesSummaryParts.join(' · ')}`
+      : '';
+
+  const fullTableLines =
+    decoded.leagueStanding?.rows && decoded.leagueStanding.rows.length > 0
+      ? `\n=== FULL DOMESTIC LEAGUE TABLE (${decoded.leagueStanding.competitionName}) ===\n${decoded.leagueStanding.rows
+          .map(
+            (r) =>
+              `#${r.position} ${r.clubName} (${r.played}P ${r.won}W-${r.drawn}D-${r.lost}L, ${r.goalDifference >= 0 ? '+' : ''}${r.goalDifference}GD, ${r.points}Pts${r.form && r.form.length > 0 ? `, Form ${r.form.join('')}` : ''})`
+          )
+          .join('\n')}\n`
+      : '';
+
   const targetsSummary =
     recruitmentTargets.length > 0
       ? `\n=== PASS 0 SCOUTED FREE AGENTS & EXPIRING <=6M (${recruitmentTargets.length} TARGETS) ===\n${recruitmentTargets
@@ -1248,7 +1433,15 @@ export function hydrateAppFromDecodedFmSave(
           .join('\n')}\n`
       : '';
 
-  const analystPromptContext = `[LIVE FULL .FM SAVE DECODED VIA FMSAVE ${decoded.meta.fmsaveVersion} — PASS 0 GROUPS 1–4 REAL IN-GAME DATA]
+  const mergedWarnings = Array.from(
+    new Set([
+      ...(Array.isArray(decoded.extractionWarnings) ? decoded.extractionWarnings : []),
+      ...(Array.isArray(decoded.warnings) ? decoded.warnings : []),
+    ])
+  );
+  const usedFastSync = Boolean(decoded.fastSync ?? decoded.meta?.fastSync ?? false);
+
+  const analystPromptContext = `[LIVE FULL .FM SAVE DECODED VIA FMSAVE ${decoded.meta.fmsaveVersion} — PASS 0 & PASS 1 TIER-1 REAL IN-GAME DATA${usedFastSync ? ' · FAST SYNC MODE' : ''}]
 Game: ${decoded.meta.game} (Build ${decoded.meta.build}) | Save: ${decoded.meta.saveName}
 EXACT CURRENT IN-GAME DATE: ${saveDateLabel}
 Managed Club: ${decoded.meta.clubName} (Manager: ${decoded.meta.managerName})
@@ -1257,6 +1450,7 @@ ${decoded.leagueStanding?.nextOpponentStanding ? `Next Opponent Table Standing: 
 ${wageComplianceLabel ? `Live Finances: Balance ${balanceLabel} | Wages ${wageComplianceLabel}` : balanceLabel ? `Live Balance: ${balanceLabel}` : ''}
 ${runwayLine}
 ${facilitiesLine}
+${rulesLine}
 ${vacanciesLine}
 
 === DIFFS AUTO-APPLIED TO SQUAD DATABASE (${changedPlayers.length} PLAYERS UPDATED, ${removedPlayers.length} REMOVED, ${newlyAddedCount} NEW MATCHES LOGGED) ===
@@ -1271,15 +1465,18 @@ ${upcomingLines || 'None found'}
 === ACTIVE INJURIES ===
 ${injuryLines}
 
+=== ACTIVE SUSPENSIONS (DO NOT SELECT BANNED STARTERS) ===
+${suspensionLines}
+
 === LIVE MENTORING GROUPS IN SAVE ===
 ${mentoringLines}
-
-=== FULL MANAGED SQUAD (${decoded.players.length} PLAYERS WITH STAR RATINGS, SCOUT BADGES, TRAITS, LAST-5 FORM & ATTRIBUTES) ===
+${fullTableLines}
+=== FULL MANAGED SQUAD (${decoded.players.length} PLAYERS WITH STAR RATINGS, SCOUT BADGES, CONTRACT CLAUSES, TRAITS, LAST-5 FORM & ATTRIBUTES) ===
 ${topPlayersSummary}
-${targetsSummary}${decoded.warnings && decoded.warnings.length > 0 ? `\n=== READER NOTES (NON-FATAL) ===\n${decoded.warnings.map((w) => `- ${w}`).join('\n')}\n` : ''}
+${targetsSummary}${mergedWarnings.length > 0 ? `\n=== READER NOTES (NON-FATAL) ===\n${mergedWarnings.map((w) => `- ${w}`).join('\n')}\n` : ''}
 ANALYST MISSION FOR THIS .FM SAVE DROP:
 1. Acknowledge the exact in-game date (${saveDateLabel}), league position, recent results (never fabricate match-level xG or possession if not present in the save — cite the exact player season xG/xA and fixture scorelines), financial runway, and finances directly from the .fm file.
-2. Audit player performance, attribute changes, Last-5 form trends, Scout Report Badges, traits, fatigue/minutes load, and injuries. NEVER cite raw hidden CA/PA or raw hidden attribute numbers.
+2. Audit player performance, attribute changes, Last-5 form trends, Scout Report Badges, traits, fatigue/minutes load, contract clauses/extensions, injuries, and active suspensions. NEVER select a BANNED player as a starter, and NEVER cite raw hidden CA/PA or raw hidden attribute numbers.
 3. Produce a **COMPLETE ACTION PLAN FROM ${saveDateLabel} FORWARD**:
    - Exact Starting XI + Bench + 62m/75m substitution plan for the very next fixture (${nextFixtureLabel || 'next scheduled match'}), obeying Playbook v2.0 & Club Rules #1–#6 (Tracking Wingers OOP, 3-man midfield late, never pull both CBs, <=125m Double-GW cap).
    - Multi-match rotation & training schedule plan across the upcoming fixtures listed above.
@@ -1305,6 +1502,15 @@ ANALYST MISSION FOR THIS .FM SAVE DROP:
     balanceLabel,
     financialRunway,
     recruitmentTargets,
+    activeSuspensions: activeSuspensionsList,
+    competitionRules: typedRules,
+    divisionBenchmarks,
+    extractionWarnings: mergedWarnings,
+    fastSync: usedFastSync,
+    stepTimingsMs:
+      decoded.stepTimingsMs && typeof decoded.stepTimingsMs === 'object'
+        ? { ...decoded.stepTimingsMs }
+        : {},
     analystPromptContext,
     decodedPayload: decoded,
   };

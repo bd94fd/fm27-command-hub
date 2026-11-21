@@ -1,0 +1,411 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import {
+  parseJsonApiResponse,
+  sanitizeReaderNote,
+  sanitizeReaderNotes,
+} from './apiResponse';
+import {
+  computeTargetBestRoleFit,
+  enrichAndFilterScoutedTargets,
+  evaluateTargetSquadDepth,
+  formatTargetContractSummary,
+  getPositionRelevantAttributes,
+} from './recruitmentHelpers';
+import {
+  buildLiveTacticalAnalystContext,
+  MAX_LIVE_ANALYST_CONTEXT_CHARS,
+} from './tacticalAnalystContext';
+import { PlayerRecord } from '../types/fm27';
+import { RecruitmentTarget } from '../types/fmSave';
+
+function makePlayer(overrides: Partial<PlayerRecord> & { name: string; position: string }): PlayerRecord {
+  return {
+    id: `p-${overrides.name}`,
+    number: 1,
+    apps: '10',
+    minutes: 800,
+    rating: 7.05,
+    goals: 1,
+    xG: 0.9,
+    xGPer90: 0.1,
+    assists: 1,
+    xA: 0.8,
+    xAPer90: 0.09,
+    drbPer90: 1.0,
+    prPassesPer90: 3.0,
+    hdrPct: 60,
+    intPer90: 1.2,
+    tckPct: 75,
+    personality: 'Balanced',
+    age: 24,
+    ability: 3.0,
+    potential: 3.5,
+    condition: 95,
+    sharpness: 95,
+    preferredFoot: 'Right',
+    expires: '30/06/2028',
+    nation: 'Belgium',
+    wagePw: 450,
+    status: 'Starter',
+    attributes: {
+      pace: 13,
+      acceleration: 13,
+      stamina: 13,
+      jumpingReach: 12,
+      determination: 14,
+      passing: 12,
+      finishing: 10,
+      tackling: 11,
+      firstTouch: 12,
+      decisions: 12,
+      workRate: 13,
+      offTheBall: 11,
+    },
+    ipRole: 'Central Midfielder',
+    oopRole: 'Pressing Central Midfielder',
+    notes: '',
+    ...overrides,
+  };
+}
+
+function makeTarget(
+  overrides: Partial<RecruitmentTarget> & { name: string; primaryPosition: string }
+): RecruitmentTarget {
+  return {
+    uid: Math.floor(Math.random() * 100000),
+    age: 22,
+    nationality: 'Belgium',
+    isFreeAgent: true,
+    contractExpiryMonths: 0,
+    demandedWageEur: 0,
+    attributes: {
+      pace: 14,
+      acceleration: 14,
+      stamina: 13,
+      strength: 12,
+      jumpingReach: 13,
+      finishing: 14,
+      offTheBall: 14,
+      composure: 13,
+      passing: 13,
+      decisions: 13,
+      workRate: 14,
+      vision: 12,
+      dribbling: 13,
+      crossing: 12,
+      tackling: 14,
+      marking: 13,
+      positioning: 14,
+      reflexes: 15,
+      handling: 14,
+      aerialReach: 13,
+    },
+    ...overrides,
+  };
+}
+
+test('Issue 1: parseJsonApiResponse safely handles HTML <!doctype> 504/404/200 without throwing Unexpected token <', async () => {
+  const html504 = new Response('<!doctype html><html><body>504 Gateway Timeout</body></html>', {
+    status: 504,
+    headers: { 'content-type': 'text/html; charset=utf-8' },
+  });
+  await assert.rejects(
+    () => parseJsonApiResponse(html504),
+    (err: Error) => {
+      assert.doesNotMatch(err.message, /Unexpected token/i);
+      assert.match(err.message, /timed out/i);
+      return true;
+    }
+  );
+
+  const html200 = new Response('<!doctype html><html><body>SPA Index</body></html>', {
+    status: 200,
+    headers: { 'content-type': 'text/html' },
+  });
+  await assert.rejects(
+    () => parseJsonApiResponse(html200),
+    (err: Error) => {
+      assert.doesNotMatch(err.message, /Unexpected token/i);
+      assert.match(err.message, /non-JSON response/i);
+      return true;
+    }
+  );
+
+  const jsonError = new Response(JSON.stringify({ error: 'API endpoint not found' }), {
+    status: 404,
+    headers: { 'content-type': 'application/json' },
+  });
+  await assert.rejects(
+    () => parseJsonApiResponse(jsonError),
+    /API endpoint not found/
+  );
+
+  const validJson = new Response(JSON.stringify({ analysisMarkdown: 'Tactical audit ready' }), {
+    status: 200,
+    headers: { 'content-type': 'application/json; charset=utf-8' },
+  });
+  const ok = await parseJsonApiResponse<{ analysisMarkdown: string }>(validJson);
+  assert.equal(ok.analysisMarkdown, 'Tactical audit ready');
+});
+
+test('Issue 1: server.ts enforces gemini-2.5-flash, response.text getter, 25s timeout 504, and JSON 404 before Vite/SPA', () => {
+  const serverSrc = fs.readFileSync(path.resolve(process.cwd(), 'server.ts'), 'utf8');
+
+  assert.match(serverSrc, /'gemini-2\.5-flash'/);
+  assert.match(serverSrc, /ANALYST_TIMEOUT_MS\s*=\s*25_000/);
+  assert.match(serverSrc, /AbortSignal\.timeout/);
+  assert.match(serverSrc, /res\.status\(504\)\.json/);
+  assert.match(serverSrc, /response\.text/);
+  assert.doesNotMatch(serverSrc, /response\.text\(\)/);
+  assert.match(serverSrc, /'User-Agent':\s*'aistudio-build'/);
+
+  const idxApi404 = serverSrc.indexOf("app.all('/api/*'");
+  const idxVite = serverSrc.indexOf('await createViteServer(');
+  const idxSpa = serverSrc.indexOf("app.get('*'");
+  assert.ok(idxApi404 > 0, 'server.ts must register app.all("/api/*") JSON 404 handler');
+  assert.ok(
+    idxApi404 < idxVite && idxApi404 < idxSpa,
+    'JSON /api/* 404 handler must be registered BEFORE Vite/SPA HTML catch-all'
+  );
+});
+
+test('Issue 1: buildLiveTacticalAnalystContext stays strictly under 6,000 chars even with 47 players and 60 scouted targets', () => {
+  const squad47: PlayerRecord[] = Array.from({ length: 47 }, (_, idx) =>
+    makePlayer({
+      name: `Squad Player ${idx + 1}`,
+      position: idx < 3 ? 'GK' : idx < 15 ? 'DC' : idx < 30 ? 'MC' : 'ST',
+      age: 19 + (idx % 12),
+      ability: 2.5 + (idx % 4) * 0.5,
+      status: idx < 11 ? 'Starter' : idx < 22 ? 'Rotation' : 'Youth',
+    })
+  );
+
+  const ctx = buildLiveTacticalAnalystContext({
+    clubName: 'KVV Zelzate',
+    managerName: 'Bobby Dean',
+    saveDate: '12/10/2027',
+    nextFixture: '18/10/2027 vs Royal Knokke FC (Home)',
+    leagueStandingSub: '#2 of 16 (21 Pts)',
+    wageSpend: '£4,400 / £5,000 p/w',
+    balance: '£310K',
+    players: squad47,
+    matches: [],
+    hydratedFmSave: null,
+  });
+
+  assert.ok(
+    ctx.length <= MAX_LIVE_ANALYST_CONTEXT_CHARS && ctx.length < 6000,
+    `Expected compact Analyst context < 6000 chars, got ${ctx.length}`
+  );
+  assert.doesNotMatch(ctx, /\bCA\s*\d+|\bPA\s*\d+/i);
+  assert.doesNotMatch(ctx, /PASS 0 SCOUTED FREE AGENTS/i);
+});
+
+test('Issue 2: Position-aware Scouted card attributes, Best FM27 Role Fit %, and Unattached Free Transfer formatting', () => {
+  const striker = makeTarget({ name: 'Jules Peeters', primaryPosition: 'ST (C)', isFreeAgent: true, demandedWageEur: 0 });
+  const mid = makeTarget({ name: 'Bram De Vos', primaryPosition: 'DM, MC', isFreeAgent: false, contractExpiryMonths: 4, demandedWageEur: 620 });
+  const cb = makeTarget({ name: 'Sander Claes', primaryPosition: 'DC' });
+  const gk = makeTarget({ name: 'Dries Maes', primaryPosition: 'GK' });
+
+  assert.deepEqual(
+    getPositionRelevantAttributes(striker).map((a) => a.label),
+    ['Fin', 'Off', 'Pac', 'Com']
+  );
+  assert.deepEqual(
+    getPositionRelevantAttributes(mid).map((a) => a.label),
+    ['Pas', 'Dec', 'Wor', 'Sta']
+  );
+  assert.deepEqual(
+    getPositionRelevantAttributes(cb).map((a) => a.label),
+    ['Tck', 'Mar', 'Pos', 'Jum']
+  );
+  assert.deepEqual(
+    getPositionRelevantAttributes(gk).map((a) => a.label),
+    ['Ref', 'Han', 'Aer', 'Pos']
+  );
+
+  const stFit = computeTargetBestRoleFit(striker);
+  assert.ok(stFit.roleName.length > 0);
+  assert.ok(stFit.fitPct >= 40 && stFit.fitPct <= 99);
+
+  // Free agent must show Unattached · Free Transfer and NEVER Wage £0/wk
+  const freeContract = formatTargetContractSummary(striker);
+  assert.equal(freeContract.primaryLabel, 'Unattached · Free Transfer');
+  assert.equal(freeContract.wageLabel, null);
+
+  // Expiring contract shows months left + weekly wage
+  const expContract = formatTargetContractSummary(mid);
+  assert.equal(expContract.primaryLabel, 'Expiring <= 4m');
+  assert.equal(expContract.wageLabel, '£620/wk');
+});
+
+test('Issue 2: Accurate Squad Depth GAP logic — 6 active options is NOT a GAP, <=2 IS Priority GAP, and default sort prioritizes Genuine Gaps + Role Fit %', () => {
+  const squad: PlayerRecord[] = [
+    // 6 active central midfielders (NOT a gap!)
+    ...Array.from({ length: 6 }, (_, i) =>
+      makePlayer({ name: `Midfielder ${i + 1}`, position: 'MC' })
+    ),
+    // Only 1 striker (genuine Priority GAP!)
+    makePlayer({ name: 'Sole Striker', position: 'ST (C)' }),
+  ];
+
+  const mcDepth = evaluateTargetSquadDepth('MC', squad);
+  assert.equal(mcDepth.count, 6);
+  assert.equal(mcDepth.isGenuineGap, false);
+  assert.equal(mcDepth.label, 'Depth: 6 at club');
+
+  const stDepth = evaluateTargetSquadDepth('ST', squad);
+  assert.equal(stDepth.count, 1);
+  assert.equal(stDepth.isGenuineGap, true);
+  assert.match(stDepth.label, /Priority GAP/);
+
+  const targets: RecruitmentTarget[] = [
+    makeTarget({ name: 'Midfield Surplus Target', primaryPosition: 'MC', age: 21 }),
+    makeTarget({ name: 'Striker Gap Target', primaryPosition: 'ST', age: 23 }),
+  ];
+
+  const sortedAll = enrichAndFilterScoutedTargets({
+    targets,
+    squadPlayers: squad,
+    posGroup: 'ALL',
+    ageBand: 'ALL',
+    contractFilter: 'ALL',
+    genuineGapsOnly: false,
+    searchQuery: '',
+  });
+  assert.equal(sortedAll[0].target.name, 'Striker Gap Target');
+
+  const gapsOnly = enrichAndFilterScoutedTargets({
+    targets,
+    squadPlayers: squad,
+    posGroup: 'ALL',
+    ageBand: 'ALL',
+    contractFilter: 'ALL',
+    genuineGapsOnly: true,
+    searchQuery: '',
+  });
+  assert.equal(gapsOnly.length, 1);
+  assert.equal(gapsOnly[0].target.name, 'Striker Gap Target');
+});
+
+test('Issue 2 & 3: Python fm-save-mapper resolves nationalities via save.nations(), caps 30+ veterans at <=15%, supports non-strict inspect.signature recovery, and strips raw GitHub URLs', () => {
+  // Frontend sanitizer strips raw GitHub issue URLs cleanly
+  const rawWarn =
+    'player_season_stats: check failed. Please report it at https://github.com/rhiever/fmsave/issues with the output of fmsave validate.';
+  const cleaned = sanitizeReaderNote(rawWarn);
+  assert.doesNotMatch(cleaned, /https?:\/\//i);
+  assert.doesNotMatch(cleaned, /github\.com/i);
+  assert.match(cleaned, /player_season_stats/);
+  assert.equal(sanitizeReaderNotes([rawWarn, rawWarn]).length, 1);
+
+  // Execute live Python test against public/fm-save-mapper.py helpers using venv or system python3
+  const pythonBin = fs.existsSync('/opt/fmsave-venv/bin/python3')
+    ? '/opt/fmsave-venv/bin/python3'
+    : 'python3';
+
+  const pyTestScript = `
+import importlib.util, json, types
+spec = importlib.util.spec_from_file_location("mapper", "public/fm-save-mapper.py")
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+# 1. Test nation_id -> Nation.database_id -> country name resolution via save.nations()
+class FakeNation:
+    def __init__(self, nation_id, database_id):
+        self.nation_id = nation_id
+        self.database_id = database_id
+
+class FakeAttrs:
+    def __init__(self, val=13):
+        for k in ("pace","acceleration","stamina","strength","agility","balance","jumping_reach",
+                  "natural_fitness","finishing","off_the_ball","composure","passing","decisions",
+                  "work_rate","vision","dribbling","crossing","technique","first_touch","tackling",
+                  "marking","positioning","anticipation","concentration","heading","determination",
+                  "teamwork","flair","reflexes","handling","aerial_reach","command_of_area",
+                  "one_on_ones","kicking","communication"):
+            setattr(self, k, val)
+
+class FakePlayer:
+    def __init__(self, uid, name, age, nation_id, pos="ST"):
+        self.uid = uid
+        self.name = name
+        self.age = age
+        self.nation_id = nation_id
+        self.club_uid = None
+        self.contract = None
+        self.natural_positions = (pos,)
+        self.accomplished_positions = ()
+        self.attributes = FakeAttrs(14 if age < 30 else 15)
+        self.personality = None
+        self.traits = ()
+
+class FakeSave:
+    def nations(self):
+        return [FakeNation(0, 757), FakeNation(1, 784), FakeNation(2, 769)]
+    def players(self):
+        out = []
+        # 50 prime targets (17-29) and 30 veterans (30-34)
+        for i in range(50):
+            out.append(FakePlayer(1000 + i, f"Prime {i}", 19 + (i % 9), i % 3, "ST"))
+        for i in range(30):
+            out.append(FakePlayer(2000 + i, f"Vet {i}", 30 + (i % 5), i % 3, "MC"))
+        return out
+
+mod.step_close()
+save = FakeSave()
+targets = mod._scan_recruitment_targets_group4(save, club_uid=999, game_date=None, wage_budget_weekly=5000)
+nations = sorted({t["nationality"] for t in targets})
+vet_count = sum(1 for t in targets if t["age"] >= 30)
+total = len(targets)
+
+# 2. Verify non-strict inspect.signature kwargs detection
+def strict_fn(strict=True):
+    return "non_strict_ok" if strict is False else "strict_fail"
+res_non_strict = mod._safe_call(strict_fn, "test_table", default="fail")
+
+# 3. Verify GitHub URL stripping in Python warning sanitizer
+clean_py_note = mod._sanitize_reader_note("team_match_stats: advisory mismatch. Please report it at https://github.com/rhiever/fmsave/issues with the output of fmsave validate.")
+
+print(json.dumps({
+    "total": total,
+    "vetCount": vet_count,
+    "vetRatio": vet_count / max(total, 1),
+    "nations": nations,
+    "hasFinishing": "finishing" in targets[0]["attributes"],
+    "hasReflexes": "reflexes" in targets[0]["attributes"],
+    "nonStrictRes": res_non_strict,
+    "cleanPyNote": clean_py_note,
+}))
+`;
+
+  const rawOut = execFileSync(pythonBin, ['-c', pyTestScript], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+    timeout: 15_000,
+  });
+  const result = JSON.parse(rawOut.trim()) as {
+    total: number;
+    vetCount: number;
+    vetRatio: number;
+    nations: string[];
+    hasFinishing: boolean;
+    hasReflexes: boolean;
+    nonStrictRes: string;
+    cleanPyNote: string;
+  };
+
+  assert.ok(result.total > 0, 'Expected recruitment targets from Python scanner');
+  assert.deepEqual(result.nations, ['Belgium', 'France', 'Netherlands']);
+  assert.ok(
+    result.vetRatio <= 0.151,
+    `Expected age 30+ veterans <= 15%, got ${(result.vetRatio * 100).toFixed(1)}% (${result.vetCount}/${result.total})`
+  );
+  assert.equal(result.hasFinishing, true);
+  assert.equal(result.hasReflexes, true);
+  assert.equal(result.nonStrictRes, 'non_strict_ok');
+  assert.doesNotMatch(result.cleanPyNote, /https?:\/\/|github\.com/i);
+});

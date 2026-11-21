@@ -1,4 +1,5 @@
 import { PlayerRecord } from '../types/fm27';
+import { DivisionBenchmarks } from '../types/fmSave';
 
 export type TransferActionVerdict =
   | 'Renew Now'
@@ -53,6 +54,14 @@ export interface PositionalSigningNeed {
   scoutProfile: string;
 }
 
+export interface DynamicSquadTierBenchmarks {
+  p75PaidWeeklyWage: number;
+  medianPaidWeeklyWage: number;
+  p75AbilityStars: number;
+  divisionCompared: boolean;
+  divisionDeficits: string[];
+}
+
 export interface SquadTransferAuditSummary {
   clubProfile: ClubFinancialProfile;
   totalWeeklyWage: number;
@@ -61,6 +70,7 @@ export interface SquadTransferAuditSummary {
   countsByVerdict: Record<TransferActionVerdict, number>;
   playerAdvice: PlayerTransferAdvice[];
   positionalNeeds: PositionalSigningNeed[];
+  tierBenchmarks: DynamicSquadTierBenchmarks;
 }
 
 /**
@@ -190,12 +200,91 @@ function playerStrengthScore(p: PlayerRecord): number {
   return (p.ability || 2.5) * 32 + (p.potential || p.ability || 2.5) * 6 + ratingBonus;
 }
 
+function percentileValue(sortedAsc: number[], pct: number, fallback: number): number {
+  if (sortedAsc.length === 0) return fallback;
+  const idx = Math.min(
+    sortedAsc.length - 1,
+    Math.max(0, Math.floor(sortedAsc.length * pct))
+  );
+  return sortedAsc[idx];
+}
+
+function positionGroupForTier(pos: string): 'GK' | 'DEF' | 'MID' | 'FWD' {
+  const p = (pos || '').toUpperCase();
+  if (p.includes('GK')) return 'GK';
+  if (p.includes('ST') || p.includes('CF')) return 'FWD';
+  if (/\b(DC|DL|DR|CB|WB)\b|D\s*\(/.test(p)) return 'DEF';
+  return 'MID';
+}
+
+/**
+ * Pure tier-agnostic squad benchmark helper (scales smoothly from £350/wk non-league
+ * squads up to Premier League payrolls without any hardcoded €40M / €100M floors).
+ */
+export function computeDynamicSquadTierBenchmarks(
+  players: PlayerRecord[],
+  divisionBenchmarks?: DivisionBenchmarks | null
+): DynamicSquadTierBenchmarks {
+  const paidWages = players
+    .map((p) => p.wagePw || 0)
+    .filter((w) => w > 0)
+    .sort((a, b) => a - b);
+  const abilities = players
+    .map((p) => p.ability || 2.5)
+    .sort((a, b) => a - b);
+
+  const medianPaidWeeklyWage = percentileValue(paidWages, 0.5, 200);
+  const p75PaidWeeklyWage = percentileValue(paidWages, 0.75, 350);
+  const p75AbilityStars = percentileValue(abilities, 0.75, 3.5);
+
+  const divisionDeficits: string[] = [];
+  if (divisionBenchmarks?.byPositionGroup && players.length > 0) {
+    const groups: Array<'GK' | 'DEF' | 'MID' | 'FWD'> = ['GK', 'DEF', 'MID', 'FWD'];
+    for (const grp of groups) {
+      const divGrp = divisionBenchmarks.byPositionGroup[grp];
+      if (!divGrp || divGrp.sampleSize === 0) continue;
+      const grpPlayers = players.filter((p) => positionGroupForTier(p.position) === grp);
+      if (grpPlayers.length === 0) continue;
+
+      const checkKey: keyof PlayerRecord['attributes'] =
+        grp === 'GK'
+          ? 'reflexes'
+          : grp === 'DEF'
+            ? 'tackling'
+            : grp === 'FWD'
+              ? 'finishing'
+              : 'passing';
+      const divMedian = divGrp.medianAttributes[checkKey];
+      if (typeof divMedian === 'number' && divMedian > 0) {
+        const clubAvg =
+          grpPlayers.reduce((sum, p) => sum + Number(p.attributes?.[checkKey] ?? 10), 0) /
+          grpPlayers.length;
+        if (clubAvg < divMedian - 1.2) {
+          divisionDeficits.push(
+            `${grp} ${checkKey} avg ${clubAvg.toFixed(1)} trails ${divisionBenchmarks.competitionName} median (${divMedian.toFixed(1)})`
+          );
+        }
+      }
+    }
+  }
+
+  return {
+    p75PaidWeeklyWage,
+    medianPaidWeeklyWage,
+    p75AbilityStars,
+    divisionCompared: Boolean(divisionBenchmarks?.byPositionGroup),
+    divisionDeficits,
+  };
+}
+
 export function buildSquadTransferAudit(
   players: PlayerRecord[],
   saveDate: string,
-  finances?: ClubFinancialInput
+  finances?: ClubFinancialInput,
+  divisionBenchmarks?: DivisionBenchmarks | null
 ): SquadTransferAuditSummary {
   const refDate = parseContractDate(saveDate) || new Date(2027, 8, 15);
+  const tierBenchmarks = computeDynamicSquadTierBenchmarks(players, divisionBenchmarks);
   const squadWeeklyWageSum = players.reduce((sum, p) => sum + (p.wagePw || 0), 0);
 
   const balanceNum =
@@ -442,6 +531,30 @@ export function buildSquadTransferAudit(
     if (isThinPositionCover) tags.push('Thin Depth');
     if (isOverstockedPos) tags.push('Overstocked Pos');
     if (p.morale) tags.push(`Morale: ${p.morale}`);
+    if (
+      p.contractDetails?.optionalExtensionYears &&
+      p.contractDetails.optionalExtensionYears > 0
+    ) {
+      tags.push(`Club Option +${p.contractDetails.optionalExtensionYears}y`);
+    }
+    if (
+      p.contractDetails?.releaseClauses &&
+      p.contractDetails.releaseClauses.length > 0
+    ) {
+      const lowest = Math.min(
+        ...p.contractDetails.releaseClauses.map((rc) => rc.amount)
+      );
+      const formattedClause =
+        lowest >= 1_000_000
+          ? `£${(lowest / 1_000_000).toFixed(1)}M`
+          : lowest >= 1_000
+            ? `£${Math.round(lowest / 1_000)}K`
+            : `£${lowest}`;
+      tags.push(`Release Clause ${formattedClause}`);
+    }
+    if (Array.isArray(p.activeSuspensions) && p.activeSuspensions.length > 0) {
+      tags.push(`BANNED (${p.activeSuspensions[0].matchesRemaining}m)`);
+    }
 
     let verdict: TransferActionVerdict = 'Hold';
     let priority: 'High' | 'Medium' | 'Low' = 'Low';
@@ -612,5 +725,6 @@ export function buildSquadTransferAudit(
     countsByVerdict,
     playerAdvice,
     positionalNeeds,
+    tierBenchmarks,
   };
 }

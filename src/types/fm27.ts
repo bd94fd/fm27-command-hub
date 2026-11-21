@@ -1,4 +1,6 @@
 import {
+  ActiveSuspensionRecord,
+  ContractDetails,
   FormTrend,
   PlayerMatchRating,
   ScoutBadge,
@@ -38,6 +40,8 @@ export interface PlayerRecord {
   heightCm?: number;
   expires: string;
   contractExpiryMonths?: number;
+  contractDetails?: ContractDetails;
+  activeSuspensions?: ActiveSuspensionRecord[];
   nation: string;
   wagePw: number;
   marketValue?: number | null;
