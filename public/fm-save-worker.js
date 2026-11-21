@@ -52,7 +52,7 @@ async function ensureBooted(reply, origin) {
       const micropip = instance.pyimport('micropip');
       await micropip.install(`fmsave==${FMSAVE_VERSION}`);
 
-      const mapperUrl = new URL('/fm-save-mapper.py', origin || self.location.origin).href;
+      const mapperUrl = new URL('/fm-save-mapper.py?v=9', origin || self.location.origin).href;
       const mapperSource = await (await fetch(mapperUrl, { cache: 'no-cache' })).text();
       instance.FS.writeFile('/home/pyodide/fm_save_mapper.py', mapperSource);
       mapperModule = instance.pyimport('fm_save_mapper');
@@ -79,7 +79,7 @@ function safeUnmount(instance) {
 }
 
 self.onmessage = async (event) => {
-  const { type, file, requestId, clubHint, origin } = event.data || {};
+  const { type, file, requestId, clubHint, scope, origin } = event.data || {};
   const reply = (payload) => self.postMessage({ ...payload, requestId });
 
   if (type === 'warmup') {
@@ -125,46 +125,46 @@ self.onmessage = async (event) => {
       const metaJson = mapperModule.step_open(savePath, clubHint || '');
       const meta = JSON.parse(metaJson);
 
-      // Step 2/6: Squad attributes & ratings (club-scoped query)
-      activeStep = 'Step 2/6 (Extracting squad attributes & ratings)';
+      // Step 2/6: Group 1 — All 52 attributes, traits & Scout Report Badges
+      activeStep = 'Step 2/6 (Extracting 52 attributes, traits & Scout Badges)';
       reply({
         type: 'stage',
         stage: 'parse',
         step: 'Step 2/6',
-        label: `Step 2/6: Opened ${meta.game} (${meta.gameDateDmy || 'live'} · ${meta.clubName}) — extracting squad attributes & ratings...`,
+        label: `Step 2/6: Opened ${meta.game} (${meta.gameDateDmy || 'live'} · ${meta.clubName}) — extracting 52 attributes, traits & Scout Badges...`,
       });
       await yieldTick();
       const pSummary = JSON.parse(mapperModule.step_players());
 
-      // Step 3/6: Finances, injuries, tactics & mentoring (releases game_db borrow & caches after)
-      activeStep = 'Step 3/6 (Reading finances, injuries, tactics & mentoring)';
+      // Step 3/6: Groups 3–4 — Staff, 12m finances, facilities & time-capped free-agent scan
+      activeStep = 'Step 3/6 (Reading staff, 12m finances, facilities & recruitment targets)';
       reply({
         type: 'stage',
         stage: 'parse',
         step: 'Step 3/6',
-        label: `Step 3/6: Reading club finances, injuries, tactics & mentoring (releasing game_db RAM after)...`,
+        label: `Step 3/6: Reading staff, 12-month cash runway, facilities & scanning free-agent/expiring targets (≤8s cap)...`,
       });
       await yieldTick();
       mapperModule.step_club_extras_and_release_gamedb();
 
-      // Step 4/6: Match player season stats & per-90s
-      activeStep = 'Step 4/6 (Reading season stats & per-90s)';
+      // Step 4/6: Group 2 — Season stats, Last-5 form ratings & career history
+      activeStep = 'Step 4/6 (Reading season stats, Last-5 form & career history)';
       reply({
         type: 'stage',
         stage: 'parse',
         step: 'Step 4/6',
-        label: `Step 4/6: Extracted ${pSummary.playerCount} players — matching season stats, xG/xA & ratings...`,
+        label: `Step 4/6: Extracted ${pSummary.playerCount} players — matching season stats, Last-5 form & career history...`,
       });
       await yieldTick();
       mapperModule.step_season_stats();
 
-      // Step 5/6: Recent match results & upcoming schedule
-      activeStep = 'Step 5/6 (Reading match results & schedule)';
+      // Step 5/6: Group 2 — Match results, team xG/shots/possession & upcoming schedule
+      activeStep = 'Step 5/6 (Reading match results, team xG & schedule)';
       reply({
         type: 'stage',
         stage: 'parse',
         step: 'Step 5/6',
-        label: `Step 5/6: Reading recent match results & upcoming fixtures from ${meta.gameDateDmy || 'save date'}...`,
+        label: `Step 5/6: Reading match results, team xG/shots/possession & upcoming fixtures from ${meta.gameDateDmy || 'save date'}...`,
       });
       await yieldTick();
       const fixSummary = JSON.parse(mapperModule.step_fixtures());
@@ -184,6 +184,8 @@ self.onmessage = async (event) => {
         parsed.meta.fileName = file.name;
         parsed.meta.fileSizeMb = Number(((file.size || 0) / (1024 * 1024)).toFixed(2));
         parsed.meta.decodedAtIso = new Date().toISOString();
+        if (scope) parsed.meta.importScope = scope;
+        parsed.meta.mountMode = 'WORKERFS';
       }
 
       safeUnmount(instance);

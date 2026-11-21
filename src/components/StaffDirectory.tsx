@@ -1,17 +1,20 @@
 import React, { useMemo, useState } from 'react';
-import { Search, Star, UserCheck } from 'lucide-react';
+import { Briefcase, Search, Star, UserCheck } from 'lucide-react';
 import { StaffRecord } from '../types/fm27';
+import { JobVacancyEntry } from '../types/fmSave';
 import { formatStars, getBestStaffRoleRating } from '../utils/staffRatings';
 
 interface StaffDirectoryProps {
   staff: StaffRecord[];
   clubName?: string;
+  jobVacancies?: JobVacancyEntry[];
   onSelectStaff: (member: StaffRecord) => void;
 }
 
 export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
   staff,
   clubName,
+  jobVacancies = [],
   onSelectStaff,
 }) => {
   const [search, setSearch] = useState('');
@@ -31,6 +34,10 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
       );
   }, [staff, search]);
 
+  if (!staff || staff.length === 0) {
+    return null;
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
@@ -40,9 +47,7 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
             Backroom Staff Directory &amp; FM27 Star Ratings
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            {staff.length > 0
-              ? `${staff.length} staff members synced for ${clubName || 'your club'} · Click any row for full coaching, scouting & medical breakdown`
-              : 'Awaiting .fm Save — upload your save in Auto-Sync to evaluate your club staff with FM27 star ratings.'}
+            {staff.length} club-scoped staff members synced for {clubName || 'your club'} · Click any row for full coaching, scouting &amp; medical breakdown
           </p>
         </div>
 
@@ -50,6 +55,7 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
           <input
             type="text"
+            aria-label="Filter staff name or role"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Filter staff name or role..."
@@ -58,16 +64,33 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
         </div>
       </div>
 
+      {jobVacancies.length > 0 && (
+        <div className="rounded-xl border border-sky-500/30 bg-sky-950/20 px-4 py-3 flex flex-wrap items-center gap-2 text-xs">
+          <span className="inline-flex items-center gap-1.5 font-semibold text-sky-300">
+            <Briefcase className="h-3.5 w-3.5" />
+            Open Market Vacancies ({jobVacancies.length}):
+          </span>
+          <div className="flex flex-wrap gap-1.5">
+            {jobVacancies.slice(0, 6).map((v, idx) => (
+              <span
+                key={`${v.club || 'club'}-${v.role || 'role'}-${idx}`}
+                className="rounded-md bg-slate-900/90 border border-slate-700 px-2 py-0.5 text-[11px] text-slate-300"
+              >
+                {v.role || 'Staff'} · {v.club || 'Club'}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="rounded-2xl border border-slate-800 bg-slate-900/60 overflow-hidden">
         {filtered.length === 0 ? (
-          <div className="p-12 text-center space-y-2">
+          <div className="p-10 text-center space-y-1">
             <div className="text-sm font-semibold text-slate-300">
-              {staff.length === 0 ? 'Awaiting .fm Save' : 'No matching staff found'}
+              No matching staff found
             </div>
-            <p className="text-xs text-slate-500 max-w-md mx-auto">
-              {staff.length === 0
-                ? 'Drop your .fm save file in the Auto-Sync tab to extract club-scoped coaching, scouting, analysis, and medical staff.'
-                : 'Try clearing your search filter.'}
+            <p className="text-xs text-slate-500">
+              Try clearing your search filter.
             </p>
           </div>
         ) : (
@@ -77,7 +100,8 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                 <tr>
                   <th className="px-4 py-3">Name</th>
                   <th className="px-4 py-3">Role</th>
-                  <th className="px-4 py-3">Age</th>
+                  <th className="px-4 py-3">Def / Att / Tac</th>
+                  <th className="px-4 py-3">Judging Abil / Pot</th>
                   <th className="px-4 py-3">Best FM27 Specialty</th>
                   <th className="px-4 py-3">Star Rating</th>
                   <th className="px-4 py-3">Wage / Expires</th>
@@ -97,7 +121,10 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                       </td>
                       <td className="px-4 py-3 text-sky-300">{s.role}</td>
                       <td className="px-4 py-3 font-mono text-slate-300">
-                        {s.age}
+                        {s.attributes.defending} / {s.attributes.attacking} / {s.attributes.tactical}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-slate-300">
+                        {s.attributes.judging_player_ability} / {s.attributes.judging_player_potential}
                       </td>
                       <td className="px-4 py-3 text-slate-300">{best.label}</td>
                       <td className="px-4 py-3">

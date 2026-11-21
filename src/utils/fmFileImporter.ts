@@ -525,30 +525,31 @@ export function parseFmStructuredExport(
 
       if (hasAttributes) {
         const attrs: Partial<PlayerRecord['attributes']> = {};
+        const clamp = (v: number) => Math.max(1, Math.min(20, Math.round(v)));
         const p = toNumber(row[paceIdx]);
-        if (p !== undefined) attrs.pace = p;
+        if (p !== undefined) attrs.pace = clamp(p);
         const ac = toNumber(row[accIdx]);
-        if (ac !== undefined) attrs.acceleration = ac;
+        if (ac !== undefined) attrs.acceleration = clamp(ac);
         const st = toNumber(row[staIdx]);
-        if (st !== undefined) attrs.stamina = st;
+        if (st !== undefined) attrs.stamina = clamp(st);
         const jr = toNumber(row[jrIdx]);
-        if (jr !== undefined) attrs.jumpingReach = jr;
+        if (jr !== undefined) attrs.jumpingReach = clamp(jr);
         const dt = toNumber(row[detIdx]);
-        if (dt !== undefined) attrs.determination = dt;
+        if (dt !== undefined) attrs.determination = clamp(dt);
         const ps = toNumber(row[pasIdx]);
-        if (ps !== undefined) attrs.passing = ps;
+        if (ps !== undefined) attrs.passing = clamp(ps);
         const fn = toNumber(row[finIdx]);
-        if (fn !== undefined) attrs.finishing = fn;
+        if (fn !== undefined) attrs.finishing = clamp(fn);
         const tk = toNumber(row[tckIdx]);
-        if (tk !== undefined) attrs.tackling = tk;
+        if (tk !== undefined) attrs.tackling = clamp(tk);
         const ft = toNumber(row[firIdx]);
-        if (ft !== undefined) attrs.firstTouch = ft;
+        if (ft !== undefined) attrs.firstTouch = clamp(ft);
         const dc = toNumber(row[decIdx]);
-        if (dc !== undefined) attrs.decisions = dc;
+        if (dc !== undefined) attrs.decisions = clamp(dc);
         const wr = toNumber(row[worIdx]);
-        if (wr !== undefined) attrs.workRate = wr;
+        if (wr !== undefined) attrs.workRate = clamp(wr);
         const ob = toNumber(row[otbIdx]);
-        if (ob !== undefined) attrs.offTheBall = ob;
+        if (ob !== undefined) attrs.offTheBall = clamp(ob);
         if (Object.keys(attrs).length > 0) {
           delta.attributes = attrs;
         }

@@ -131,37 +131,73 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
   const a = player.attributes;
 
   const technicalAttrs: Array<{ label: string; value: number }> = [
-    { label: 'Passing', value: a.passing },
-    { label: 'First Touch', value: a.firstTouch },
-    { label: 'Finishing', value: a.finishing },
-    { label: 'Tackling', value: a.tackling },
-    { label: 'Heading', value: a.heading ?? 10 },
-    { label: 'Crossing', value: a.crossing ?? 10 },
     { label: 'Corners', value: a.corners ?? 10 },
+    { label: 'Crossing', value: a.crossing ?? 10 },
     { label: 'Dribbling', value: a.dribbling ?? 10 },
-    { label: 'Technique', value: a.technique ?? 10 },
+    { label: 'Finishing', value: a.finishing },
+    { label: 'First Touch', value: a.firstTouch },
+    { label: 'Free Kicks', value: a.freeKicks ?? 10 },
+    { label: 'Heading', value: a.heading ?? 10 },
+    { label: 'Long Shots', value: a.longShots ?? 10 },
+    { label: 'Long Throws', value: a.longThrows ?? 10 },
     { label: 'Marking', value: a.marking ?? 10 },
+    { label: 'Passing', value: a.passing },
+    { label: 'Penalties', value: a.penalties ?? 10 },
+    { label: 'Tackling', value: a.tackling },
+    { label: 'Technique', value: a.technique ?? 10 },
   ];
 
   const mentalAttrs: Array<{ label: string; value: number }> = [
+    { label: 'Aggression', value: a.aggression ?? 10 },
+    { label: 'Anticipation', value: a.anticipation ?? 10 },
+    { label: 'Bravery', value: a.bravery ?? 10 },
+    { label: 'Composure', value: a.composure ?? 10 },
+    { label: 'Concentration', value: a.concentration ?? 10 },
     { label: 'Decisions', value: a.decisions },
     { label: 'Determination', value: a.determination },
-    { label: 'Work Rate', value: a.workRate },
-    { label: 'Off The Ball', value: a.offTheBall },
-    { label: 'Vision', value: a.vision ?? 10 },
-    { label: 'Composure', value: a.composure ?? 10 },
-    { label: 'Positioning', value: a.positioning ?? 10 },
+    { label: 'Flair', value: a.flair ?? 10 },
     { label: 'Leadership', value: a.leadership ?? 10 },
+    { label: 'Off The Ball', value: a.offTheBall },
+    { label: 'Positioning', value: a.positioning ?? 10 },
     { label: 'Teamwork', value: a.teamwork ?? 10 },
+    { label: 'Vision', value: a.vision ?? 10 },
+    { label: 'Work Rate', value: a.workRate },
   ];
 
   const physicalAttrs: Array<{ label: string; value: number }> = [
-    { label: 'Pace', value: a.pace },
     { label: 'Acceleration', value: a.acceleration },
-    { label: 'Stamina', value: a.stamina },
+    { label: 'Agility', value: a.agility ?? 10 },
+    { label: 'Balance', value: a.balance ?? 10 },
     { label: 'Jumping Reach', value: a.jumpingReach },
+    { label: 'Natural Fitness', value: a.naturalFitness ?? 10 },
+    { label: 'Pace', value: a.pace },
+    { label: 'Stamina', value: a.stamina },
     { label: 'Strength', value: a.strength ?? 10 },
   ];
+
+  const isGoalkeeper =
+    player.position.toUpperCase().includes('GK') ||
+    (typeof a.reflexes === 'number' && a.reflexes >= 8) ||
+    (typeof a.handling === 'number' && a.handling >= 8);
+
+  const gkAttrs: Array<{ label: string; value: number }> = [
+    { label: 'Aerial Reach', value: a.aerialReach ?? 1 },
+    { label: 'Command of Area', value: a.commandOfArea ?? 1 },
+    { label: 'Communication', value: a.communication ?? 1 },
+    { label: 'Eccentricity', value: a.eccentricity ?? 1 },
+    { label: 'Handling', value: a.handling ?? 1 },
+    { label: 'Kicking', value: a.kicking ?? 1 },
+    { label: 'One on Ones', value: a.oneOnOnes ?? 1 },
+    { label: 'Punching', value: a.punching ?? 1 },
+    { label: 'Reflexes', value: a.reflexes ?? 1 },
+    { label: 'Rushing Out', value: a.rushingOut ?? 1 },
+    { label: 'Throwing', value: a.throwing ?? 1 },
+  ];
+
+  const scoutBadges = player.scoutBadges || [];
+  const traits = player.traits || [];
+  const formTrend = player.last5Form;
+  const seasonHistory = player.seasonHistory || [];
 
   const getPositionScore = (code: string): number => {
     if (player.positionRatings && typeof player.positionRatings[code] === 'number') {
@@ -321,6 +357,101 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
         <div className="p-5 space-y-4">
           {activeTab === 'attributes' && (
             <>
+              {/* Pass 0: Scout Report Badges, Last 5 Form & Readable Player Traits */}
+              {(scoutBadges.length > 0 ||
+                traits.length > 0 ||
+                (formTrend && formTrend.recentRatings.length > 0)) && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-1.5">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Scout Report Badges
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {scoutBadges.length > 0 ? (
+                        scoutBadges.map((badge) => (
+                          <span
+                            key={badge}
+                            className={`rounded-md border px-2 py-0.5 text-[11px] font-semibold ${
+                              badge === 'Injury-Prone'
+                                ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+                                : 'bg-indigo-500/15 border-indigo-500/40 text-indigo-300'
+                            }`}
+                          >
+                            {badge}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-[11px] text-slate-500 italic">
+                          No flagged scout traits
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-1.5">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Last 5 Match Form
+                    </div>
+                    {formTrend && formTrend.recentRatings.length > 0 ? (
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base font-bold font-mono text-white">
+                            {formTrend.averageRating.toFixed(2)}
+                          </span>
+                          <span
+                            className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase ${
+                              formTrend.trend === 'improving'
+                                ? 'bg-emerald-500/20 text-emerald-300'
+                                : formTrend.trend === 'declining'
+                                  ? 'bg-rose-500/20 text-rose-300'
+                                  : 'bg-slate-800 text-slate-300'
+                            }`}
+                          >
+                            {formTrend.trend}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {formTrend.recentRatings.map((r, i) => (
+                            <span
+                              key={i}
+                              className="rounded bg-slate-900 border border-slate-700 px-1.5 py-0.5 text-[10px] font-mono text-slate-300"
+                            >
+                              {r.toFixed(1)}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-[11px] text-slate-500 italic">
+                        Awaiting match ratings
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-1.5">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Player Traits
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {traits.length > 0 ? (
+                        traits.map((t, idx) => (
+                          <span
+                            key={`${t}-${idx}`}
+                            className="rounded bg-slate-800/90 border border-slate-700 px-2 py-0.5 text-[11px] text-slate-200"
+                          >
+                            {t}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-[11px] text-slate-500 italic">
+                          No player traits recorded
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* IP / OOP role highlight selector */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
                 <div>
@@ -362,19 +493,19 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-                    Technical
+                    {isGoalkeeper ? 'Goalkeeping (11)' : 'Technical (14)'}
                   </h4>
-                  {technicalAttrs.map(renderAttrRow)}
+                  {(isGoalkeeper ? gkAttrs : technicalAttrs).map(renderAttrRow)}
                 </div>
                 <div className="space-y-1.5">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-                    Mental
+                    Mental (14)
                   </h4>
                   {mentalAttrs.map(renderAttrRow)}
                 </div>
                 <div className="space-y-1.5">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-                    Physical
+                    Physical (8)
                   </h4>
                   {physicalAttrs.map(renderAttrRow)}
                   <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-400">
@@ -389,6 +520,17 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                   </div>
                 </div>
               </div>
+
+              {isGoalkeeper && (
+                <div className="pt-2 border-t border-slate-800 space-y-2">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                    Technical Outfield Attributes (14)
+                  </h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                    {technicalAttrs.map(renderAttrRow)}
+                  </div>
+                </div>
+              )}
             </>
           )}
 
@@ -504,68 +646,109 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
           )}
 
           {activeTab === 'contract' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2 text-xs">
-                <h4 className="font-bold uppercase tracking-wider text-slate-400 mb-2">
-                  Season Production
-                </h4>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Apps / Minutes:</span>
-                  <span className="font-mono text-slate-200">
-                    {player.apps} ({player.minutes}m)
-                  </span>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2 text-xs">
+                  <h4 className="font-bold uppercase tracking-wider text-slate-400 mb-2">
+                    Season Production
+                  </h4>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Apps / Minutes:</span>
+                    <span className="font-mono text-slate-200">
+                      {player.apps} ({player.minutes}m)
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Avg Rating:</span>
+                    <span className="font-mono text-emerald-300">
+                      {player.rating !== null ? player.rating.toFixed(2) : '--'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Goals (xG / per 90):</span>
+                    <span className="font-mono text-slate-200">
+                      {player.goals} ({player.xG.toFixed(2)} xG · {player.xGPer90.toFixed(2)}/90)
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Assists (xA / per 90):</span>
+                    <span className="font-mono text-slate-200">
+                      {player.assists} ({player.xA.toFixed(2)} xA · {player.xAPer90.toFixed(2)}/90)
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Tackling / Aerial Win %:</span>
+                    <span className="font-mono text-slate-200">
+                      {player.tckPct}% / {player.hdrPct}%
+                    </span>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Avg Rating:</span>
-                  <span className="font-mono text-emerald-300">
-                    {player.rating !== null ? player.rating.toFixed(2) : '--'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Goals (xG / per 90):</span>
-                  <span className="font-mono text-slate-200">
-                    {player.goals} ({player.xG.toFixed(2)} xG · {player.xGPer90.toFixed(2)}/90)
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Assists (xA / per 90):</span>
-                  <span className="font-mono text-slate-200">
-                    {player.assists} ({player.xA.toFixed(2)} xA · {player.xAPer90.toFixed(2)}/90)
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Tackling / Aerial Win %:</span>
-                  <span className="font-mono text-slate-200">
-                    {player.tckPct}% / {player.hdrPct}%
-                  </span>
+
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2 text-xs">
+                  <h4 className="font-bold uppercase tracking-wider text-slate-400 mb-2">
+                    Contract &amp; Squad Standing
+                  </h4>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Squad Status:</span>
+                    <span className="font-semibold text-slate-200">{player.status}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Weekly Wage:</span>
+                    <span className="font-mono text-slate-200">
+                      £{player.wagePw.toLocaleString()}/wk
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Contract Expires:</span>
+                    <span className="font-mono text-amber-300">{player.expires}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Relative Ability / Potential:</span>
+                    <span className="font-mono text-amber-300">
+                      {player.ability.toFixed(1)}★ / {player.potential.toFixed(1)}★
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2 text-xs">
-                <h4 className="font-bold uppercase tracking-wider text-slate-400 mb-2">
-                  Contract & Squad Standing
-                </h4>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Squad Status:</span>
-                  <span className="font-semibold text-slate-200">{player.status}</span>
+              {/* Pass 0 Group 2: Career Season History */}
+              {seasonHistory.length > 0 && (
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                    Career Season History ({seasonHistory.length} Seasons)
+                  </h4>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left text-slate-300">
+                      <thead className="bg-slate-900/90 text-[10px] uppercase text-slate-400">
+                        <tr>
+                          <th className="px-2.5 py-2">Season</th>
+                          <th className="px-2.5 py-2">Club</th>
+                          <th className="px-2.5 py-2">Apps</th>
+                          <th className="px-2.5 py-2">Goals</th>
+                          <th className="px-2.5 py-2">Assists</th>
+                          <th className="px-2.5 py-2">Avg Rating</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/70">
+                        {seasonHistory.map((h, i) => (
+                          <tr key={`${h.season}-${h.club}-${i}`}>
+                            <td className="px-2.5 py-1.5 font-mono font-medium text-white">
+                              {h.season}
+                            </td>
+                            <td className="px-2.5 py-1.5">{h.club}</td>
+                            <td className="px-2.5 py-1.5 font-mono">{h.apps}</td>
+                            <td className="px-2.5 py-1.5 font-mono">{h.goals}</td>
+                            <td className="px-2.5 py-1.5 font-mono">{h.assists}</td>
+                            <td className="px-2.5 py-1.5 font-mono font-semibold text-emerald-300">
+                              {h.avgRating.toFixed(2)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Weekly Wage:</span>
-                  <span className="font-mono text-slate-200">
-                    £{player.wagePw.toLocaleString()}/wk
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Contract Expires:</span>
-                  <span className="font-mono text-amber-300">{player.expires}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Relative Ability / Potential:</span>
-                  <span className="font-mono text-amber-300">
-                    {player.ability.toFixed(1)}★ / {player.potential.toFixed(1)}★
-                  </span>
-                </div>
-              </div>
+              )}
             </div>
           )}
         </div>

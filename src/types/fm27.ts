@@ -1,8 +1,17 @@
+import {
+  FormTrend,
+  PlayerMatchRating,
+  ScoutBadge,
+  SeasonHistoryEntry,
+} from './fmSave';
+
 export interface PlayerRecord {
   id: string;
+  uid?: number;
   number: number;
   name: string;
   position: string;
+  secondaryPositions?: string[];
   apps: string;
   minutes: number;
   rating: number | null;
@@ -28,13 +37,20 @@ export interface PlayerRecord {
   preferredFoot?: 'Left' | 'Right' | 'Either';
   heightCm?: number;
   expires: string;
+  contractExpiryMonths?: number;
   nation: string;
   wagePw: number;
   marketValue?: number | null;
   morale?: string | null;
   status: 'Starter' | 'Rotation' | 'Injured' | 'Surplus' | 'Youth';
   positionRatings?: Record<string, number> | null;
+  traits?: string[];
+  scoutBadges?: ScoutBadge[];
+  last5Form?: FormTrend;
+  last5Ratings?: PlayerMatchRating[];
+  seasonHistory?: SeasonHistoryEntry[];
   attributes: {
+    // Core required outfield attributes
     pace: number;
     acceleration: number;
     stamina: number;
@@ -47,18 +63,45 @@ export interface PlayerRecord {
     decisions: number;
     workRate: number;
     offTheBall: number;
+    // Technical (remaining of 14)
     heading?: number;
     corners?: number;
     crossing?: number;
     technique?: number;
     dribbling?: number;
-    vision?: number;
-    composure?: number;
-    positioning?: number;
+    freeKicks?: number;
+    longShots?: number;
+    longThrows?: number;
     marking?: number;
-    strength?: number;
+    penalties?: number;
+    // Mental (remaining of 14)
+    aggression?: number;
+    anticipation?: number;
+    bravery?: number;
+    composure?: number;
+    concentration?: number;
+    flair?: number;
     leadership?: number;
+    positioning?: number;
     teamwork?: number;
+    vision?: number;
+    // Physical (remaining of 8)
+    agility?: number;
+    balance?: number;
+    naturalFitness?: number;
+    strength?: number;
+    // Goalkeeping (11)
+    aerialReach?: number;
+    commandOfArea?: number;
+    communication?: number;
+    eccentricity?: number;
+    handling?: number;
+    kicking?: number;
+    oneOnOnes?: number;
+    punching?: number;
+    reflexes?: number;
+    rushingOut?: number;
+    throwing?: number;
   };
   ipRole: string;
   oopRole: string;

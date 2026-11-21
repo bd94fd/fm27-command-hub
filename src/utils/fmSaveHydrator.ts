@@ -1,18 +1,301 @@
 import { MatchLogEntry, PlayerRecord, StaffRecord } from '../types/fm27';
+import {
+  ClubFacilitiesSummary,
+  FinancialRunway,
+  FormTrend,
+  HydratedSquadPlayer,
+  InternalReliabilityFlags,
+  JobVacancyEntry,
+  MonthlyFinance,
+  Pass0ExtractionPayload,
+  PlayerAttributes,
+  PlayerMatchRating,
+  RecruitmentTarget,
+  ScoutBadge,
+  SeasonHistoryEntry,
+  SponsorshipDeal,
+  TeamMatchStat,
+  TransferWindowInfo,
+  clampAttributeValue,
+  clampConditionSharpness,
+} from '../types/fmSave';
 import { normalizePlayerName } from './fmFileImporter';
 import { inferFm27Roles } from './fm27RoleMatcher';
+
+export const WORKER_CACHE_BUSTER = '?v=9';
+
+export { normalizePlayerName };
+
+export interface HydrationDiffResult {
+  hydratedSquad: HydratedSquadPlayer[];
+  removedPlayers: HydratedSquadPlayer[];
+  addedPlayers: HydratedSquadPlayer[];
+  matchedCount: number;
+}
+
+export function deriveQualitativeScoutBadges(
+  flags: InternalReliabilityFlags
+): ScoutBadge[] {
+  const badges: ScoutBadge[] = [];
+  if (flags.consistency >= 14) badges.push('Consistent Performer');
+  if (flags.importantMatches >= 14) badges.push('Big-Game Player');
+  if (flags.injuryProneness >= 14) badges.push('Injury-Prone');
+  if (flags.versatility >= 14) badges.push('Versatile');
+  return badges;
+}
+
+export function calculateLast5Form(ratings: PlayerMatchRating[]): FormTrend {
+  if (!ratings || ratings.length === 0) {
+    return { recentRatings: [], averageRating: 0.0, trend: 'stable' };
+  }
+  const recent = ratings
+    .slice(-5)
+    .map((r) => Number(r.rating))
+    .filter((n) => Number.isFinite(n) && n > 0);
+
+  if (recent.length === 0) {
+    return { recentRatings: [], averageRating: 0.0, trend: 'stable' };
+  }
+
+  const sum = recent.reduce((acc, curr) => acc + curr, 0);
+  const averageRating = Number((sum / recent.length).toFixed(2));
+
+  if (recent.length < 2) {
+    return { recentRatings: recent, averageRating, trend: 'stable' };
+  }
+
+  const splitIdx = Math.floor(recent.length / 2);
+  const firstHalf = recent.slice(0, splitIdx);
+  const secondHalf = recent.slice(splitIdx);
+
+  const avgFirst = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
+  const avgSecond = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
+
+  let trend: 'improving' | 'declining' | 'stable' = 'stable';
+  if (avgSecond - avgFirst >= 0.3) trend = 'improving';
+  else if (avgFirst - avgSecond >= 0.3) trend = 'declining';
+
+  return { recentRatings: recent, averageRating, trend };
+}
+
+export function calculateFinancialRunway(
+  finances: MonthlyFinance[]
+): FinancialRunway {
+  if (!finances || finances.length === 0) {
+    return {
+      currentBalance: 0,
+      monthlyBurnRate: 0,
+      runwayMonths: 0,
+      status: 'Critical',
+    };
+  }
+  const currentBalance = finances[finances.length - 1].balance;
+  const negativeCashflows = finances
+    .map((f) => f.netCashflow)
+    .filter((cashflow) => cashflow < 0);
+
+  let monthlyBurnRate = 0;
+  if (negativeCashflows.length > 0) {
+    const totalBurn = negativeCashflows.reduce(
+      (acc, val) => acc + Math.abs(val),
+      0
+    );
+    monthlyBurnRate = totalBurn / negativeCashflows.length;
+  }
+
+  let runwayMonths = 999;
+  if (monthlyBurnRate > 0) {
+    runwayMonths = Math.max(
+      0,
+      Number((currentBalance / monthlyBurnRate).toFixed(1))
+    );
+  }
+
+  let status: 'Critical' | 'Warning' | 'Healthy' = 'Healthy';
+  if (currentBalance <= 0 || runwayMonths < 3) {
+    status = 'Critical';
+  } else if (runwayMonths < 6) {
+    status = 'Warning';
+  }
+
+  return { currentBalance, monthlyBurnRate, runwayMonths, status };
+}
+
+function clampPlayerAttributesRecord<T extends Record<string, number | undefined>>(
+  attrs: T
+): T {
+  const out = { ...attrs };
+  for (const key of Object.keys(out) as Array<keyof T>) {
+    const v = out[key];
+    if (typeof v === 'number') {
+      out[key] = clampAttributeValue(v) as T[keyof T];
+    }
+  }
+  return out;
+}
+
+export function hydratePass0Payload(rawJson: string): Pass0ExtractionPayload {
+  const parsed = JSON.parse(rawJson);
+  const squad: HydratedSquadPlayer[] = (parsed.squad || []).map(
+    (p: Record<string, unknown>) => {
+      const existingBadges = Array.isArray(p.scoutBadges)
+        ? (p.scoutBadges as ScoutBadge[])
+        : null;
+      const flags = (p.internalReliability as InternalReliabilityFlags | undefined) || {
+        consistency: 10,
+        importantMatches: 10,
+        injuryProneness: 10,
+        versatility: 10,
+      };
+      const scoutBadges =
+        existingBadges && existingBadges.length > 0
+          ? existingBadges
+          : deriveQualitativeScoutBadges(flags);
+
+      const {
+        internalReliability: _dropRel,
+        hiddenPersonality: _dropHidden,
+        ca: _dropCa,
+        pa: _dropPa,
+        ...cleanPlayer
+      } = p;
+
+      const rawAttrs = (cleanPlayer.attributes || {}) as Partial<PlayerAttributes>;
+      const clampedAttrs = clampPlayerAttributesRecord(
+        rawAttrs as Record<string, number | undefined>
+      ) as unknown as PlayerAttributes;
+
+      return {
+        ...(cleanPlayer as Omit<HydratedSquadPlayer, 'scoutBadges' | 'attributes'>),
+        attributes: clampedAttrs,
+        scoutBadges,
+      };
+    }
+  );
+
+  return {
+    clubUid: Number(parsed.clubUid) || 0,
+    squad,
+    playerMatchStats: parsed.playerMatchStats || {},
+    teamMatchStats: Array.isArray(parsed.teamMatchStats) ? parsed.teamMatchStats : [],
+    playerSeasonHistory: parsed.playerSeasonHistory || {},
+    staff: Array.isArray(parsed.staff) ? parsed.staff : [],
+    monthlyFinances: Array.isArray(parsed.monthlyFinances) ? parsed.monthlyFinances : [],
+    facilities: parsed.facilities || {},
+    sponsorships: Array.isArray(parsed.sponsorships) ? parsed.sponsorships : [],
+    transferWindows: parsed.transferWindows || { isOpen: false },
+    competitionRules: parsed.competitionRules || {},
+    selections: parsed.selections || {},
+    setPieces: parsed.setPieces || {},
+    training: parsed.training || {},
+    jobVacancies: Array.isArray(parsed.jobVacancies) ? parsed.jobVacancies : [],
+    recruitmentTargets: Array.isArray(parsed.recruitmentTargets)
+      ? parsed.recruitmentTargets
+      : [],
+  };
+}
+
+/**
+ * UID-first squad matching with normalized name+position fallback and stale removal preview.
+ */
+export function hydrateAndMatchSquad(
+  existingBaseline: HydratedSquadPlayer[],
+  incomingPayload: Pass0ExtractionPayload
+): HydrationDiffResult {
+  const incomingMapByUid = new Map<number, HydratedSquadPlayer>();
+  const incomingMapByNamePos = new Map<string, HydratedSquadPlayer>();
+
+  for (const player of incomingPayload.squad) {
+    if (player.uid && player.uid > 0) {
+      incomingMapByUid.set(player.uid, player);
+    }
+    const key = `${normalizePlayerName(player.name)}|${player.primaryPosition}`;
+    if (!incomingMapByNamePos.has(key)) {
+      incomingMapByNamePos.set(key, player);
+    }
+  }
+
+  const matchedUids = new Set<number>();
+  const matchedNames = new Set<string>();
+  const hydratedSquad: HydratedSquadPlayer[] = [];
+  const removedPlayers: HydratedSquadPlayer[] = [];
+  const addedPlayers: HydratedSquadPlayer[] = [];
+
+  for (const basePlayer of existingBaseline) {
+    let matched: HydratedSquadPlayer | undefined;
+
+    if (basePlayer.uid && basePlayer.uid > 0) {
+      matched = incomingMapByUid.get(basePlayer.uid);
+      if (matched) {
+        matchedUids.add(matched.uid);
+      }
+    }
+
+    if (!matched) {
+      const key = `${normalizePlayerName(basePlayer.name)}|${basePlayer.primaryPosition}`;
+      const candidate = incomingMapByNamePos.get(key);
+      if (candidate && (!candidate.uid || !matchedUids.has(candidate.uid))) {
+        matched = candidate;
+        matchedNames.add(key);
+        if (candidate.uid && candidate.uid > 0) {
+          matchedUids.add(candidate.uid);
+        }
+      }
+    }
+
+    if (matched) {
+      hydratedSquad.push({
+        ...basePlayer,
+        ...matched,
+        attributes: clampPlayerAttributesRecord({
+          ...basePlayer.attributes,
+          ...matched.attributes,
+        }),
+        scoutBadges: matched.scoutBadges || basePlayer.scoutBadges,
+      });
+    } else {
+      removedPlayers.push(basePlayer);
+    }
+  }
+
+  for (const incomingPlayer of incomingPayload.squad) {
+    const uidMatched = Boolean(
+      incomingPlayer.uid && matchedUids.has(incomingPlayer.uid)
+    );
+    const key = `${normalizePlayerName(incomingPlayer.name)}|${incomingPlayer.primaryPosition}`;
+    const nameMatched = matchedNames.has(key);
+
+    if (!uidMatched && !nameMatched) {
+      addedPlayers.push(incomingPlayer);
+      hydratedSquad.push(incomingPlayer);
+    }
+  }
+
+  return {
+    hydratedSquad,
+    removedPlayers,
+    addedPlayers,
+    matchedCount: hydratedSquad.length - addedPlayers.length,
+  };
+}
 
 export interface DecodedFmSavePlayer {
   uid: number;
   name: string;
   position: string;
+  primaryPosition?: string;
+  secondaryPositions?: string[];
   age: number;
   heightCm?: number;
   marketValue?: number | null;
   morale?: string | null;
   nation?: string | null;
-  ca: number;
-  pa: number;
+  /** Optional internal-only fields from legacy payloads; never emitted by Pass 0 Python extractor or exposed to UI/AI */
+  ca?: number;
+  pa?: number;
+  abilityStars?: number;
+  potentialStars?: number;
+  personalityLabel?: string;
   condition: number | null;
   sharpness: number | null;
   leftFoot?: number;
@@ -20,6 +303,7 @@ export interface DecodedFmSavePlayer {
   preferredFoot?: 'Left' | 'Right' | 'Either';
   wagePw: number;
   expires: string | null;
+  contractExpiryMonths?: number;
   onLoan: boolean;
   teamSlot: number;
   apps: string;
@@ -41,7 +325,12 @@ export interface DecodedFmSavePlayer {
   redCards: number;
   positionRatings?: Record<string, number> | null;
   attributes: PlayerRecord['attributes'] | null;
-  hiddenPersonality: {
+  traits?: string[];
+  scoutBadges?: ScoutBadge[];
+  internalReliability?: InternalReliabilityFlags | null;
+  last5Ratings?: PlayerMatchRating[];
+  seasonHistory?: SeasonHistoryEntry[];
+  hiddenPersonality?: {
     professionalism: number | null;
     ambition: number | null;
     pressure: number | null;
@@ -55,15 +344,21 @@ export interface DecodedFmSaveStaff {
   uid: number;
   name: string;
   role: string;
-  age: number;
-  nation: string;
-  club: string;
-  wagePw: number;
-  expires: string | null;
-  attributes: StaffRecord['attributes'] | null;
+  age?: number;
+  nation?: string;
+  club?: string;
+  wagePw?: number;
+  expires?: string | null;
+  coachingDefending?: number;
+  coachingAttacking?: number;
+  coachingTactical?: number;
+  judgingAbility?: number;
+  judgingPotential?: number;
+  attributes?: StaffRecord['attributes'] | null;
 }
 
 export interface DecodedFmSaveMatch {
+  matchId?: string;
   dateIso: string | null;
   dateDmy: string | null;
   competitionId?: number | null;
@@ -102,6 +397,7 @@ export interface DecodedFmSavePayload {
     importScope?: string;
     mountMode?: string;
   };
+  clubUid?: number | null;
   players: DecodedFmSavePlayer[];
   staff?: DecodedFmSaveStaff[];
   playedMatches: DecodedFmSaveMatch[];
@@ -148,6 +444,7 @@ export interface DecodedFmSavePayload {
     wageBudgetWeekly: number | null;
     transferBudgetRemaining: number | null;
   } | null;
+  monthlyFinances?: MonthlyFinance[];
   activeInjuries: Array<{
     playerUid: number | null;
     playerName: string | null;
@@ -168,6 +465,19 @@ export interface DecodedFmSavePayload {
     label: string;
     members: string[];
   }>;
+  // Pass 0 Groups 2–4 optional sections
+  playerMatchStats?: Record<string | number, PlayerMatchRating[]>;
+  teamMatchStats?: TeamMatchStat[];
+  playerSeasonHistory?: Record<string | number, SeasonHistoryEntry[]>;
+  facilities?: ClubFacilitiesSummary;
+  sponsorships?: SponsorshipDeal[];
+  transferWindows?: TransferWindowInfo;
+  competitionRules?: Record<string, unknown>;
+  selections?: Record<string, unknown>;
+  setPieces?: Record<string, unknown>;
+  training?: Record<string, unknown>;
+  jobVacancies?: JobVacancyEntry[];
+  recruitmentTargets?: RecruitmentTarget[];
   warnings?: string[];
 }
 
@@ -175,6 +485,7 @@ export interface HydratedSaveState {
   updatedSquad: PlayerRecord[];
   updatedStaff: StaffRecord[];
   updatedMatches: MatchLogEntry[];
+  removedPlayers: PlayerRecord[];
   newMatchesCount: number;
   changedPlayers: Array<{ name: string; changes: string[] }>;
   saveDateLabel: string;
@@ -187,6 +498,8 @@ export interface HydratedSaveState {
   tacticSubLabel: string | null;
   wageComplianceLabel: string | null;
   balanceLabel: string | null;
+  financialRunway: FinancialRunway | null;
+  recruitmentTargets: RecruitmentTarget[];
   analystPromptContext: string;
   decodedPayload: DecodedFmSavePayload;
 }
@@ -206,6 +519,9 @@ function formatMoney(amount: number | null | undefined): string {
 }
 
 function inferPersonalityLabel(dp: DecodedFmSavePlayer): string {
+  if (dp.personalityLabel && dp.personalityLabel.trim()) {
+    return dp.personalityLabel.trim();
+  }
   const det = dp.attributes?.determination ?? 10;
   const prof = dp.hiddenPersonality?.professionalism ?? 10;
   const amb = dp.hiddenPersonality?.ambition ?? 10;
@@ -240,43 +556,123 @@ function computeRelativeStarRating(value: number, squadMedian: number): number {
   return Math.round(clamped * 2) / 2;
 }
 
+function extractUidFromPlayerRecord(player: PlayerRecord): number | null {
+  if (typeof player.uid === 'number' && player.uid > 0) {
+    return player.uid;
+  }
+  const m = player.id.match(/^fm-uid-(\d+)$/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+function resolveScoutBadges(dp: DecodedFmSavePlayer): ScoutBadge[] {
+  if (Array.isArray(dp.scoutBadges) && dp.scoutBadges.length > 0) {
+    return dp.scoutBadges;
+  }
+  if (dp.internalReliability) {
+    return deriveQualitativeScoutBadges(dp.internalReliability);
+  }
+  return [];
+}
+
+function lookupUidRecord<T>(
+  map: Record<string | number, T> | undefined,
+  uid: number
+): T | undefined {
+  if (!map) return undefined;
+  return map[uid] ?? map[String(uid)];
+}
+
 /**
  * Hydrates the entire FM27 Command Hub (Squad Database, Staff Directory, Match Log,
- * Executive KPI strip, and AI Tactical Analyst context) directly from a decoded .fm save.
- * Never exposes raw CA/PA numbers in hydrated player notes, diffs, or AI prompts.
+ * Recruitment Targets, Financial Runway, Executive KPI strip, and AI Tactical Analyst context)
+ * directly from a decoded Pass 0 .fm save.
+ * Uses UID-first matching with stale removal preview and NEVER exposes raw CA/PA or hidden numbers.
  */
 export function hydrateAppFromDecodedFmSave(
   decoded: DecodedFmSavePayload,
   currentSquad: PlayerRecord[],
   currentMatches: MatchLogEntry[]
 ): HydratedSaveState {
+  const byUid = new Map<number, DecodedFmSavePlayer>();
   const byNorm = new Map<string, DecodedFmSavePlayer>();
   for (const p of decoded.players) {
+    if (p.uid && p.uid > 0) {
+      byUid.set(p.uid, p);
+    }
     byNorm.set(normalizePlayerName(p.name), p);
   }
 
   const changedPlayers: Array<{ name: string; changes: string[] }> = [];
   const matchedSaveUids = new Set<number>();
+  const removedPlayers: PlayerRecord[] = [];
 
-  // 1. Update existing squad players with fresh .fm stats, attributes, wages, & condition
-  const mergedSquad: PlayerRecord[] = currentSquad.map((existing) => {
-    const norm = normalizePlayerName(existing.name);
-    let dp = byNorm.get(norm);
+  // Compute squad median ability internally solely for legacy payloads lacking abilityStars (never exposed raw)
+  const validRatings = decoded.players
+    .map((p) => Number(p.ca) || 0)
+    .filter((v) => v > 0)
+    .sort((a, b) => a - b);
+  const squadMedian =
+    validRatings.length > 0
+      ? validRatings[Math.floor(validRatings.length / 2)]
+      : 90;
+
+  const getPlayerStars = (dp: DecodedFmSavePlayer) => {
+    const abilityStars =
+      typeof dp.abilityStars === 'number' && dp.abilityStars >= 1
+        ? Math.min(5, Math.max(1, dp.abilityStars))
+        : computeRelativeStarRating(Number(dp.ca) || 0, squadMedian);
+    const potentialStars =
+      typeof dp.potentialStars === 'number' && dp.potentialStars >= 1
+        ? Math.max(abilityStars, Math.min(5, dp.potentialStars))
+        : Math.max(
+            abilityStars,
+            computeRelativeStarRating(Number(dp.pa) || 0, squadMedian)
+          );
+    return { abilityStars, potentialStars };
+  };
+
+  // 1. UID-first player matching with normalized name fallback + stale removal detection
+  const mergedSquad: PlayerRecord[] = [];
+
+  for (const existing of currentSquad) {
+    const existingUid = extractUidFromPlayerRecord(existing);
+    let dp: DecodedFmSavePlayer | undefined;
+
+    if (existingUid !== null) {
+      dp = byUid.get(existingUid);
+    }
+
     if (!dp) {
-      const last = norm.split(' ').slice(-1)[0];
-      if (last && last.length >= 5) {
-        const candidates = decoded.players.filter((cand) =>
-          normalizePlayerName(cand.name).endsWith(` ${last}`)
-        );
-        if (candidates.length === 1) dp = candidates[0];
+      const norm = normalizePlayerName(existing.name);
+      dp = byNorm.get(norm);
+      if (!dp) {
+        const last = norm.split(' ').slice(-1)[0];
+        if (last && last.length >= 5) {
+          const candidates = decoded.players.filter(
+            (cand) =>
+              !matchedSaveUids.has(cand.uid) &&
+              normalizePlayerName(cand.name).endsWith(` ${last}`)
+          );
+          if (candidates.length === 1) dp = candidates[0];
+        }
       }
     }
-    if (!dp) return existing;
+
+    if (!dp) {
+      if (decoded.players.length >= 10) {
+        removedPlayers.push(existing);
+      } else {
+        mergedSquad.push(existing);
+      }
+      continue;
+    }
+
     matchedSaveUids.add(dp.uid);
 
     const changes: string[] = [];
     const next: PlayerRecord = {
       ...existing,
+      uid: dp.uid || existing.uid,
       attributes: { ...existing.attributes },
     };
 
@@ -320,9 +716,19 @@ export function hydrateAppFromDecodedFmSave(
     if (typeof dp.expires === 'string' && dp.expires.trim() && dp.expires !== 'N/A') {
       next.expires = dp.expires;
     }
+    if (typeof dp.contractExpiryMonths === 'number') {
+      next.contractExpiryMonths = dp.contractExpiryMonths;
+    }
+    if (Array.isArray(dp.secondaryPositions)) {
+      next.secondaryPositions = dp.secondaryPositions;
+    }
 
-    if (dp.condition !== undefined) next.condition = dp.condition;
-    if (dp.sharpness !== undefined) next.sharpness = dp.sharpness;
+    if (dp.condition !== undefined && dp.condition !== null) {
+      next.condition = clampConditionSharpness(dp.condition);
+    }
+    if (dp.sharpness !== undefined && dp.sharpness !== null) {
+      next.sharpness = clampConditionSharpness(dp.sharpness);
+    }
     if (dp.heightCm) next.heightCm = dp.heightCm;
     if (dp.leftFoot) next.leftFoot = dp.leftFoot;
     if (dp.rightFoot) next.rightFoot = dp.rightFoot;
@@ -330,15 +736,40 @@ export function hydrateAppFromDecodedFmSave(
     if (prefFoot) next.preferredFoot = prefFoot;
     if (dp.positionRatings) next.positionRatings = dp.positionRatings;
 
+    // Pass 0 Group 1: Traits & Qualitative Scout Badges
+    if (Array.isArray(dp.traits)) {
+      next.traits = dp.traits;
+    }
+    const badges = resolveScoutBadges(dp);
+    if (badges.length > 0) {
+      next.scoutBadges = badges;
+    }
+
+    // Pass 0 Group 2: Last-5 Form & Season History
+    const pRatings =
+      dp.last5Ratings || lookupUidRecord(decoded.playerMatchStats, dp.uid);
+    if (pRatings && pRatings.length > 0) {
+      next.last5Ratings = pRatings;
+      next.last5Form = calculateLast5Form(pRatings);
+    }
+    const pHistory =
+      dp.seasonHistory || lookupUidRecord(decoded.playerSeasonHistory, dp.uid);
+    if (pHistory && pHistory.length > 0) {
+      next.seasonHistory = pHistory;
+    }
+
     if (dp.attributes) {
       const keys = Object.keys(dp.attributes) as Array<
         keyof PlayerRecord['attributes']
       >;
       for (const k of keys) {
-        const val = dp.attributes[k];
-        if (typeof val === 'number' && val > 0 && val !== existing.attributes[k]) {
-          changes.push(`${k} ${existing.attributes[k] ?? '--'}→${val}`);
-          next.attributes[k] = val;
+        const rawVal = dp.attributes[k];
+        if (typeof rawVal === 'number' && rawVal > 0) {
+          const clampedVal = clampAttributeValue(rawVal);
+          if (clampedVal !== existing.attributes[k]) {
+            changes.push(`${k} ${existing.attributes[k] ?? '--'}→${clampedVal}`);
+            next.attributes[k] = clampedVal;
+          }
         }
       }
     }
@@ -351,43 +782,53 @@ export function hydrateAppFromDecodedFmSave(
     if (changes.length > 0) {
       changedPlayers.push({ name: existing.name, changes });
     }
-    return next;
-  });
-
-  // Compute squad median ability internally solely for relative 1.0★-5.0★ star scaling (never exposed raw)
-  const validRatings = decoded.players
-    .map((p) => Number(p.ca) || 0)
-    .filter((v) => v > 0)
-    .sort((a, b) => a - b);
-  const squadMedian =
-    validRatings.length > 0
-      ? validRatings[Math.floor(validRatings.length / 2)]
-      : 90;
+    mergedSquad.push(next);
+  }
 
   // Add any newly signed / promoted first-team players from the .fm save not in baseline
   let nextNum = currentSquad.length === 0 ? 1 : 40;
   for (const dp of decoded.players) {
     if (matchedSaveUids.has(dp.uid)) continue;
-    if (currentSquad.length > 0 && dp.teamSlot !== 0 && dp.minutes === 0) continue; // skip unplayed reserves/U18s when baseline exists
-    const { ipRole, oopRole } = inferFm27Roles(dp.position || 'UTL', dp.attributes);
-    const abilityStars = computeRelativeStarRating(Number(dp.ca) || 0, squadMedian);
-    const potentialStars = Math.max(
-      abilityStars,
-      computeRelativeStarRating(Number(dp.pa) || 0, squadMedian)
-    );
+    if (currentSquad.length > 0 && dp.teamSlot !== 0 && dp.minutes === 0) continue;
+    const clampedAttrs: PlayerRecord['attributes'] = dp.attributes
+      ? clampPlayerAttributesRecord(dp.attributes)
+      : {
+          pace: 10,
+          acceleration: 10,
+          stamina: 10,
+          jumpingReach: 10,
+          determination: 10,
+          passing: 10,
+          finishing: 10,
+          tackling: 10,
+          firstTouch: 10,
+          decisions: 10,
+          workRate: 10,
+          offTheBall: 10,
+        };
+    const { ipRole, oopRole } = inferFm27Roles(dp.position || 'UTL', clampedAttrs);
+    const { abilityStars, potentialStars } = getPlayerStars(dp);
     const assignedStatus: PlayerRecord['status'] =
-      (dp.minutes > 180 || abilityStars >= 3.5)
+      dp.minutes > 180 || abilityStars >= 3.5
         ? 'Starter'
-        : (dp.minutes > 0 || abilityStars >= 2.5)
+        : dp.minutes > 0 || abilityStars >= 2.5
           ? 'Rotation'
-          : (dp.age && dp.age <= 21)
+          : dp.age && dp.age <= 21
             ? 'Youth'
             : 'Surplus';
+
+    const pRatings =
+      dp.last5Ratings || lookupUidRecord(decoded.playerMatchStats, dp.uid) || [];
+    const pHistory =
+      dp.seasonHistory || lookupUidRecord(decoded.playerSeasonHistory, dp.uid) || [];
+
     mergedSquad.push({
       id: `fm-uid-${dp.uid}`,
+      uid: dp.uid,
       number: nextNum++,
       name: dp.name || 'Unknown Player',
-      position: dp.position || 'UTL',
+      position: dp.position || dp.primaryPosition || 'UTL',
+      secondaryPositions: dp.secondaryPositions || [],
       apps: dp.apps || '0',
       minutes: Number(dp.minutes) || 0,
       rating: dp.rating ?? null,
@@ -406,64 +847,60 @@ export function hydrateAppFromDecodedFmSave(
       age: Number(dp.age) || 20,
       ability: abilityStars,
       potential: potentialStars,
-      condition: dp.condition ?? null,
-      sharpness: dp.sharpness ?? null,
+      condition:
+        dp.condition !== null && dp.condition !== undefined
+          ? clampConditionSharpness(dp.condition)
+          : null,
+      sharpness:
+        dp.sharpness !== null && dp.sharpness !== undefined
+          ? clampConditionSharpness(dp.sharpness)
+          : null,
       leftFoot: dp.leftFoot,
       rightFoot: dp.rightFoot,
       preferredFoot: inferPreferredFoot(dp.leftFoot, dp.rightFoot, dp.preferredFoot),
       heightCm: dp.heightCm,
       positionRatings: dp.positionRatings ?? null,
       expires: typeof dp.expires === 'string' && dp.expires.trim() ? dp.expires : 'N/A',
+      contractExpiryMonths: dp.contractExpiryMonths,
       nation: (dp.nation && dp.nation.trim()) || 'FM',
       wagePw: Number(dp.wagePw) || 0,
       marketValue: dp.marketValue ?? null,
       morale: dp.morale ?? null,
       status: assignedStatus,
-      attributes: dp.attributes || {
-        pace: 10,
-        acceleration: 10,
-        stamina: 10,
-        jumpingReach: 10,
-        determination: 10,
-        passing: 10,
-        finishing: 10,
-        tackling: 10,
-        firstTouch: 10,
-        decisions: 10,
-        workRate: 10,
-        offTheBall: 10,
-      },
+      attributes: clampedAttrs,
+      traits: dp.traits || [],
+      scoutBadges: resolveScoutBadges(dp),
+      last5Ratings: pRatings.length > 0 ? pRatings : undefined,
+      last5Form: pRatings.length > 0 ? calculateLast5Form(pRatings) : undefined,
+      seasonHistory: pHistory.length > 0 ? pHistory : undefined,
       ipRole,
       oopRole,
       notes: 'Synced directly from .fm save',
     });
     changedPlayers.push({
       name: dp.name,
-      changes: [`Added from .fm save (${abilityStars.toFixed(1)}★ / ${potentialStars.toFixed(1)}★)`],
+      changes: [
+        `Added from .fm save (${abilityStars.toFixed(1)}★ / ${potentialStars.toFixed(1)}★)`,
+      ],
     });
   }
 
-  // When a full real .fm squad (>=10 players) was decoded, drop stale baseline players who are no longer at the club
-  const finalSquad: PlayerRecord[] =
-    decoded.players.length >= 10
-      ? mergedSquad.filter((p) => {
-          const norm = normalizePlayerName(p.name);
-          if (byNorm.has(norm)) return true;
-          const last = norm.split(' ').slice(-1)[0];
-          if (
-            last &&
-            last.length >= 5 &&
-            decoded.players.some((cand) =>
-              normalizePlayerName(cand.name).endsWith(` ${last}`)
-            )
-          ) {
-            return true;
-          }
-          return p.id.startsWith('fm-uid-');
-        })
-      : mergedSquad;
+  const finalSquad = mergedSquad;
 
-  // 2. Build honest Match Log from .fm save (ZERO fabricated 0.00 xG or 40% possession!)
+  // 2. Build honest Match Log from .fm save enriched with Group 2 teamMatchStats
+  const teamStatsList = decoded.teamMatchStats || [];
+  const findTeamMatchStat = (pm: DecodedFmSaveMatch): TeamMatchStat | undefined => {
+    const oppLower = (pm.opponent || '').toLowerCase();
+    return teamStatsList.find((ts) => {
+      if (pm.matchId && ts.matchId && ts.matchId === pm.matchId) return true;
+      if (pm.dateIso && ts.date && ts.date === pm.dateIso) return true;
+      return (
+        ts.opponent.toLowerCase() === oppLower &&
+        ts.isHome === (pm.venue === 'H')
+      );
+    });
+  };
+
   const findExistingMatchDetails = (pm: DecodedFmSaveMatch): MatchLogEntry | undefined => {
     const dateKey = (pm.dateDmy || pm.dateIso || '').trim();
     const safeOpp = (pm.opponent || '').toLowerCase();
@@ -485,7 +922,6 @@ export function hydrateAppFromDecodedFmSave(
     33
   );
 
-  // Process oldest-to-newest so event numbers ascend chronologically
   const chronologicalPlayed = [...decoded.playedMatches].reverse();
   let newlyAddedCount = 0;
   const fmHydratedMatches: MatchLogEntry[] = [];
@@ -497,14 +933,31 @@ export function hydrateAppFromDecodedFmSave(
     const oppKey = safeOpp.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (!dateKey) continue;
 
+    const tms = findTeamMatchStat(pm);
+    const enrichedXgFor = pm.xGFor ?? tms?.xgFor ?? null;
+    const enrichedXgAgainst = pm.xGAgainst ?? tms?.xgAgainst ?? null;
+    const enrichedPoss = pm.possession ?? tms?.possession ?? null;
+    const enrichedPass = pm.passCompletion ?? tms?.passCompletion ?? null;
+    const enrichedShots =
+      pm.shotsFor ||
+      (tms && tms.shots !== null
+        ? tms.shotsOnTarget !== null
+          ? `${tms.shots} (${tms.shotsOnTarget})`
+          : String(tms.shots)
+        : '—');
+
     const existing = findExistingMatchDetails(pm);
     if (existing) {
-      // Preserve rich Data Hub screenshot audit if we already analyzed this exact fixture, while marking live .fm verified
       fmHydratedMatches.push({
         ...existing,
         date: dateKey,
         score: safeScore,
         result: pm.result,
+        xGFor: existing.xGFor ?? enrichedXgFor,
+        xGAgainst: existing.xGAgainst ?? enrichedXgAgainst,
+        possession: existing.possession ?? enrichedPoss,
+        passCompletion: existing.passCompletion ?? enrichedPass,
+        shotsFor: existing.shotsFor !== '—' ? existing.shotsFor : enrichedShots,
         source: 'FM_SAVE',
       });
       continue;
@@ -521,11 +974,11 @@ export function hydrateAppFromDecodedFmSave(
       venue: pm.venue,
       result: pm.result,
       score: safeScore,
-      xGFor: pm.xGFor ?? null,
-      xGAgainst: pm.xGAgainst ?? null,
-      possession: pm.possession ?? null,
-      passCompletion: pm.passCompletion ?? null,
-      shotsFor: pm.shotsFor || '—',
+      xGFor: enrichedXgFor,
+      xGAgainst: enrichedXgAgainst,
+      possession: enrichedPoss,
+      passCompletion: enrichedPass,
+      shotsFor: enrichedShots,
       shotsAgainst: pm.shotsAgainst || '—',
       cccFor: pm.cccFor ?? null,
       cccAgainst: pm.cccAgainst ?? null,
@@ -534,13 +987,11 @@ export function hydrateAppFromDecodedFmSave(
       defensiveWatchpoints: pm.distanceKm
         ? `Team distance: ${pm.distanceKm} km`
         : '—',
-      tacticalAudit: `Verified directly from ${decoded.meta.fileName || decoded.meta.saveName || '.fm save'} (${pm.result} ${safeScore}${pm.xGFor !== null ? `, xG ${pm.xGFor.toFixed(2)}-${(pm.xGAgainst ?? 0).toFixed(2)}` : ''}).`,
+      tacticalAudit: `Verified directly from ${decoded.meta.fileName || decoded.meta.saveName || '.fm save'} (${pm.result} ${safeScore}${enrichedXgFor !== null ? `, xG ${enrichedXgFor.toFixed(2)}-${(enrichedXgAgainst ?? 0).toFixed(2)}` : ''}).`,
       source: 'FM_SAVE',
     });
   }
 
-  // When a full real save (>= 4 matches) was decoded, show the authoritative .fm match chronology (newest first)
-  // rather than mixing stale unverified baseline rows; for small 1-match fixtures, prepend new matches cleanly.
   const fmNewestFirst = [...fmHydratedMatches].reverse();
   const updatedMatches =
     decoded.playedMatches.length >= 4
@@ -552,7 +1003,7 @@ export function hydrateAppFromDecodedFmSave(
           ...currentMatches,
         ];
 
-  // 3. Executive Strip Labels from Live .fm Save (100% Real Save Values!)
+  // 3. Executive Strip Labels & Group 3 Financial Runway
   const saveDateLabel =
     decoded.meta.gameDateDmy ||
     decoded.meta.gameDateIso ||
@@ -577,7 +1028,6 @@ export function hydrateAppFromDecodedFmSave(
     leagueStandingLabel = `#${ls.position} of ${ls.totalTeams} (${ls.goalsFor} GF / ${ls.goalsAgainst} GA · ${gdStr} GD)`;
   }
 
-  // Current-season competitive output (never inflate with prior-season or pre-season friendly goals)
   let squadOutputLabel: string | null = null;
   let squadOutputSubLabel: string | null = null;
   if (decoded.players.length > 0) {
@@ -648,23 +1098,25 @@ export function hydrateAppFromDecodedFmSave(
     balanceLabel = formatMoney(decoded.meta.balance);
   }
 
-  // 4. Build Rich Ground-Truth Context for Gemini Tactical Analyst
-  const topPlayersSummary = decoded.players
-    .slice(0, 28)
-    .map((p) => {
-      const a = p.attributes;
-      const attrStr = a
-        ? `Pac ${a.pace}/Acc ${a.acceleration}/Sta ${a.stamina}/JR ${a.jumpingReach}/Det ${a.determination}/Pas ${a.passing}/Fin ${a.finishing}/Tck ${a.tackling}`
-        : '';
-      const abilStar = computeRelativeStarRating(Number(p.ca) || 0, squadMedian);
-      const potStar = Math.max(
-        abilStar,
-        computeRelativeStarRating(Number(p.pa) || 0, squadMedian)
-      );
-      return `- ${p.name} (${p.position}, Age ${p.age}, ${abilStar.toFixed(1)}★/${potStar.toFixed(1)}★, £${p.wagePw}/wk exp ${p.expires}): Apps ${p.apps}, ${p.minutes}m, Rat ${p.rating ?? '-'}, ${p.goals}G (${p.xG} xG), ${p.assists}A (${p.xA} xA), Tck ${p.tckPct}%, Hdr ${p.hdrPct}% | ${attrStr}`;
-    })
-    .join('\n');
+  const financialRunway =
+    decoded.monthlyFinances && decoded.monthlyFinances.length > 0
+      ? calculateFinancialRunway(decoded.monthlyFinances)
+      : null;
 
+  // Group 4: Sanitized recruitment targets (zero raw CA/PA)
+  const recruitmentTargets: RecruitmentTarget[] = (
+    decoded.recruitmentTargets || []
+  )
+    .slice(0, 60)
+    .map((t) => {
+      const cleanRecord = { ...(t as unknown as Record<string, unknown>) };
+      delete cleanRecord.ca;
+      delete cleanRecord.pa;
+      delete cleanRecord.internalReliability;
+      return cleanRecord as unknown as RecruitmentTarget;
+    });
+
+  // Group 3: Staff Hydration
   const updatedStaff: StaffRecord[] = (decoded.staff || []).map((s, idx) => ({
     id: `fm-staff-${s.uid || idx}`,
     uid: s.uid,
@@ -676,21 +1128,21 @@ export function hydrateAppFromDecodedFmSave(
     wagePw: Number(s.wagePw) || 0,
     expires: s.expires || 'N/A',
     attributes: s.attributes || {
-      attacking: 10,
-      defending: 10,
+      attacking: clampAttributeValue(s.coachingAttacking ?? 10),
+      defending: clampAttributeValue(s.coachingDefending ?? 10),
       fitness: 10,
       goalkeeping: 10,
       mental: 10,
       possession: 10,
       set_pieces: 10,
-      tactical: 10,
+      tactical: clampAttributeValue(s.coachingTactical ?? 10),
       technical: 10,
       working_with_youngsters: 10,
       adaptability: 10,
       authority: 10,
       determination: 10,
-      judging_player_ability: 10,
-      judging_player_potential: 10,
+      judging_player_ability: clampAttributeValue(s.judgingAbility ?? 10),
+      judging_player_potential: clampAttributeValue(s.judgingPotential ?? 10),
       judging_staff_ability: 10,
       man_management: 10,
       motivating: 10,
@@ -701,6 +1153,31 @@ export function hydrateAppFromDecodedFmSave(
       analysing_data: 10,
     },
   }));
+
+  // 4. Build Rich Ground-Truth Context for Tactical Analyst (ZERO raw CA/PA or raw hidden numbers!)
+  const topPlayersSummary = decoded.players
+    .slice(0, 28)
+    .map((p) => {
+      const a = p.attributes;
+      const attrStr = a
+        ? `Pac ${a.pace}/Acc ${a.acceleration}/Sta ${a.stamina}/JR ${a.jumpingReach}/Det ${a.determination}/Pas ${a.passing}/Fin ${a.finishing}/Tck ${a.tackling}`
+        : '';
+      const { abilityStars, potentialStars } = getPlayerStars(p);
+      const badges = resolveScoutBadges(p);
+      const badgeStr = badges.length > 0 ? ` | Badges: [${badges.join(', ')}]` : '';
+      const traitStr =
+        p.traits && p.traits.length > 0
+          ? ` | Traits: [${p.traits.slice(0, 4).join(', ')}]`
+          : '';
+      const pRatings =
+        p.last5Ratings || lookupUidRecord(decoded.playerMatchStats, p.uid);
+      const form = pRatings && pRatings.length > 0 ? calculateLast5Form(pRatings) : null;
+      const formStr = form
+        ? ` | L5 Form: ${form.averageRating} (${form.trend})`
+        : '';
+      return `- ${p.name} (${p.position}, Age ${p.age}, ${abilityStars.toFixed(1)}★/${potentialStars.toFixed(1)}★, £${p.wagePw}/wk exp ${p.expires}): Apps ${p.apps}, ${p.minutes}m, Rat ${p.rating ?? '-'}, ${p.goals}G (${p.xG} xG), ${p.assists}A (${p.xA} xA), Tck ${p.tckPct}%, Hdr ${p.hdrPct}% | ${attrStr}${formStr}${badgeStr}${traitStr}`;
+    })
+    .join('\n');
 
   const playedLines = decoded.playedMatches
     .map(
@@ -744,15 +1221,45 @@ export function hydrateAppFromDecodedFmSave(
           .join('\n')
       : '- Baseline synced directly from .fm save.';
 
-  const analystPromptContext = `[LIVE FULL .FM SAVE DECODED VIA FMSAVE ${decoded.meta.fmsaveVersion} — 100% REAL IN-GAME DATA]
+  const runwayLine = financialRunway
+    ? `Financial Runway: ${financialRunway.status} (${financialRunway.runwayMonths} months remaining · Monthly Burn: £${Math.round(financialRunway.monthlyBurnRate).toLocaleString()}/mo)`
+    : '';
+
+  const facilitiesLine = decoded.facilities
+    ? `Club Facilities: Training=${String(decoded.facilities.training ?? 'Unknown')}, Youth=${String(decoded.facilities.youth ?? 'Unknown')}`
+    : '';
+
+  const vacanciesLine =
+    decoded.jobVacancies && decoded.jobVacancies.length > 0
+      ? `Active Job Vacancies (${decoded.jobVacancies.length}): ${decoded.jobVacancies
+          .slice(0, 8)
+          .map((v) => `${v.role || 'Staff'} at ${v.club || 'Club'}`)
+          .join(', ')}`
+      : '';
+
+  const targetsSummary =
+    recruitmentTargets.length > 0
+      ? `\n=== PASS 0 SCOUTED FREE AGENTS & EXPIRING <=6M (${recruitmentTargets.length} TARGETS) ===\n${recruitmentTargets
+          .slice(0, 12)
+          .map(
+            (t) =>
+              `- ${t.name} (${t.primaryPosition}, Age ${t.age}, ${t.nationality || 'Unknown'}): ${t.isFreeAgent ? 'Free Agent' : `Exp <=${t.contractExpiryMonths}m`} · Wage ~£${(t.demandedWageEur ?? 0).toLocaleString()}/wk`
+          )
+          .join('\n')}\n`
+      : '';
+
+  const analystPromptContext = `[LIVE FULL .FM SAVE DECODED VIA FMSAVE ${decoded.meta.fmsaveVersion} — PASS 0 GROUPS 1–4 REAL IN-GAME DATA]
 Game: ${decoded.meta.game} (Build ${decoded.meta.build}) | Save: ${decoded.meta.saveName}
 EXACT CURRENT IN-GAME DATE: ${saveDateLabel}
 Managed Club: ${decoded.meta.clubName} (Manager: ${decoded.meta.managerName})
 ${leagueStandingLabel ? `Live League Standing (${decoded.leagueStanding?.competitionName}): ${leagueStandingLabel}` : ''}
 ${decoded.leagueStanding?.nextOpponentStanding ? `Next Opponent Table Standing: ${decoded.leagueStanding.nextOpponentStanding.clubName} (#${decoded.leagueStanding.nextOpponentStanding.position}, ${decoded.leagueStanding.nextOpponentStanding.points} Pts, ${decoded.leagueStanding.nextOpponentStanding.goalDiff >= 0 ? '+' : ''}${decoded.leagueStanding.nextOpponentStanding.goalDiff} GD)` : ''}
 ${wageComplianceLabel ? `Live Finances: Balance ${balanceLabel} | Wages ${wageComplianceLabel}` : balanceLabel ? `Live Balance: ${balanceLabel}` : ''}
+${runwayLine}
+${facilitiesLine}
+${vacanciesLine}
 
-=== DIFFS AUTO-APPLIED TO SQUAD DATABASE (${changedPlayers.length} PLAYERS UPDATED, ${newlyAddedCount} NEW MATCHES LOGGED) ===
+=== DIFFS AUTO-APPLIED TO SQUAD DATABASE (${changedPlayers.length} PLAYERS UPDATED, ${removedPlayers.length} REMOVED, ${newlyAddedCount} NEW MATCHES LOGGED) ===
 ${diffLines}
 
 === RECENT PLAYED MATCHES (NEWEST FIRST) ===
@@ -767,22 +1274,23 @@ ${injuryLines}
 === LIVE MENTORING GROUPS IN SAVE ===
 ${mentoringLines}
 
-=== FULL MANAGED SQUAD (${decoded.players.length} PLAYERS WITH STAR RATINGS, STATS & ATTRIBUTES) ===
+=== FULL MANAGED SQUAD (${decoded.players.length} PLAYERS WITH STAR RATINGS, SCOUT BADGES, TRAITS, LAST-5 FORM & ATTRIBUTES) ===
 ${topPlayersSummary}
-${decoded.warnings && decoded.warnings.length > 0 ? `\n=== READER NOTES (NON-FATAL) ===\n${decoded.warnings.map((w) => `- ${w}`).join('\n')}\n` : ''}
+${targetsSummary}${decoded.warnings && decoded.warnings.length > 0 ? `\n=== READER NOTES (NON-FATAL) ===\n${decoded.warnings.map((w) => `- ${w}`).join('\n')}\n` : ''}
 ANALYST MISSION FOR THIS .FM SAVE DROP:
-1. Acknowledge the exact in-game date (${saveDateLabel}), league position, recent results (never fabricate match-level xG or possession if not present in the save — cite the exact player season xG/xA and fixture scorelines), and finances directly from the .fm file.
-2. Audit player performance, attribute changes (highlighting any mentoring Determination/attribute gains, star-rating progression, FM27 engine metrics, fatigue/minutes load, and injuries). NEVER cite raw hidden CA/PA numbers.
+1. Acknowledge the exact in-game date (${saveDateLabel}), league position, recent results (never fabricate match-level xG or possession if not present in the save — cite the exact player season xG/xA and fixture scorelines), financial runway, and finances directly from the .fm file.
+2. Audit player performance, attribute changes, Last-5 form trends, Scout Report Badges, traits, fatigue/minutes load, and injuries. NEVER cite raw hidden CA/PA or raw hidden attribute numbers.
 3. Produce a **COMPLETE ACTION PLAN FROM ${saveDateLabel} FORWARD**:
    - Exact Starting XI + Bench + 62m/75m substitution plan for the very next fixture (${nextFixtureLabel || 'next scheduled match'}), obeying Playbook v2.0 & Club Rules #1–#6 (Tracking Wingers OOP, 3-man midfield late, never pull both CBs, <=125m Double-GW cap).
    - Multi-match rotation & training schedule plan across the upcoming fixtures listed above.
-   - Wage/contract/mentoring actions to click before hitting Continue.
+   - Wage/contract/recruitment/mentoring actions to click before hitting Continue.
 4. Populate the structured JSON fields (docEventBulletBlock, sheetRowValues, inGameDate="${saveDateLabel}") so Bobby can push this full save checkpoint straight to his Google Sheet & Google Doc in one click.`;
 
   return {
     updatedSquad: finalSquad,
     updatedStaff,
     updatedMatches,
+    removedPlayers,
     newMatchesCount: newlyAddedCount,
     changedPlayers,
     saveDateLabel,
@@ -795,6 +1303,8 @@ ANALYST MISSION FOR THIS .FM SAVE DROP:
     tacticSubLabel,
     wageComplianceLabel,
     balanceLabel,
+    financialRunway,
+    recruitmentTargets,
     analystPromptContext,
     decodedPayload: decoded,
   };

@@ -19,8 +19,18 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
   const { decodedPayload: d } = hydrated;
 
   const topPlayers = [...d.players]
-    .sort((a, b) => (b.minutes || 0) - (a.minutes || 0) || (b.ca || 0) - (a.ca || 0))
+    .sort(
+      (a, b) =>
+        (b.minutes || 0) - (a.minutes || 0) ||
+        (b.abilityStars || 0) - (a.abilityStars || 0) ||
+        (b.rating || 0) - (a.rating || 0)
+    )
     .slice(0, 5);
+
+  const staffCount = (d.staff || []).length;
+  const targetsCount = (hydrated.recruitmentTargets || d.recruitmentTargets || []).length;
+  const removedPlayers = hydrated.removedPlayers || [];
+  const runway = hydrated.financialRunway || null;
 
   return (
     <section className="p-5 bg-emerald-950/30 border border-emerald-500/40 rounded-xl space-y-4">
@@ -61,7 +71,34 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
               <strong className="text-white">
                 {d.upcomingFixtures.length} upcoming
               </strong>
+              {staffCount > 0 && (
+                <>
+                  , <strong className="text-white">{staffCount} staff</strong>
+                </>
+              )}
+              {targetsCount > 0 && (
+                <>
+                  , <strong className="text-emerald-300">{targetsCount} scouted targets</strong>
+                </>
+              )}
             </span>
+            {runway && (
+              <>
+                <span>&middot;</span>
+                <span
+                  className={`font-mono font-semibold ${
+                    runway.status === 'Critical'
+                      ? 'text-rose-300'
+                      : runway.status === 'Warning'
+                        ? 'text-amber-300'
+                        : 'text-emerald-300'
+                  }`}
+                >
+                  Runway: {runway.status}
+                  {runway.runwayMonths < 999 ? ` (${runway.runwayMonths}m)` : ' (Positive)'}
+                </span>
+              </>
+            )}
           </div>
         </div>
 
@@ -83,6 +120,24 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
           )}
         </button>
       </div>
+
+      {removedPlayers.length > 0 && (
+        <div className="px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-700 text-[11px] text-slate-300 flex flex-wrap items-center gap-2">
+          <span className="font-mono font-semibold uppercase tracking-wider text-amber-300">
+            Squad Sync Diff:
+          </span>
+          <span>
+            {removedPlayers.length} player{removedPlayers.length === 1 ? '' : 's'} no longer at club removed during UID-first hydration:
+          </span>
+          <span className="font-mono text-slate-200">
+            {removedPlayers
+              .slice(0, 6)
+              .map((p) => p.name)
+              .join(', ')}
+            {removedPlayers.length > 6 ? ` +${removedPlayers.length - 6} more` : ''}
+          </span>
+        </div>
+      )}
 
       {d.warnings && d.warnings.length > 0 && (
         <div className="px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-300 flex items-center gap-2">
@@ -240,7 +295,7 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
       {showRawInspector && (
         <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
           <div className="text-[11px] font-mono text-slate-400">
-            Raw decoded output from local fmsave {d.meta.fmsaveVersion} WebAssembly reader (100% read directly from your .fm file):
+            Raw decoded output from local fmsave {d.meta.fmsaveVersion} WebAssembly reader (100% read directly from your .fm file · Zero raw CA/PA exposed):
           </div>
           <pre className="max-h-72 overflow-auto text-[11px] font-mono text-emerald-200/90 leading-relaxed whitespace-pre-wrap break-words">
             {JSON.stringify(
@@ -248,14 +303,26 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
                 meta: d.meta,
                 leagueStanding: d.leagueStanding,
                 finances: d.finances,
+                financialRunway: runway,
+                monthlyFinancesCount: (d.monthlyFinances || []).length,
+                facilities: d.facilities || null,
+                transferWindows: d.transferWindows || null,
+                jobVacancies: d.jobVacancies || [],
                 tactics: d.tactics,
                 activeInjuries: d.activeInjuries,
                 mentoring: d.mentoring,
                 playedMatches: d.playedMatches,
                 upcomingFixtures: d.upcomingFixtures,
                 playersSampleCount: d.players.length,
-                staffSampleCount: (d.staff || []).length,
+                removedPlayers: removedPlayers.map((p) => ({
+                  uid: p.uid ?? null,
+                  name: p.name,
+                  position: p.position,
+                })),
+                staffSampleCount: staffCount,
+                recruitmentTargetsCount: targetsCount,
                 playersPreview: d.players.slice(0, 10).map((p) => ({
+                  uid: p.uid,
                   name: p.name,
                   pos: p.position,
                   age: p.age,
@@ -266,6 +333,8 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
                   xG: p.xG,
                   assists: p.assists,
                   rating: p.rating,
+                  scoutBadges: p.scoutBadges || [],
+                  traitsCount: (p.traits || []).length,
                 })),
                 warnings: d.warnings || [],
               },

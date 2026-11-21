@@ -8,12 +8,18 @@ import {
   Search,
   Sparkles,
   TrendingDown,
+  UserPlus,
 } from 'lucide-react';
 import {
   PlayerRecord,
   RecruitmentCase,
   ShortlistRecord,
 } from '../types/fm27';
+import {
+  FinancialRunway,
+  RecruitmentTarget,
+  TransferWindowInfo,
+} from '../types/fmSave';
 import {
   buildSquadTransferAudit,
   ClubFinancialInput,
@@ -29,6 +35,9 @@ interface RecruitmentWorkspaceProps {
   balance?: string;
   clubName?: string;
   finances?: ClubFinancialInput | null;
+  financialRunway?: FinancialRunway | null;
+  transferWindows?: TransferWindowInfo | null;
+  scoutedTargets?: RecruitmentTarget[];
   onAddCase: (entry: Omit<RecruitmentCase, 'id' | 'updatedAt'>) => void;
   onUpdateCase: (id: string, patch: Partial<RecruitmentCase>) => void;
   onDeleteCase: (id: string) => void;
@@ -38,7 +47,7 @@ interface RecruitmentWorkspaceProps {
   onSelectPlayer: (player: PlayerRecord) => void;
 }
 
-type AuditView = 'advice' | 'contracts' | 'depth';
+type AuditView = 'advice' | 'contracts' | 'depth' | 'targets';
 
 function verdictBadgeClass(verdict: TransferActionVerdict): string {
   switch (verdict) {
@@ -60,12 +69,17 @@ function verdictBadgeClass(verdict: TransferActionVerdict): string {
 }
 
 export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
+  cases,
   players,
   saveDate,
   wageSpend = '--',
   balance = '--',
   clubName,
   finances,
+  financialRunway = null,
+  transferWindows = null,
+  scoutedTargets = [],
+  onAddCase,
   onSelectPlayer,
 }) => {
   const [view, setView] = useState<AuditView>('advice');
@@ -73,6 +87,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
     'ALL' | TransferActionVerdict
   >('ALL');
   const [search, setSearch] = useState('');
+  const [targetFilter, setTargetFilter] = useState<'ALL' | 'FREE' | 'EXPIRING'>('ALL');
 
   const audit = useMemo(
     () =>
@@ -120,16 +135,44 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
     <div className="space-y-4">
       {/* Header & Club Financial Health Banner */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900/75 p-4 sm:p-5 space-y-4">
-        <div>
-          <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-            <Briefcase className="h-5 w-5 text-emerald-400" />
-            {clubName && clubName !== '--'
-              ? `${clubName} · Transfers, Contracts & Squad Audit`
-              : 'Transfers, Contracts & Squad Audit'}
-          </h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Club-aware transfer &amp; contract strategy factoring in finances, youth potential, personalities &amp; positional depth ({saveDate})
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+              <Briefcase className="h-5 w-5 text-emerald-400" />
+              {clubName && clubName !== '--'
+                ? `${clubName} · Transfers, Contracts & Squad Audit`
+                : 'Transfers, Contracts & Squad Audit'}
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Club-aware transfer &amp; contract strategy factoring in finances, financial runway, youth potential, personalities &amp; positional depth ({saveDate})
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {transferWindows && typeof transferWindows.isOpen === 'boolean' && (
+              <span
+                className={`rounded-md border px-2 py-0.5 text-[11px] font-mono font-semibold ${
+                  transferWindows.isOpen
+                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+                    : 'bg-slate-800 text-slate-400 border-slate-700'
+                }`}
+              >
+                Window: {transferWindows.isOpen ? 'OPEN' : 'Closed'}
+              </span>
+            )}
+            {financialRunway && (
+              <span
+                className={`rounded-md border px-2 py-0.5 text-[11px] font-mono font-semibold ${
+                  financialRunway.status === 'Critical'
+                    ? 'bg-rose-500/15 text-rose-300 border-rose-500/40'
+                    : financialRunway.status === 'Warning'
+                      ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+                      : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+                }`}
+              >
+                Runway: {financialRunway.status} ({financialRunway.runwayMonths}m · Burn £{Math.round(financialRunway.monthlyBurnRate).toLocaleString()}/mo)
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Club Size & Debt Strategy Banner */}
@@ -224,8 +267,8 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
           </div>
         </div>
 
-        {/* 3 Focused View Switchers */}
-        <div className="grid grid-cols-3 gap-1.5 pt-1">
+        {/* 4 Focused View Switchers */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-1">
           {(
             [
               {
@@ -243,6 +286,11 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                 label: `Needs (${thinPositions.length})`,
                 icon: Layers,
               },
+              {
+                id: 'targets',
+                label: `Scouted (${scoutedTargets.length})`,
+                icon: UserPlus,
+              },
             ] as const
           ).map((t) => {
             const Icon = t.icon;
@@ -251,7 +299,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                 key={t.id}
                 type="button"
                 onClick={() => setView(t.id)}
-                className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-2 text-xs font-semibold transition ${
+                className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-2 text-xs font-semibold transition cursor-pointer ${
                   view === t.id
                     ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                     : 'bg-slate-950/70 text-slate-400 border border-slate-800 hover:text-slate-200'
@@ -546,6 +594,193 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* VIEW 4: PASS 0 GROUP 4 SCOUTED FREE AGENTS & EXPIRING <= 6M */}
+          {view === 'targets' && (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap gap-1.5">
+                  {(
+                    [
+                      { id: 'ALL', label: `All Identified (${scoutedTargets.length})` },
+                      {
+                        id: 'FREE',
+                        label: `Free Agents (${scoutedTargets.filter((t) => t.isFreeAgent).length})`,
+                      },
+                      {
+                        id: 'EXPIRING',
+                        label: `Expiring ≤6m (${scoutedTargets.filter((t) => !t.isFreeAgent).length})`,
+                      },
+                    ] as const
+                  ).map((btn) => (
+                    <button
+                      key={btn.id}
+                      type="button"
+                      onClick={() => setTargetFilter(btn.id)}
+                      className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition cursor-pointer ${
+                        targetFilter === btn.id
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
+                      }`}
+                    >
+                      {btn.label}
+                    </button>
+                  ))}
+                </div>
+                <span className="text-[11px] text-slate-400">
+                  Club-tier matched · Zero raw CA/PA exposed
+                </span>
+              </div>
+
+              {scoutedTargets.length === 0 ? (
+                <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 text-center text-xs text-slate-400">
+                  No Free Agent or Expiring ≤6m targets decoded in this save yet. Drop a `.fm` save in the Analyst tab to run the Pass 0 recruitment scan.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {scoutedTargets
+                    .filter((t) =>
+                      targetFilter === 'ALL'
+                        ? true
+                        : targetFilter === 'FREE'
+                          ? t.isFreeAgent
+                          : !t.isFreeAgent
+                    )
+                    .map((target) => {
+                      const posToken = target.primaryPosition
+                        .toUpperCase()
+                        .split(/[^A-Z]/)[0];
+                      const depth = players.filter((p) =>
+                        p.position.toUpperCase().includes(posToken || target.primaryPosition.toUpperCase())
+                      ).length;
+                      const isWeakDepth = depth <= 1;
+                      const alreadyTracked = cases.some(
+                        (c) => c.playerName.toLowerCase() === target.name.toLowerCase()
+                      );
+
+                      return (
+                        <div
+                          key={target.uid || target.name}
+                          className={`rounded-xl border p-4 space-y-2.5 ${
+                            isWeakDepth
+                              ? 'border-amber-500/40 bg-amber-950/15'
+                              : 'border-slate-800 bg-slate-900/70'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <h3 className="text-sm font-bold text-white truncate">
+                                {target.name}
+                              </h3>
+                              <p className="text-[11px] text-slate-400">
+                                {target.age} yrs · {target.nationality} ·{' '}
+                                <span className="font-mono text-emerald-300">
+                                  {target.primaryPosition}
+                                </span>
+                              </p>
+                            </div>
+                            <span
+                              className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-semibold border ${
+                                target.isFreeAgent
+                                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+                                  : 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+                              }`}
+                            >
+                              {target.isFreeAgent
+                                ? 'Free Agent'
+                                : `≤ ${target.contractExpiryMonths}m Contract`}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap gap-1.5 text-[11px] font-mono text-slate-300">
+                            <span className="rounded bg-slate-950/80 border border-slate-800 px-2 py-0.5">
+                              Wage: £{target.demandedWageEur.toLocaleString()}/wk
+                            </span>
+                            {(target.attributes.pace ?? target.attributes.keyPace) !== undefined && (
+                              <span className="rounded bg-slate-950/80 border border-slate-800 px-2 py-0.5">
+                                Pac {target.attributes.pace ?? target.attributes.keyPace}
+                              </span>
+                            )}
+                            {(target.attributes.stamina ?? target.attributes.keyStamina) !== undefined && (
+                              <span className="rounded bg-slate-950/80 border border-slate-800 px-2 py-0.5">
+                                Sta {target.attributes.stamina ?? target.attributes.keyStamina}
+                              </span>
+                            )}
+                            {(target.attributes.decisions ?? target.attributes.keyDecision) !== undefined && (
+                              <span className="rounded bg-slate-950/80 border border-slate-800 px-2 py-0.5">
+                                Dec {target.attributes.decisions ?? target.attributes.keyDecision}
+                              </span>
+                            )}
+                            {(target.attributes.vision ?? target.attributes.keyVision) !== undefined && (
+                              <span className="rounded bg-slate-950/80 border border-slate-800 px-2 py-0.5">
+                                Vis {target.attributes.vision ?? target.attributes.keyVision}
+                              </span>
+                            )}
+                          </div>
+
+                          {target.scoutBadges && target.scoutBadges.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {target.scoutBadges.map((badge) => (
+                                <span
+                                  key={badge}
+                                  className="rounded bg-indigo-500/15 border border-indigo-500/30 px-1.5 py-0.5 text-[10px] text-indigo-300"
+                                >
+                                  {badge}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-between pt-1 border-t border-slate-800/80 text-[11px]">
+                            <span className="text-slate-400">
+                              Squad Depth GAP:{' '}
+                              <strong
+                                className={
+                                  isWeakDepth ? 'text-amber-300' : 'text-slate-200'
+                                }
+                              >
+                                {depth} active option{depth === 1 ? '' : 's'}
+                              </strong>
+                            </span>
+                            <button
+                              type="button"
+                              disabled={alreadyTracked}
+                              onClick={() =>
+                                onAddCase({
+                                  playerName: target.name,
+                                  position: target.primaryPosition,
+                                  age: target.age,
+                                  currentClub:
+                                    target.currentClub ||
+                                    (target.isFreeAgent ? 'Free Agent' : 'Expiring Contract'),
+                                  targetIpRole: 'To Assign',
+                                  targetOopRole: 'To Assign',
+                                  interest: 'Interested',
+                                  stage: 'Scouted',
+                                  estimatedFee: target.isFreeAgent
+                                    ? 'Free Transfer'
+                                    : 'Pre-Contract / Cut-Price',
+                                  estimatedWagePw: target.demandedWageEur,
+                                  expiresOn:
+                                    target.expires ||
+                                    (target.isFreeAgent
+                                      ? 'Free'
+                                      : `<= ${target.contractExpiryMonths}m`),
+                                  notes: `Pass 0 Scouted Target (${target.nationality})`,
+                                })
+                              }
+                              className="rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 disabled:opacity-50 border border-emerald-500/30 px-2.5 py-1 text-[11px] font-semibold text-emerald-300 transition cursor-pointer"
+                            >
+                              {alreadyTracked ? 'Tracked' : '+ Track'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
             </div>
           )}
         </>

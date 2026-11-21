@@ -1,11 +1,7 @@
-import { DecodedFmSavePayload } from '../utils/fmSaveHydrator';
+import { FmImportScope } from '../types/fmSave';
+import { DecodedFmSavePayload, WORKER_CACHE_BUSTER } from '../utils/fmSaveHydrator';
 
-export type FmImportScope =
-  | 'managed_club_only'
-  | 'full_division'
-  | 'my_club'
-  | 'full_league'
-  | 'full_save';
+export type { FmImportScope };
 
 export interface FmSaveProgressStage {
   stage: 'boot' | 'install' | 'read' | 'parse';
@@ -21,13 +17,16 @@ export interface DecodeFmSaveOptions {
 let sharedWorker: Worker | null = null;
 let requestCounter = 0;
 let activeCancelFn: (() => void) | null = null;
+let isJobActive = false;
 
 // If a single step produces zero progress for 150s, assume mobile WASM freeze/OOM
 const STEP_INACTIVITY_TIMEOUT_MS = 150_000;
 
 function getFmSaveWorker(): Worker {
   if (!sharedWorker) {
-    sharedWorker = new Worker('/fm-save-worker.js?v=8', { type: 'module' });
+    sharedWorker = new Worker(`/fm-save-worker.js${WORKER_CACHE_BUSTER}`, {
+      type: 'module',
+    });
   }
   return sharedWorker;
 }
@@ -35,35 +34,52 @@ function getFmSaveWorker(): Worker {
 /**
  * Terminates an active .fm save decode immediately so the user can cancel or retry.
  */
-export function cancelFmSaveDecode(): void {
+export function cancelFmSaveDecode(reason: string = 'CANCELLED_BY_USER'): void {
+  isJobActive = false;
   if (activeCancelFn) {
-    activeCancelFn();
+    const fn = activeCancelFn;
     activeCancelFn = null;
+    fn();
   } else if (sharedWorker) {
     sharedWorker.terminate();
     sharedWorker = null;
+  }
+  if (reason !== 'CANCELLED_BY_USER') {
+    console.warn(`[fmSaveReader] Active decode terminated: ${reason}`);
   }
 }
 
 /**
  * Decodes a real Football Manager (.fm) save file locally inside a browser Web Worker
  * using Pyodide (Python 3.14 WebAssembly) + fmsave 0.14.1.
- * Files never leave the user's device.
+ * Files never leave the user's device. Enforces concurrency guard (cancels superseded job)
+ * and 150s per-step watchdog cleanup.
  */
 export function decodeFmSaveFile(
   file: File,
   onProgress?: (progress: FmSaveProgressStage) => void,
   clubHintOrOptions: string | DecodeFmSaveOptions = ''
 ): Promise<DecodedFmSavePayload> {
+  // Concurrency guard: cancel and tear down any in-flight decode before starting a new one
+  if (isJobActive || activeCancelFn) {
+    cancelFmSaveDecode('Superseded by new .fm save drop');
+  }
+
   const clubHint =
     typeof clubHintOrOptions === 'string'
       ? clubHintOrOptions
       : clubHintOrOptions?.clubHint || '';
+  const scope: FmImportScope =
+    typeof clubHintOrOptions === 'string'
+      ? 'managed_club_only'
+      : clubHintOrOptions?.scope || 'managed_club_only';
+
   return new Promise((resolve, reject) => {
     const worker = getFmSaveWorker();
     const requestId = ++requestCounter;
     let lastStageLabel = 'Initializing local .fm reader';
     let settled = false;
+    isJobActive = true;
 
     let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -88,6 +104,7 @@ export function decodeFmSaveFile(
         clearTimeout(inactivityTimer);
         inactivityTimer = null;
       }
+      isJobActive = false;
       activeCancelFn = null;
       worker.removeEventListener('message', handleMessage);
       worker.removeEventListener('error', handleError);
@@ -167,6 +184,7 @@ export function decodeFmSaveFile(
       file,
       requestId,
       clubHint,
+      scope,
     });
   });
 }

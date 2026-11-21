@@ -768,6 +768,13 @@ export default function App() {
                   }
                 : null
             }
+            financialRunway={hydratedFmSave?.financialRunway ?? null}
+            transferWindows={hydratedFmSave?.decodedPayload.transferWindows ?? null}
+            scoutedTargets={
+              hydratedFmSave?.recruitmentTargets ??
+              hydratedFmSave?.decodedPayload.recruitmentTargets ??
+              []
+            }
             onAddCase={handleAddRecruitmentCase}
             onUpdateCase={handleUpdateRecruitmentCase}
             onDeleteCase={handleDeleteRecruitmentCase}
@@ -782,6 +789,7 @@ export default function App() {
           <StaffDirectory
             staff={staff}
             clubName={hydratedFmSave?.decodedPayload.meta.clubName}
+            jobVacancies={hydratedFmSave?.decodedPayload.jobVacancies ?? []}
             onSelectStaff={setSelectedStaff}
           />
         )}

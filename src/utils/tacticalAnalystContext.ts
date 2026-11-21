@@ -13,8 +13,40 @@ import {
   computeCompetitiveSummary,
   computeFm27EngineMetrics,
 } from './fmSyncEngine';
-import { HydratedSaveState } from './fmSaveHydrator';
+import { Pass0ExtractionPayload } from '../types/fmSave';
+import {
+  calculateFinancialRunway,
+  HydratedSaveState,
+} from './fmSaveHydrator';
 import { buildSquadTransferAudit } from './transferAudit';
+
+export function buildTacticalAnalystContext(data: Pass0ExtractionPayload): string {
+  const runway = calculateFinancialRunway(data.monthlyFinances);
+
+  const vacanciesList =
+    (data.jobVacancies || [])
+      .map((v) => `${v.role || 'Staff'} at ${v.club || 'Unknown'}`)
+      .join(', ') || 'None';
+
+  const squadOverview = data.squad
+    .map(
+      (p) =>
+        `- ${p.name} (${p.primaryPosition}, ${p.age}y): Badges=[${p.scoutBadges.join(', ')}], Traits=[${p.traits.join(', ')}]`
+    )
+    .join('\n');
+
+  return `
+=== TACTICAL ANALYST SYSTEM CONTEXT ===
+Club UID: ${data.clubUid}
+Financial Runway Status: ${runway.status} (${runway.runwayMonths} months remaining, Burn Rate: €${Math.round(runway.monthlyBurnRate).toLocaleString()}/mo)
+Facilities: Training=${String(data.facilities?.training || 'Unknown')}, Youth=${String(data.facilities?.youth || 'Unknown')}
+Active Job Vacancies: ${vacanciesList}
+
+SQUAD LIST & QUALITATIVE PROFILES:
+${squadOverview}
+=======================================
+`.trim();
+}
 
 export type AnalystReasoningMode = 'deep_high' | 'max_xhigh' | 'fast_lite';
 
@@ -221,6 +253,34 @@ export function buildLiveTacticalAnalystContext(
     );
   }
 
+  if (hydratedFmSave?.financialRunway) {
+    const rw = hydratedFmSave.financialRunway;
+    clubHeaderLines.push(
+      `- Financial Runway (12m Burn): ${rw.status} (${rw.runwayMonths} months remaining · Monthly Burn £${Math.round(rw.monthlyBurnRate).toLocaleString()}/mo)`
+    );
+  }
+
+  if (decoded?.facilities && Object.keys(decoded.facilities).length > 0) {
+    clubHeaderLines.push(
+      `- Club Facilities: Training=${String(decoded.facilities.training ?? 'Unknown')} · Youth=${String(decoded.facilities.youth ?? 'Unknown')}`
+    );
+  }
+
+  if (decoded?.transferWindows && typeof decoded.transferWindows.isOpen === 'boolean') {
+    clubHeaderLines.push(
+      `- Transfer Window: ${decoded.transferWindows.isOpen ? 'OPEN' : 'Closed'}`
+    );
+  }
+
+  if (decoded?.jobVacancies && decoded.jobVacancies.length > 0) {
+    clubHeaderLines.push(
+      `- Open Staff / Manager Job Vacancies (${decoded.jobVacancies.length}): ${decoded.jobVacancies
+        .slice(0, 6)
+        .map((v) => `${v.role || 'Staff'} at ${v.club || 'Club'}`)
+        .join(', ')}`
+    );
+  }
+
   sections.push(clubHeaderLines.join('\n'));
 
   // 2. War Room Computed Dual-Phase 4-3-3 Starting XI & 62m/75m Substitution Script
@@ -300,12 +360,24 @@ ${subLines.length > 0 ? subLines.join('\n') : '  * No automated subs required'}
     );
   }
 
-  // 4. Compact Managed Squad Digest (Top 28 active players — Stars + Key Attributes only, NEVER raw CA/PA)
+  // 4. Compact Managed Squad Digest (Top 28 active players — Stars, Badges, Traits, L5 Form & Key Attributes only, NEVER raw CA/PA)
   const squadLines = players.slice(0, 28).map((p) => {
     const a = p.attributes;
     const eng = computeFm27EngineMetrics(p);
     const starStr = `${p.ability.toFixed(1)}★/${p.potential.toFixed(1)}★`;
-    return `- #${p.number} ${p.name} [${p.position} | ${p.status} | Age ${p.age} | ${starStr} | Cond ${p.condition ?? '?'}% | £${p.wagePw}/wk exp ${p.expires} | ${p.personality}]: ${p.minutes}m, Rat ${p.rating !== null ? p.rating.toFixed(2) : '-'}, ${p.goals}G/${p.assists}A | Pac ${a.pace} Acc ${a.acceleration} Sta ${a.stamina} JR ${a.jumpingReach} Det ${a.determination} Pas ${a.passing} Fin ${a.finishing} Tck ${a.tackling} Dec ${a.decisions} | Speed ${eng.topSpeedMps}m/s | IP=${p.ipRole} / OOP=${p.oopRole}`;
+    const badgeStr =
+      p.scoutBadges && p.scoutBadges.length > 0
+        ? ` | Badges=[${p.scoutBadges.join(', ')}]`
+        : '';
+    const traitStr =
+      p.traits && p.traits.length > 0
+        ? ` | Traits=[${p.traits.slice(0, 3).join(', ')}]`
+        : '';
+    const formStr =
+      p.last5Form && p.last5Form.recentRatings.length > 0
+        ? ` | L5=${p.last5Form.averageRating} (${p.last5Form.trend})`
+        : '';
+    return `- #${p.number} ${p.name} [${p.position} | ${p.status} | Age ${p.age} | ${starStr} | Cond ${p.condition ?? '?'}% | £${p.wagePw}/wk exp ${p.expires} | ${p.personality}]: ${p.minutes}m, Rat ${p.rating !== null ? p.rating.toFixed(2) : '-'}, ${p.goals}G/${p.assists}A${formStr} | Pac ${a.pace} Acc ${a.acceleration} Sta ${a.stamina} JR ${a.jumpingReach} Det ${a.determination} Pas ${a.passing} Fin ${a.finishing} Tck ${a.tackling} Dec ${a.decisions} | Speed ${eng.topSpeedMps}m/s | IP=${p.ipRole} / OOP=${p.oopRole}${badgeStr}${traitStr}`;
   });
 
   sections.push(
@@ -341,6 +413,19 @@ ${keyActions.length > 0 ? keyActions.join('\n') : '  * Squad balanced — no urg
     );
     sections.push(
       `=== ACTIVE RECRUITMENT PIPELINE (${state.recruitmentCases.length} TARGETS) ===\n${recLines.join('\n')}`
+    );
+  }
+
+  if (
+    hydratedFmSave?.recruitmentTargets &&
+    hydratedFmSave.recruitmentTargets.length > 0
+  ) {
+    const targetLines = hydratedFmSave.recruitmentTargets.slice(0, 12).map(
+      (t) =>
+        `- ${t.name} (${t.primaryPosition}, Age ${t.age}, ${t.nationality}): ${t.isFreeAgent ? 'Free Agent' : `Expiring <=${t.contractExpiryMonths}m`} | Demanded Wage ~£${t.demandedWageEur.toLocaleString()}/wk`
+    );
+    sections.push(
+      `=== PASS 0 SCOUTED FREE AGENTS & EXPIRING <=6M (${hydratedFmSave.recruitmentTargets.length} IDENTIFIED) ===\n${targetLines.join('\n')}`
     );
   }
 

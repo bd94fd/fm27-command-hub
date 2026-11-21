@@ -219,12 +219,20 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                     ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
                     : 'bg-rose-500/15 text-rose-300 border-rose-500/40';
 
+              const hasShots =
+                Boolean(m.shotsFor && m.shotsFor !== '—' && m.shotsFor !== '-');
+              const hasMetrics =
+                hasXg ||
+                m.possession !== null ||
+                hasShots ||
+                m.passCompletion !== null;
+
               return (
                 <div
                   key={m.id}
                   className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
                 >
-                  <div className="space-y-0.5 min-w-0">
+                  <div className="space-y-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-1.5 text-xs">
                       <span className="font-mono text-slate-400">{m.date}</span>
                       <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-mono text-slate-300">
@@ -246,12 +254,50 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                         ({m.venue === 'H' ? 'Home' : 'Away'})
                       </span>
                     </div>
-                    {(hasXg || m.possession !== null) && (
-                      <div className="text-[11px] font-mono text-slate-400">
-                        {hasXg
-                          ? `xG ${m.xGFor?.toFixed(2)} - ${m.xGAgainst?.toFixed(2)}`
-                          : ''}
-                        {m.possession !== null ? ` · Poss ${m.possession}%` : ''}
+                    {hasMetrics && (
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-mono text-slate-400">
+                        {hasXg && (
+                          <span>
+                            xG{' '}
+                            <strong className="text-slate-200">
+                              {m.xGFor?.toFixed(2)}
+                            </strong>{' '}
+                            -{' '}
+                            <strong className="text-slate-200">
+                              {m.xGAgainst?.toFixed(2)}
+                            </strong>
+                          </span>
+                        )}
+                        {hasShots && (
+                          <span>
+                            Shots{' '}
+                            <strong className="text-slate-200">
+                              {m.shotsFor}
+                            </strong>
+                            {m.shotsAgainst && m.shotsAgainst !== '—'
+                              ? ` vs ${m.shotsAgainst}`
+                              : ''}
+                          </span>
+                        )}
+                        {m.possession !== null && (
+                          <span>
+                            Poss{' '}
+                            <strong className="text-slate-200">
+                              {Number(m.possession).toFixed(
+                                Number.isInteger(m.possession) ? 0 : 1
+                              )}
+                              %
+                            </strong>
+                          </span>
+                        )}
+                        {m.passCompletion !== null && (
+                          <span>
+                            Pass{' '}
+                            <strong className="text-slate-200">
+                              {m.passCompletion}%
+                            </strong>
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
