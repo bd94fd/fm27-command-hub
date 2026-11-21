@@ -10,10 +10,12 @@ import {
   ShortlistRecord,
   StaffRecord,
 } from '../types/fm27';
+import { RecruitmentTarget } from '../types/fmSave';
 import { HydratedSaveState } from '../utils/fmSaveHydrator';
 
 export const FM27_STORAGE_KEY = 'fm27_command_hub_state_v1';
 export const FM27_PREVIOUS_KEY = 'fm27_command_hub_prev_snapshot_v1';
+export const FM27_TRACKED_TARGETS_KEY = 'fm27_command_hub_tracked_targets_v1';
 
 export interface FmHubPersistedState {
   version: number;
@@ -160,9 +162,112 @@ export function clearPersistedFmState(): void {
   try {
     window.localStorage.removeItem(FM27_STORAGE_KEY);
     window.localStorage.removeItem(FM27_PREVIOUS_KEY);
+    window.localStorage.removeItem(FM27_TRACKED_TARGETS_KEY);
   } catch (err) {
     console.warn('Failed to clear FM27 state from localStorage:', err);
   }
+}
+
+/**
+ * Load persisted tracked Scouted Shortlist targets from localStorage.
+ */
+export function loadTrackedScoutTargets(): RecruitmentTarget[] {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return [];
+  }
+  try {
+    const raw = window.localStorage.getItem(FM27_TRACKED_TARGETS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (item): item is RecruitmentTarget =>
+        Boolean(item) && typeof item === 'object' && typeof item.name === 'string'
+    );
+  } catch (err) {
+    console.warn('Failed to load tracked scout targets from localStorage:', err);
+    return [];
+  }
+}
+
+/**
+ * Save tracked Scouted Shortlist targets to localStorage.
+ */
+export function saveTrackedScoutTargets(targets: RecruitmentTarget[]): boolean {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return false;
+  }
+  try {
+    window.localStorage.setItem(FM27_TRACKED_TARGETS_KEY, JSON.stringify(targets));
+    return true;
+  } catch (err) {
+    console.warn('Failed to save tracked scout targets to localStorage:', err);
+    return false;
+  }
+}
+
+export function isScoutTargetTracked(
+  targets: RecruitmentTarget[],
+  target: Pick<RecruitmentTarget, 'uid' | 'name'>
+): boolean {
+  const normName = target.name.trim().toLowerCase();
+  return targets.some(
+    (t) =>
+      (typeof target.uid === 'number' && target.uid > 0 && t.uid === target.uid) ||
+      t.name.trim().toLowerCase() === normName
+  );
+}
+
+/**
+ * Toggle a scouted target in the persisted Shortlist.
+ * Returns the updated list and whether the target is now tracked (`true`) or untracked (`false`).
+ */
+export function toggleTrackedScoutTarget(
+  target: RecruitmentTarget,
+  currentList?: RecruitmentTarget[]
+): { targets: RecruitmentTarget[]; tracked: boolean } {
+  const existing = Array.isArray(currentList)
+    ? currentList
+    : loadTrackedScoutTargets();
+  const normName = target.name.trim().toLowerCase();
+  const matchIdx = existing.findIndex(
+    (t) =>
+      (typeof target.uid === 'number' && target.uid > 0 && t.uid === target.uid) ||
+      t.name.trim().toLowerCase() === normName
+  );
+
+  let next: RecruitmentTarget[];
+  let tracked: boolean;
+  if (matchIdx >= 0) {
+    next = existing.filter((_, idx) => idx !== matchIdx);
+    tracked = false;
+  } else {
+    next = [target, ...existing];
+    tracked = true;
+  }
+
+  saveTrackedScoutTargets(next);
+  return { targets: next, tracked };
+}
+
+/**
+ * Remove a tracked target by UID or name from the persisted Shortlist.
+ */
+export function removeTrackedScoutTarget(
+  uidOrName: number | string,
+  currentList?: RecruitmentTarget[]
+): RecruitmentTarget[] {
+  const existing = Array.isArray(currentList)
+    ? currentList
+    : loadTrackedScoutTargets();
+  const next = existing.filter((t) => {
+    if (typeof uidOrName === 'number') {
+      return t.uid !== uidOrName;
+    }
+    return t.name.trim().toLowerCase() !== uidOrName.trim().toLowerCase();
+  });
+  saveTrackedScoutTargets(next);
+  return next;
 }
 
 /**

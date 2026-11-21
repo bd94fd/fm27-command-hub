@@ -115,6 +115,8 @@ interface AutoSyncWorkspaceProps {
   onApplyPlayerUpdates?: (updates: PlayerAutoUpdate[]) => void;
   onBulkMergePlayers?: (parsedPlayers: ParsedPlayerDelta[]) => SquadMergeResult;
   onApplyDecodedFmSave?: (decoded: DecodedFmSavePayload) => HydratedSaveState;
+  pendingPrompt?: string | null;
+  onClearPendingPrompt?: () => void;
 }
 
 interface PendingWorkspaceMutation {
@@ -143,6 +145,8 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   onApplyPlayerUpdates,
   onBulkMergePlayers,
   onApplyDecodedFmSave,
+  pendingPrompt = null,
+  onClearPendingPrompt,
 }) => {
   const latestMatch = matches[0];
   const nextEventNum = (latestMatch?.eventNumber || matches.length) + 1;
@@ -176,6 +180,13 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   const [isSending, setIsSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const feedEndRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (pendingPrompt) {
+      setMessageInput(pendingPrompt);
+      onClearPendingPrompt?.();
+    }
+  }, [pendingPrompt, onClearPendingPrompt]);
 
   useEffect(() => {
     let active = true;

@@ -12,6 +12,7 @@ import { PlayerRecord, ShortlistRecord } from '../types/fm27';
 import { computeFm27EngineMetrics } from '../utils/fmSyncEngine';
 import { resolveNaturalDefaultRoles } from '../utils/fm27RoleMatcher';
 import {
+  evaluatePlaybookArchetype,
   getPlaybookContractNotes,
   partitionContractClausesAndBonuses,
 } from '../utils/recruitmentHelpers';
@@ -21,8 +22,10 @@ interface PlayerDetailModalProps {
   player: PlayerRecord | null;
   shortlists: ShortlistRecord[];
   isManagedClubPlayer?: boolean;
+  isTracked?: boolean;
   onClose: () => void;
   onAddRecruitment: (player: PlayerRecord) => void;
+  onToggleTrack?: (player: PlayerRecord) => void;
   onAddToShortlist: (shortlistId: string, playerId: string) => void;
 }
 
@@ -96,8 +99,10 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
   player,
   shortlists,
   isManagedClubPlayer = false,
+  isTracked = false,
   onClose,
   onAddRecruitment,
+  onToggleTrack,
   onAddToShortlist,
 }) => {
   const [activeTab, setActiveTab] = useState<DetailTab>('attributes');
@@ -111,6 +116,12 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
       player
         ? resolveNaturalDefaultRoles(player)
         : { ipRole: '', oopRole: '' },
+    [player]
+  );
+
+  const playbookArchetype = useMemo(
+    () =>
+      player ? evaluatePlaybookArchetype(player.position, player.attributes) : null,
     [player]
   );
 
@@ -291,6 +302,11 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                 <span className="rounded-md bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-xs font-semibold text-amber-300">
                   {player.ability.toFixed(1)}★ / {player.potential.toFixed(1)}★ Pot
                 </span>
+                {playbookArchetype && (
+                  <span className="rounded-md bg-sky-500/15 border border-sky-500/35 px-2 py-0.5 text-xs font-semibold text-sky-300">
+                    {playbookArchetype.name} · {playbookArchetype.score}%
+                  </span>
+                )}
                 {player.activeSuspensions && player.activeSuspensions.length > 0 && (
                   <span className="rounded-md bg-rose-500/20 border border-rose-500/50 px-2 py-0.5 text-xs font-bold uppercase text-rose-300">
                     BANNED ({player.activeSuspensions[0].matchesRemaining}m)
@@ -308,11 +324,18 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
           <div className="flex items-center gap-2">
             {!isManagedClubPlayer && (
               <button
-                onClick={() => onAddRecruitment(player)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 px-3 py-1.5 text-xs font-medium text-indigo-300 transition"
+                type="button"
+                onClick={() =>
+                  onToggleTrack ? onToggleTrack(player) : onAddRecruitment(player)
+                }
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                  isTracked
+                    ? 'bg-emerald-500/20 hover:bg-emerald-500/30 border-emerald-500/50 text-emerald-300'
+                    : 'bg-indigo-500/15 hover:bg-indigo-500/25 border-indigo-500/30 text-indigo-300'
+                }`}
               >
                 <ClipboardPlus className="h-3.5 w-3.5" />
-                Track Target
+                {isTracked ? '✓ Tracked' : '+ Track'}
               </button>
             )}
             {shortlists.length > 0 && (

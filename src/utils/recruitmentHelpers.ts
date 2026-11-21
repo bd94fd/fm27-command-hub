@@ -39,15 +39,32 @@ export interface TargetDepthEvaluation {
   label: string;
 }
 
+export type PlaybookArchetypeName =
+  | 'Goal Threat'
+  | 'Wide Runner'
+  | 'Midfield Runner/Organiser'
+  | 'Defensive Organiser'
+  | 'Flexible Full-Back'
+  | 'Goalkeeper Standard';
+
+export interface PlaybookArchetypeMatch {
+  name: PlaybookArchetypeName;
+  score: number;
+  keyAttrs: string[];
+  badgeTone: 'rose' | 'sky' | 'emerald' | 'amber' | 'indigo' | 'purple';
+}
+
 export interface TargetContractDisplay {
   primaryLabel: string;
   wageLabel: string | null;
+  trialBadge: string | null;
 }
 
 export interface EnrichedRecruitmentTarget {
   target: RecruitmentTarget;
   posGroup: Exclude<ScoutPositionGroup, 'ALL'>;
   bestRole: TargetRoleFit;
+  archetype: PlaybookArchetypeMatch;
   relevantAttributes: TargetAttributeChip[];
   depth: TargetDepthEvaluation;
   contractDisplay: TargetContractDisplay;
@@ -225,12 +242,18 @@ export function getPositionRelevantAttributes(
   ];
 }
 
-function buildAdapterPlayerRecord(target: RecruitmentTarget): PlayerRecord {
+export function buildScoutTargetPlayerRecord(target: RecruitmentTarget): PlayerRecord {
   const a = target.attributes || {};
   const attr = (key: keyof RecruitmentTarget['attributes'], fallback = 10): number => {
     const val = a[key];
     return typeof val === 'number' && Number.isFinite(val) && val > 0 ? val : fallback;
   };
+  const exactSlot = classifyExactPositionSlot(target.primaryPosition);
+  const slotKey = exactSlot === 'STC' ? 'ST' : exactSlot;
+  const positionRatings: Record<string, number> = { [slotKey]: 20 };
+  if (exactSlot === 'STC') {
+    positionRatings.STC = 20;
+  }
 
   return {
     id: `scout-${target.uid}`,
@@ -240,7 +263,7 @@ function buildAdapterPlayerRecord(target: RecruitmentTarget): PlayerRecord {
     position: target.primaryPosition || 'MC',
     apps: '0',
     minutes: 0,
-    rating: 0,
+    rating: null,
     goals: 0,
     xG: 0,
     xGPer90: 0,
@@ -252,17 +275,25 @@ function buildAdapterPlayerRecord(target: RecruitmentTarget): PlayerRecord {
     hdrPct: 0,
     intPer90: 0,
     tckPct: 0,
-    personality: 'Balanced',
+    personality: 'Scouted Target',
     age: target.age,
     ability: 2.5,
     potential: 3.0,
     condition: 100,
     sharpness: 100,
     preferredFoot: 'Right',
-    expires: target.expires || '',
+    expires:
+      target.expires ||
+      (target.isFreeAgent
+        ? 'Unattached (Free Agent)'
+        : `<= ${target.contractExpiryMonths || 6}m`),
+    contractExpiryMonths: target.isFreeAgent ? 0 : target.contractExpiryMonths,
     nation: target.nationality || 'Unknown',
     wagePw: target.demandedWageEur || 0,
     status: 'Rotation',
+    positionRatings,
+    traits: Array.isArray(target.traits) ? [...target.traits] : [],
+    scoutBadges: Array.isArray(target.scoutBadges) ? [...target.scoutBadges] : [],
     attributes: {
       pace: attr('pace', attr('keyPace', 10)),
       acceleration: attr('acceleration', attr('pace', attr('keyPace', 10))),
@@ -323,7 +354,7 @@ function buildAdapterPlayerRecord(target: RecruitmentTarget): PlayerRecord {
  * using the canonical fm27RoleMatcher engine.
  */
 export function computeTargetBestRoleFit(target: RecruitmentTarget): TargetRoleFit {
-  const adapter = buildAdapterPlayerRecord(target);
+  const adapter = buildScoutTargetPlayerRecord(target);
   const matchingRoles = IN_POSSESSION_ROLES.filter((role) =>
     doesPlayerMatchRolePositionGroup(adapter.position, adapter.secondaryPositions, role.positionGroup)
   );
@@ -498,6 +529,281 @@ export function getPlaybookContractNotes(player: PlayerRecord): string[] {
   return notes;
 }
 
+/**
+ * Scores a player or scouted target against Bobby Dean's Playbook v2.0 Section 7 Recruitment Archetypes:
+ * - Goal Threat (ST: Fin/Com/Off/Pac or Jum)
+ * - Wide Runner (AML/AMR: Pac/Acc/Off/Wor/Sta/Cro/Drb)
+ * - Midfield Runner/Organiser (DM/MC: Sta/Wor/Dec/Pos/Fir/Pas)
+ * - Defensive Organiser (DC: Pos/Ant/Con/Jum/Ldr)
+ * - Flexible Full-Back (DL/DR: Tck/Pos/Sta/Pac/Acc/Pas)
+ * - Goalkeeper Standard (GK: Natural GK + Agi/Ref)
+ */
+export function evaluatePlaybookArchetype(
+  position: string,
+  attributes: RecruitmentTarget['attributes'] | PlayerRecord['attributes']
+): PlaybookArchetypeMatch {
+  const raw = (attributes || {}) as Record<string, number | undefined>;
+  const val = (key: string, ...fallbacks: string[]): number => {
+    const direct = raw[key];
+    if (typeof direct === 'number' && Number.isFinite(direct) && direct > 0) {
+      return Math.min(20, Math.max(1, Math.round(direct)));
+    }
+    for (const fb of fallbacks) {
+      const fv = raw[fb];
+      if (typeof fv === 'number' && Number.isFinite(fv) && fv > 0) {
+        return Math.min(20, Math.max(1, Math.round(fv)));
+      }
+    }
+    return 10;
+  };
+  const pct = (nums: number[]): number =>
+    Math.min(100, Math.max(0, Math.round((nums.reduce((s, n) => s + n, 0) / (nums.length * 20)) * 100)));
+
+  const slot = classifyExactPositionSlot(position);
+
+  if (slot === 'GK') {
+    const agi = val('agility');
+    const ref = val('reflexes', 'agility');
+    return {
+      name: 'Goalkeeper Standard',
+      score: pct([agi, ref]),
+      keyAttrs: ['Agi', 'Ref'],
+      badgeTone: 'purple',
+    };
+  }
+
+  if (slot === 'STC') {
+    const fin = val('finishing');
+    const com = val('composure', 'decisions', 'keyDecision');
+    const off = val('offTheBall', 'anticipation');
+    const pacOrJum = Math.max(val('pace', 'keyPace', 'acceleration'), val('jumpingReach'));
+    return {
+      name: 'Goal Threat',
+      score: pct([fin, com, off, pacOrJum]),
+      keyAttrs: ['Fin', 'Com', 'Off', 'Pac/Jum'],
+      badgeTone: 'rose',
+    };
+  }
+
+  if (slot === 'AML' || slot === 'AMR') {
+    const pac = val('pace', 'keyPace', 'acceleration');
+    const acc = val('acceleration', 'pace', 'keyPace');
+    const off = val('offTheBall', 'vision', 'keyVision');
+    const wor = val('workRate', 'determination');
+    const sta = val('stamina', 'keyStamina');
+    const cro = val('crossing', 'passing');
+    const drb = val('dribbling', 'technique');
+    return {
+      name: 'Wide Runner',
+      score: pct([pac, acc, off, wor, sta, cro, drb]),
+      keyAttrs: ['Pac', 'Acc', 'Off', 'Wor', 'Sta', 'Cro', 'Drb'],
+      badgeTone: 'sky',
+    };
+  }
+
+  if (slot === 'DC') {
+    const pos = val('positioning', 'decisions', 'keyDecision');
+    const ant = val('anticipation', 'decisions', 'keyDecision');
+    const con = val('concentration', 'determination');
+    const jum = val('jumpingReach', 'strength');
+    const ldr = val('leadership', 'teamwork');
+    return {
+      name: 'Defensive Organiser',
+      score: pct([pos, ant, con, jum, ldr]),
+      keyAttrs: ['Pos', 'Ant', 'Con', 'Jum', 'Ldr'],
+      badgeTone: 'amber',
+    };
+  }
+
+  if (slot === 'DL' || slot === 'DR') {
+    const tck = val('tackling');
+    const pos = val('positioning', 'decisions', 'keyDecision');
+    const sta = val('stamina', 'keyStamina');
+    const pac = val('pace', 'keyPace', 'acceleration');
+    const acc = val('acceleration', 'pace', 'keyPace');
+    const pas = val('passing', 'crossing');
+    return {
+      name: 'Flexible Full-Back',
+      score: pct([tck, pos, sta, pac, acc, pas]),
+      keyAttrs: ['Tck', 'Pos', 'Sta', 'Pac', 'Acc', 'Pas'],
+      badgeTone: 'indigo',
+    };
+  }
+
+  // DM, MC, AMC -> Midfield Runner/Organiser
+  const sta = val('stamina', 'keyStamina');
+  const wor = val('workRate', 'determination');
+  const dec = val('decisions', 'keyDecision');
+  const pos = val('positioning', 'decisions', 'keyDecision');
+  const fir = val('firstTouch', 'technique');
+  const pas = val('passing', 'vision', 'keyVision');
+  return {
+    name: 'Midfield Runner/Organiser',
+    score: pct([sta, wor, dec, pos, fir, pas]),
+    keyAttrs: ['Sta', 'Wor', 'Dec', 'Pos', 'Fir', 'Pas'],
+    badgeTone: 'emerald',
+  };
+}
+
+/**
+ * Finds our current top-rated senior player at the exact position slot for 1-tap "Compare vs Starter".
+ * Excludes Youth squad members. Prefers natural/accomplished familiarity at the exact slot,
+ * falling back to the same position group only if no exact-slot senior exists.
+ */
+export function findTopSeniorStarterForPosition(
+  targetPosition: string,
+  squadPlayers: PlayerRecord[]
+): PlayerRecord | null {
+  const seniors = squadPlayers.filter((p) => p.status !== 'Youth');
+  if (seniors.length === 0) return null;
+
+  const exactSlot = classifyExactPositionSlot(targetPosition);
+
+  const exactMatches = seniors.filter((p) => {
+    const hasRatings =
+      p.positionRatings &&
+      Object.values(p.positionRatings).some(
+        (v) => typeof v === 'number' && Number.isFinite(v)
+      );
+    if (hasRatings && p.positionRatings) {
+      return getExactSlotFamiliarity(p.positionRatings, exactSlot) >= 15;
+    }
+    if (classifyExactPositionSlot(p.position) === exactSlot) return true;
+    const secondary = (p.secondaryPositions || [])
+      .join(', ')
+      .split(/[,/]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return secondary.some((tok) => classifyExactPositionSlot(tok) === exactSlot);
+  });
+
+  const targetGroup = getPositionGroup(targetPosition);
+  const pool =
+    exactMatches.length > 0
+      ? exactMatches
+      : seniors.filter((p) => getPositionGroup(p.position) === targetGroup);
+
+  if (pool.length === 0) return null;
+
+  return [...pool].sort((a, b) => {
+    if (b.ability !== a.ability) return b.ability - a.ability;
+    const rA = typeof a.rating === 'number' ? a.rating : 0;
+    const rB = typeof b.rating === 'number' ? b.rating : 0;
+    if (rB !== rA) return rB - rA;
+    return (b.minutes || 0) - (a.minutes || 0);
+  })[0];
+}
+
+export interface CompareAttributeDelta {
+  label: string;
+  key: string;
+  targetVal: number;
+  starterVal: number;
+  delta: number;
+}
+
+export interface TargetVsStarterComparison {
+  target: RecruitmentTarget;
+  starter: PlayerRecord;
+  archetype: PlaybookArchetypeMatch;
+  starterArchetype: PlaybookArchetypeMatch;
+  radarAxes: CompareAttributeDelta[];
+  ageDelta: number; // target.age - starter.age (negative = younger)
+  wageDelta: number; // target.demandedWageEur - starter.wagePw (negative = cheaper)
+}
+
+export function buildTargetVsStarterComparison(
+  target: RecruitmentTarget,
+  starter: PlayerRecord
+): TargetVsStarterComparison {
+  const slot = classifyExactPositionSlot(target.primaryPosition);
+  const tAttrs = buildScoutTargetPlayerRecord(target).attributes as Record<string, number | undefined>;
+  const sAttrs = starter.attributes as Record<string, number | undefined>;
+  const getVal = (obj: Record<string, number | undefined>, key: string): number => {
+    const v = obj[key];
+    return typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.round(v) : 10;
+  };
+
+  let axisDefs: Array<{ label: string; key: string }>;
+  if (slot === 'GK') {
+    axisDefs = [
+      { label: 'Ref', key: 'reflexes' },
+      { label: 'Agi', key: 'agility' },
+      { label: 'Han', key: 'handling' },
+      { label: 'Aer', key: 'aerialReach' },
+      { label: 'Pos', key: 'positioning' },
+      { label: '1v1', key: 'oneOnOnes' },
+    ];
+  } else if (slot === 'DC') {
+    axisDefs = [
+      { label: 'Pos', key: 'positioning' },
+      { label: 'Ant', key: 'anticipation' },
+      { label: 'Con', key: 'concentration' },
+      { label: 'Jum', key: 'jumpingReach' },
+      { label: 'Tck', key: 'tackling' },
+      { label: 'Ldr', key: 'leadership' },
+    ];
+  } else if (slot === 'DL' || slot === 'DR') {
+    axisDefs = [
+      { label: 'Tck', key: 'tackling' },
+      { label: 'Pos', key: 'positioning' },
+      { label: 'Sta', key: 'stamina' },
+      { label: 'Pac', key: 'pace' },
+      { label: 'Acc', key: 'acceleration' },
+      { label: 'Pas', key: 'passing' },
+    ];
+  } else if (slot === 'AML' || slot === 'AMR') {
+    axisDefs = [
+      { label: 'Pac', key: 'pace' },
+      { label: 'Acc', key: 'acceleration' },
+      { label: 'Off', key: 'offTheBall' },
+      { label: 'Sta', key: 'stamina' },
+      { label: 'Cro', key: 'crossing' },
+      { label: 'Drb', key: 'dribbling' },
+    ];
+  } else if (slot === 'STC') {
+    axisDefs = [
+      { label: 'Fin', key: 'finishing' },
+      { label: 'Com', key: 'composure' },
+      { label: 'Off', key: 'offTheBall' },
+      { label: 'Pac', key: 'pace' },
+      { label: 'Jum', key: 'jumpingReach' },
+      { label: 'Fir', key: 'firstTouch' },
+    ];
+  } else {
+    axisDefs = [
+      { label: 'Sta', key: 'stamina' },
+      { label: 'Wor', key: 'workRate' },
+      { label: 'Dec', key: 'decisions' },
+      { label: 'Pos', key: 'positioning' },
+      { label: 'Fir', key: 'firstTouch' },
+      { label: 'Pas', key: 'passing' },
+    ];
+  }
+
+  const radarAxes: CompareAttributeDelta[] = axisDefs.map(({ label, key }) => {
+    const targetVal = getVal(tAttrs, key);
+    const starterVal = getVal(sAttrs, key);
+    return {
+      label,
+      key,
+      targetVal,
+      starterVal,
+      delta: targetVal - starterVal,
+    };
+  });
+
+  return {
+    target,
+    starter,
+    archetype: evaluatePlaybookArchetype(target.primaryPosition, target.attributes),
+    starterArchetype: evaluatePlaybookArchetype(target.primaryPosition, starter.attributes),
+    radarAxes,
+    ageDelta: target.age - starter.age,
+    wageDelta: (target.demandedWageEur || 0) - (starter.wagePw || 0),
+  };
+}
+
 export function formatTargetContractSummary(
   target: RecruitmentTarget
 ): TargetContractDisplay {
@@ -505,6 +811,7 @@ export function formatTargetContractSummary(
     return {
       primaryLabel: 'Unattached · Free Transfer',
       wageLabel: null,
+      trialBadge: '2-Week Free Trial',
     };
   }
   const months = target.contractExpiryMonths > 0 ? target.contractExpiryMonths : 6;
@@ -515,6 +822,7 @@ export function formatTargetContractSummary(
   return {
     primaryLabel: `Expiring <= ${months}m`,
     wageLabel,
+    trialBadge: null,
   };
 }
 
@@ -549,6 +857,7 @@ export function enrichAndFilterScoutedTargets(params: {
     target,
     posGroup: getPositionGroup(target.primaryPosition),
     bestRole: computeTargetBestRoleFit(target),
+    archetype: evaluatePlaybookArchetype(target.primaryPosition, target.attributes),
     relevantAttributes: getPositionRelevantAttributes(target),
     depth: evaluateTargetSquadDepth(target.primaryPosition, squadPlayers),
     contractDisplay: formatTargetContractSummary(target),
@@ -562,7 +871,7 @@ export function enrichAndFilterScoutedTargets(params: {
     if (genuineGapsOnly && !item.depth.isGenuineGap) return false;
     if (q) {
       const hay =
-        `${item.target.name} ${item.target.primaryPosition} ${item.target.nationality} ${item.target.currentClub || ''} ${item.bestRole.roleName}`.toLowerCase();
+        `${item.target.name} ${item.target.primaryPosition} ${item.target.nationality} ${item.target.currentClub || ''} ${item.bestRole.roleName} ${item.archetype.name}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;

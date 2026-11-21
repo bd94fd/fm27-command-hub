@@ -1,14 +1,19 @@
 import React, { useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  Bookmark,
   Briefcase,
   CalendarClock,
   CheckCircle2,
+  GitCompare,
   Layers,
+  MessageSquare,
   Search,
   Sparkles,
+  Trash2,
   TrendingDown,
   UserPlus,
+  X,
 } from 'lucide-react';
 import {
   PlayerRecord,
@@ -28,11 +33,26 @@ import {
   TransferActionVerdict,
 } from '../utils/transferAudit';
 import {
+  buildScoutTargetPlayerRecord,
+  buildTargetVsStarterComparison,
+  computeTargetBestRoleFit,
   enrichAndFilterScoutedTargets,
+  evaluatePlaybookArchetype,
+  evaluateTargetSquadDepth,
+  findTopSeniorStarterForPosition,
+  formatTargetContractSummary,
+  getPositionRelevantAttributes,
+  PlaybookArchetypeMatch,
   ScoutAgeBand,
   ScoutContractFilter,
   ScoutPositionGroup,
 } from '../utils/recruitmentHelpers';
+import {
+  isScoutTargetTracked,
+  loadTrackedScoutTargets,
+  removeTrackedScoutTarget,
+  toggleTrackedScoutTarget,
+} from '../services/fmStorage';
 
 interface RecruitmentWorkspaceProps {
   cases: RecruitmentCase[];
@@ -48,6 +68,9 @@ interface RecruitmentWorkspaceProps {
   competitionRules?: CompetitionRegistrationRules | null;
   divisionBenchmarks?: DivisionBenchmarks | null;
   scoutedTargets?: RecruitmentTarget[];
+  trackedTargets?: RecruitmentTarget[];
+  onToggleTrackTarget?: (target: RecruitmentTarget) => boolean;
+  onAskAnalyst?: (prompt: string) => void;
   onAddCase: (entry: Omit<RecruitmentCase, 'id' | 'updatedAt'>) => void;
   onUpdateCase: (id: string, patch: Partial<RecruitmentCase>) => void;
   onDeleteCase: (id: string) => void;
@@ -57,7 +80,24 @@ interface RecruitmentWorkspaceProps {
   onSelectPlayer: (player: PlayerRecord) => void;
 }
 
-type AuditView = 'advice' | 'contracts' | 'depth' | 'targets';
+type AuditView = 'advice' | 'contracts' | 'depth' | 'targets' | 'shortlist';
+
+function archetypeBadgeClass(tone: PlaybookArchetypeMatch['badgeTone']): string {
+  switch (tone) {
+    case 'rose':
+      return 'bg-rose-500/15 text-rose-300 border-rose-500/35';
+    case 'sky':
+      return 'bg-sky-500/15 text-sky-300 border-sky-500/35';
+    case 'emerald':
+      return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35';
+    case 'amber':
+      return 'bg-amber-500/15 text-amber-300 border-amber-500/35';
+    case 'indigo':
+      return 'bg-indigo-500/15 text-indigo-300 border-indigo-500/35';
+    case 'purple':
+      return 'bg-purple-500/15 text-purple-300 border-purple-500/35';
+  }
+}
 
 function verdictBadgeClass(verdict: TransferActionVerdict): string {
   switch (verdict) {
@@ -91,6 +131,9 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
   competitionRules = null,
   divisionBenchmarks = null,
   scoutedTargets = [],
+  trackedTargets: controlledTrackedTargets,
+  onToggleTrackTarget,
+  onAskAnalyst,
   onAddCase,
   onSelectPlayer,
 }) => {
@@ -103,6 +146,103 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
   const [targetPosGroup, setTargetPosGroup] = useState<ScoutPositionGroup>('ALL');
   const [targetAgeBand, setTargetAgeBand] = useState<ScoutAgeBand>('ALL');
   const [genuineGapsOnly, setGenuineGapsOnly] = useState<boolean>(false);
+  const [localTrackedTargets, setLocalTrackedTargets] = useState<RecruitmentTarget[]>(() =>
+    loadTrackedScoutTargets()
+  );
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [compareTarget, setCompareTarget] = useState<RecruitmentTarget | null>(null);
+
+  const trackedTargets = controlledTrackedTargets ?? localTrackedTargets;
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    window.setTimeout(() => {
+      setToastMessage((prev) => (prev === msg ? null : prev));
+    }, 2600);
+  };
+
+  const handleToggleTrack = (target: RecruitmentTarget) => {
+    if (onToggleTrackTarget) {
+      const nowTracked = onToggleTrackTarget(target);
+      showToast(
+        nowTracked
+          ? `Added ${target.name} to Shortlist`
+          : `Removed ${target.name} from Shortlist`
+      );
+      return;
+    }
+    const { targets: next, tracked } = toggleTrackedScoutTarget(target, localTrackedTargets);
+    setLocalTrackedTargets(next);
+    if (tracked && !cases.some((c) => c.playerName.toLowerCase() === target.name.toLowerCase())) {
+      const bestRole = computeTargetBestRoleFit(target);
+      onAddCase({
+        playerName: target.name,
+        position: target.primaryPosition,
+        age: target.age,
+        currentClub:
+          target.currentClub ||
+          (target.isFreeAgent ? 'Free Agent' : 'Expiring Contract'),
+        targetIpRole: bestRole.roleName,
+        targetOopRole: 'To Assign',
+        interest: 'Interested',
+        stage: 'Shortlisted',
+        estimatedFee: target.isFreeAgent
+          ? 'Free Transfer'
+          : 'Pre-Contract / Cut-Price',
+        estimatedWagePw: target.demandedWageEur,
+        expiresOn:
+          target.expires ||
+          (target.isFreeAgent
+            ? 'Free'
+            : `<= ${target.contractExpiryMonths}m`),
+        notes: `Scouted Target (${target.nationality}) · ${bestRole.roleName} (${bestRole.fitPct}% Fit)`,
+      });
+    }
+    showToast(
+      tracked
+        ? `Added ${target.name} to Shortlist`
+        : `Removed ${target.name} from Shortlist`
+    );
+  };
+
+  const handleRemoveTracked = (target: RecruitmentTarget) => {
+    if (onToggleTrackTarget) {
+      onToggleTrackTarget(target);
+      showToast(`Removed ${target.name} from Shortlist`);
+      return;
+    }
+    const next = removeTrackedScoutTarget(target.uid || target.name, localTrackedTargets);
+    setLocalTrackedTargets(next);
+    showToast(`Removed ${target.name} from Shortlist`);
+  };
+
+  const handleOpenTargetCard = (target: RecruitmentTarget) => {
+    onSelectPlayer(buildScoutTargetPlayerRecord(target));
+  };
+
+  const handleAskAnalystCompareShortlist = () => {
+    if (!onAskAnalyst || trackedTargets.length === 0) return;
+    const summaryLines = trackedTargets.slice(0, 10).map((t) => {
+      const arch = evaluatePlaybookArchetype(t.primaryPosition, t.attributes);
+      const role = computeTargetBestRoleFit(t);
+      const contract = formatTargetContractSummary(t);
+      const starter = findTopSeniorStarterForPosition(t.primaryPosition, players);
+      return `- ${t.name} (${t.primaryPosition}, Age ${t.age}, ${t.nationality}) | ${arch.name} ${arch.score}% | Best Role: ${role.roleName} (${role.fitPct}%) | ${contract.primaryLabel}${contract.trialBadge ? ' [2-Week Free Trial]' : ''}${contract.wageLabel ? ` · ${contract.wageLabel}` : ''} | vs Starter: ${starter ? `${starter.name} (${starter.ability.toFixed(1)}★, £${starter.wagePw}/wk)` : 'None'}`;
+    });
+    const prompt = `Compare my persisted Shortlist (${trackedTargets.length} targets) against my current senior starters using Bobby Dean's Playbook v2.0 Section 7 recruitment archetypes and £0-budget free-trial rules. Rank who to trial/sign first and who to skip:\n${summaryLines.join('\n')}`;
+    onAskAnalyst(prompt);
+  };
+
+  const activeComparison = useMemo(() => {
+    if (!compareTarget) return null;
+    const starter = findTopSeniorStarterForPosition(compareTarget.primaryPosition, players);
+    if (!starter) return { target: compareTarget, starter: null, comparison: null };
+    return {
+      target: compareTarget,
+      starter,
+      comparison: buildTargetVsStarterComparison(compareTarget, starter),
+    };
+  }, [compareTarget, players]);
 
   const filteredScoutedTargets = useMemo(
     () =>
@@ -384,8 +524,8 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
           </div>
         </div>
 
-        {/* 4 Focused View Switchers */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-1">
+        {/* 5 Focused View Switchers */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 pt-1">
           {(
             [
               {
@@ -407,6 +547,11 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                 id: 'targets',
                 label: `Scouted (${scoutedTargets.length})`,
                 icon: UserPlus,
+              },
+              {
+                id: 'shortlist',
+                label: `Shortlist (${trackedTargets.length})`,
+                icon: Bookmark,
               },
             ] as const
           ).map((t) => {
@@ -840,19 +985,26 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                     ({
                       target,
                       bestRole,
+                      archetype,
                       relevantAttributes,
                       depth,
                       contractDisplay,
                     }) => {
-                      const alreadyTracked = cases.some(
-                        (c) =>
-                          c.playerName.toLowerCase() === target.name.toLowerCase()
-                      );
+                      const isTracked = isScoutTargetTracked(trackedTargets, target);
 
                       return (
                         <div
                           key={target.uid || target.name}
-                          className={`rounded-xl border p-4 space-y-2.5 ${
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => handleOpenTargetCard(target)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              handleOpenTargetCard(target);
+                            }
+                          }}
+                          className={`rounded-xl border p-4 space-y-2.5 text-left transition cursor-pointer hover:border-emerald-500/50 ${
                             depth.isGenuineGap
                               ? 'border-amber-500/40 bg-amber-950/15'
                               : 'border-slate-800 bg-slate-900/70'
@@ -881,8 +1033,20 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                             </span>
                           </div>
 
-                          {/* Best FM27 Role + Fit % & Expiring Wage */}
+                          {/* Playbook v2.0 Archetype + Free Trial Badge + Best Role & Wage */}
                           <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                            <span
+                              className={`rounded border px-2 py-0.5 font-semibold ${archetypeBadgeClass(
+                                archetype.badgeTone
+                              )}`}
+                            >
+                              {archetype.name} · {archetype.score}%
+                            </span>
+                            {contractDisplay.trialBadge && (
+                              <span className="rounded bg-teal-500/15 border border-teal-500/40 px-2 py-0.5 text-[10px] font-bold text-teal-300">
+                                {contractDisplay.trialBadge}
+                              </span>
+                            )}
                             <span className="rounded bg-emerald-500/15 border border-emerald-500/35 px-2 py-0.5 font-semibold text-emerald-300">
                               {bestRole.roleName} · {bestRole.fitPct}% Fit
                             </span>
@@ -931,7 +1095,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                             </div>
                           )}
 
-                          <div className="flex items-center justify-between pt-1.5 border-t border-slate-800/80 text-[11px] gap-2">
+                          <div className="flex flex-wrap items-center justify-between pt-1.5 border-t border-slate-800/80 text-[11px] gap-2">
                             {depth.isGenuineGap ? (
                               <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40">
                                 {depth.label}
@@ -941,39 +1105,33 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                                 {depth.label}
                               </span>
                             )}
-                            <button
-                              type="button"
-                              disabled={alreadyTracked}
-                              onClick={() =>
-                                onAddCase({
-                                  playerName: target.name,
-                                  position: target.primaryPosition,
-                                  age: target.age,
-                                  currentClub:
-                                    target.currentClub ||
-                                    (target.isFreeAgent
-                                      ? 'Free Agent'
-                                      : 'Expiring Contract'),
-                                  targetIpRole: bestRole.roleName,
-                                  targetOopRole: 'To Assign',
-                                  interest: 'Interested',
-                                  stage: 'Scouted',
-                                  estimatedFee: target.isFreeAgent
-                                    ? 'Free Transfer'
-                                    : 'Pre-Contract / Cut-Price',
-                                  estimatedWagePw: target.demandedWageEur,
-                                  expiresOn:
-                                    target.expires ||
-                                    (target.isFreeAgent
-                                      ? 'Free'
-                                      : `<= ${target.contractExpiryMonths}m`),
-                                  notes: `Scouted Target (${target.nationality}) · ${bestRole.roleName} (${bestRole.fitPct}% Fit)`,
-                                })
-                              }
-                              className="rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 disabled:opacity-50 border border-emerald-500/30 px-2.5 py-1 text-[11px] font-semibold text-emerald-300 transition cursor-pointer shrink-0"
-                            >
-                              {alreadyTracked ? 'Tracked' : '+ Track'}
-                            </button>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCompareTarget(target);
+                                }}
+                                className="inline-flex items-center gap-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/35 px-2 py-1 text-[11px] font-semibold text-sky-300 transition cursor-pointer"
+                              >
+                                <GitCompare className="h-3 w-3" />
+                                Compare
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleTrack(target);
+                                }}
+                                className={`rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition cursor-pointer ${
+                                  isTracked
+                                    ? 'bg-emerald-500/25 hover:bg-emerald-500/35 border-emerald-400/60 text-emerald-200'
+                                    : 'bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/30 text-emerald-300'
+                                }`}
+                              >
+                                {isTracked ? '✓ Tracked' : '+ Track'}
+                              </button>
+                            </div>
                           </div>
                         </div>
                       );
@@ -983,7 +1141,449 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
               )}
             </div>
           )}
+
+          {/* VIEW 5: PERSISTED SHORTLIST */}
+          {view === 'shortlist' && (
+            <div className="space-y-3">
+              <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
+                    <Bookmark className="h-4 w-4 text-emerald-400" />
+                    Persisted Recruitment Shortlist ({trackedTargets.length})
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Saved locally in browser storage · Tap any card for full 52-attribute profile or compare directly against our senior starter
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={trackedTargets.length === 0 || !onAskAnalyst}
+                  onClick={handleAskAnalystCompareShortlist}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 disabled:opacity-40 border border-emerald-500/40 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition cursor-pointer"
+                >
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  Ask Analyst to Compare Shortlist
+                </button>
+              </div>
+
+              {trackedTargets.length === 0 ? (
+                <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 text-center text-xs text-slate-400">
+                  No targets shortlisted yet. Tap <strong>+ Track</strong> on any player in the <strong>Scouted</strong> tab to persist them here.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {trackedTargets.map((target) => {
+                    const bestRole = computeTargetBestRoleFit(target);
+                    const archetype = evaluatePlaybookArchetype(
+                      target.primaryPosition,
+                      target.attributes
+                    );
+                    const relevantAttributes = getPositionRelevantAttributes(target);
+                    const depth = evaluateTargetSquadDepth(
+                      target.primaryPosition,
+                      players
+                    );
+                    const contractDisplay = formatTargetContractSummary(target);
+
+                    return (
+                      <div
+                        key={target.uid || target.name}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => handleOpenTargetCard(target)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            handleOpenTargetCard(target);
+                          }
+                        }}
+                        className="rounded-xl border border-emerald-500/30 bg-slate-900/75 p-4 space-y-2.5 text-left transition cursor-pointer hover:border-emerald-400/60"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <h3 className="text-sm font-bold text-white truncate">
+                              {target.name}
+                            </h3>
+                            <p className="text-[11px] text-slate-400">
+                              {target.age} yrs · {target.nationality} ·{' '}
+                              <span className="font-mono text-emerald-300">
+                                {target.primaryPosition}
+                              </span>
+                            </p>
+                          </div>
+                          <span
+                            className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-semibold border ${
+                              target.isFreeAgent
+                                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+                                : 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+                            }`}
+                          >
+                            {contractDisplay.primaryLabel}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                          <span
+                            className={`rounded border px-2 py-0.5 font-semibold ${archetypeBadgeClass(
+                              archetype.badgeTone
+                            )}`}
+                          >
+                            {archetype.name} · {archetype.score}%
+                          </span>
+                          {contractDisplay.trialBadge && (
+                            <span className="rounded bg-teal-500/15 border border-teal-500/40 px-2 py-0.5 text-[10px] font-bold text-teal-300">
+                              {contractDisplay.trialBadge}
+                            </span>
+                          )}
+                          <span className="rounded bg-emerald-500/15 border border-emerald-500/35 px-2 py-0.5 font-semibold text-emerald-300">
+                            {bestRole.roleName} · {bestRole.fitPct}% Fit
+                          </span>
+                          {contractDisplay.wageLabel && (
+                            <span className="rounded bg-slate-950/80 border border-slate-800 px-2 py-0.5 font-mono text-slate-300">
+                              Wage {contractDisplay.wageLabel}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-4 gap-1.5 text-[11px] font-mono text-slate-200">
+                          {relevantAttributes.map((attrChip) => (
+                            <div
+                              key={attrChip.label}
+                              className="rounded bg-slate-950/80 border border-slate-800 px-2 py-1 text-center"
+                            >
+                              <span className="text-slate-400 mr-1">
+                                {attrChip.label}
+                              </span>
+                              <span
+                                className={
+                                  attrChip.value >= 14
+                                    ? 'text-emerald-300 font-bold'
+                                    : attrChip.value >= 11
+                                      ? 'text-slate-100 font-semibold'
+                                      : 'text-slate-400'
+                                }
+                              >
+                                {attrChip.value}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between pt-1.5 border-t border-slate-800/80 text-[11px] gap-1.5">
+                          <span className="text-[10px] text-slate-400">
+                            {depth.label}
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenTargetCard(target);
+                              }}
+                              className="rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2 py-1 text-[11px] font-semibold text-slate-200 transition cursor-pointer"
+                            >
+                              Open Card
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCompareTarget(target);
+                              }}
+                              className="inline-flex items-center gap-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/35 px-2 py-1 text-[11px] font-semibold text-sky-300 transition cursor-pointer"
+                            >
+                              <GitCompare className="h-3 w-3" />
+                              Compare
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveTracked(target);
+                              }}
+                              className="inline-flex items-center gap-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/35 px-2 py-1 text-[11px] font-semibold text-rose-300 transition cursor-pointer"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </>
+      )}
+
+      {/* Confirmation Toast */}
+      {toastMessage && (
+        <div
+          role="status"
+          className="fixed bottom-20 md:bottom-6 right-4 z-50 flex items-center gap-2 rounded-xl border border-emerald-500/50 bg-slate-900/95 px-4 py-2.5 text-xs font-semibold text-emerald-200 shadow-xl backdrop-blur"
+        >
+          <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* 1-Tap Compare vs Starter Modal */}
+      {activeComparison && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-3 sm:p-4"
+          onClick={() => setCompareTarget(null)}
+        >
+          <div
+            className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl p-4 sm:p-5 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-sky-400 flex items-center gap-1.5">
+                  <GitCompare className="h-3.5 w-3.5" />
+                  1-Tap Compare vs Current Senior Starter
+                </div>
+                <h3 className="text-base font-bold text-white mt-0.5">
+                  <span className="text-emerald-300">
+                    {activeComparison.target.name}
+                  </span>{' '}
+                  <span className="text-slate-500">vs</span>{' '}
+                  <span className="text-sky-300">
+                    {activeComparison.starter
+                      ? activeComparison.starter.name
+                      : 'No Senior Starter'}
+                  </span>
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCompareTarget(null)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition cursor-pointer"
+                aria-label="Close comparison"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {!activeComparison.comparison || !activeComparison.starter ? (
+              <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-6 text-center text-xs text-slate-400">
+                No senior starter found in the squad for{' '}
+                <strong>{activeComparison.target.primaryPosition}</strong> to compare against yet.
+              </div>
+            ) : (
+              <>
+                {/* SVG 6-Axis Radar Comparison */}
+                <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 flex flex-col sm:flex-row items-center gap-4">
+                  <div className="shrink-0">
+                    {(() => {
+                      const axes = activeComparison.comparison.radarAxes;
+                      const cx = 110;
+                      const cy = 110;
+                      const maxR = 76;
+                      const pointAt = (idx: number, val: number) => {
+                        const angle = (Math.PI * 2 * idx) / axes.length - Math.PI / 2;
+                        const r = (Math.max(1, Math.min(20, val)) / 20) * maxR;
+                        return `${(cx + r * Math.cos(angle)).toFixed(1)},${(cy + r * Math.sin(angle)).toFixed(1)}`;
+                      };
+                      const targetPoly = axes
+                        .map((ax, i) => pointAt(i, ax.targetVal))
+                        .join(' ');
+                      const starterPoly = axes
+                        .map((ax, i) => pointAt(i, ax.starterVal))
+                        .join(' ');
+                      return (
+                        <svg
+                          viewBox="0 0 220 220"
+                          className="w-48 h-48 sm:w-52 sm:h-52"
+                          aria-label="Attribute radar comparison"
+                        >
+                          {[5, 10, 15, 20].map((ring) => (
+                            <polygon
+                              key={ring}
+                              points={axes
+                                .map((_, i) => pointAt(i, ring))
+                                .join(' ')}
+                              fill="none"
+                              stroke="rgb(51 65 85)"
+                              strokeWidth="1"
+                              strokeDasharray={ring === 20 ? undefined : '2 2'}
+                            />
+                          ))}
+                          {axes.map((ax, i) => {
+                            const angle = (Math.PI * 2 * i) / axes.length - Math.PI / 2;
+                            const x2 = cx + maxR * Math.cos(angle);
+                            const y2 = cy + maxR * Math.sin(angle);
+                            const lx = cx + (maxR + 18) * Math.cos(angle);
+                            const ly = cy + (maxR + 18) * Math.sin(angle);
+                            return (
+                              <g key={ax.label}>
+                                <line
+                                  x1={cx}
+                                  y1={cy}
+                                  x2={x2}
+                                  y2={y2}
+                                  stroke="rgb(51 65 85)"
+                                  strokeWidth="1"
+                                />
+                                <text
+                                  x={lx}
+                                  y={ly}
+                                  textAnchor="middle"
+                                  dominantBaseline="middle"
+                                  fill="rgb(203 213 225)"
+                                  fontSize="10"
+                                  fontFamily="monospace"
+                                >
+                                  {ax.label}
+                                </text>
+                              </g>
+                            );
+                          })}
+                          <polygon
+                            points={starterPoly}
+                            fill="rgba(56, 189, 248, 0.20)"
+                            stroke="rgb(56, 189, 248)"
+                            strokeWidth="2"
+                          />
+                          <polygon
+                            points={targetPoly}
+                            fill="rgba(16, 185, 129, 0.25)"
+                            stroke="rgb(16, 185, 129)"
+                            strokeWidth="2"
+                          />
+                        </svg>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Age, Wage & Archetype Summary */}
+                  <div className="flex-1 w-full space-y-2 text-xs">
+                    <div className="flex flex-wrap items-center gap-3 text-[11px]">
+                      <span className="inline-flex items-center gap-1.5 text-emerald-300 font-semibold">
+                        <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                        {activeComparison.target.name} ({activeComparison.target.primaryPosition})
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 text-sky-300 font-semibold">
+                        <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
+                        {activeComparison.starter.name} ({activeComparison.starter.position})
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-lg border border-slate-800 bg-slate-900/80 p-2.5">
+                        <div className="text-[10px] text-slate-400">Age Comparison</div>
+                        <div className="font-mono font-bold text-white mt-0.5">
+                          {activeComparison.target.age} vs {activeComparison.starter.age}
+                        </div>
+                        <div
+                          className={`text-[10px] font-mono font-semibold ${
+                            activeComparison.comparison.ageDelta <= 0
+                              ? 'text-emerald-300'
+                              : 'text-amber-300'
+                          }`}
+                        >
+                          {activeComparison.comparison.ageDelta > 0 ? '+' : ''}
+                          {activeComparison.comparison.ageDelta} yrs
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-slate-800 bg-slate-900/80 p-2.5">
+                        <div className="text-[10px] text-slate-400">Weekly Wage</div>
+                        <div className="font-mono font-bold text-white mt-0.5">
+                          £{(activeComparison.target.demandedWageEur || 0).toLocaleString()} vs £
+                          {(activeComparison.starter.wagePw || 0).toLocaleString()}
+                        </div>
+                        <div
+                          className={`text-[10px] font-mono font-semibold ${
+                            activeComparison.comparison.wageDelta <= 0
+                              ? 'text-emerald-300'
+                              : 'text-rose-300'
+                          }`}
+                        >
+                          {activeComparison.comparison.wageDelta > 0 ? '+' : ''}
+                          £{activeComparison.comparison.wageDelta.toLocaleString()}/wk
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-800 bg-slate-900/80 p-2.5 flex items-center justify-between">
+                      <span className="text-[11px] text-slate-300">
+                        Playbook Archetype:{' '}
+                        <strong className="text-white">
+                          {activeComparison.comparison.archetype.name}
+                        </strong>
+                      </span>
+                      <span className="font-mono text-xs font-bold">
+                        <span className="text-emerald-300">
+                          {activeComparison.comparison.archetype.score}%
+                        </span>{' '}
+                        <span className="text-slate-500">vs</span>{' '}
+                        <span className="text-sky-300">
+                          {activeComparison.comparison.starterArchetype.score}%
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Green/Red Attribute Deltas */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {activeComparison.comparison.radarAxes.map((ax) => (
+                    <div
+                      key={ax.label}
+                      className="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2 flex items-center justify-between text-xs font-mono"
+                    >
+                      <span className="text-slate-300 font-semibold">{ax.label}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-emerald-300 font-bold">
+                          {ax.targetVal}
+                        </span>
+                        <span className="text-slate-500">/</span>
+                        <span className="text-sky-300">{ax.starterVal}</span>
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                            ax.delta > 0
+                              ? 'bg-emerald-500/20 text-emerald-300'
+                              : ax.delta < 0
+                                ? 'bg-rose-500/20 text-rose-300'
+                                : 'bg-slate-800 text-slate-400'
+                          }`}
+                        >
+                          {ax.delta > 0 ? `+${ax.delta}` : ax.delta}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  const t = activeComparison.target;
+                  setCompareTarget(null);
+                  handleOpenTargetCard(t);
+                }}
+                className="rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 transition cursor-pointer"
+              >
+                Open Full Card
+              </button>
+              <button
+                type="button"
+                onClick={() => handleToggleTrack(activeComparison.target)}
+                className="rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition cursor-pointer"
+              >
+                {isScoutTargetTracked(trackedTargets, activeComparison.target)
+                  ? '✓ Tracked'
+                  : '+ Track'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

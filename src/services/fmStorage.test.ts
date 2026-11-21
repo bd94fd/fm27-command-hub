@@ -8,8 +8,13 @@ import {
   clearPersistedFmState,
   exportFmStateBackupJson,
   importFmStateBackupJson,
+  loadTrackedScoutTargets,
+  toggleTrackedScoutTarget,
+  removeTrackedScoutTarget,
+  isScoutTargetTracked,
 } from './fmStorage';
 import { PlayerRecord, MatchLogEntry } from '../types/fm27';
+import { RecruitmentTarget } from '../types/fmSave';
 
 // Mock localStorage for Node test runner
 const storageMap = new Map<string, string>();
@@ -180,4 +185,61 @@ test('fmStorage exports and imports JSON backups cleanly', () => {
   // Corrupted JSON returns null without crashing
   const badImport = importFmStateBackupJson('invalid json string');
   assert.equal(badImport, null);
+});
+
+test('fmStorage persists Shortlist tracked targets with add/remove toggling', () => {
+  mockLocalStorage.clear();
+
+  const targetA: RecruitmentTarget = {
+    uid: 9001,
+    name: 'Lucas Janssens',
+    age: 21,
+    nationality: 'Belgium',
+    primaryPosition: 'AMR',
+    isFreeAgent: true,
+    contractExpiryMonths: 0,
+    demandedWageEur: 350,
+    attributes: { pace: 15, acceleration: 15 },
+  };
+  const targetB: RecruitmentTarget = {
+    uid: 9002,
+    name: 'Tomasz Kowalski',
+    age: 24,
+    nationality: 'Poland',
+    primaryPosition: 'DC',
+    isFreeAgent: false,
+    contractExpiryMonths: 5,
+    demandedWageEur: 600,
+    attributes: { positioning: 14, jumpingReach: 15 },
+  };
+
+  assert.equal(loadTrackedScoutTargets().length, 0);
+
+  // Add targetA
+  const addA = toggleTrackedScoutTarget(targetA);
+  assert.equal(addA.tracked, true);
+  assert.equal(addA.targets.length, 1);
+  assert.equal(isScoutTargetTracked(addA.targets, targetA), true);
+
+  // Add targetB
+  const addB = toggleTrackedScoutTarget(targetB);
+  assert.equal(addB.tracked, true);
+  assert.equal(addB.targets.length, 2);
+
+  // Reload from localStorage
+  const reloaded = loadTrackedScoutTargets();
+  assert.equal(reloaded.length, 2);
+  assert.equal(isScoutTargetTracked(reloaded, targetA), true);
+  assert.equal(isScoutTargetTracked(reloaded, targetB), true);
+
+  // Toggle targetA again -> untracks
+  const untrackA = toggleTrackedScoutTarget(targetA);
+  assert.equal(untrackA.tracked, false);
+  assert.equal(untrackA.targets.length, 1);
+  assert.equal(isScoutTargetTracked(untrackA.targets, targetA), false);
+
+  // Remove targetB explicitly
+  const afterRemove = removeTrackedScoutTarget(targetB.uid);
+  assert.equal(afterRemove.length, 0);
+  assert.equal(loadTrackedScoutTargets().length, 0);
 });

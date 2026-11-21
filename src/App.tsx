@@ -60,7 +60,11 @@ import {
   recordPreviousSnapshot,
   exportFmStateBackupJson,
   importFmStateBackupJson,
+  isScoutTargetTracked,
+  loadTrackedScoutTargets,
+  toggleTrackedScoutTarget,
 } from './services/fmStorage';
+import { RecruitmentTarget } from './types/fmSave';
 
 type ActiveTab =
   | 'sync'
@@ -82,6 +86,12 @@ export default function App() {
     []
   );
   const [shortlists, setShortlists] = useState<ShortlistRecord[]>([]);
+  const [trackedTargets, setTrackedTargets] = useState<RecruitmentTarget[]>(() =>
+    loadTrackedScoutTargets()
+  );
+  const [pendingAnalystPrompt, setPendingAnalystPrompt] = useState<string | null>(
+    null
+  );
   const [saveDate, setSaveDate] = useState<string>(KVV_ZELZATE_META.saveDate);
   const [nextFixture, setNextFixture] = useState<string>(
     KVV_ZELZATE_META.nextFixture
@@ -109,6 +119,49 @@ export default function App() {
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
+  };
+
+  const handleToggleTrackTarget = (target: RecruitmentTarget): boolean => {
+    const { targets: next, tracked } = toggleTrackedScoutTarget(
+      target,
+      trackedTargets
+    );
+    setTrackedTargets(next);
+    return tracked;
+  };
+
+  const handleToggleTrackPlayerFromModal = (player: PlayerRecord) => {
+    const scoutPool =
+      hydratedFmSave?.recruitmentTargets ??
+      hydratedFmSave?.decodedPayload.recruitmentTargets ??
+      [];
+    const matched = scoutPool.find(
+      (t) =>
+        (typeof player.uid === 'number' && t.uid === player.uid) ||
+        t.name.trim().toLowerCase() === player.name.trim().toLowerCase()
+    );
+    const targetToToggle: RecruitmentTarget = matched || {
+      uid: player.uid || 0,
+      name: player.name,
+      age: player.age,
+      nationality: player.nation || 'Unknown',
+      primaryPosition: player.position,
+      isFreeAgent:
+        player.wagePw === 0 ||
+        (player.expires || '').toLowerCase().includes('free'),
+      contractExpiryMonths: player.contractExpiryMonths ?? 6,
+      expires: player.expires,
+      demandedWageEur: player.wagePw || 0,
+      scoutBadges: player.scoutBadges,
+      traits: player.traits,
+      attributes: player.attributes,
+    };
+    handleToggleTrackTarget(targetToToggle);
+  };
+
+  const handleAskAnalystPrompt = (prompt: string) => {
+    setPendingAnalystPrompt(prompt);
+    handleSelectTab('sync');
   };
 
   const clubName =
@@ -736,6 +789,8 @@ export default function App() {
             onApplyPlayerUpdates={handleApplyPlayerUpdates}
             onBulkMergePlayers={handleBulkMergePlayers}
             onApplyDecodedFmSave={handleApplyDecodedFmSave}
+            pendingPrompt={pendingAnalystPrompt}
+            onClearPendingPrompt={() => setPendingAnalystPrompt(null)}
           />
         </div>
 
@@ -790,6 +845,9 @@ export default function App() {
               hydratedFmSave?.decodedPayload.recruitmentTargets ??
               []
             }
+            trackedTargets={trackedTargets}
+            onToggleTrackTarget={handleToggleTrackTarget}
+            onAskAnalyst={handleAskAnalystPrompt}
             onAddCase={handleAddRecruitmentCase}
             onUpdateCase={handleUpdateRecruitmentCase}
             onDeleteCase={handleDeleteRecruitmentCase}
@@ -884,8 +942,16 @@ export default function App() {
         isManagedClubPlayer={Boolean(
           selectedPlayer && players.some((p) => p.id === selectedPlayer.id)
         )}
+        isTracked={Boolean(
+          selectedPlayer &&
+            isScoutTargetTracked(trackedTargets, {
+              uid: selectedPlayer.uid || 0,
+              name: selectedPlayer.name,
+            })
+        )}
         onClose={() => setSelectedPlayer(null)}
         onAddRecruitment={handleTrackPlayerInRecruitment}
+        onToggleTrack={handleToggleTrackPlayerFromModal}
         onAddToShortlist={handleAddPlayerToShortlist}
       />
 
