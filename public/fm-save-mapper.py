@@ -3420,14 +3420,22 @@ def step_fixtures(fast_sync: bool | None = None) -> str:
             used_scoped = False
             if hasattr(fix_table, "where"):
                 try:
-                    home_list = list(fix_table.where(home_club_uid=club_uid))
-                    away_list = list(fix_table.where(away_club_uid=club_uid))
-                    for f in home_list:
+                    seen_scoped = 0
+                    for f in fix_table.where(home_club_uid=club_uid):
+                        seen_scoped += 1
+                        if (seen_scoped & 255) == 0 and (time.monotonic() - t0) > 20.0:
+                            _STATE["warnings"].append("fixtures: 20s time cap reached")
+                            break
                         if getattr(f, "home_team_slot", None) in (None, 0):
                             club_fixtures.append(f)
-                    for f in away_list:
-                        if getattr(f, "away_team_slot", None) in (None, 0):
-                            club_fixtures.append(f)
+                    if (time.monotonic() - t0) <= 20.0:
+                        for f in fix_table.where(away_club_uid=club_uid):
+                            seen_scoped += 1
+                            if (seen_scoped & 255) == 0 and (time.monotonic() - t0) > 20.0:
+                                _STATE["warnings"].append("fixtures: 20s time cap reached")
+                                break
+                            if getattr(f, "away_team_slot", None) in (None, 0):
+                                club_fixtures.append(f)
                     used_scoped = True
                 except Exception:
                     used_scoped = False
@@ -3436,8 +3444,8 @@ def step_fixtures(fast_sync: bool | None = None) -> str:
                 seen = 0
                 for f in fix_table:
                     seen += 1
-                    if (seen & 2047) == 0 and (time.monotonic() - t0) > 35.0:
-                        _STATE["warnings"].append("fixtures: mobile 35s time cap reached")
+                    if (seen & 511) == 0 and (time.monotonic() - t0) > 20.0:
+                        _STATE["warnings"].append("fixtures: 20s time cap reached")
                         break
                     is_home = (f.home_club_uid == club_uid and f.home_team_slot in (None, 0))
                     is_away = (f.away_club_uid == club_uid and f.away_team_slot in (None, 0))

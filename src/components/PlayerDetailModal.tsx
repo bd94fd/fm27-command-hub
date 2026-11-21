@@ -10,7 +10,10 @@ import {
 } from 'lucide-react';
 import { PlayerRecord, ShortlistRecord } from '../types/fm27';
 import { computeFm27EngineMetrics } from '../utils/fmSyncEngine';
-import { resolveNaturalDefaultRoles } from '../utils/fm27RoleMatcher';
+import {
+  getNaturalRolesForPlayer,
+  resolveNaturalDefaultRoles,
+} from '../utils/fm27RoleMatcher';
 import {
   evaluatePlaybookArchetype,
   getPlaybookContractNotes,
@@ -119,14 +122,30 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
     [player]
   );
 
+  const scopedIpRoles = useMemo(
+    () => (player ? getNaturalRolesForPlayer(player, 'In Possession') : []),
+    [player]
+  );
+
+  const scopedOopRoles = useMemo(
+    () => (player ? getNaturalRolesForPlayer(player, 'Out of Possession') : []),
+    [player]
+  );
+
   const playbookArchetype = useMemo(
     () =>
       player ? evaluatePlaybookArchetype(player.position, player.attributes) : null,
     [player]
   );
 
-  const effectiveIpRole = selectedIpRole || naturalDefaults.ipRole;
-  const effectiveOopRole = selectedOopRole || naturalDefaults.oopRole;
+  const effectiveIpRole =
+    selectedIpRole && scopedIpRoles.some((r) => r.name === selectedIpRole)
+      ? selectedIpRole
+      : naturalDefaults.ipRole;
+  const effectiveOopRole =
+    selectedOopRole && scopedOopRoles.some((r) => r.name === selectedOopRole)
+      ? selectedOopRole
+      : naturalDefaults.oopRole;
 
   const highlightedKeys = useMemo(() => {
     const keySet = new Set<string>();
@@ -528,11 +547,13 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     <option value={naturalDefaults.ipRole}>
                       {naturalDefaults.ipRole} (Assigned)
                     </option>
-                    {IP_ROLE_LIST.map((r) => (
-                      <option key={`ip-${r.name}`} value={r.name}>
-                        {r.name}
-                      </option>
-                    ))}
+                    {scopedIpRoles
+                      .filter((r) => r.name !== naturalDefaults.ipRole)
+                      .map((r) => (
+                        <option key={`ip-${r.name}`} value={r.name}>
+                          {r.name}
+                        </option>
+                      ))}
                   </select>
                 </div>
                 <div>
@@ -547,11 +568,13 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     <option value={naturalDefaults.oopRole}>
                       {naturalDefaults.oopRole} (Assigned)
                     </option>
-                    {OOP_ROLE_LIST.map((r) => (
-                      <option key={`oop-${r.name}`} value={r.name}>
-                        {r.name}
-                      </option>
-                    ))}
+                    {scopedOopRoles
+                      .filter((r) => r.name !== naturalDefaults.oopRole)
+                      .map((r) => (
+                        <option key={`oop-${r.name}`} value={r.name}>
+                          {r.name}
+                        </option>
+                      ))}
                   </select>
                 </div>
               </div>

@@ -1,9 +1,12 @@
 import express from 'express';
 import {
+  AnalystOverloadError,
   AnalystTimeoutError,
   DEEP_MODEL_ID,
   FAST_MODEL_ID,
+  formatFriendlyGeminiError,
   GeminiService,
+  isTransientOverloadError,
   type ReasoningMode,
 } from '../geminiService.ts';
 import {
@@ -247,11 +250,10 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
       if (error instanceof AnalystTimeoutError) {
         return res.status(504).json({ error: error.message });
       }
-      const errMessage =
-        error instanceof Error
-          ? error.message
-          : 'Failed to run FM27 Tactical Analyst chat';
-      return res.status(500).json({ error: errMessage });
+      if (error instanceof AnalystOverloadError || isTransientOverloadError(error)) {
+        return res.status(503).json({ error: formatFriendlyGeminiError(error) });
+      }
+      return res.status(500).json({ error: formatFriendlyGeminiError(error) });
     }
   });
 

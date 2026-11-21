@@ -175,3 +175,71 @@ test('Pass 1: scorePlayerForFm27Role & rankSquadForFm27Role rank natural positio
   assert.equal(topStrikers[0].matchedPosition, true);
 });
 
+test('KnowledgeBasePanel live squad rendering reflects live hydrated wages/stars and never shows Load a .fm save when players are loaded', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const kbSource = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/components/KnowledgeBasePanel.tsx'),
+    'utf8'
+  );
+  assert.match(kbSource, /players\.length\s*>\s*0/);
+  assert.match(kbSource, /No natural\/accomplished fits/);
+
+  const channelForward = FM27_ROLES.find(
+    (r) => r.name === 'Channel Forward' && r.positionGroup === 'Striker'
+  );
+  assert.ok(channelForward);
+  const livePlayers: PlayerRecord[] = [
+    {
+      id: 'soren-coens',
+      number: 9,
+      name: 'Søren Coens',
+      position: 'ST (C)',
+      apps: '10',
+      minutes: 850,
+      rating: 7.3,
+      goals: 7,
+      xG: 5.5,
+      xGPer90: 0.58,
+      assists: 2,
+      xA: 1.4,
+      xAPer90: 0.15,
+      drbPer90: 1.5,
+      prPassesPer90: 1.1,
+      hdrPct: 52,
+      intPer90: 0.3,
+      tckPct: 45,
+      personality: 'Professional',
+      age: 23,
+      ability: 3.5,
+      potential: 4.0,
+      expires: '30/06/2029',
+      nation: 'BEL',
+      wagePw: 525,
+      status: 'Starter',
+      positionRatings: { ST: 20 },
+      attributes: {
+        pace: 14,
+        acceleration: 14,
+        stamina: 13,
+        jumpingReach: 12,
+        determination: 14,
+        passing: 11,
+        finishing: 14,
+        tackling: 6,
+        firstTouch: 13,
+        decisions: 12,
+        workRate: 13,
+        offTheBall: 15,
+      },
+      ipRole: 'Channel Forward',
+      oopRole: 'Central Outlet Centre Forward',
+      notes: '',
+    },
+  ];
+  const ranked = rankSquadForFm27Role(livePlayers, channelForward, 3);
+  assert.equal(ranked.length, 1);
+  assert.equal(ranked[0].player.wagePw, 525);
+  assert.equal(ranked[0].player.ability, 3.5);
+});
+

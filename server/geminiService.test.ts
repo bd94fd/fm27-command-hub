@@ -168,4 +168,49 @@ describe('server/geminiService', () => {
       AnalystTimeoutError
     );
   });
+
+  it('retries 503/429 up to 2 times with 1.5s/3s backoff and fails over between gemini-3.5-flash and gemini-3.5-flash-lite', async () => {
+    const calledModels: string[] = [];
+    const sleepDelays: number[] = [];
+    const service = new GeminiService({
+      config: loadServerConfig({ GEMINI_API_KEY: 'test-key' } as NodeJS.ProcessEnv),
+      sleep: async (ms: number) => {
+        sleepDelays.push(ms);
+      },
+      clientFactory: () => ({
+        models: {
+          list: async () => ({
+            models: [
+              { name: 'models/gemini-3.5-flash' },
+              { name: 'models/gemini-3.5-flash-lite' },
+            ],
+          }),
+          generateContent: (async (params: { model: string }) => {
+            calledModels.push(params.model);
+            if (params.model === 'gemini-3.5-flash') {
+              const err = new Error(
+                '{"error":{"code":503,"message":"This model is currently experiencing high demand.","status":"UNAVAILABLE"}}'
+              ) as Error & { status?: number };
+              err.status = 503;
+              throw err;
+            }
+            return { text: '{"ok":true,"failover":true}' };
+          }) as never,
+        },
+      }),
+    });
+
+    const res = await service.generateContent(
+      { contents: 'Tactical check' },
+      { reasoningMode: 'deep_high' }
+    );
+    assert.equal(res.text, '{"ok":true,"failover":true}');
+    assert.deepEqual(calledModels, [
+      'gemini-3.5-flash',
+      'gemini-3.5-flash',
+      'gemini-3.5-flash',
+      'gemini-3.5-flash-lite',
+    ]);
+    assert.deepEqual(sleepDelays, [1500, 3000]);
+  });
 });

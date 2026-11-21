@@ -195,3 +195,38 @@ test('all 4 preset formations have 11 slots', () => {
     assert.equal(FORMATION_PRESETS[key].length, 11, `${key} should have 11 slots`);
   }
 });
+
+test('solveBestXi enforces >= 15/20 positional familiarity gate for ST, RW/LW, and DM even when unnatural players have higher attributes', () => {
+  const squad = buildFullSquad();
+  // Add an elite CB (20/20 DC, 1/20 ST) with maxed attacking attributes — must NOT displace natural ST
+  const eliteCb = makePlayer('cb-super', 'Super CB', 'DC', {
+    ability: 5.0,
+    positionRatings: { DC: 20, ST: 1, DM: 1, AMR: 1, AML: 1 },
+    attributes: {
+      pace: 20,
+      acceleration: 20,
+      stamina: 20,
+      jumpingReach: 20,
+      determination: 20,
+      passing: 20,
+      finishing: 20,
+      tackling: 20,
+      firstTouch: 20,
+      decisions: 20,
+      workRate: 20,
+      offTheBall: 20,
+    },
+  });
+
+  const res = solveBestXi([...squad, eliteCb], { shape: '4-3-3 DM Wide' });
+  const stSlot = res.startingXI.find((s) => s.slotId === 'ST');
+  const dmSlot = res.startingXI.find((s) => s.slotId === 'DM');
+  const rwSlot = res.startingXI.find((s) => s.slotId === 'AMR');
+  const lwSlot = res.startingXI.find((s) => s.slotId === 'AML');
+
+  assert.equal(stSlot?.isNaturalPosition, true, 'ST must be a natural striker (>= 15/20)');
+  assert.notEqual(stSlot?.player?.id, 'cb-super', 'Super CB must not be placed at ST');
+  assert.equal(dmSlot?.isNaturalPosition, true, 'DM must be a natural DM (>= 15/20)');
+  assert.equal(rwSlot?.isNaturalPosition, true, 'RW must be a natural winger (>= 15/20)');
+  assert.equal(lwSlot?.isNaturalPosition, true, 'LW must be a natural winger (>= 15/20)');
+});

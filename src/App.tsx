@@ -974,7 +974,10 @@ export default function App() {
       {/* Fixed Thumb-Friendly Mobile Bottom Navigation Bar */}
       <nav
         aria-label="Mobile navigation"
-        className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-slate-900/95 backdrop-blur border-t border-slate-800 px-1 py-1.5 grid grid-cols-6 gap-0.5"
+        className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-slate-900/95 backdrop-blur border-t border-slate-800 px-1.5 pt-1.5 grid grid-cols-6 gap-1"
+        style={{
+          paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))',
+        }}
       >
         {(
           [
@@ -993,14 +996,14 @@ export default function App() {
               key={item.id}
               type="button"
               onClick={() => handleSelectTab(item.id)}
-              className={`flex flex-col items-center justify-center gap-0.5 rounded-lg py-1.5 text-[10px] font-medium transition-colors ${
+              className={`min-w-0 flex flex-col items-center justify-center gap-0.5 rounded-lg px-0.5 py-1.5 text-[9px] sm:text-[10px] leading-tight font-medium transition-colors ${
                 isActive
                   ? 'text-emerald-400 bg-emerald-500/15 font-semibold'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              <Icon className="w-4 h-4" />
-              <span>{item.label}</span>
+              <Icon className="w-4 h-4 shrink-0" />
+              <span className="truncate max-w-full">{item.label}</span>
             </button>
           );
         })}

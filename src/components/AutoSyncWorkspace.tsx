@@ -509,11 +509,34 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
 
       setTurns((prev) => [...prev, assistantTurn]);
     } catch (err: unknown) {
-      setChatError(
+      const rawMsg =
         err instanceof Error
           ? err.message
-          : 'Error communicating with FM27 Tactical Analyst'
-      );
+          : 'Error communicating with FM27 Tactical Analyst';
+      let friendlyMsg = rawMsg;
+      if (
+        /\b(503|429)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded/i.test(
+          rawMsg
+        )
+      ) {
+        friendlyMsg =
+          'The AI Tactical Analyst is temporarily busy due to high demand. Automatic retries and model failover were attempted — please wait a few seconds and try again.';
+      } else if (rawMsg.trim().includes('{"error"') || rawMsg.trim().startsWith('{')) {
+        try {
+          const parsed = JSON.parse(rawMsg.slice(rawMsg.indexOf('{'))) as {
+            error?: { message?: string };
+            message?: string;
+          };
+          friendlyMsg =
+            parsed.error?.message ||
+            parsed.message ||
+            'The Tactical Analyst encountered a temporary service error. Please try again.';
+        } catch {
+          friendlyMsg =
+            'The Tactical Analyst encountered a temporary service error. Please try again.';
+        }
+      }
+      setChatError(friendlyMsg);
     } finally {
       setIsSending(false);
     }

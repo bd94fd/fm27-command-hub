@@ -143,33 +143,43 @@ function isWeakPersonality(p: PlayerRecord): boolean {
   );
 }
 
-function matchesPositionBucket(p: PlayerRecord, code: string): boolean {
+function getBucketFamiliarity(p: PlayerRecord, code: string): number | null {
   const pr = p.positionRatings;
-  if (pr && Object.values(pr).some((v) => typeof v === 'number' && v > 1)) {
-    const lower: Record<string, number> = {};
-    for (const [k, v] of Object.entries(pr)) {
-      if (typeof v === 'number') lower[k.toLowerCase()] = v;
-    }
-    const maxOf = (...keys: string[]) =>
-      Math.max(0, ...keys.map((k) => lower[k] || 0));
-    switch (code) {
-      case 'GK':
-        return maxOf('gk') >= 15;
-      case 'CB':
-        return maxOf('dc', 'cb') >= 15;
-      case 'RB':
-        return maxOf('dr', 'rb', 'wbr') >= 15;
-      case 'LB':
-        return maxOf('dl', 'lb', 'wbl') >= 15;
-      case 'DM':
-        return maxOf('dm') >= 15;
-      case 'CM':
-        return maxOf('mc', 'cm', 'amc') >= 15;
-      case 'W':
-        return maxOf('amr', 'aml', 'mr', 'ml', 'rw', 'lw') >= 15;
-      case 'ST':
-        return maxOf('st', 'stc') >= 15;
-    }
+  if (!pr || !Object.values(pr).some((v) => typeof v === 'number' && v > 1)) {
+    return null;
+  }
+  const lower: Record<string, number> = {};
+  for (const [k, v] of Object.entries(pr)) {
+    if (typeof v === 'number') lower[k.toLowerCase()] = v;
+  }
+  const maxOf = (...keys: string[]) =>
+    Math.max(0, ...keys.map((k) => lower[k] || 0));
+  switch (code) {
+    case 'GK':
+      return maxOf('gk');
+    case 'CB':
+      return maxOf('dc', 'cb');
+    case 'RB':
+      return maxOf('dr', 'rb', 'wbr');
+    case 'LB':
+      return maxOf('dl', 'lb', 'wbl');
+    case 'DM':
+      return maxOf('dm');
+    case 'CM':
+      return maxOf('mc', 'cm', 'amc');
+    case 'W':
+      return maxOf('amr', 'aml', 'mr', 'ml', 'rw', 'lw');
+    case 'ST':
+      return maxOf('st', 'stc');
+    default:
+      return 0;
+  }
+}
+
+function matchesPositionBucket(p: PlayerRecord, code: string): boolean {
+  const fam = getBucketFamiliarity(p, code);
+  if (fam !== null) {
+    return fam >= 15;
   }
   const pos = (p.position || '').toUpperCase();
   switch (code) {
@@ -461,12 +471,23 @@ export function buildSquadTransferAudit(
   const getPlayerBestBucketInfo = (p: PlayerRecord) => {
     let bestBucket: PositionalSigningNeed | null = null;
     let bestRank = 99;
+    let bestFam = -1;
     let starterSlots = 1;
     for (let i = 0; i < positionalNeeds.length; i++) {
       const b = positionalNeeds[i];
       const idx = b.players.findIndex((cand) => cand.id === p.id);
-      if (idx !== -1 && idx + 1 < bestRank) {
-        bestRank = idx + 1;
+      if (idx === -1) continue;
+      const fam = getBucketFamiliarity(p, b.code);
+      if (fam !== null && fam < 15) continue;
+      const effectiveFam = fam ?? 15;
+      const rank = idx + 1;
+      if (
+        bestBucket === null ||
+        effectiveFam > bestFam ||
+        (effectiveFam === bestFam && rank < bestRank)
+      ) {
+        bestFam = effectiveFam;
+        bestRank = rank;
         bestBucket = b;
         starterSlots = bucketDefs[i].starterSlots;
       }

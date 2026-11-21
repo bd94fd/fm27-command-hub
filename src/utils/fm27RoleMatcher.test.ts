@@ -213,3 +213,74 @@ test('positional-familiarity gate excludes unnatural positions (AMC 20/20, MC 2/
   assert.equal(resolvedOop?.positionGroup, 'Attacking Midfielder');
 });
 
+test('natural-position OOP role filtering restricts STC players to Striker OOP roles (never Pressing Full-Back)', async () => {
+  const { getNaturalRolesForPlayer, resolveNaturalDefaultRoles } = await import(
+    './fm27RoleMatcher'
+  );
+
+  const strikerPlayer = {
+    id: 'p-mbey',
+    number: 9,
+    name: 'Mbey Epolo',
+    position: 'ST (C)',
+    apps: '12',
+    minutes: 980,
+    rating: 7.1,
+    goals: 8,
+    xG: 6.4,
+    xGPer90: 0.59,
+    assists: 2,
+    xA: 1.5,
+    xAPer90: 0.14,
+    drbPer90: 1.8,
+    prPassesPer90: 1.2,
+    hdrPct: 55,
+    intPer90: 0.4,
+    tckPct: 50,
+    personality: 'Driven',
+    age: 22,
+    ability: 3.5,
+    potential: 4.0,
+    expires: '2028-06-30',
+    nation: 'BEL',
+    wagePw: 450,
+    status: 'Starter' as const,
+    positionRatings: { ST: 20, DR: 2, DL: 1, WBR: 1 },
+    attributes: {
+      pace: 14,
+      acceleration: 14,
+      stamina: 13,
+      jumpingReach: 13,
+      determination: 14,
+      passing: 10,
+      finishing: 14,
+      tackling: 7,
+      firstTouch: 12,
+      decisions: 12,
+      workRate: 13,
+      offTheBall: 14,
+    },
+    ipRole: 'Channel Forward',
+    oopRole: 'Pressing Full-Back', // Deliberately wrong OOP role
+    notes: '',
+  };
+
+  const oopOptions = getNaturalRolesForPlayer(strikerPlayer, 'Out of Possession');
+  assert.ok(oopOptions.length > 0);
+  assert.ok(
+    oopOptions.every((r) => r.positionGroup === 'Striker'),
+    `Expected only Striker OOP roles, got: ${oopOptions.map((r) => r.name).join(', ')}`
+  );
+  assert.equal(
+    oopOptions.some((r) => r.name === 'Pressing Full-Back'),
+    false
+  );
+
+  const defaults = resolveNaturalDefaultRoles(strikerPlayer);
+  assert.notEqual(defaults.oopRole, 'Pressing Full-Back');
+  assert.ok(
+    oopOptions.some((r) => r.name === defaults.oopRole),
+    `Expected default OOP role "${defaults.oopRole}" to be a Striker OOP role`
+  );
+});
+

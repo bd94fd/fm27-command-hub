@@ -337,20 +337,20 @@ export function getRolePositionFamiliarity(
     val = maxOf(['GK']);
   } else if (grp === 'DC' || grp.includes('CENTRE-BACK') || grp.includes('CENTER-BACK')) {
     val = maxOf(['DC', 'CB']);
-  } else if (grp === 'DL/DR' || grp.includes('FULL-BACK')) {
+  } else if (grp === 'DL/DR' || (grp.includes('FULL-BACK') && !grp.includes('WING-BACK'))) {
     val = maxOf(['DL', 'DR']);
   } else if (grp === 'WBL/WBR' || grp.includes('WING-BACK')) {
-    val = maxOf(['WBL', 'WBR']) ?? maxOf(['DL', 'DR']);
+    val = maxOf(['DL', 'DR', 'WBL', 'WBR']);
   } else if (grp === 'DM' || grp.includes('DEFENSIVE MIDFIELDER')) {
     val = maxOf(['DM']);
   } else if (grp === 'MC' || grp.includes('CENTRAL MIDFIELDER')) {
     val = maxOf(['MC']);
-  } else if (grp === 'ML/MR' || grp.includes('WIDE MIDFIELDER')) {
+  } else if (grp === 'ML/MR' || (grp.includes('WIDE MIDFIELDER') && !grp.includes('WINGER'))) {
     val = maxOf(['ML', 'MR']);
   } else if (grp === 'AMC' || grp.includes('ATTACKING MIDFIELDER')) {
     val = maxOf(['AMC']);
   } else if (grp === 'AML/AMR' || grp.includes('WINGER')) {
-    val = maxOf(['AML', 'AMR']);
+    val = maxOf(['AML', 'AMR', 'ML', 'MR']);
   } else if (grp === 'ST' || grp === 'STC' || grp.includes('STRIKER') || grp.includes('FORWARD')) {
     val = maxOf(['ST', 'STC', 'CF']);
   }
@@ -454,13 +454,17 @@ export function rankSquadForFm27Role(
 }
 
 /**
- * Resolves default IP/OOP roles for a player restricted to positions where the player
- * has natural/accomplished familiarity (>= 15/20 when positionRatings is present).
+ * Returns the subset of FM27 IP or OOP roles compatible with the player's
+ * natural/accomplished position group (>= 15/20 familiarity when positionRatings
+ * is present, or primary/secondary position fallback).
  */
-export function resolveNaturalDefaultRoles(
-  player: PlayerRecord
-): { ipRole: string; oopRole: string } {
-  const isNaturalForRole = (role: Fm27RoleItem): boolean => {
+export function getNaturalRolesForPlayer(
+  player: Pick<PlayerRecord, 'position' | 'secondaryPositions' | 'positionRatings'>,
+  phase: 'In Possession' | 'Out of Possession'
+): Fm27RoleItem[] {
+  const catalog =
+    phase === 'In Possession' ? IN_POSSESSION_ROLES : OUT_OF_POSSESSION_ROLES;
+  const naturalPool = catalog.filter((role) => {
     const fam = getRolePositionFamiliarity(player, role.positionGroup);
     if (fam !== null) return fam >= 15;
     return doesPlayerMatchRolePositionGroup(
@@ -468,25 +472,33 @@ export function resolveNaturalDefaultRoles(
       player.secondaryPositions,
       role.positionGroup
     );
-  };
+  });
+  return naturalPool.length > 0 ? naturalPool : catalog;
+}
 
+/**
+ * Resolves default IP/OOP roles for a player restricted to positions where the player
+ * has natural/accomplished familiarity (>= 15/20 when positionRatings is present).
+ */
+export function resolveNaturalDefaultRoles(
+  player: PlayerRecord
+): { ipRole: string; oopRole: string } {
   const pickRole = (
     currentName: string | undefined,
-    catalog: Fm27RoleItem[],
+    phase: 'In Possession' | 'Out of Possession',
     fallback: string
   ): string => {
+    const naturalPool = getNaturalRolesForPlayer(player, phase);
     const existing = currentName
-      ? catalog.find((r) => r.name.toLowerCase() === currentName.toLowerCase())
+      ? naturalPool.find((r) => r.name.toLowerCase() === currentName.toLowerCase())
       : undefined;
-    if (existing && isNaturalForRole(existing)) {
+    if (existing) {
       return existing.name;
     }
 
-    const naturalPool = catalog.filter(isNaturalForRole);
-    const pool = naturalPool.length > 0 ? naturalPool : catalog;
     let bestName = fallback;
     let bestScore = -1;
-    for (const role of pool) {
+    for (const role of naturalPool) {
       const score = scorePlayerForFm27Role(player, role);
       if (score > bestScore) {
         bestScore = score;
@@ -503,8 +515,8 @@ export function resolveNaturalDefaultRoles(
   );
 
   return {
-    ipRole: pickRole(player.ipRole, IN_POSSESSION_ROLES, inferred.ipRole),
-    oopRole: pickRole(player.oopRole, OUT_OF_POSSESSION_ROLES, inferred.oopRole),
+    ipRole: pickRole(player.ipRole, 'In Possession', inferred.ipRole),
+    oopRole: pickRole(player.oopRole, 'Out of Possession', inferred.oopRole),
   };
 }
 

@@ -444,6 +444,10 @@ export const KnowledgeBasePanel: React.FC<KnowledgeBasePanelProps> = ({
                             ))}
                           </div>
                         </div>
+                      ) : players.length > 0 ? (
+                        <div className="pt-1.5 border-t border-slate-800/80 text-[11px] text-slate-500 italic">
+                          No natural/accomplished fits (&ge;15/20) in your active {players.length}-player squad for {role.name}.
+                        </div>
                       ) : (
                         <div className="pt-1.5 border-t border-slate-800/80 text-[11px] text-slate-500 italic">
                           Load a .fm save to rank your squad&apos;s best fits for {role.name}.

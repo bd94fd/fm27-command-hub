@@ -281,12 +281,20 @@ function solveSingleLineup(
           ? availableGks
           : outfieldPool.filter((p) => !usedIds.has(p.id));
     } else {
-      // Never place a GK in an outfield slot unless zero outfielders remain
+      // Never place a GK in an outfield slot unless zero outfielders remain.
+      // Enforce strict positional familiarity (>= 15/20) first, falling back only if zero natural/accomplished candidates exist.
       const availableOutfield = outfieldPool.filter((p) => !usedIds.has(p.id));
-      candidates =
-        availableOutfield.length > 0
-          ? availableOutfield
-          : gkPool.filter((p) => !usedIds.has(p.id));
+      const naturalOutfield = availableOutfield.filter((p) =>
+        isNaturalForPositionGroup(p, slot.positionGroup)
+      );
+      if (naturalOutfield.length > 0) {
+        candidates = naturalOutfield;
+      } else {
+        candidates =
+          availableOutfield.length > 0
+            ? availableOutfield
+            : gkPool.filter((p) => !usedIds.has(p.id));
+      }
     }
 
     if (candidates.length === 0) {
@@ -305,11 +313,11 @@ function solveSingleLineup(
         ),
       }))
       .sort((a, b) => {
-        if (b.score.combinedFitPct !== a.score.combinedFitPct) {
-          return b.score.combinedFitPct - a.score.combinedFitPct;
-        }
         if (a.score.isNaturalPosition !== b.score.isNaturalPosition) {
           return a.score.isNaturalPosition ? -1 : 1;
+        }
+        if (b.score.combinedFitPct !== a.score.combinedFitPct) {
+          return b.score.combinedFitPct - a.score.combinedFitPct;
         }
         if (b.player.ability !== a.player.ability) {
           return b.player.ability - a.player.ability;
@@ -325,7 +333,7 @@ function solveSingleLineup(
     assigned.set(slot.slotId, winner);
   }
 
-  // Pairwise swap improvement pass for outfield slots to guarantee global optimality
+  // Pairwise swap improvement pass for outfield slots (never degrading natural-position count)
   const outfieldTemplates = templates.filter((t) => t.positionGroup !== 'Goalkeeper');
   let improved = true;
   let guard = 0;
@@ -340,14 +348,27 @@ function solveSingleLineup(
         const pB = assigned.get(sB.slotId);
         if (!pA || !pB) continue;
 
-        const currentSum =
-          evaluatePlayerForSlot(pA, sA.positionGroup, sA.ipRole, sA.oopRole).combinedFitPct +
-          evaluatePlayerForSlot(pB, sB.positionGroup, sB.ipRole, sB.oopRole).combinedFitPct;
-        const swappedSum =
-          evaluatePlayerForSlot(pB, sA.positionGroup, sA.ipRole, sA.oopRole).combinedFitPct +
-          evaluatePlayerForSlot(pA, sB.positionGroup, sB.ipRole, sB.oopRole).combinedFitPct;
+        const curA = evaluatePlayerForSlot(pA, sA.positionGroup, sA.ipRole, sA.oopRole);
+        const curB = evaluatePlayerForSlot(pB, sB.positionGroup, sB.ipRole, sB.oopRole);
+        const swpA = evaluatePlayerForSlot(pB, sA.positionGroup, sA.ipRole, sA.oopRole);
+        const swpB = evaluatePlayerForSlot(pA, sB.positionGroup, sB.ipRole, sB.oopRole);
 
-        if (swappedSum > currentSum) {
+        const currentNaturalCount =
+          (curA.isNaturalPosition ? 1 : 0) + (curB.isNaturalPosition ? 1 : 0);
+        const swappedNaturalCount =
+          (swpA.isNaturalPosition ? 1 : 0) + (swpB.isNaturalPosition ? 1 : 0);
+
+        if (swappedNaturalCount < currentNaturalCount) {
+          continue;
+        }
+
+        const currentSum = curA.combinedFitPct + curB.combinedFitPct;
+        const swappedSum = swpA.combinedFitPct + swpB.combinedFitPct;
+
+        if (
+          swappedNaturalCount > currentNaturalCount ||
+          swappedSum > currentSum
+        ) {
           assigned.set(sA.slotId, pB);
           assigned.set(sB.slotId, pA);
           improved = true;

@@ -281,3 +281,30 @@ test('Pass 1: computeDynamicScatterScale adapts dynamically to lower-league wage
   assert.match(tfScale.formatTick(tfScale.maxY), /M$/);
 });
 
+test('Squad Advice positional ranking gates on >= 15/20 familiarity so an AML (unaccomplished WBL) is ranked at W, not #1 LB', () => {
+  const amlPlayer = makePlayer({
+    id: 'aml-winger',
+    name: 'Natural AML',
+    position: 'AM (L)',
+    ability: 3.5,
+    potential: 4.0,
+    positionRatings: { AML: 20, WBL: 10, DL: 8 },
+  });
+  const audit = buildSquadTransferAudit([amlPlayer], '12/10/2027', {
+    balanceLabel: '£100K',
+    wagePayrollWeekly: 2000,
+    wageBudgetWeekly: 5000,
+  });
+  const advice = audit.playerAdvice.find((a) => a.player.id === 'aml-winger');
+  assert.ok(advice);
+  assert.ok(
+    advice.tags.includes('#1 W'),
+    `Expected AML player to be ranked #1 W, got tags: ${advice.tags.join(', ')}`
+  );
+  assert.equal(
+    advice.tags.some((t) => /LB$/i.test(t)),
+    false,
+    `AML with WBL 10/20 must never be ranked at LB, got tags: ${advice.tags.join(', ')}`
+  );
+});
+

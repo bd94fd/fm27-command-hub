@@ -32,6 +32,17 @@ export class AnalystTimeoutError extends Error {
   }
 }
 
+export class AnalystOverloadError extends Error {
+  readonly status = 503;
+
+  constructor(
+    message = 'The AI Tactical Analyst is temporarily busy due to high demand. Automatic retries and model failover were attempted — please wait a few seconds and try again.'
+  ) {
+    super(message);
+    this.name = 'AnalystOverloadError';
+  }
+}
+
 export function isNotFoundError(err: unknown): boolean {
   if (!err) return false;
   if (typeof err === 'object' && 'status' in err && (err as { status?: unknown }).status === 404) {
@@ -39,6 +50,64 @@ export function isNotFoundError(err: unknown): boolean {
   }
   const msg = err instanceof Error ? err.message : String(err);
   return /\b404\b|NOT_FOUND|no longer available|not found/i.test(msg);
+}
+
+export function isTransientOverloadError(err: unknown): boolean {
+  if (!err) return false;
+  if (err instanceof AnalystOverloadError) return true;
+  if (typeof err === 'object') {
+    const status = (err as { status?: unknown }).status;
+    const code = (err as { code?: unknown }).code;
+    if (status === 503 || status === 429 || code === 503 || code === 429) {
+      return true;
+    }
+  }
+  const msg = err instanceof Error ? err.message : String(err);
+  return /\b(503|429)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded|temporarily unavailable|rate limit/i.test(
+    msg
+  );
+}
+
+export function formatFriendlyGeminiError(err: unknown): string {
+  if (err instanceof AnalystTimeoutError) {
+    return err.message;
+  }
+  if (err instanceof AnalystOverloadError || isTransientOverloadError(err)) {
+    return 'The AI Tactical Analyst is temporarily busy due to high demand. Automatic retries and model failover were attempted — please wait a few seconds and try again.';
+  }
+  const raw = err instanceof Error ? err.message : String(err || '');
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return 'The Tactical Analyst encountered an unexpected error. Please try again.';
+  }
+  // Unwrap raw JSON error blobs returned by Google GenAI SDK / upstream proxies
+  if (trimmed.includes('{"error"') || trimmed.startsWith('{')) {
+    const jsonStart = trimmed.indexOf('{');
+    try {
+      const parsed = JSON.parse(trimmed.slice(jsonStart)) as {
+        error?: { message?: string; status?: string; code?: number };
+        message?: string;
+      };
+      const innerCode = parsed.error?.code;
+      const innerStatus = parsed.error?.status || '';
+      const innerMsg = parsed.error?.message || parsed.message || '';
+      if (
+        innerCode === 503 ||
+        innerCode === 429 ||
+        /UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded/i.test(
+          `${innerStatus} ${innerMsg}`
+        )
+      ) {
+        return 'The AI Tactical Analyst is temporarily busy due to high demand. Automatic retries and model failover were attempted — please wait a few seconds and try again.';
+      }
+      if (innerMsg) {
+        return innerMsg;
+      }
+    } catch {
+      return 'The Tactical Analyst encountered a temporary service error. Please try again in a moment.';
+    }
+  }
+  return trimmed;
 }
 
 function isTimeoutLike(err: unknown): boolean {
@@ -81,18 +150,24 @@ export interface GeminiServiceOptions {
   config?: ServerConfig;
   clientFactory?: (apiKey: string) => GeminiClientLike;
   now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
 }
+
+export const OVERLOAD_RETRY_DELAYS_MS = [1500, 3000] as const;
 
 export class GeminiService {
   private readonly config: ServerConfig;
   private readonly clientFactory: (apiKey: string) => GeminiClientLike;
   private readonly now: () => number;
+  private readonly sleep: (ms: number) => Promise<void>;
   private discoveryCache: DiscoveryCacheEntry | null = null;
 
   constructor(options: GeminiServiceOptions = {}) {
     this.config = options.config ?? loadServerConfig();
     this.clientFactory = options.clientFactory ?? createGeminiClient;
     this.now = options.now ?? (() => Date.now());
+    this.sleep =
+      options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
   }
 
   getConfig(): ServerConfig {
@@ -285,11 +360,54 @@ export class GeminiService {
       }
     };
 
+    const resolveFailoverModel = (model: string): string => {
+      if (model === DEEP_MODEL_ID) return FAST_MODEL_ID;
+      if (model === FAST_MODEL_ID) return DEEP_MODEL_ID;
+      return model !== fallbackModel ? fallbackModel : DEEP_MODEL_ID;
+    };
+
+    const invokeWithOverloadRetry = async (model: string) => {
+      let lastErr: unknown;
+      for (let attempt = 0; attempt <= OVERLOAD_RETRY_DELAYS_MS.length; attempt++) {
+        try {
+          return await invoke(model);
+        } catch (err: unknown) {
+          lastErr = err;
+          if (!isTransientOverloadError(err)) {
+            throw err;
+          }
+          if (attempt < OVERLOAD_RETRY_DELAYS_MS.length) {
+            const delayMs = OVERLOAD_RETRY_DELAYS_MS[attempt];
+            const remainingMs = deadline - this.now();
+            if (remainingMs <= delayMs + 500) {
+              break;
+            }
+            await this.sleep(delayMs);
+          }
+        }
+      }
+      throw lastErr;
+    };
+
     try {
-      return await invoke(primaryModel);
+      return await invokeWithOverloadRetry(primaryModel);
     } catch (err: unknown) {
       if (isNotFoundError(err) && primaryModel !== fallbackModel) {
-        return await invoke(fallbackModel);
+        return await invokeWithOverloadRetry(fallbackModel);
+      }
+      if (isTransientOverloadError(err)) {
+        const failoverModel = resolveFailoverModel(primaryModel);
+        if (failoverModel !== primaryModel && deadline - this.now() > 500) {
+          try {
+            return await invokeWithOverloadRetry(failoverModel);
+          } catch (failoverErr: unknown) {
+            if (isTransientOverloadError(failoverErr)) {
+              throw new AnalystOverloadError();
+            }
+            throw failoverErr;
+          }
+        }
+        throw new AnalystOverloadError();
       }
       throw err;
     }
