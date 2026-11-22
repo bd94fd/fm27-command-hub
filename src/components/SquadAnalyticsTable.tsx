@@ -536,6 +536,13 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
     ]
   );
 
+  const [visibleRowLimit, setVisibleRowLimit] = useState<number>(35);
+
+  const visibleRows = useMemo(
+    () => filteredRows.slice(0, visibleRowLimit),
+    [filteredRows, visibleRowLimit]
+  );
+
   const summary = useMemo(() => computeSquadSummary(filteredRows), [filteredRows]);
 
   const activeSecondaryFilterCount = countActiveSecondaryFilters({
@@ -1457,7 +1464,7 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
             ) : displayMode === 'cards' ? (
               /* ── MOBILE-FIRST COMPACT CARD LIST ── */
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {filteredRows.map((row) => {
+                {visibleRows.map((row) => {
                   const p = row.player;
                   return (
                     <button
@@ -1610,7 +1617,7 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-xs">
-                    {filteredRows.map((row) => {
+                    {visibleRows.map((row) => {
                       const p = row.player;
                       const showRolesSubline = !activeColumns.includes('roles');
                       return (
@@ -1680,6 +1687,30 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
                     })}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {filteredRows.length > visibleRows.length && (
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Showing {visibleRows.length} of {filteredRows.length} players
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setVisibleRowLimit((prev) => prev + 35)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer transition"
+                  >
+                    Show 35 More
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVisibleRowLimit(filteredRows.length)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600/25 cursor-pointer transition"
+                  >
+                    Show All ({filteredRows.length})
+                  </button>
+                </div>
               </div>
             )}
           </div>

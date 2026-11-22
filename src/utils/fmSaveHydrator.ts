@@ -7,6 +7,7 @@ import {
   DeepTacticRecord,
   DivisionBenchmarks,
   FinancialRunway,
+  FmExtractionManifest,
   FormTrend,
   HydratedSquadPlayer,
   InternalReliabilityFlags,
@@ -551,6 +552,7 @@ export interface DecodedFmSavePayload {
   }>;
   jobVacancies?: JobVacancyEntry[];
   recruitmentTargets?: RecruitmentTarget[];
+  extractionManifest?: FmExtractionManifest;
   fastSync?: boolean;
   warnings?: string[];
   extractionWarnings?: string[];

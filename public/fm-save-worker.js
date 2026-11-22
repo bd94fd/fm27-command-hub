@@ -50,7 +50,11 @@ async function ensureBooted(reply, origin) {
       });
       await instance.loadPackage('micropip');
       const micropip = instance.pyimport('micropip');
-      await micropip.install(`fmsave==${FMSAVE_VERSION}`);
+      try {
+        await micropip.install(`fmsave==${FMSAVE_VERSION}`);
+      } finally {
+        micropip.destroy?.();
+      }
 
       const patcherUrl = new URL('/fm_layout_patcher.py?v=17', origin || self.location.origin).href;
       try {
@@ -90,7 +94,7 @@ function safeUnmount(instance) {
 }
 
 self.onmessage = async (event) => {
-  const { type, file, requestId, clubHint, scope, origin, fastSync } = event.data || {};
+  const { type, file, buffer, fileName, requestId, clubHint, scope, origin, fastSync } = event.data || {};
   const useFastSync = Boolean(fastSync);
   const reply = (payload) => self.postMessage({ ...payload, requestId });
 
@@ -107,23 +111,36 @@ self.onmessage = async (event) => {
     return;
   }
 
-  if ((type === 'parse_fm' || type === 'parse') && file) {
+  if ((type === 'parse_fm' || type === 'parse') && (file || buffer)) {
     let instance = null;
     let activeStep = 'Initialization';
+    let tempBufferPath = null;
     const parseStartMs = Date.now();
     const elapsedSec = () => Number(((Date.now() - parseStartMs) / 1000).toFixed(1));
+    const resolvedFileName = file?.name || fileName || 'save.fm';
+    const resolvedFileSize = file?.size ?? (buffer instanceof ArrayBuffer ? buffer.byteLength : 0);
+    const cleanupTempBuffer = () => {
+      if (instance && tempBufferPath) {
+        try {
+          instance.FS.unlink(tempBufferPath);
+        } catch {
+          // ignore
+        }
+        tempBufferPath = null;
+      }
+    };
     try {
       instance = await ensureBooted(reply, origin);
 
       const attachRuntimeMeta = (payload) => {
         if (!payload || typeof payload !== 'object') return payload;
         if (payload.meta) {
-          payload.meta.fileName = file.name;
-          payload.meta.fileSizeMb = Number(((file.size || 0) / (1024 * 1024)).toFixed(2));
+          payload.meta.fileName = resolvedFileName;
+          payload.meta.fileSizeMb = Number(((resolvedFileSize || 0) / (1024 * 1024)).toFixed(2));
           payload.meta.decodedAtIso = new Date().toISOString();
           if (scope) payload.meta.importScope = scope;
           payload.meta.fastSync = useFastSync;
-          payload.meta.mountMode = 'WORKERFS';
+          payload.meta.mountMode = file ? 'WORKERFS' : 'BUFFER_TMP';
         }
         payload.stepTimingsMs = {
           ...(payload.stepTimingsMs || {}),
@@ -134,14 +151,15 @@ self.onmessage = async (event) => {
 
       const emitCheckpoint = (stageName) => {
         try {
-          const snapshot = attachRuntimeMeta(
-            JSON.parse(mapperModule.step_snapshot_payload(stageName))
-          );
+          let snapshotStr = mapperModule.step_snapshot_payload(stageName);
+          const snapshot = attachRuntimeMeta(JSON.parse(snapshotStr));
+          snapshotStr = null;
           reply({
             type: 'checkpoint',
             stage: stageName,
             payload: snapshot,
           });
+          instance.runPython('import gc; gc.collect()');
         } catch {
           // Non-fatal: continue extraction even if a checkpoint snapshot fails
         }
@@ -149,22 +167,34 @@ self.onmessage = async (event) => {
 
       // ── STAGE 1: Open save + Club & Squad (52 attrs, traits, badges, direct contract/bans/injuries)
       activeStep = 'Stage 1/4: Opening save via WORKERFS';
-      safeUnmount(instance);
-      instance.FS.mkdirTree(MOUNT_DIR);
-      instance.FS.mount(
-        instance.FS.filesystems.WORKERFS,
-        { files: [file] },
-        MOUNT_DIR
-      );
-      const savePath = `${MOUNT_DIR}/${file.name}`;
+      let savePath;
+      if (file) {
+        safeUnmount(instance);
+        instance.FS.mkdirTree(MOUNT_DIR);
+        instance.FS.mount(
+          instance.FS.filesystems.WORKERFS,
+          { files: [file] },
+          MOUNT_DIR
+        );
+        savePath = `${MOUNT_DIR}/${resolvedFileName}`;
+      } else {
+        activeStep = 'Stage 1/4: Staging save buffer to temporary WASM file';
+        tempBufferPath = `/tmp/fm_save_${requestId || Date.now()}.fm`;
+        let bytes = new Uint8Array(buffer);
+        instance.FS.writeFile(tempBufferPath, bytes);
+        bytes = null;
+        savePath = tempBufferPath;
+      }
 
-      const totalMb = ((file.size || 0) / (1024 * 1024)).toFixed(1);
+      const totalMb = ((resolvedFileSize || 0) / (1024 * 1024)).toFixed(1);
       reply({
         type: 'stage',
         stage: 'read',
         step: 'Stage 1/4',
+        phase: 'open_save',
+        progressPct: 10,
         elapsedSec: elapsedSec(),
-        label: `Stage 1/4: Opening ${file.name} (${totalMb} MB) via zero-copy WORKERFS...`,
+        label: `Stage 1/4: Opening ${resolvedFileName} (${totalMb} MB) via ${file ? 'zero-copy WORKERFS' : 'temp buffer'}...`,
       });
       await yieldTick();
 
@@ -181,6 +211,8 @@ self.onmessage = async (event) => {
         type: 'stage',
         stage: 'parse',
         step: 'Stage 1/4',
+        phase: 'squad',
+        progressPct: 22,
         elapsedSec: elapsedSec(),
         label: `Stage 1/4: Opened ${meta.game} (${meta.gameDateDmy || 'live'} · ${meta.clubName}) — extracting squad, 52 attributes, traits & direct contracts/bans/injuries (${elapsedSec()}s)...`,
       });
@@ -378,6 +410,7 @@ self.onmessage = async (event) => {
 
       const parsed = attachRuntimeMeta(JSON.parse(mapperModule.step_finalize()));
 
+      cleanupTempBuffer();
       safeUnmount(instance);
       reply({ type: 'result', data: parsed });
     } catch (err) {
@@ -388,6 +421,7 @@ self.onmessage = async (event) => {
           // ignore
         }
       }
+      cleanupTempBuffer();
       if (instance) safeUnmount(instance);
 
       const rawMsg = err?.message || String(err);
@@ -395,7 +429,7 @@ self.onmessage = async (event) => {
       if (/NotAFmSaveError/i.test(rawMsg)) {
         friendly = 'This file is not a valid Football Manager (.fm) save file.';
       } else if (/UnsupportedGameError/i.test(rawMsg)) {
-        friendly = `This .fm save comes from an unsupported Football Manager version/build. fmsave 0.14.1 supports FM26 and FM27 saves.`;
+        friendly = `This .fm save comes from an unsupported Football Manager version/build. fmsave ${FMSAVE_VERSION} supports FM26 and FM27 saves.`;
       } else if (/CorruptSaveError/i.test(rawMsg)) {
         friendly = 'The .fm save appears incomplete or still being written by Football Manager. Save again or copy the file first.';
       } else if (/MemoryError|out of memory|abort\(/i.test(rawMsg)) {

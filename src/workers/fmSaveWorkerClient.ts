@@ -116,6 +116,8 @@ export function formatWorkerTimeoutMessage(
 export interface WorkerProgressEvent {
   stage: 'boot' | 'install' | 'read' | 'parse';
   step?: string;
+  phase?: string;
+  progressPct?: number;
   label: string;
   elapsedSec?: number;
 }
@@ -271,7 +273,29 @@ export class FmSaveWorkerClient {
         );
       };
 
-      this.activeReject = reject;
+      const handleVisibilityChange = () => {
+        if (
+          typeof document !== 'undefined' &&
+          document.visibilityState === 'visible' &&
+          this.activeRequestId === requestId &&
+          this.isJobActive
+        ) {
+          resetInactivityWatchdog();
+        }
+      };
+      const detachVisibilityListener = () => {
+        if (typeof document !== 'undefined' && typeof document.removeEventListener === 'function') {
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
+        }
+      };
+      if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+      }
+
+      this.activeReject = (err: Error) => {
+        detachVisibilityListener();
+        reject(err);
+      };
       resetInactivityWatchdog();
       this.hardCeilingTimer = setTimeout(
         () => failWithTimeout('ceiling', this.hardCeilingMs),
@@ -289,6 +313,9 @@ export class FmSaveWorkerClient {
           options?.onProgress?.({
             stage: data.stage,
             step: data.step,
+            phase: typeof data.phase === 'string' ? data.phase : undefined,
+            progressPct:
+              typeof data.progressPct === 'number' ? data.progressPct : undefined,
             label: data.label,
             elapsedSec:
               typeof data.elapsedSec === 'number'
@@ -312,6 +339,7 @@ export class FmSaveWorkerClient {
         }
 
         if (data.success || data.type === 'result') {
+          detachVisibilityListener();
           this.clearWatchdogs();
           this.isJobActive = false;
           this.activeReject = null;
@@ -319,6 +347,7 @@ export class FmSaveWorkerClient {
           return;
         }
 
+        detachVisibilityListener();
         recoverOrReject(
           'error',
           data.error || data.message || 'Unknown worker extraction error.'

@@ -18,6 +18,8 @@ export type { FmImportScope };
 export interface FmSaveProgressStage {
   stage: 'boot' | 'install' | 'read' | 'parse';
   step?: string;
+  phase?: string;
+  progressPct?: number;
   label: string;
   elapsedSec?: number;
 }
@@ -546,6 +548,17 @@ export function decodeFmSaveInBrowserWorker(
     let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
     let hardCeilingTimer: ReturnType<typeof setTimeout> | null = null;
 
+    const handleVisibilityChange = () => {
+      if (
+        typeof document !== 'undefined' &&
+        document.visibilityState === 'visible' &&
+        !settled &&
+        isJobActive
+      ) {
+        resetInactivityWatchdog();
+      }
+    };
+
     const cleanup = () => {
       if (inactivityTimer) {
         clearTimeout(inactivityTimer);
@@ -557,6 +570,9 @@ export function decodeFmSaveInBrowserWorker(
       }
       isJobActive = false;
       activeCancelFn = null;
+      if (typeof document !== 'undefined' && typeof document.removeEventListener === 'function') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
       worker.removeEventListener('message', handleMessage);
       worker.removeEventListener('error', handleError);
       worker.removeEventListener('messageerror', handleMessageError);
@@ -618,6 +634,10 @@ export function decodeFmSaveInBrowserWorker(
       );
     };
 
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+
     const handleMessage = (event: MessageEvent) => {
       const msg = event.data;
       if (!msg || msg.requestId !== requestId) return;
@@ -629,6 +649,9 @@ export function decodeFmSaveInBrowserWorker(
           onProgress({
             stage: msg.stage,
             step: msg.step,
+            phase: typeof msg.phase === 'string' ? msg.phase : undefined,
+            progressPct:
+              typeof msg.progressPct === 'number' ? msg.progressPct : undefined,
             label: msg.label,
             elapsedSec:
               typeof msg.elapsedSec === 'number'

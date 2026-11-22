@@ -316,6 +316,26 @@ export interface JobVacancyEntry {
   [key: string]: unknown;
 }
 
+export interface FmExtractionManifest {
+  seniorSquad: number;
+  youthReserves: number;
+  totalPlayers: number;
+  shortlistScouted: number;
+  staff: number;
+  playedMatches: number;
+  upcomingFixtures: number;
+  activeInjuries: number;
+  activeSuspensions: number;
+  playerMatchStats: number;
+  playerSeasonHistory: number;
+  teamMatchStats: number;
+  tactics: number;
+  hasFinances: boolean;
+  hasLeagueStanding: boolean;
+  warningsCount: number;
+  fastSync: boolean;
+}
+
 export interface Pass0ExtractionPayload {
   clubUid: number;
   squad: HydratedSquadPlayer[];
@@ -338,6 +358,7 @@ export interface Pass0ExtractionPayload {
   squadPlanner?: SquadPlannerSlot[];
   jobVacancies: JobVacancyEntry[];
   recruitmentTargets: RecruitmentTarget[];
+  extractionManifest?: FmExtractionManifest;
   extractionWarnings?: string[];
   fastSync?: boolean;
   stepTimingsMs?: Record<string, number>;

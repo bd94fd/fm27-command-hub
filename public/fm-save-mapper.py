@@ -4853,10 +4853,40 @@ def _build_current_payload() -> dict[str, Any]:
     """Assemble a clean JSON-serializable payload from current _STATE without closing the save.
     Used for Progressive Checkpoint Recovery (Stages 1-3) and finalization.
     Strictly contains ZERO raw CA/PA or raw hidden integers."""
+    players_out = _STATE["players_out"]
+    senior_count = 0
+    youth_reserve_count = 0
+    for p in players_out:
+        sq = str(p.get("squadTier") or p.get("squad") or "").lower()
+        if any(tok in sq for tok in ("u18", "u19", "u21", "u23", "youth", "reserve", "b team", "b-team", "jong")):
+            youth_reserve_count += 1
+        else:
+            senior_count += 1
+
+    extraction_manifest = {
+        "seniorSquad": senior_count,
+        "youthReserves": youth_reserve_count,
+        "totalPlayers": len(players_out),
+        "shortlistScouted": len(_STATE.get("recruitment_targets") or []),
+        "staff": len(_STATE.get("staff_out") or []),
+        "playedMatches": len(_STATE.get("played_matches") or []),
+        "upcomingFixtures": len(_STATE.get("upcoming_fixtures") or []),
+        "activeInjuries": len(_STATE.get("active_injuries") or []),
+        "activeSuspensions": len(_STATE.get("active_suspensions") or []),
+        "playerMatchStats": len(_STATE.get("player_match_stats") or {}),
+        "playerSeasonHistory": len(_STATE.get("player_season_history") or {}),
+        "teamMatchStats": len(_STATE.get("team_match_stats") or {}),
+        "tactics": len(_STATE.get("tactics") or []),
+        "hasFinances": _STATE.get("finances") is not None,
+        "hasLeagueStanding": _STATE.get("league_standing") is not None,
+        "warningsCount": len(_STATE.get("warnings") or []),
+        "fastSync": bool(_STATE.get("fast_sync", False)),
+    }
+
     raw_payload = {
         "meta": _STATE["meta"],
         "clubUid": _STATE["club_uid"],
-        "players": _STATE["players_out"],
+        "players": players_out,
         "staff": _STATE.get("staff_out", []),
         "playedMatches": _STATE["played_matches"],
         "upcomingFixtures": _STATE["upcoming_fixtures"],
@@ -4882,6 +4912,7 @@ def _build_current_payload() -> dict[str, Any]:
         "squadPlanner": _STATE.get("squad_planner", []),
         "jobVacancies": _STATE["job_vacancies"],
         "recruitmentTargets": _STATE["recruitment_targets"],
+        "extractionManifest": extraction_manifest,
         "fastSync": bool(_STATE.get("fast_sync", False)),
         "warnings": list(_STATE["warnings"]),
         "extractionWarnings": list(_STATE["warnings"]),
@@ -5030,6 +5061,7 @@ def step_finalize() -> str:
         _record_fast_sync_skip_note()
     payload = _build_current_payload()
     step_close()
+    gc.collect()
     return json.dumps(payload)
 
 
