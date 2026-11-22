@@ -1,6 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { Calendar, Filter, Sparkles, Trophy } from 'lucide-react';
 import { MatchLogEntry } from '../types/fm27';
+import {
+  buildMatchMomentumSummary,
+  buildSeasonChronicle,
+} from '../utils/seasonInsights';
 
 export interface PostMatchDebriefData {
   headlineVerdict: string;
@@ -263,8 +267,78 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
   const draws = filteredMatches.filter((m) => m.result === 'D').length;
   const losses = filteredMatches.filter((m) => m.result === 'L').length;
 
+  const momentumSummary = useMemo(
+    () => buildMatchMomentumSummary(filteredMatches),
+    [filteredMatches]
+  );
+  const seasonChronicle = useMemo(
+    () => buildSeasonChronicle(matches),
+    [matches]
+  );
+
   return (
     <div className="space-y-4">
+      {momentumSummary && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-mono uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-semibold">
+                Match Momentum &amp; xG Story
+              </span>
+              <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                {momentumSummary.actualPoints} pts vs {momentumSummary.expectedPoints} xPts (
+                {momentumSummary.pointsDelta >= 0 ? '+' : ''}
+                {momentumSummary.pointsDelta})
+              </span>
+            </div>
+            <div className="text-sm font-semibold text-slate-900 dark:text-white">
+              {momentumSummary.verdictTitle}
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-300">
+              {momentumSummary.verdictDetail}
+            </p>
+            {momentumSummary.matchesWithXg > 0 && (
+              <div className="flex flex-wrap gap-2 pt-1 text-[11px] font-mono text-slate-600 dark:text-slate-300">
+                <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800">
+                  Goals vs xG: {momentumSummary.goalsFor} vs {momentumSummary.xGFor} (
+                  {momentumSummary.finishingDelta >= 0 ? '+' : ''}
+                  {momentumSummary.finishingDelta})
+                </span>
+                <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800">
+                  Conceded vs xGA: {momentumSummary.goalsAgainst} vs {momentumSummary.xGAgainst}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {seasonChronicle.length > 0 && (
+            <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
+              <div className="text-[11px] font-mono uppercase tracking-wider text-sky-600 dark:text-sky-400 font-semibold">
+                Season Chronicle
+              </div>
+              <div className="space-y-1.5">
+                {seasonChronicle.slice(0, 3).map((s) => (
+                  <div
+                    key={s.seasonLabel}
+                    className="flex flex-wrap items-center justify-between gap-2 text-xs px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/60"
+                  >
+                    <span className="font-mono font-semibold text-slate-900 dark:text-white">
+                      {s.seasonLabel}
+                    </span>
+                    <span className="font-mono text-slate-700 dark:text-slate-200">
+                      {s.wins}W-{s.draws}D-{s.losses}L · {s.goalsFor}:{s.goalsAgainst}
+                    </span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {s.cleanSheets} CS · {s.longestUnbeatenRun} unbeaten
+                      {s.biggestWin ? ` · Best: ${s.biggestWin}` : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       <div className="p-4 sm:p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 pb-4 border-b border-slate-200 dark:border-slate-800">
           <div>

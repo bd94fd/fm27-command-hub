@@ -54,8 +54,33 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
       : d.extractionWarnings || d.warnings || [];
   const warningsList = sanitizeReaderNotes(rawWarningsList);
 
+  const healthChecks = [
+    { label: 'Squad', ok: d.players.length > 0, detail: `${d.players.length}` },
+    { label: 'Season Stats', ok: playersWithSeasonStats > 0, detail: `${playersWithSeasonStats}` },
+    { label: 'Results', ok: d.playedMatches.length > 0, detail: `${d.playedMatches.length}` },
+    { label: 'Staff', ok: staffCount > 0, detail: `${staffCount}` },
+    { label: 'Finances', ok: Boolean(runway || d.finances), detail: runway ? runway.status : d.finances ? 'OK' : '—' },
+    { label: 'Recruitment', ok: targetsCount > 0, detail: targetsCount > 0 ? `${targetsCount}` : '0' },
+  ];
+
   return (
     <section className="p-5 bg-emerald-950/30 border border-emerald-500/40 rounded-xl space-y-4">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {healthChecks.map((item) => (
+          <span
+            key={item.label}
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono border ${
+              item.ok
+                ? 'bg-emerald-500/15 border-emerald-500/35 text-emerald-300'
+                : 'bg-amber-500/15 border-amber-500/35 text-amber-300'
+            }`}
+          >
+            <span>{item.ok ? '✓' : '⚠'}</span>
+            <span>{item.label}:</span>
+            <strong className="text-white">{item.detail}</strong>
+          </span>
+        ))}
+      </div>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-emerald-500/25">
         <div className="space-y-1">
           <div className="inline-flex items-center gap-2 text-xs font-mono font-semibold text-emerald-400">

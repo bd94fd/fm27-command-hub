@@ -93,12 +93,13 @@ function createMemoryStorage(maxBytes?: number): StorageLike {
   };
 }
 
-test('captureProgressionSnapshot enforces 30-save rolling cap and deduplicates by saveDate', () => {
+test('captureProgressionSnapshot enforces rolling cap and deduplicates by saveDate', () => {
   const store = createMemoryStorage();
   const baseSquad = [makePlayer(1001, 'Lucas Peeters', 20)];
+  const totalSaves = MAX_PROGRESSION_SNAPSHOTS + 5;
 
-  for (let i = 1; i <= 35; i += 1) {
-    const day = String(i).padStart(2, '0');
+  for (let i = 1; i <= totalSaves; i += 1) {
+    const day = String(i).padStart(3, '0');
     captureProgressionSnapshot(
       `2026-09-${day}`,
       'KVV Zelzate',
@@ -109,15 +110,16 @@ test('captureProgressionSnapshot enforces 30-save rolling cap and deduplicates b
 
   let archive = loadProgressionArchive(store);
   assert.equal(archive.length, MAX_PROGRESSION_SNAPSHOTS);
-  assert.equal(archive[0].saveDate, '2026-09-06');
-  assert.equal(archive[archive.length - 1].saveDate, '2026-09-35');
+  assert.equal(archive[0].saveDate, '2026-09-006');
+  const lastDate = `2026-09-${String(totalSaves).padStart(3, '0')}`;
+  assert.equal(archive[archive.length - 1].saveDate, lastDate);
 
   // Re-capturing an existing saveDate deduplicates instead of growing
   const updatedSquad = [
     makePlayer(1001, 'Lucas Peeters', 20, { determination: 15 }),
   ];
   captureProgressionSnapshot(
-    '2026-09-35',
+    lastDate,
     'KVV Zelzate',
     updatedSquad,
     store
@@ -125,7 +127,7 @@ test('captureProgressionSnapshot enforces 30-save rolling cap and deduplicates b
 
   archive = loadProgressionArchive(store);
   assert.equal(archive.length, MAX_PROGRESSION_SNAPSHOTS);
-  const matching = archive.filter((s) => s.saveDate === '2026-09-35');
+  const matching = archive.filter((s) => s.saveDate === lastDate);
   assert.equal(matching.length, 1);
   assert.equal(matching[0].players[1001].attributes.determination, 15);
 

@@ -1251,8 +1251,22 @@ def _extract_player_object_suspensions(
         if not isinstance(raw_bans, (list, tuple)):
             continue
         for b in raw_bans:
+            if getattr(b, "is_served", False) or getattr(b, "served", False):
+                continue
             matches_rem = _int(
-                _first_attr(b, ("matches_remaining", "games_remaining", "matches", "ban_length", "remaining")),
+                _first_attr(
+                    b,
+                    (
+                        "matches_remaining",
+                        "unserved_matches",
+                        "unserved",
+                        "matches_left",
+                        "games_remaining",
+                        "matches",
+                        "ban_length",
+                        "remaining",
+                    ),
+                ),
                 1,
             ) or 0
             if matches_rem <= 0:
@@ -1315,11 +1329,25 @@ def _extract_structured_suspensions(
                     resolved_uids.add(p_uid)
 
     def _consume_ban(b: Any, fallback_uid: int | None = None) -> None:
+        if getattr(b, "is_served", False) or getattr(b, "served", False):
+            return
         p_uid = _int(_first_attr(b, ("player_uid", "person_uid", "uid")), fallback_uid)
         if p_uid is None or p_uid not in squad_uids:
             return
         matches_rem = _int(
-            _first_attr(b, ("matches_remaining", "games_remaining", "matches", "ban_length", "remaining")),
+            _first_attr(
+                b,
+                (
+                    "matches_remaining",
+                    "unserved_matches",
+                    "unserved",
+                    "matches_left",
+                    "games_remaining",
+                    "matches",
+                    "ban_length",
+                    "remaining",
+                ),
+            ),
             1,
         ) or 0
         if matches_rem <= 0:
@@ -2763,16 +2791,17 @@ def _scan_recruitment_targets_group4(
             if age < 16 or age > 34:
                 continue
 
+            is_unattached = p_club_uid in (None, 0)
             contract = getattr(p, "contract", None)
             contract_end = getattr(contract, "end", None) if contract else None
             contract_months = _int(
                 getattr(p, "contract_expiry_months", None),
-                _months_until(contract_end, game_date) if contract_end else (0 if p_club_uid is None else 999),
+                _months_until(contract_end, game_date) if contract_end else (0 if is_unattached else 999),
             )
             if contract_months is None:
-                contract_months = 0 if p_club_uid is None else 999
+                contract_months = 0 if is_unattached else 999
 
-            is_free_agent = (p_club_uid is None) or (contract is None) or (contract_months == 0)
+            is_free_agent = is_unattached or (contract is None) or (contract_months == 0)
             is_expiring = (not is_free_agent) and (0 < contract_months <= 12)
             if not (is_free_agent or is_expiring):
                 continue
@@ -7122,7 +7151,7 @@ def extract_pass_0_data(save_instance: Any, target_club_uid: int | None = None) 
         if c_uid == user_club_uid:
             continue
         contract_months = _int(_get_attr(p, "contract_expiry_months", 999), 999)
-        is_free_agent = c_uid is None or contract_months == 0
+        is_free_agent = (c_uid in (None, 0)) or (contract_months == 0)
         is_expiring = contract_months is not None and contract_months <= 6
         if is_free_agent or is_expiring:
             recruitment_targets.append({

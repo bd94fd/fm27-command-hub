@@ -11,7 +11,92 @@ import {
 
 export const FM27_PROGRESSION_ARCHIVE_KEY =
   'fm27_command_hub_progression_archive_v1';
-export const MAX_PROGRESSION_SNAPSHOTS = 30;
+export const MAX_PROGRESSION_SNAPSHOTS = 120;
+const PROGRESSION_IDB_NAME = 'fm27_progression_history_db';
+const PROGRESSION_IDB_STORE = 'archives';
+const PROGRESSION_IDB_KEY = 'default';
+
+/**
+ * Mirrors progression snapshots to IndexedDB (non-blocking) so multi-season
+ * journeyman saves are preserved even if mobile localStorage hits quota limits.
+ */
+export async function saveProgressionArchiveToIdb(
+  snapshots: ProgressionSnapshot[]
+): Promise<boolean> {
+  if (typeof indexedDB === 'undefined') return false;
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open(PROGRESSION_IDB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(PROGRESSION_IDB_STORE)) {
+          db.createObjectStore(PROGRESSION_IDB_STORE);
+        }
+      };
+      req.onsuccess = () => {
+        try {
+          const db = req.result;
+          const tx = db.transaction(PROGRESSION_IDB_STORE, 'readwrite');
+          tx.objectStore(PROGRESSION_IDB_STORE).put(
+            snapshots.slice(-MAX_PROGRESSION_SNAPSHOTS),
+            PROGRESSION_IDB_KEY
+          );
+          tx.oncomplete = () => {
+            db.close();
+            resolve(true);
+          };
+          tx.onerror = () => {
+            db.close();
+            resolve(false);
+          };
+        } catch {
+          resolve(false);
+        }
+      };
+      req.onerror = () => resolve(false);
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+export async function loadProgressionArchiveFromIdb(): Promise<
+  ProgressionSnapshot[] | null
+> {
+  if (typeof indexedDB === 'undefined') return null;
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open(PROGRESSION_IDB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(PROGRESSION_IDB_STORE)) {
+          db.createObjectStore(PROGRESSION_IDB_STORE);
+        }
+      };
+      req.onsuccess = () => {
+        try {
+          const db = req.result;
+          const tx = db.transaction(PROGRESSION_IDB_STORE, 'readonly');
+          const getReq = tx.objectStore(PROGRESSION_IDB_STORE).get(PROGRESSION_IDB_KEY);
+          getReq.onsuccess = () => {
+            const val = getReq.result;
+            db.close();
+            resolve(Array.isArray(val) ? (val as ProgressionSnapshot[]) : null);
+          };
+          getReq.onerror = () => {
+            db.close();
+            resolve(null);
+          };
+        } catch {
+          resolve(null);
+        }
+      };
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
 
 export interface StorageLike {
   getItem(key: string): string | null;

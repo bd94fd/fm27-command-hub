@@ -418,9 +418,25 @@ export function parseFmStructuredExport(
     rows = parseCsvRows(content);
   }
 
-  const headers = rows[0] || [];
-  const dataRows = rows.slice(1);
-  const lowerHeaders = headers.map((h) => h.toLowerCase().trim());
+  const rawHeaders = rows[0] || [];
+  const rawDataRows = rows.slice(1);
+
+  // FM-View-Exporter resilience:
+  // 1. Guard against FM's ~255-column export quirk by capping at 255 columns.
+  // 2. Strip blank / icon-only columns (e.g. empty <th>, 'inf', 'rec', 'icon') that can shift or pollute headers.
+  const ICON_ONLY_HEADERS = new Set(['', 'inf', 'rec', 'icon', 'status icon', '—', '-']);
+  const keptIndices: number[] = [];
+  const maxCols = Math.min(rawHeaders.length, 255);
+  for (let i = 0; i < maxCols; i++) {
+    const normalized = rawHeaders[i].toLowerCase().replace(/\s+/g, ' ').trim();
+    if (!ICON_ONLY_HEADERS.has(normalized)) {
+      keptIndices.push(i);
+    }
+  }
+  const useIndices = keptIndices.length > 0 ? keptIndices : rawHeaders.slice(0, 255).map((_, i) => i);
+  const headers = useIndices.map((i) => rawHeaders[i] ?? '');
+  const dataRows = rawDataRows.map((r) => useIndices.map((i) => r[i] ?? ''));
+  const lowerHeaders = headers.map((h) => h.toLowerCase().replace(/\s+/g, ' ').trim());
 
   const colIndex = (candidates: string[]): number => {
     for (const c of candidates) {
@@ -442,7 +458,7 @@ export function parseFmStructuredExport(
   };
 
   const nameIdx = colIndex(['player', 'name']);
-  const posIdx = colIndex(['position', 'pos']);
+  const posIdx = colIndex(['position', 'pos', 'best pos', 'nat pos']);
 
   // Detect export type
   const hasAttributes =
@@ -450,9 +466,9 @@ export function parseFmStructuredExport(
     colIndex(['stamina', 'sta']) !== -1 &&
     colIndex(['passing', 'pas']) !== -1;
   const hasSeasonStats =
-    colIndex(['rating', 'av rat']) !== -1 ||
+    colIndex(['rating', 'av rat', 'avr', 'avg rat']) !== -1 ||
     colIndex(['xg/90', 'xg']) !== -1 ||
-    colIndex(['minutes', 'mins']) !== -1;
+    colIndex(['minutes', 'mins', 'mlg']) !== -1;
   const hasSchedule =
     colIndex(['opponent', 'opposition']) !== -1 &&
     colIndex(['date']) !== -1;
@@ -465,25 +481,25 @@ export function parseFmStructuredExport(
   const parsedPlayers: ParsedPlayerDelta[] = [];
 
   if ((hasAttributes || hasSeasonStats) && nameIdx !== -1) {
-    const appsIdx = colIndex(['apps']);
-    const minsIdx = colIndex(['minutes', 'mins']);
-    const ratingIdx = colIndex(['rating', 'av rat']);
+    const appsIdx = colIndex(['apps', 'app']);
+    const minsIdx = colIndex(['minutes', 'mins', 'mlg']);
+    const ratingIdx = colIndex(['rating', 'av rat', 'avr', 'avg rat']);
     const goalsIdx = colIndex(['goals', 'gls']);
     const xgIdx = colIndex(['xg']);
     const xg90Idx = colIndex(['xg/90']);
-    const astIdx = colIndex(['assists', 'ast']);
+    const astIdx = colIndex(['assists', 'ast', 'asts']);
     const xaIdx = colIndex(['xa']);
     const xa90Idx = colIndex(['xa/90']);
-    const drb90Idx = colIndex(['drb/90']);
-    const prPassIdx = colIndex(['pr passes/90', 'prog passes/90']);
-    const hdrIdx = colIndex(['hdr %', 'hdr%']);
+    const drb90Idx = colIndex(['drb/90', 'drb pg']);
+    const prPassIdx = colIndex(['pr passes/90', 'prog passes/90', 'pr pass/90']);
+    const hdrIdx = colIndex(['hdr %', 'hdr%', 'hdrs w/90']);
     const intIdx = colIndex(['int/90']);
-    const tckRIdx = colIndex(['tck r', 'tck %']);
-    const persIdx = colIndex(['personality']);
+    const tckRIdx = colIndex(['tck r', 'tck %', 'tck%']);
+    const persIdx = colIndex(['personality', 'pers']);
     const ageIdx = colIndex(['age']);
     const abilIdx = colIndex(['ability', 'ca']);
     const potIdx = colIndex(['potential', 'pa']);
-    const expIdx = colIndex(['expires']);
+    const expIdx = colIndex(['expires', 'exp']);
     const natIdx = colIndex(['nation', 'nat']);
 
     // Attribute indices
