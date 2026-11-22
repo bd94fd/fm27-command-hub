@@ -354,6 +354,63 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
           </table>
         </div>
       </div>
+
+      {/* FM27 Tactical Effectiveness — 4-Pillar Weekly Training Focus */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 sm:p-5">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+              FM27 Tactical Effectiveness — 4-Pillar Training Guide
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Target your weakest Tactical Effectiveness pillar each week to raise matchday execution.
+            </p>
+          </div>
+          <span className="text-[11px] font-mono text-emerald-700 dark:text-emerald-400">
+            FM27 Patch 27.1.0
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {[
+            {
+              pillar: '1. Tactical Understanding',
+              sessions: 'Match Tactics · Shadow Play · IP/OOP Shape',
+              cue: 'Prioritise after formation tweaks, new signings, or dip in familiarity.',
+            },
+            {
+              pillar: '2. Player Ability',
+              sessions: 'Positional Role · Attacking/Defending Units',
+              cue: 'Target weak IP/OOP role slots and individual focus attributes.',
+            },
+            {
+              pillar: '3. Player Buy-In',
+              sessions: 'Team Bonding · Community Outreach · Praise',
+              cue: 'Schedule weekly when morale, dynamics, or squad cohesion slip.',
+            },
+            {
+              pillar: '4. Next Match Info',
+              sessions: 'Match Preview · Match Review · Set Pieces',
+              cue: 'Always slot Match Preview pre-game and Match Review post-game.',
+            },
+          ].map((item) => (
+            <div
+              key={item.pillar}
+              className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/60 p-3 space-y-1.5"
+            >
+              <div className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                {item.pillar}
+              </div>
+              <div className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+                {item.sessions}
+              </div>
+              <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                {item.cue}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 };
