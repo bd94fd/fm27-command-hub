@@ -1760,6 +1760,16 @@ def step_players() -> str:
         # Attach baseline contract details from player.contract (enriched further from save.contracts() below)
         contract_details = _extract_contract_details(contract, p)
 
+        raw_tv = getattr(p, "transfer_value", None)
+        raw_tv_state = getattr(p, "transfer_value_state", None)
+        tv_state_str = str(getattr(raw_tv_state, "value", raw_tv_state) or "").lower().strip()
+        if isinstance(raw_tv, (int, float)) and raw_tv > 0:
+            market_value: int | None = int(round(raw_tv))
+        elif tv_state_str == "zero":
+            market_value = 0
+        else:
+            market_value = None
+
         nation_lookup = _build_nation_lookup(save)
         players_out.append({
             "uid": uid,
@@ -1779,6 +1789,7 @@ def step_players() -> str:
             "heightCm": height_cm,
             "positionRatings": pos_ratings,
             "wagePw": _int(getattr(contract, "wage", None), 0) if contract else 0,
+            "marketValue": market_value,
             "expires": (_dmy(contract_end) or "N/A") if contract else "N/A",
             "contractExpiryMonths": contract_months,
             "contractDetails": contract_details,
@@ -3687,9 +3698,23 @@ def _extract_club_match_stats_fast(save: Any) -> dict[str, list[dict[str, Any]]]
                         cursor = list_at
                         player_recs.extend(recs_batch)
 
+                season_start = (
+                    datetime.date(game_date.year if game_date.month >= 7 else game_date.year - 1, 7, 1)
+                    if game_date is not None
+                    else None
+                )
+                comp_name_map = _STATE.get("comp_name_by_id") or {}
                 uid_key = str(p_uid)
                 for rec in player_recs:
                     if not getattr(rec, "has_stats", True):
+                        continue
+                    if season_start is not None and getattr(rec, "date", None) is not None and rec.date < season_start:
+                        continue
+                    comp_id = getattr(rec, "competition_id", None)
+                    if comp_id == MISSING_REFERENCE:
+                        continue
+                    comp_name_lower = str(comp_name_map.get(comp_id, "") or "").lower()
+                    if any(tok in comp_name_lower for tok in ("friendly", "non-comp", "non_comp", "reserve", "u21", "u19", "u18", "youth")):
                         continue
                     raw_rating = getattr(rec, "rating_raw", None)
                     if raw_rating is None:
@@ -3716,10 +3741,91 @@ def _extract_club_match_stats_fast(save: Any) -> dict[str, list[dict[str, Any]]]
                         "assists": _int(getattr(rec, "assists", None), 0) or 0,
                         "opponent": str(opp_name),
                         "minutes": _int(getattr(rec, "minutes", None), 0) or 0,
+                        "_compId": comp_id,
                     })
         return out
     except Exception:
         return None
+
+
+def _normalize_stat_kind(raw_kind: Any) -> str:
+    val = str(getattr(raw_kind, "value", raw_kind) or "").lower().strip()
+    if "." in val:
+        val = val.rsplit(".", 1)[-1]
+    return val
+
+
+def _format_season_label(year: Any) -> str:
+    y = _int(year, None)
+    if y is not None and 1990 <= y <= 2100:
+        return f"{y}/{str(y + 1)[-2:]}"
+    return str(year) if year else "Season"
+
+
+def _aggregate_competitive_season_history(
+    raw_rows: list[tuple[int, str, str, int, int, int, int, float]]
+) -> list[dict[str, Any]]:
+    """Merge competitive history rows (league/cup/continental) per (year, club),
+    excluding friendlies/non-competitive and calendar-year rows."""
+    by_key: dict[tuple[int, str], dict[str, Any]] = {}
+    for year_num, club_name, kind_val, apps, rated_apps, goals, assists, avg_rat in raw_rows:
+        if (
+            "friendly" in kind_val
+            or "non_competitive" in kind_val
+            or "calendar_year" in kind_val
+            or "international" in kind_val
+        ):
+            continue
+        if apps <= 0:
+            continue
+        key = (year_num, club_name)
+        is_overall = kind_val in ("overall", "competitive")
+        existing = by_key.get(key)
+        weight = rated_apps if rated_apps > 0 else apps
+        if existing is None:
+            by_key[key] = {
+                "year": year_num,
+                "season": _format_season_label(year_num),
+                "club": club_name,
+                "apps": apps,
+                "goals": goals,
+                "assists": assists,
+                "ratingSum": (avg_rat * weight) if avg_rat > 0 else 0.0,
+                "ratingWeight": weight if avg_rat > 0 else 0,
+                "isOverall": is_overall,
+            }
+        elif is_overall and not existing["isOverall"]:
+            by_key[key] = {
+                "year": year_num,
+                "season": _format_season_label(year_num),
+                "club": club_name,
+                "apps": apps,
+                "goals": goals,
+                "assists": assists,
+                "ratingSum": (avg_rat * weight) if avg_rat > 0 else 0.0,
+                "ratingWeight": weight if avg_rat > 0 else 0,
+                "isOverall": True,
+            }
+        elif not existing["isOverall"]:
+            existing["apps"] += apps
+            existing["goals"] += goals
+            existing["assists"] += assists
+            if avg_rat > 0:
+                existing["ratingSum"] += avg_rat * weight
+                existing["ratingWeight"] += weight
+
+    merged = sorted(by_key.values(), key=lambda r: (-r["year"], -r["apps"], r["club"]))
+    return [
+        {
+            "season": r["season"],
+            "club": r["club"],
+            "apps": r["apps"],
+            "goals": r["goals"],
+            "assists": r["assists"],
+            "avgRating": round(r["ratingSum"] / r["ratingWeight"], 2) if r["ratingWeight"] > 0 else 0.0,
+        }
+        for r in merged
+    ]
 
 
 def _extract_club_season_history_fast(save: Any) -> dict[str, list[dict[str, Any]]] | None:
@@ -3742,6 +3848,7 @@ def _extract_club_season_history_fast(save: Any) -> dict[str, list[dict[str, Any
         return None
     try:
         from fmsave._save import ARCHIVE_SECTION
+        from fmsave.models import SeasonStatsKind
         from fmsave.readers.season_history import (
             _ABSENT,
             _METADATA,
@@ -3760,6 +3867,7 @@ def _extract_club_season_history_fast(save: Any) -> dict[str, list[dict[str, Any
         stat_layout = find_season_stats_layout(ctx.info.build)
         index = read_history_index(container_index, layout)
         header_bytes = len(layout.archive_header)
+        kinds = tuple(SeasonStatsKind(name) for name in layout.kind_names)
         team_to_club, club_by_uid = club_refs
 
         out: dict[str, list[dict[str, Any]]] = {}
@@ -3779,10 +3887,17 @@ def _extract_club_season_history_fast(save: Any) -> dict[str, list[dict[str, Any
                 if not offsets:
                     continue
                 uid_key = str(uid)
+                raw_rows: list[tuple[int, str, str, int, int, int, int, float]] = []
                 for offset in offsets:
                     at = header_bytes + offset
                     if at + 152 > arch_len:
                         continue
+                    kind_idx = archive[at + 31]
+                    kind_val = (
+                        _normalize_stat_kind(kinds[kind_idx])
+                        if kind_idx < len(kinds)
+                        else ""
+                    )
                     team_id, _comp, _unk, year = _METADATA.unpack_from(archive, at + 1)
                     team_id = None if team_id == _ABSENT else team_id
                     _c_uid, c_name, _c_short, _t_slot = season_club_fields(
@@ -3800,17 +3915,23 @@ def _extract_club_season_history_fast(save: Any) -> dict[str, list[dict[str, Any
                     # decoded tuple starts with: starts, substitute_appearances, minutes, rated_appearances, average_rating, potm, goals, assists, ...
                     starts = _int(decoded[0], 0) or 0
                     subs = _int(decoded[1], 0) or 0
+                    rated_apps = _int(decoded[3], 0) or 0
                     avg_rat = _float(decoded[4], 0.0) or 0.0
                     goals = _int(decoded[6], 0) or 0
                     assists = _int(decoded[7], 0) or 0
-                    out.setdefault(uid_key, []).append({
-                        "season": str(year) if year else "Season",
-                        "club": str(c_name or "Club"),
-                        "apps": starts + subs,
-                        "goals": goals,
-                        "assists": assists,
-                        "avgRating": round(avg_rat, 2),
-                    })
+                    raw_rows.append((
+                        _int(year, 0) or 0,
+                        str(c_name or "Club"),
+                        kind_val,
+                        starts + subs,
+                        rated_apps,
+                        goals,
+                        assists,
+                        avg_rat,
+                    ))
+                merged = _aggregate_competitive_season_history(raw_rows)
+                if merged:
+                    out[uid_key] = merged
         return out
     except Exception:
         return None
@@ -3868,11 +3989,22 @@ def step_4_1_season_stats(fast_sync: bool | None = None) -> str:
             tid = _int(getattr(row, "team_id", None), None)
             if tid:
                 _STATE["first_team_id"] = tid
-        kind_str = str(getattr(row, "kind", "")).lower()
-        if "friendly" in kind_str or "non_competitive" in kind_str or "youth" in kind_str:
+        kind_val = _normalize_stat_kind(getattr(row, "kind", ""))
+        if (
+            "friendly" in kind_val
+            or "non_competitive" in kind_val
+            or "youth" in kind_val
+            or "calendar_year" in kind_val
+            or "international" in kind_val
+        ):
             return
-        is_league = 1 if "league" in kind_str else (0 if "overall" in kind_str or "competitive" in kind_str else -1)
-        if is_league < 0:
+        if kind_val in ("overall", "competitive"):
+            kind_priority = 2
+        elif "league" in kind_val:
+            kind_priority = 1
+        elif kind_val in ("cup", "continental"):
+            kind_priority = 0
+        else:
             return
 
         row_year = _row_season_year(row)
@@ -3880,34 +4012,34 @@ def step_4_1_season_stats(fast_sync: bool | None = None) -> str:
             return
 
         new_mins = int(getattr(row, "minutes", 0) or 0)
-        if is_league == 1 and new_mins > 0 and (current_season_year is None or row_year == current_season_year):
+        if kind_priority == 2 and new_mins > 0 and (current_season_year is None or row_year == current_season_year):
             league_matched_uids.add(int(p_uid))
 
         existing = best_by_uid.get(p_uid)
         if existing is None:
-            best_by_uid[p_uid] = (row_year, is_league, row)
+            best_by_uid[p_uid] = (row_year, kind_priority, row)
             return
 
-        ex_year, ex_is_league, ex_row = existing
+        ex_year, ex_priority, ex_row = existing
         old_mins = int(getattr(ex_row, "minutes", 0) or 0)
         if row_year > ex_year:
-            best_by_uid[p_uid] = (row_year, is_league, row)
+            best_by_uid[p_uid] = (row_year, kind_priority, row)
         elif row_year == ex_year:
             if new_mins > 0 and old_mins == 0:
-                best_by_uid[p_uid] = (row_year, is_league, row)
+                best_by_uid[p_uid] = (row_year, kind_priority, row)
             elif new_mins == 0 and old_mins > 0:
                 return
-            elif is_league > ex_is_league:
-                best_by_uid[p_uid] = (row_year, is_league, row)
-            elif is_league == ex_is_league:
+            elif kind_priority > ex_priority:
+                best_by_uid[p_uid] = (row_year, kind_priority, row)
+            elif kind_priority == ex_priority:
                 if row_year > 0:
                     if new_mins > old_mins:
-                        best_by_uid[p_uid] = (row_year, is_league, row)
+                        best_by_uid[p_uid] = (row_year, kind_priority, row)
                 else:
                     if game_date and game_date.month in (7, 8, 9, 10) and old_mins > 900 and 0 < new_mins <= 900:
-                        best_by_uid[p_uid] = (row_year, is_league, row)
+                        best_by_uid[p_uid] = (row_year, kind_priority, row)
                     elif new_mins > old_mins:
-                        best_by_uid[p_uid] = (row_year, is_league, row)
+                        best_by_uid[p_uid] = (row_year, kind_priority, row)
 
     def _scan_stream(stream: Any) -> None:
         nonlocal timed_out
@@ -4130,9 +4262,34 @@ def step_4_2_player_match_stats(fast_sync: bool | None = None) -> str:
         warning_msg = f"player_match_stats: {type(exc).__name__}"
         _STATE["warnings"].append(warning_msg)
 
+    season_mins_by_uid = {str(p["uid"]): int(p.get("minutes") or 0) for p in players_out}
+    any_squad_season_stats = any(m > 0 for m in season_mins_by_uid.values())
+    non_comp_ids: set[int] = set()
+    if any_squad_season_stats:
+        club_div_id = _STATE.get("club_division_id")
+        comp_name_map = _STATE.get("comp_name_by_id") or {}
+        for uid_key, items in player_match_stats.items():
+            if season_mins_by_uid.get(uid_key, 0) == 0:
+                for it in items:
+                    cid = it.get("_compId")
+                    if cid is not None and cid != club_div_id and cid not in comp_name_map:
+                        non_comp_ids.add(cid)
+
+    cleaned_match_stats: dict[str, list[dict[str, Any]]] = {}
     for uid_key, items in player_match_stats.items():
-        items.sort(key=lambda x: x.get("date") or "")
-        player_match_stats[uid_key] = items[-5:]
+        if any_squad_season_stats and season_mins_by_uid.get(uid_key, 0) == 0:
+            continue
+        filtered = []
+        for it in items:
+            cid = it.pop("_compId", None)
+            if cid is not None and cid in non_comp_ids:
+                continue
+            filtered.append(it)
+        if filtered:
+            filtered.sort(key=lambda x: x.get("date") or "")
+            cleaned_match_stats[uid_key] = filtered[-5:]
+
+    player_match_stats = cleaned_match_stats
 
     for p in players_out:
         uid_key = str(p["uid"])
@@ -4181,6 +4338,7 @@ def step_4_3_season_history(fast_sync: bool | None = None) -> str:
     def _scan_psh(stream: Any) -> None:
         nonlocal timed_out
         seen = 0
+        raw_by_uid: dict[str, list[tuple[int, str, str, int, int, int, int, float]]] = {}
         for h in stream:
             seen += 1
             if (seen & 255) == 0 and (time.monotonic() - t0) >= SEASON_HISTORY_BUDGET_SEC:
@@ -4190,17 +4348,27 @@ def step_4_3_season_history(fast_sync: bool | None = None) -> str:
             if p_uid not in squad_uids:
                 continue
             uid_key = str(p_uid)
+            kind_val = _normalize_stat_kind(getattr(h, "kind", ""))
             apps_val = _int(getattr(h, "apps", None) or getattr(h, "appearances", None), None)
             if apps_val is None:
                 apps_val = (_int(getattr(h, "starts", None), 0) or 0) + (_int(getattr(h, "substitute_appearances", None), 0) or 0)
-            season_history.setdefault(uid_key, []).append({
-                "season": str(getattr(h, "season", None) or getattr(h, "season_year", None) or getattr(h, "year", None) or "Season"),
-                "club": str(getattr(h, "club_name", None) or "Club"),
-                "apps": apps_val,
-                "goals": _int(getattr(h, "goals", None), 0) or 0,
-                "assists": _int(getattr(h, "assists", None), 0) or 0,
-                "avgRating": round(_float(getattr(h, "avg_rating", None) or getattr(h, "average_rating", None), 0.0) or 0.0, 2),
-            })
+            rated_apps = _int(getattr(h, "rated_appearances", None), 0) or 0
+            raw_yr = getattr(h, "season_year", None) or getattr(h, "year", None) or getattr(h, "season", None)
+            yr_num = _int(str(raw_yr)[:4], 0) if raw_yr is not None else 0
+            raw_by_uid.setdefault(uid_key, []).append((
+                yr_num or 0,
+                str(getattr(h, "club_name", None) or "Club"),
+                kind_val,
+                apps_val,
+                rated_apps,
+                _int(getattr(h, "goals", None), 0) or 0,
+                _int(getattr(h, "assists", None), 0) or 0,
+                _float(getattr(h, "avg_rating", None) or getattr(h, "average_rating", None), 0.0) or 0.0,
+            ))
+        for uid_key, rlist in raw_by_uid.items():
+            merged = _aggregate_competitive_season_history(rlist)
+            if merged:
+                season_history[uid_key] = merged
 
     try:
         fast_psh = _extract_club_season_history_fast(save)

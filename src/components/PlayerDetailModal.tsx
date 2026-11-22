@@ -1440,11 +1440,13 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                         : ''}
                     </span>
                   </div>
-                  {typeof player.marketValue === 'number' && player.marketValue > 0 && (
+                  {typeof player.marketValue === 'number' && player.marketValue >= 0 && (
                     <div className="flex justify-between">
                       <span className="text-slate-400">Market Value:</span>
                       <span className="font-mono text-emerald-300">
-                        {formatDynamicCurrency(player.marketValue, 'marketValue')}
+                        {player.marketValue > 0
+                          ? formatDynamicCurrency(player.marketValue, 'marketValue')
+                          : '£0'}
                       </span>
                     </div>
                   )}

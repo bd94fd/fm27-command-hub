@@ -257,6 +257,16 @@ function renderColumnValue(row: EnrichedSquadRow, colId: SquadColumnId): React.R
           {p.preferredFoot || '—'}
         </span>
       );
+    case 'condSharp': {
+      const cond = typeof p.condition === 'number' && Number.isFinite(p.condition) ? `${Math.round(p.condition)}%` : '—';
+      const sharp = typeof p.sharpness === 'number' && Number.isFinite(p.sharpness) ? `${Math.round(p.sharpness)}%` : '—';
+      if (cond === '—' && sharp === '—') return <span className="text-slate-500">—</span>;
+      return (
+        <span className="font-mono tabular-nums text-slate-700 dark:text-slate-200 whitespace-nowrap">
+          {cond} / {sharp}
+        </span>
+      );
+    }
     case 'morale':
       return (
         <span className="text-slate-600 dark:text-slate-300 whitespace-nowrap">

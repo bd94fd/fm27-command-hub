@@ -2347,6 +2347,178 @@ test('Server Decode Restart Fallback: persistent HTTP 502 / 404 during polling a
   assert.equal(result.meta.clubName, 'KVV Zelzate');
 });
 
+test('hydrateAppFromDecodedFmSave hydrates marketValue on re-sync and keeps 0-app players factual when squad has season stats', () => {
+  const fullAttrs = {
+    pace: 15,
+    acceleration: 16,
+    stamina: 6,
+    jumpingReach: 6,
+    determination: 10,
+    passing: 8,
+    finishing: 9,
+    tackling: 4,
+    firstTouch: 10,
+    decisions: 8,
+    workRate: 10,
+    offTheBall: 4,
+  };
+
+  const existingSquad = [
+    {
+      id: 'fm-uid-18115961',
+      uid: 18115961,
+      number: 9,
+      name: 'Wolf Ackx',
+      position: 'STC, AML',
+      apps: '8 (3)',
+      minutes: 730,
+      rating: 6.63,
+      goals: 0,
+      xG: 1.42,
+      xGPer90: 0.18,
+      assists: 1,
+      xA: 1.8,
+      xAPer90: 0.22,
+      drbPer90: 1.85,
+      prPassesPer90: 1.73,
+      hdrPct: 33,
+      intPer90: 1.85,
+      tckPct: 71,
+      personality: 'Balanced',
+      age: 25,
+      ability: 3.5,
+      potential: 5.0,
+      expires: '30/06/2029',
+      nation: 'Belgium',
+      wagePw: 541,
+      marketValue: null,
+      status: 'Surplus' as const,
+      attributes: fullAttrs,
+      ipRole: 'Centre Forward',
+      oopRole: 'Centre Forward',
+      notes: '',
+    },
+  ];
+
+  const decoded: DecodedFmSavePayload = {
+    meta: {
+      game: 'FM27',
+      build: '27.1.0+2505117',
+      knownBuild: true,
+      fmsaveVersion: '0.14.3',
+      saveName: 'auto save',
+      gameDateIso: '2027-09-15',
+      gameDateDmy: '15/09/2027',
+      clubUid: 18104898,
+      clubName: 'KVV Zelzate',
+      managerName: 'Bobby Dean',
+      balance: -802198,
+      scoutingBudget: 3900,
+    },
+    players: [
+      {
+        uid: 18115961,
+        name: 'Wolf Ackx',
+        position: 'STC, AML',
+        age: 25,
+        nation: 'Belgium',
+        abilityStars: 3.5,
+        potentialStars: 5.0,
+        condition: 79,
+        sharpness: 70,
+        onLoan: false,
+        teamSlot: 0,
+        wagePw: 541,
+        marketValue: 0,
+        expires: '30/06/2029',
+        apps: '0',
+        minutes: 0,
+        rating: null,
+        goals: 0,
+        xG: 0,
+        xGPer90: 0,
+        assists: 0,
+        xA: 0,
+        xAPer90: 0,
+        drbPer90: 0,
+        prPassesPer90: 0,
+        hdrPct: 0,
+        intPer90: 0,
+        tckPct: 0,
+        distanceKm: 0,
+        yellowCards: 0,
+        redCards: 0,
+        suspensionsCount: 0,
+        attributes: fullAttrs,
+      },
+      {
+        uid: 18106029,
+        name: 'Quinten Boudry',
+        position: 'AML, WBL',
+        age: 27,
+        nation: 'Belgium',
+        abilityStars: 4.0,
+        potentialStars: 4.5,
+        condition: 78,
+        sharpness: 100,
+        onLoan: false,
+        teamSlot: 0,
+        wagePw: 410,
+        marketValue: 17356,
+        expires: '30/06/2029',
+        apps: '6',
+        minutes: 532,
+        rating: 7.1,
+        goals: 1,
+        xG: 0.93,
+        xGPer90: 0.16,
+        assists: 0,
+        xA: 2.98,
+        xAPer90: 0.5,
+        drbPer90: 2.1,
+        prPassesPer90: 3.4,
+        hdrPct: 40,
+        intPer90: 1.2,
+        tckPct: 75,
+        distanceKm: 58.2,
+        yellowCards: 1,
+        redCards: 0,
+        suspensionsCount: 0,
+        attributes: fullAttrs,
+      },
+    ],
+    playedMatches: [],
+    upcomingFixtures: [],
+    leagueStanding: null,
+    finances: null,
+    staff: [],
+    activeInjuries: [],
+    activeSuspensions: [],
+    tactics: [],
+    mentoring: [],
+  };
+
+  const hydrated = hydrateAppFromDecodedFmSave(decoded, existingSquad, []);
+  const ackx = hydrated.updatedSquad.find((p) => p.name === 'Wolf Ackx');
+  const boudry = hydrated.updatedSquad.find((p) => p.name === 'Quinten Boudry');
+
+  assert.ok(ackx);
+  assert.equal(ackx.marketValue, 0);
+  assert.equal(ackx.apps, '0');
+  assert.equal(ackx.minutes, 0);
+  assert.equal(ackx.rating, null);
+  assert.equal(ackx.drbPer90, 0);
+  assert.equal(ackx.statsSource, undefined);
+
+  assert.ok(boudry);
+  assert.equal(boudry.marketValue, 17356);
+  assert.equal(boudry.apps, '6');
+  assert.equal(boudry.minutes, 532);
+  assert.equal(boudry.goals, 1);
+  assert.equal(boudry.rating, 7.1);
+});
+
+
 
 
 

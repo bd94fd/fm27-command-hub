@@ -58,6 +58,7 @@ export type SquadColumnId =
   | 'staminaFit'
   | 'badges'
   | 'foot'
+  | 'condSharp'
   | 'morale'
   | 'apps'
   | 'rating'
@@ -108,6 +109,7 @@ export const SQUAD_COLUMNS: Record<SquadColumnId, SquadColumnMeta> = {
   staminaFit: { id: 'staminaFit', label: 'Stamina / Nat Fit', shortLabel: 'Sta / Fit', align: 'right', group: 'durability' },
   badges: { id: 'badges', label: 'Scout Badges', shortLabel: 'Badges', align: 'left', group: 'durability' },
   foot: { id: 'foot', label: 'Preferred Foot', shortLabel: 'Foot', align: 'left', group: 'durability' },
+  condSharp: { id: 'condSharp', label: 'Condition / Sharpness', shortLabel: 'Cond / Sharp', align: 'right', group: 'durability' },
   morale: { id: 'morale', label: 'Morale', shortLabel: 'Morale', align: 'left', group: 'durability' },
   apps: { id: 'apps', label: 'Apps (Mins)', shortLabel: 'Apps', align: 'right', sortKey: 'apps', group: 'stats' },
   rating: { id: 'rating', label: 'Avg Rating', shortLabel: 'Rating', align: 'right', sortKey: 'rating', group: 'stats' },
@@ -143,9 +145,9 @@ export const SQUAD_VIEW_PRESETS: SquadViewPreset[] = [
     id: 'durability',
     label: 'Durability & Selection',
     shortLabel: 'Durability',
-    description: 'Stamina, natural fitness, injury risk, bans, scout badges, morale and preferred foot.',
-    defaultColumns: ['pos', 'durability', 'staminaFit', 'availability', 'badges', 'foot', 'morale'],
-    cardMetrics: ['durability', 'staminaFit', 'availability'],
+    description: 'Stamina, natural fitness, condition/sharpness, injury risk, bans, scout badges and preferred foot.',
+    defaultColumns: ['pos', 'durability', 'staminaFit', 'condSharp', 'availability', 'badges', 'foot'],
+    cardMetrics: ['durability', 'staminaFit', 'condSharp'],
   },
   {
     id: 'stats',
@@ -190,6 +192,7 @@ export const ALL_CUSTOMISABLE_COLUMNS: SquadColumnId[] = [
   'dna',
   'availability',
   'staminaFit',
+  'condSharp',
   'badges',
   'foot',
   'morale',
@@ -307,8 +310,11 @@ export function resolveDefaultSortKey(players: PlayerRecord[]): SquadSortKey {
 }
 
 export function formatCompactCurrency(value?: number | null): string {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
     return '—';
+  }
+  if (value === 0) {
+    return '£0';
   }
   if (value >= 1_000_000) {
     return `£${(value / 1_000_000).toFixed(value >= 10_000_000 ? 1 : 2)}m`;

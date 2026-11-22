@@ -828,6 +828,13 @@ export function hydrateAppFromDecodedFmSave(
   // 1. UID-first player matching with normalized name fallback + stale removal detection
   const mergedSquad: PlayerRecord[] = [];
 
+  const squadHasSeasonStats = decoded.players.some(
+    (p) =>
+      (Number(p.minutes) || 0) > 0 ||
+      (Boolean(p.apps) && p.apps !== '0') ||
+      (p.rating !== null && p.rating !== undefined && p.rating > 0)
+  );
+
   for (const existing of currentSquad) {
     const existingUid = extractUidFromPlayerRecord(existing);
     let dp: DecodedFmSavePlayer | undefined;
@@ -870,6 +877,11 @@ export function hydrateAppFromDecodedFmSave(
       attributes: { ...existing.attributes },
     };
 
+    const hasPlayerSeasonStats =
+      (Number(dp.minutes) || 0) > 0 ||
+      (Boolean(dp.apps) && dp.apps !== '0') ||
+      (dp.rating !== null && dp.rating !== undefined && dp.rating > 0);
+
     if (dp.minutes !== existing.minutes) {
       changes.push(`Mins ${existing.minutes}→${dp.minutes}`);
       next.minutes = dp.minutes;
@@ -880,6 +892,8 @@ export function hydrateAppFromDecodedFmSave(
     if (dp.rating !== null && dp.rating !== existing.rating) {
       changes.push(`Rating ${existing.rating ?? '-'}→${dp.rating}`);
       next.rating = dp.rating;
+    } else if (dp.rating === null && squadHasSeasonStats && !hasPlayerSeasonStats && existing.rating !== null) {
+      next.rating = null;
     }
     if (dp.goals !== existing.goals) {
       changes.push(`Goals ${existing.goals}→${dp.goals}`);
@@ -897,15 +911,21 @@ export function hydrateAppFromDecodedFmSave(
       next.xA = dp.xA;
       next.xAPer90 = dp.xAPer90;
     }
-    if (dp.drbPer90) next.drbPer90 = dp.drbPer90;
-    if (dp.prPassesPer90) next.prPassesPer90 = dp.prPassesPer90;
-    if (dp.hdrPct) next.hdrPct = dp.hdrPct;
-    if (dp.intPer90) next.intPer90 = dp.intPer90;
-    if (dp.tckPct) next.tckPct = dp.tckPct;
+    if (typeof dp.drbPer90 === 'number' && (dp.drbPer90 > 0 || squadHasSeasonStats)) next.drbPer90 = dp.drbPer90;
+    if (typeof dp.prPassesPer90 === 'number' && (dp.prPassesPer90 > 0 || squadHasSeasonStats)) next.prPassesPer90 = dp.prPassesPer90;
+    if (typeof dp.hdrPct === 'number' && (dp.hdrPct > 0 || squadHasSeasonStats)) next.hdrPct = dp.hdrPct;
+    if (typeof dp.intPer90 === 'number' && (dp.intPer90 > 0 || squadHasSeasonStats)) next.intPer90 = dp.intPer90;
+    if (typeof dp.tckPct === 'number' && (dp.tckPct > 0 || squadHasSeasonStats)) next.tckPct = dp.tckPct;
     if (dp.age) next.age = dp.age;
     if (dp.wagePw > 0 && dp.wagePw !== existing.wagePw) {
       changes.push(`Wage £${existing.wagePw}→£${dp.wagePw}/wk`);
       next.wagePw = dp.wagePw;
+    }
+    if (dp.marketValue !== undefined) {
+      next.marketValue = dp.marketValue;
+    }
+    if (dp.morale !== undefined) {
+      next.morale = dp.morale;
     }
     if (typeof dp.expires === 'string' && dp.expires.trim() && dp.expires !== 'N/A') {
       next.expires = dp.expires;
@@ -961,11 +981,7 @@ export function hydrateAppFromDecodedFmSave(
     if (pRatings && pRatings.length > 0) {
       next.last5Ratings = pRatings;
       next.last5Form = calculateLast5Form(pRatings);
-      const hasSeasonStats =
-        (Number(dp.minutes) || 0) > 0 ||
-        (dp.apps && dp.apps !== '0') ||
-        (dp.rating !== null && dp.rating !== undefined && dp.rating > 0);
-      if (!hasSeasonStats) {
+      if (!hasPlayerSeasonStats && !squadHasSeasonStats) {
         const agg = aggregateRecentMatchProduction(pRatings);
         next.apps = agg.apps;
         next.minutes = agg.minutes;
@@ -973,9 +989,17 @@ export function hydrateAppFromDecodedFmSave(
         next.goals = agg.goals;
         next.assists = agg.assists;
         next.statsSource = 'From Recent Matches';
-      } else {
+      } else if (hasPlayerSeasonStats) {
         next.statsSource = 'Season Stats';
+      } else {
+        next.statsSource = undefined;
       }
+    } else if (squadHasSeasonStats && !hasPlayerSeasonStats) {
+      next.last5Ratings = undefined;
+      next.last5Form = undefined;
+      next.statsSource = undefined;
+    } else if (hasPlayerSeasonStats) {
+      next.statsSource = 'Season Stats';
     }
     if (dp.contractDetails?.promisedPlayingTime) {
       next.status = resolveSquadStatusFromPlayingTime(
@@ -1066,7 +1090,7 @@ export function hydrateAppFromDecodedFmSave(
       (dp.apps && dp.apps !== '0') ||
       (dp.rating !== null && dp.rating !== undefined && dp.rating > 0);
     const recentAgg =
-      !hasSeasonStats && pRatings.length > 0
+      !hasSeasonStats && !squadHasSeasonStats && pRatings.length > 0
         ? aggregateRecentMatchProduction(pRatings)
         : null;
 

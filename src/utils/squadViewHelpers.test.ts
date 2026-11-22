@@ -238,9 +238,14 @@ test('countActiveSecondaryFilters and currency formatters work cleanly', () => {
   );
 
   assert.equal(formatCompactCurrency(null), '—');
+  assert.equal(formatCompactCurrency(0), '£0');
   assert.equal(formatCompactCurrency(850), '£850');
   assert.equal(formatCompactCurrency(125000), '£125k');
   assert.equal(formatCompactCurrency(1450000), '£1.45m');
   assert.equal(formatWeeklyWage(625), '£625/wk');
   assert.equal(formatWeeklyWage(14250), '£14.3k/wk');
+
+  const durabilityPreset = SQUAD_VIEW_PRESETS.find((p) => p.id === 'durability');
+  assert.ok(durabilityPreset?.defaultColumns.includes('condSharp'));
+  assert.ok(!durabilityPreset?.defaultColumns.includes('morale'));
 });
