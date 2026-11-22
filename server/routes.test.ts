@@ -311,5 +311,87 @@ describe('server routes & JSON 404', () => {
 
     assert.equal(compressedEncoding, 'gzip');
   });
+
+  it('configures Pack 2 (Offline PWA, Screen Wake Lock, Command Palette, Virtua 500-target scroller) and Pack 3 (Multi-Stage Docker, Helmet, Graceful Shutdown, Error Boundary, Rate-Limiter Pruning)', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+
+    // Pack 2 checks
+    const viteConfigSrc = fs.readFileSync(
+      path.resolve(process.cwd(), 'vite.config.ts'),
+      'utf8'
+    );
+    assert.match(viteConfigSrc, /VitePWA\(/);
+    assert.match(viteConfigSrc, /navigateFallbackDenylist:\s*\[\s*\/\^\\\/api\\\/\/\s*\]/);
+
+    const companionSrc = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/components/MatchdayCompanionView.tsx'),
+      'utf8'
+    );
+    assert.match(companionSrc, /wakeLock\.request\('screen'\)/);
+    assert.match(companionSrc, /Keep Screen Awake/);
+
+    const cmdPaletteSrc = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/components/CommandPaletteModal.tsx'),
+      'utf8'
+    );
+    assert.match(cmdPaletteSrc, /Quick-Jump Command Palette/);
+    assert.match(cmdPaletteSrc, /Shortcut: ⌘K \/ Ctrl\+K/);
+
+    const recSrc = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/components/RecruitmentWorkspace.tsx'),
+      'utf8'
+    );
+    assert.match(recSrc, /import \{ VList \} from 'virtua'/);
+    assert.match(recSrc, /<VList/);
+
+    // Pack 3 checks
+    const dockerfileSrc = fs.readFileSync(
+      path.resolve(process.cwd(), 'Dockerfile'),
+      'utf8'
+    );
+    assert.match(dockerfileSrc, /AS builder/);
+    assert.match(dockerfileSrc, /AS runtime/);
+    assert.match(dockerfileSrc, /USER node/);
+
+    const dockerignoreSrc = fs.readFileSync(
+      path.resolve(process.cwd(), '.dockerignore'),
+      'utf8'
+    );
+    assert.match(dockerignoreSrc, /src\/\*\*\/\*\.test\.ts/);
+    assert.match(dockerignoreSrc, /\.github/);
+
+    const errorBoundarySrc = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/components/AppErrorBoundary.tsx'),
+      'utf8'
+    );
+    assert.match(errorBoundarySrc, /getDerivedStateFromError/);
+    assert.match(errorBoundarySrc, /Reset Local Cache/);
+
+    const guardSrc = fs.readFileSync(
+      path.resolve(process.cwd(), 'server/middleware/securityGuard.ts'),
+      'utf8'
+    );
+    assert.match(guardSrc, /pruneStaleIps/);
+
+    const serverSrc = fs.readFileSync(
+      path.resolve(process.cwd(), 'server.ts'),
+      'utf8'
+    );
+    assert.match(serverSrc, /app\.set\('trust proxy',\s*1\)/);
+    assert.match(serverSrc, /helmet\(/);
+    assert.match(serverSrc, /process\.on\('SIGTERM'/);
+
+    // Live HTTP verification of Helmet security headers
+    const config = loadServerConfig({ GEMINI_API_KEY: 'test-key' } as NodeJS.ProcessEnv);
+    const app = await createApp({ config, serveFrontend: false });
+    const srv = await startTestServer(app);
+    activeClose = srv.close;
+
+    const healthRes = await fetch(`${srv.baseUrl}/api/health`);
+    assert.equal(healthRes.status, 200);
+    assert.equal(healthRes.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(healthRes.headers.get('x-powered-by'), null);
+  });
 });
 

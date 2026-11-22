@@ -1,5 +1,6 @@
 import express from 'express';
 import compression from 'compression';
+import helmet from 'helmet';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -7,7 +8,10 @@ import dotenv from 'dotenv';
 import { loadServerConfig, type ServerConfig } from './server/config.ts';
 import { GeminiService } from './server/geminiService.ts';
 import { createFm27Router } from './server/routes/fm27Routes.ts';
-import { createFmDecodeRouter } from './server/routes/fmDecodeRoutes.ts';
+import {
+  cleanupAllPendingUploadsAndJobs,
+  createFmDecodeRouter,
+} from './server/routes/fmDecodeRoutes.ts';
 
 dotenv.config();
 
@@ -19,6 +23,8 @@ export interface CreateAppOptions {
 
 const NO_CACHE_STATIC_FILES = new Set([
   'index.html',
+  'sw.js',
+  'registerSW.js',
   'fm-save-worker.js',
   'fm-save-mapper.py',
   'fm_layout_patcher.py',
@@ -32,6 +38,15 @@ export async function createApp(
   const config = options.config ?? loadServerConfig();
   const geminiService = options.geminiService ?? new GeminiService({ config });
 
+  app.set('trust proxy', 1);
+  app.disable('x-powered-by');
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+      crossOriginOpenerPolicy: false,
+    })
+  );
   app.use(compression());
   app.use(express.json({ limit: '100mb' }));
   app.use(express.urlencoded({ limit: '100mb', extended: true }));
@@ -98,7 +113,7 @@ export async function createApp(
         express.static(distPath, {
           setHeaders(res, filePath) {
             const base = path.basename(filePath);
-            if (NO_CACHE_STATIC_FILES.has(base)) {
+            if (NO_CACHE_STATIC_FILES.has(base) || /^workbox-.*\.js$/i.test(base)) {
               res.setHeader(
                 'Cache-Control',
                 'no-cache, no-store, must-revalidate'
@@ -121,9 +136,29 @@ async function startServer() {
   const config = loadServerConfig();
   const app = await createApp({ config, serveFrontend: true });
 
-  app.listen(config.port, '0.0.0.0', () => {
+  const server = app.listen(config.port, '0.0.0.0', () => {
     console.log(`FM27 Command Hub running on http://localhost:${config.port}`);
   });
+
+  let shuttingDown = false;
+  const handleShutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`Received ${signal}, shutting down FM27 Command Hub gracefully...`);
+    const forceTimer = setTimeout(() => {
+      process.exit(0);
+    }, 8_000);
+    forceTimer.unref();
+
+    server.close(() => {
+      void cleanupAllPendingUploadsAndJobs().finally(() => {
+        process.exit(0);
+      });
+    });
+  };
+
+  process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+  process.on('SIGINT', () => handleShutdown('SIGINT'));
 }
 
 const isDirectEntry =

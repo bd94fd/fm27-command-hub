@@ -84,6 +84,22 @@ async function pruneExpiredUploadsAndJobs(): Promise<void> {
   }
 }
 
+export async function cleanupAllPendingUploadsAndJobs(): Promise<void> {
+  const unlinks: Array<Promise<void>> = [];
+  for (const [uploadId, entry] of pendingUploads.entries()) {
+    pendingUploads.delete(uploadId);
+    unlinks.push(
+      fs.promises.unlink(entry.filePath).catch(() => {
+        // ignore if already removed
+      })
+    );
+  }
+  decodeJobs.clear();
+  if (unlinks.length > 0) {
+    await Promise.all(unlinks);
+  }
+}
+
 const cleanupInterval = setInterval(() => {
   void pruneExpiredUploadsAndJobs();
 }, 60_000);

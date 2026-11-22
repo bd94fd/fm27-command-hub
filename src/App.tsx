@@ -3,12 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy, useCallback } from 'react';
 import {
   BookOpen,
   Briefcase,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Command,
   Crosshair,
   Database,
   Download,
@@ -44,6 +46,7 @@ import {
   PlayerAutoUpdate,
 } from './components/AutoSyncWorkspace';
 import { LiveFmSaveProofCard } from './components/LiveFmSaveProofCard';
+import { AppErrorBoundary } from './components/AppErrorBoundary';
 import {
   loadPersistedFmState,
   loadPersistedFmStateFromIndexedDb,
@@ -109,6 +112,11 @@ const KnowledgeBasePanel = lazy(() =>
     default: m.KnowledgeBasePanel,
   }))
 );
+const CommandPaletteModal = lazy(() =>
+  import('./components/CommandPaletteModal').then((m) => ({
+    default: m.CommandPaletteModal,
+  }))
+);
 
 const LazyTabFallback: React.FC<{ label: string }> = ({ label }) => (
   <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-500 dark:text-slate-400">
@@ -161,8 +169,28 @@ export default function App() {
   );
   const [selectedStaff, setSelectedStaff] = useState<StaffRecord | null>(null);
   const [showKnowledgeBase, setShowKnowledgeBase] = useState<boolean>(false);
+  const [showCommandPalette, setShowCommandPalette] = useState<boolean>(false);
+  const [appToast, setAppToast] = useState<string | null>(null);
   const [showMobileDetails, setShowMobileDetails] = useState<boolean>(false);
   const backupFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const showGlobalToast = useCallback((msg: string) => {
+    setAppToast(msg);
+    window.setTimeout(() => {
+      setAppToast((prev) => (prev === msg ? null : prev));
+    }, 3200);
+  }, []);
+
+  useEffect(() => {
+    const onGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setShowCommandPalette((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', onGlobalKeyDown);
+    return () => window.removeEventListener('keydown', onGlobalKeyDown);
+  }, []);
 
   const handleSelectTab = (tab: ActiveTab) => {
     setActiveTab(tab);
@@ -177,6 +205,11 @@ export default function App() {
       trackedTargets
     );
     setTrackedTargets(next);
+    showGlobalToast(
+      tracked
+        ? `Added ${target.name} to Shortlist`
+        : `Removed ${target.name} from Shortlist`
+    );
     return tracked;
   };
 
@@ -339,6 +372,7 @@ export default function App() {
     setIsRestoredFromMemory(false);
     setSelectedPlayer(null);
     setSelectedStaff(null);
+    showGlobalToast('Local cache cleared — returned to Awaiting .fm Save');
   };
 
   const handleExportBackup = () => {
@@ -351,6 +385,7 @@ export default function App() {
     a.download = `fm27-hub-backup-${saveDate.replace(/\//g, '-')}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    showGlobalToast('Campaign JSON backup exported');
   };
 
   const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -375,6 +410,9 @@ export default function App() {
         setBalance(imported.balance);
         setHydratedFmSave(imported.hydratedFmSave);
         setIsRestoredFromMemory(true);
+        showGlobalToast(
+          `Restored campaign snapshot (${imported.players.length} players)`
+        );
       } else {
         alert('Invalid FM27 backup file format.');
       }
@@ -425,6 +463,9 @@ export default function App() {
     if (hydrated.balanceLabel) {
       setBalance(hydrated.balanceLabel);
     }
+    showGlobalToast(
+      `Synced ${decoded.meta.clubName || 'Club'} (${hydrated.updatedSquad.length} players · ${hydrated.saveDateLabel})`
+    );
     return hydrated;
   };
 
@@ -640,6 +681,19 @@ export default function App() {
             onChange={handleImportBackup}
             className="hidden"
           />
+
+          <button
+            type="button"
+            onClick={() => setShowCommandPalette(true)}
+            title="Open Quick-Jump Command Palette (⌘K / Ctrl+K)"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+          >
+            <Command className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="hidden sm:inline">Jump</span>
+            <kbd className="hidden lg:inline rounded bg-slate-950/90 px-1 py-0.5 font-mono text-[10px] text-emerald-300">
+              ⌘K
+            </kbd>
+          </button>
 
           <button
             type="button"
@@ -864,142 +918,156 @@ export default function App() {
 
         {/* Active View Area (AutoSyncWorkspace stays mounted so chat history & Google OAuth persist across tabs) */}
         <div className={activeTab === 'sync' ? '' : 'hidden'}>
-          <AutoSyncWorkspace
-            matches={matches}
-            players={players}
-            staff={staff}
-            recruitmentCases={recruitmentCases}
-            currentSaveDate={saveDate}
-            clubName={hydratedFmSave?.decodedPayload.meta.clubName}
-            managerName={managerName}
-            nextFixture={nextFixture}
-            leagueStandingSub={leagueStandingSub}
-            wageSpend={wageSpend}
-            balance={balance}
-            hydratedFmSave={hydratedFmSave}
-            onUpdateSaveDate={setSaveDate}
-            onAddMatch={handleAddMatch}
-            onApplyPlayerUpdates={handleApplyPlayerUpdates}
-            onBulkMergePlayers={handleBulkMergePlayers}
-            onApplyDecodedFmSave={handleApplyDecodedFmSave}
-            pendingPrompt={pendingAnalystPrompt}
-            onClearPendingPrompt={() => setPendingAnalystPrompt(null)}
-          />
+          <AppErrorBoundary scopeLabel="AI Analyst & Live .fm Save Sync">
+            <AutoSyncWorkspace
+              matches={matches}
+              players={players}
+              staff={staff}
+              recruitmentCases={recruitmentCases}
+              currentSaveDate={saveDate}
+              clubName={hydratedFmSave?.decodedPayload.meta.clubName}
+              managerName={managerName}
+              nextFixture={nextFixture}
+              leagueStandingSub={leagueStandingSub}
+              wageSpend={wageSpend}
+              balance={balance}
+              hydratedFmSave={hydratedFmSave}
+              onUpdateSaveDate={setSaveDate}
+              onAddMatch={handleAddMatch}
+              onApplyPlayerUpdates={handleApplyPlayerUpdates}
+              onBulkMergePlayers={handleBulkMergePlayers}
+              onApplyDecodedFmSave={handleApplyDecodedFmSave}
+              pendingPrompt={pendingAnalystPrompt}
+              onClearPendingPrompt={() => setPendingAnalystPrompt(null)}
+            />
+          </AppErrorBoundary>
         </div>
 
         {activeTab === 'tactics' && (
-          <Suspense fallback={<LazyTabFallback label="Tactical War Room" />}>
-            <TacticalWarRoom
-              players={players}
-              saveDate={saveDate}
-              nextFixture={nextFixture}
-              clubName={clubName}
-              activeSuspensions={hydratedFmSave?.activeSuspensions ?? []}
-              competitionRules={hydratedFmSave?.competitionRules ?? null}
-              hydratedFmSave={hydratedFmSave}
-              activeShape={activeShape}
-              customSlots={customSlots}
-              applyToAnalystOnly={applyToAnalystOnly}
-              onChangeShape={setActiveShape}
-              onChangeCustomSlots={setCustomSlots}
-              onChangeApplyToAnalystOnly={setApplyToAnalystOnly}
-            />
-          </Suspense>
+          <AppErrorBoundary scopeLabel="Tactical War Room">
+            <Suspense fallback={<LazyTabFallback label="Tactical War Room" />}>
+              <TacticalWarRoom
+                players={players}
+                saveDate={saveDate}
+                nextFixture={nextFixture}
+                clubName={clubName}
+                activeSuspensions={hydratedFmSave?.activeSuspensions ?? []}
+                competitionRules={hydratedFmSave?.competitionRules ?? null}
+                hydratedFmSave={hydratedFmSave}
+                activeShape={activeShape}
+                customSlots={customSlots}
+                applyToAnalystOnly={applyToAnalystOnly}
+                onChangeShape={setActiveShape}
+                onChangeCustomSlots={setCustomSlots}
+                onChangeApplyToAnalystOnly={setApplyToAnalystOnly}
+              />
+            </Suspense>
+          </AppErrorBoundary>
         )}
 
         {activeTab === 'squad' && (
-          <Suspense fallback={<LazyTabFallback label="Squad Analytics" />}>
-            <SquadAnalyticsTable
-              players={players}
-              clubName={hydratedFmSave?.decodedPayload.meta.clubName}
-              onSelectPlayer={setSelectedPlayer}
-            />
-          </Suspense>
+          <AppErrorBoundary scopeLabel="Squad Analytics">
+            <Suspense fallback={<LazyTabFallback label="Squad Analytics" />}>
+              <SquadAnalyticsTable
+                players={players}
+                clubName={hydratedFmSave?.decodedPayload.meta.clubName}
+                onSelectPlayer={setSelectedPlayer}
+              />
+            </Suspense>
+          </AppErrorBoundary>
         )}
 
         {activeTab === 'recruitment' && (
-          <Suspense fallback={<LazyTabFallback label="Transfers & Audit" />}>
-            <RecruitmentWorkspace
-              cases={recruitmentCases}
-              shortlists={shortlists}
-              players={players}
-              saveDate={saveDate}
-              wageSpend={wageSpend}
-              balance={balance}
-              clubName={hydratedFmSave?.decodedPayload.meta.clubName}
-              finances={
-                hydratedFmSave?.decodedPayload.finances
-                  ? {
-                      balanceNum: hydratedFmSave.decodedPayload.finances.balance,
-                      wagePayrollWeekly:
-                        hydratedFmSave.decodedPayload.finances.wagePayrollWeekly,
-                      wageBudgetWeekly:
-                        hydratedFmSave.decodedPayload.finances.wageBudgetWeekly,
-                      transferBudgetRemaining:
-                        hydratedFmSave.decodedPayload.finances
-                          .transferBudgetRemaining,
-                    }
-                  : null
-              }
-              financialRunway={hydratedFmSave?.financialRunway ?? null}
-              transferWindows={hydratedFmSave?.decodedPayload.transferWindows ?? null}
-              competitionRules={hydratedFmSave?.competitionRules ?? null}
-              divisionBenchmarks={hydratedFmSave?.divisionBenchmarks ?? null}
-              scoutedTargets={
-                hydratedFmSave?.recruitmentTargets ??
-                hydratedFmSave?.decodedPayload.recruitmentTargets ??
-                []
-              }
-              trackedTargets={trackedTargets}
-              onToggleTrackTarget={handleToggleTrackTarget}
-              onAskAnalyst={handleAskAnalystPrompt}
-              onAddCase={handleAddRecruitmentCase}
-              onUpdateCase={handleUpdateRecruitmentCase}
-              onDeleteCase={handleDeleteRecruitmentCase}
-              onCreateShortlist={handleCreateShortlist}
-              onDeleteShortlist={handleDeleteShortlist}
-              onRemoveFromShortlist={handleRemovePlayerFromShortlist}
-              onSelectPlayer={setSelectedPlayer}
-            />
-          </Suspense>
+          <AppErrorBoundary scopeLabel="Transfers & Recruitment Audit">
+            <Suspense fallback={<LazyTabFallback label="Transfers & Audit" />}>
+              <RecruitmentWorkspace
+                cases={recruitmentCases}
+                shortlists={shortlists}
+                players={players}
+                saveDate={saveDate}
+                wageSpend={wageSpend}
+                balance={balance}
+                clubName={hydratedFmSave?.decodedPayload.meta.clubName}
+                finances={
+                  hydratedFmSave?.decodedPayload.finances
+                    ? {
+                        balanceNum: hydratedFmSave.decodedPayload.finances.balance,
+                        wagePayrollWeekly:
+                          hydratedFmSave.decodedPayload.finances.wagePayrollWeekly,
+                        wageBudgetWeekly:
+                          hydratedFmSave.decodedPayload.finances.wageBudgetWeekly,
+                        transferBudgetRemaining:
+                          hydratedFmSave.decodedPayload.finances
+                            .transferBudgetRemaining,
+                      }
+                    : null
+                }
+                financialRunway={hydratedFmSave?.financialRunway ?? null}
+                transferWindows={hydratedFmSave?.decodedPayload.transferWindows ?? null}
+                competitionRules={hydratedFmSave?.competitionRules ?? null}
+                divisionBenchmarks={hydratedFmSave?.divisionBenchmarks ?? null}
+                scoutedTargets={
+                  hydratedFmSave?.recruitmentTargets ??
+                  hydratedFmSave?.decodedPayload.recruitmentTargets ??
+                  []
+                }
+                trackedTargets={trackedTargets}
+                onToggleTrackTarget={handleToggleTrackTarget}
+                onAskAnalyst={handleAskAnalystPrompt}
+                onAddCase={handleAddRecruitmentCase}
+                onUpdateCase={handleUpdateRecruitmentCase}
+                onDeleteCase={handleDeleteRecruitmentCase}
+                onCreateShortlist={handleCreateShortlist}
+                onDeleteShortlist={handleDeleteShortlist}
+                onRemoveFromShortlist={handleRemovePlayerFromShortlist}
+                onSelectPlayer={setSelectedPlayer}
+              />
+            </Suspense>
+          </AppErrorBoundary>
         )}
 
         {activeTab === 'staff' && (
-          <Suspense fallback={<LazyTabFallback label="Staff Directory" />}>
-            <StaffDirectory
-              staff={staff}
-              clubName={hydratedFmSave?.decodedPayload.meta.clubName}
-              jobVacancies={hydratedFmSave?.decodedPayload.jobVacancies ?? []}
-              onSelectStaff={setSelectedStaff}
-            />
-          </Suspense>
+          <AppErrorBoundary scopeLabel="Staff Directory">
+            <Suspense fallback={<LazyTabFallback label="Staff Directory" />}>
+              <StaffDirectory
+                staff={staff}
+                clubName={hydratedFmSave?.decodedPayload.meta.clubName}
+                jobVacancies={hydratedFmSave?.decodedPayload.jobVacancies ?? []}
+                onSelectStaff={setSelectedStaff}
+              />
+            </Suspense>
+          </AppErrorBoundary>
         )}
 
         {activeTab === 'setpieces' && (
-          <Suspense fallback={<LazyTabFallback label="Set Pieces & Training" />}>
-            <SetPiecesAndTraining
-              players={players}
-              saveDate={saveDate}
-              upcomingFixtures={hydratedFmSave?.decodedPayload.upcomingFixtures || []}
-              clubName={clubName}
-            />
-          </Suspense>
+          <AppErrorBoundary scopeLabel="Set Pieces & Training">
+            <Suspense fallback={<LazyTabFallback label="Set Pieces & Training" />}>
+              <SetPiecesAndTraining
+                players={players}
+                saveDate={saveDate}
+                upcomingFixtures={hydratedFmSave?.decodedPayload.upcomingFixtures || []}
+                clubName={clubName}
+              />
+            </Suspense>
+          </AppErrorBoundary>
         )}
 
         {activeTab === 'matches' && (
-          <Suspense fallback={<LazyTabFallback label="Match Log Archive" />}>
-            <MatchLogArchive
-              matches={matches}
-              liveLeagueRecord={hydratedFmSave?.leagueRecordLabel || null}
-              liveSaveFileName={
-                hydratedFmSave?.decodedPayload.meta.fileName ||
-                hydratedFmSave?.decodedPayload.meta.saveName ||
-                null
-              }
-              clubName={hydratedFmSave?.decodedPayload.meta.clubName}
-              saveDate={saveDate}
-            />
-          </Suspense>
+          <AppErrorBoundary scopeLabel="Match Log Archive">
+            <Suspense fallback={<LazyTabFallback label="Match Log Archive" />}>
+              <MatchLogArchive
+                matches={matches}
+                liveLeagueRecord={hydratedFmSave?.leagueRecordLabel || null}
+                liveSaveFileName={
+                  hydratedFmSave?.decodedPayload.meta.fileName ||
+                  hydratedFmSave?.decodedPayload.meta.saveName ||
+                  null
+                }
+                clubName={hydratedFmSave?.decodedPayload.meta.clubName}
+                saveDate={saveDate}
+              />
+            </Suspense>
+          </AppErrorBoundary>
         )}
       </main>
 
@@ -1050,6 +1118,18 @@ export default function App() {
         })}
       </nav>
 
+      {/* Global Floating Toast Notification */}
+      {appToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-20 md:bottom-6 right-4 z-50 flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-slate-900/95 px-4 py-2.5 text-xs font-semibold text-emerald-200 shadow-2xl backdrop-blur"
+        >
+          <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+          <span>{appToast}</span>
+        </div>
+      )}
+
       {/* Global Modals & Drawers */}
       {selectedPlayer && (
         <Suspense fallback={null}>
@@ -1089,6 +1169,31 @@ export default function App() {
             isOpen={showKnowledgeBase}
             onClose={() => setShowKnowledgeBase(false)}
             players={players}
+          />
+        </Suspense>
+      )}
+
+      {showCommandPalette && (
+        <Suspense fallback={null}>
+          <CommandPaletteModal
+            isOpen={showCommandPalette}
+            onClose={() => setShowCommandPalette(false)}
+            players={players}
+            staff={staff}
+            scoutTargets={
+              hydratedFmSave?.recruitmentTargets ??
+              hydratedFmSave?.decodedPayload.recruitmentTargets ??
+              []
+            }
+            activeShape={activeShape}
+            onSelectTab={handleSelectTab}
+            onSelectPlayer={setSelectedPlayer}
+            onSelectStaff={setSelectedStaff}
+            onChangeShape={(shape) => {
+              setActiveShape(shape);
+              showGlobalToast(`Switched active formation to ${shape}`);
+            }}
+            onOpenKnowledgeBase={() => setShowKnowledgeBase(true)}
           />
         </Suspense>
       )}

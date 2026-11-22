@@ -4,12 +4,29 @@ import fs from 'fs';
 import path from 'path';
 import {defineConfig} from 'vite';
 import {analyzer} from 'vite-bundle-analyzer';
+import {VitePWA} from 'vite-plugin-pwa';
 
 export default defineConfig(() => {
   return {
     plugins: [
       react(),
       tailwindcss(),
+      VitePWA({
+        registerType: 'autoUpdate',
+        injectRegister: 'auto',
+        manifest: false,
+        workbox: {
+          globPatterns: ['**/*.{js,css,html,svg,woff2,json}'],
+          navigateFallback: '/index.html',
+          navigateFallbackDenylist: [/^\/api\//],
+          runtimeCaching: [
+            {
+              urlPattern: /\/api\/.*/i,
+              handler: 'NetworkOnly',
+            },
+          ],
+        },
+      }),
       ...(process.env.ANALYZE_BUNDLE === 'true'
         ? [analyzer({analyzerMode: 'static', openAnalyzer: false})]
         : []),

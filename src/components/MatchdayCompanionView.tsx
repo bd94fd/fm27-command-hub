@@ -3,13 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckSquare,
   Flag,
   Shield,
   Smartphone,
   Square,
+  Sun,
   Timer,
   Zap,
 } from 'lucide-react';
@@ -19,6 +20,12 @@ import {
   analyzeRestDefenseMatrix,
   classifySlotRestDefenseCategory,
 } from '../utils/restDefenseEngine';
+
+interface WakeLockSentinelLike {
+  released?: boolean;
+  release: () => Promise<void>;
+  addEventListener?: (type: string, listener: () => void) => void;
+}
 
 export interface MatchdayCompanionViewProps {
   clubName: string;
@@ -36,6 +43,82 @@ export const MatchdayCompanionView: React.FC<MatchdayCompanionViewProps> = ({
   allPlayers,
 }) => {
   const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
+  const [wakeLockEnabled, setWakeLockEnabled] = useState<boolean>(false);
+  const [wakeLockActive, setWakeLockActive] = useState<boolean>(false);
+  const [wakeLockSupported] = useState<boolean>(() => {
+    return (
+      typeof navigator !== 'undefined' &&
+      'wakeLock' in navigator &&
+      typeof (navigator as Navigator & { wakeLock?: { request?: unknown } })
+        .wakeLock?.request === 'function'
+    );
+  });
+  const wakeLockRef = useRef<WakeLockSentinelLike | null>(null);
+
+  const acquireWakeLock = useCallback(async () => {
+    if (!wakeLockSupported) return false;
+    try {
+      const nav = navigator as Navigator & {
+        wakeLock: { request: (type: 'screen') => Promise<WakeLockSentinelLike> };
+      };
+      if (wakeLockRef.current && !wakeLockRef.current.released) {
+        setWakeLockActive(true);
+        return true;
+      }
+      const sentinel = await nav.wakeLock.request('screen');
+      wakeLockRef.current = sentinel;
+      setWakeLockActive(true);
+      sentinel.addEventListener?.('release', () => {
+        setWakeLockActive(false);
+      });
+      return true;
+    } catch {
+      setWakeLockActive(false);
+      return false;
+    }
+  }, [wakeLockSupported]);
+
+  const releaseWakeLock = useCallback(async () => {
+    const current = wakeLockRef.current;
+    wakeLockRef.current = null;
+    setWakeLockActive(false);
+    if (current) {
+      try {
+        await current.release();
+      } catch {
+        // ignore release error
+      }
+    }
+  }, []);
+
+  const handleToggleWakeLock = async () => {
+    if (wakeLockEnabled) {
+      setWakeLockEnabled(false);
+      await releaseWakeLock();
+      return;
+    }
+    setWakeLockEnabled(true);
+    await acquireWakeLock();
+  };
+
+  useEffect(() => {
+    if (!wakeLockEnabled) return;
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && wakeLockEnabled) {
+        void acquireWakeLock();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [wakeLockEnabled, acquireWakeLock]);
+
+  useEffect(() => {
+    return () => {
+      void releaseWakeLock();
+    };
+  }, [releaseWakeLock]);
 
   const toggleCheck = (id: string) => {
     setCheckedItems((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -184,13 +267,43 @@ export const MatchdayCompanionView: React.FC<MatchdayCompanionViewProps> = ({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setCheckedItems({})}
-          className="rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition cursor-pointer"
-        >
-          Reset Match Checklist
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void handleToggleWakeLock()}
+            disabled={!wakeLockSupported}
+            aria-pressed={wakeLockEnabled}
+            title={
+              wakeLockSupported
+                ? 'Prevent phone or tablet screen from sleeping during live match'
+                : 'Screen Wake Lock is not supported by this browser'
+            }
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition cursor-pointer disabled:opacity-45 ${
+              wakeLockEnabled && wakeLockActive
+                ? 'bg-emerald-500/20 border-emerald-400 text-emerald-200 ring-1 ring-emerald-400/40'
+                : wakeLockEnabled
+                  ? 'bg-amber-500/20 border-amber-400 text-amber-200'
+                  : 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-300'
+            }`}
+          >
+            <Sun className="w-3.5 h-3.5 text-amber-300" />
+            <span>
+              {wakeLockEnabled
+                ? wakeLockActive
+                  ? 'Screen Awake: ON'
+                  : 'Screen Awake: Standby'
+                : 'Keep Screen Awake'}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setCheckedItems({})}
+            className="rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition cursor-pointer"
+          >
+            Reset Match Checklist
+          </button>
+        </div>
       </div>
 
       {/* Section 1: Active Starting XI High-Contrast Dual-Phase Strip */}

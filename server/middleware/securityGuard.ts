@@ -40,6 +40,32 @@ export function createSecurityGuard(options: SecurityGuardOptions = {}) {
   const now = options.now ?? (() => Date.now());
 
   const requestTimestampsByIp = new Map<string, number[]>();
+  const MAX_TRACKED_IPS = 2000;
+  let lastPrunedAtMs = 0;
+
+  function pruneStaleIps(cutoffMs: number, currentMs: number): void {
+    if (
+      currentMs - lastPrunedAtMs < windowMs &&
+      requestTimestampsByIp.size < MAX_TRACKED_IPS
+    ) {
+      return;
+    }
+    lastPrunedAtMs = currentMs;
+    for (const [trackedIp, timestamps] of requestTimestampsByIp.entries()) {
+      const active = timestamps.filter((ts) => ts > cutoffMs);
+      if (active.length === 0) {
+        requestTimestampsByIp.delete(trackedIp);
+      } else if (active.length !== timestamps.length) {
+        requestTimestampsByIp.set(trackedIp, active);
+      }
+    }
+    if (requestTimestampsByIp.size >= MAX_TRACKED_IPS) {
+      const oldestKey = requestTimestampsByIp.keys().next().value;
+      if (oldestKey !== undefined) {
+        requestTimestampsByIp.delete(oldestKey);
+      }
+    }
+  }
 
   return function securityGuard(
     req: Request,
@@ -67,10 +93,11 @@ export function createSecurityGuard(options: SecurityGuardOptions = {}) {
       }
     }
 
-    // 2. Sliding-window rate limiting per client IP
+    // 2. Sliding-window rate limiting per client IP with periodic stale-IP pruning
     const ip = extractClientIp(req);
     const currentMs = now();
     const cutoff = currentMs - windowMs;
+    pruneStaleIps(cutoff, currentMs);
     const recent = (requestTimestampsByIp.get(ip) ?? []).filter(
       (ts) => ts > cutoff
     );
