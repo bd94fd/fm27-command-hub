@@ -713,3 +713,178 @@ test('Fixes 3 & 5 (TypeScript): promisedPlayingTime single source of truth for S
   assert.equal(p.assists, 1);
   assert.equal(p.statsSource, 'From Recent Matches');
 });
+
+test('Autonomous fmsave Runtime Patcher & Mapper: CodedValue tactic bitmasks, 4-3-3 DM Wide formation, typed 4-week training calendar, squad_planner, deep_scrub_ca_pa, and upload DELETE abort cleanup', () => {
+  const decodeRoutesSrc = fs.readFileSync(
+    path.resolve(process.cwd(), 'server/routes/fmDecodeRoutes.ts'),
+    'utf8'
+  );
+  const saveReaderSrc = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/services/fmSaveReader.ts'),
+    'utf8'
+  );
+  const workerSrc = fs.readFileSync(
+    path.resolve(process.cwd(), 'public/fm-save-worker.js'),
+    'utf8'
+  );
+  assert.match(decodeRoutesSrc, /router\.delete\('\/fm27\/decode-save\/upload\/:uploadId'/);
+  assert.match(saveReaderSrc, /\/api\/fm27\/decode-save\/upload\//);
+  assert.match(workerSrc, /\/fm_layout_patcher\.py\?v=15/);
+
+  const pythonBin = fs.existsSync('/opt/fmsave-venv/bin/python3')
+    ? '/opt/fmsave-venv/bin/python3'
+    : 'python3';
+  const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fmsave-stub-'));
+  let rawOut = '';
+  try {
+    fs.writeFileSync(
+      path.join(stubDir, 'fmsave.py'),
+      'def open(*args, **kwargs):\n    raise NotImplementedError("stub fmsave")\n',
+      'utf8'
+    );
+    const existingPyPath = process.env.PYTHONPATH || '';
+    const pyPath = existingPyPath
+      ? `${existingPyPath}${path.delimiter}${stubDir}`
+      : stubDir;
+
+    const pyScript = `
+import importlib.util, json, types
+from datetime import date
+
+spec_p = importlib.util.spec_from_file_location("fm_layout_patcher", "public/fm_layout_patcher.py")
+patcher = importlib.util.module_from_spec(spec_p)
+spec_p.loader.exec_module(patcher)
+
+spec_m = importlib.util.spec_from_file_location("mapper", "public/fm-save-mapper.py")
+mod = importlib.util.module_from_spec(spec_m)
+spec_m.loader.exec_module(mod)
+
+# 1. CodedValue TacticPosition bitmask decoding (0x200000 Right, 0x100000 Left)
+class FakeEnum:
+    def __init__(self, name):
+        self.name = name
+
+class FakeCoded:
+    def __init__(self, name, raw=0):
+        self.label = FakeEnum(name)
+        self.raw = raw
+
+pos_gk = mod._decode_tactic_slot_position((FakeCoded("GOALKEEPER"),), 0)
+pos_dcr = mod._decode_tactic_slot_position((FakeCoded("DEFENDER_CENTRE"),), 0x200000)
+pos_dcl = mod._decode_tactic_slot_position((FakeCoded("DEFENDER_CENTRE"),), 0x100000)
+pos_mcr = mod._decode_tactic_slot_position((FakeCoded("MIDFIELDER_CENTRE"),), 0x200000)
+pos_mcl = mod._decode_tactic_slot_position((FakeCoded("MIDFIELDER_CENTRE"),), 0x100000)
+formation = mod._derive_formation_from_positions(["GK", "DR", pos_dcr, pos_dcl, "DL", "DM", pos_mcr, pos_mcl, "AMR", "AML", "STC"])
+
+# 2. Typed 4-week training calendar with FM27 session code lookup
+class FakeSession:
+    def __init__(self, name, raw):
+        self.label = FakeEnum(name)
+        self.raw = raw
+
+class FakeDay:
+    def __init__(self, d, codes):
+        self.day = d
+        self.sessions = tuple(FakeSession("UNKNOWN", c) for c in codes)
+
+class FakeWeek:
+    def __init__(self, ws, name, days):
+        self.week_start = ws
+        self.schedule_name = name
+        self.days = days
+
+class FakeSched:
+    def __init__(self, folder, name):
+        self.folder = folder
+        self.name = name
+
+class FakeTeamTraining:
+    club_uid = 18104898
+    team_slot = 0
+    club_name = "KVV Zelzate"
+    weeks = (
+        FakeWeek(date(2027, 9, 6), "Pre-Match", (FakeDay(date(2027, 9, 6), (200, 0, 1)),)),
+        FakeWeek(date(2027, 9, 13), "Tactical Focus - Balanced", (FakeDay(date(2027, 9, 14), (104, 101, 106)), FakeDay(date(2027, 9, 15), (300, 500, 600)))),
+    )
+    schedule_library = (
+        FakeSched("Custom", "Balanced"),
+        FakeSched("Custom", "Balanced"),
+        FakeSched("Custom", "Counter"),
+    )
+
+class FakeTrainingSave:
+    def training(self):
+        return (FakeTeamTraining(),)
+    def squad_planner(self):
+        return (
+            types.SimpleNamespace(season_offset=0, slot=0, player_uids=(101, 102)),
+            types.SimpleNamespace(season_offset=1, slot=1, player_uids=()),
+        )
+
+tr = mod._extract_typed_team_training(FakeTrainingSave(), 18104898, date(2027, 9, 15))
+sp = mod._extract_squad_planner(FakeTrainingSave(), {101: "René Vanden Borre", 102: "Jasper Baeyens"})
+
+# 3. Recursive deep_scrub_ca_pa check
+dirty = {
+    "meta": {"clubName": "KVV Zelzate"},
+    "players": [{"name": "Test", "ca": 120, "pa": 150, "nested": {"current_ability": 115, "potential_ability": 140, "internal_reliability": 12, "safe": 15}}],
+}
+clean = mod.deep_scrub_ca_pa(dirty)
+
+print(json.dumps({
+    "posGk": pos_gk,
+    "posDcr": pos_dcr,
+    "posDcl": pos_dcl,
+    "posMcr": pos_mcr,
+    "posMcl": pos_mcl,
+    "formation": formation,
+    "trainingCalendarLen": len(tr["calendar"]),
+    "trainingSessionsSample": tr["calendar"][1]["days"][0]["sessions"],
+    "trainingMatchDaySample": tr["calendar"][1]["days"][1]["sessions"],
+    "scheduleLibLen": len(tr["scheduleLibrary"]),
+    "squadPlanner": sp,
+    "cleanPlayer": clean["players"][0],
+}))
+`;
+    rawOut = execFileSync(pythonBin, ['-c', pyScript], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      timeout: 15_000,
+      env: { ...process.env, PYTHONPATH: pyPath },
+    });
+  } finally {
+    fs.rmSync(stubDir, { recursive: true, force: true });
+  }
+
+  const res = JSON.parse(rawOut.trim());
+  assert.equal(res.posGk, 'GK');
+  assert.equal(res.posDcr, 'DCR');
+  assert.equal(res.posDcl, 'DCL');
+  assert.equal(res.posMcr, 'MCR');
+  assert.equal(res.posMcl, 'MCL');
+  assert.equal(res.formation, '4-3-3 DM Wide');
+  assert.equal(res.trainingCalendarLen, 2);
+  assert.deepEqual(res.trainingSessionsSample, [
+    'Set-Piece Delivery',
+    'Aerial & Box Defending',
+    'Attacking Movement & Combinations',
+  ]);
+  assert.deepEqual(res.trainingMatchDaySample, [
+    'Rest',
+    'Match',
+    'Individual Focus / Unassigned',
+  ]);
+  assert.equal(res.scheduleLibLen, 2);
+  assert.equal(res.squadPlanner.length, 1);
+  assert.deepEqual(res.squadPlanner[0].playerNames, [
+    'René Vanden Borre',
+    'Jasper Baeyens',
+  ]);
+  assert.equal('ca' in res.cleanPlayer, false);
+  assert.equal('pa' in res.cleanPlayer, false);
+  assert.equal('current_ability' in res.cleanPlayer.nested, false);
+  assert.equal('potential_ability' in res.cleanPlayer.nested, false);
+  assert.equal('internal_reliability' in res.cleanPlayer.nested, false);
+  assert.equal(res.cleanPlayer.nested.safe, 15);
+});
+

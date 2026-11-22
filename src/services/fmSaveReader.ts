@@ -240,102 +240,113 @@ export async function decodeFmSaveViaServer(
 
   // 2. Upload chunks sequentially with idempotent offset header & automatic retry on transient proxy errors (e.g. HTTP 520/502/504)
   let offset = 0;
-  while (offset < totalBytes) {
-    if (signal?.aborted) {
-      throw new Error('CANCELLED_BY_USER');
-    }
-    const end = Math.min(offset + chunkSizeBytes, totalBytes);
-    const slice = file.slice(offset, end);
-
-    let chunkUploaded = false;
-    for (let attempt = 0; attempt <= SERVER_CHUNK_MAX_RETRIES; attempt++) {
+  try {
+    while (offset < totalBytes) {
       if (signal?.aborted) {
         throw new Error('CANCELLED_BY_USER');
       }
+      const end = Math.min(offset + chunkSizeBytes, totalBytes);
+      const slice = file.slice(offset, end);
 
-      let chunkRes: Response | null = null;
-      let networkError = false;
-      try {
-        chunkRes = await fetchImpl('/api/fm27/decode-save/chunk', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/octet-stream',
-            'x-fm-upload-id': uploadId,
-            'x-fm-chunk-offset': String(offset),
-          },
-          body: slice,
-          signal,
-        });
-      } catch (err: unknown) {
-        if (err instanceof Error && err.name === 'AbortError') {
+      let chunkUploaded = false;
+      for (let attempt = 0; attempt <= SERVER_CHUNK_MAX_RETRIES; attempt++) {
+        if (signal?.aborted) {
           throw new Error('CANCELLED_BY_USER');
         }
-        networkError = true;
-      }
 
-      if (chunkRes && chunkRes.ok) {
-        chunkUploaded = true;
-        break;
-      }
+        let chunkRes: Response | null = null;
+        let networkError = false;
+        try {
+          chunkRes = await fetchImpl('/api/fm27/decode-save/chunk', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/octet-stream',
+              'x-fm-upload-id': uploadId,
+              'x-fm-chunk-offset': String(offset),
+            },
+            body: slice,
+            signal,
+          });
+        } catch (err: unknown) {
+          if (err instanceof Error && err.name === 'AbortError') {
+            throw new Error('CANCELLED_BY_USER');
+          }
+          networkError = true;
+        }
 
-      const status = chunkRes?.status ?? 0;
+        if (chunkRes && chunkRes.ok) {
+          chunkUploaded = true;
+          break;
+        }
 
-      // 404 means server restarted and lost the in-memory upload session -> fall back cleanly
-      if (status === 404) {
-        throw new ServerDecodeUnavailableError(
-          'Server restarted during upload; switching to local browser decoder.',
-          404
+        const status = chunkRes?.status ?? 0;
+
+        // 404 means server restarted and lost the in-memory upload session -> fall back cleanly
+        if (status === 404) {
+          throw new ServerDecodeUnavailableError(
+            'Server restarted during upload; switching to local browser decoder.',
+            404
+          );
+        }
+
+        const canRetry = networkError || isTransientServerStatus(status);
+        if (canRetry && attempt < SERVER_CHUNK_MAX_RETRIES) {
+          const nextAttempt = attempt + 2;
+          const maxAttempts = SERVER_CHUNK_MAX_RETRIES + 1;
+          onProgress?.({
+            stage: 'read',
+            step: 'Server Upload',
+            elapsedSec: elapsedSec(),
+            label: `Connection blip${status ? ` (HTTP ${status})` : ''} — retrying chunk (attempt ${nextAttempt}/${maxAttempts})...`,
+          });
+          await sleepWithAbort(retryBaseDelayMs * Math.pow(2, attempt), signal);
+          continue;
+        }
+
+        if (canRetry) {
+          throw new ServerDecodeUnavailableError(
+            status
+              ? `Server upload interrupted (HTTP ${status}); switching to local browser decoder.`
+              : 'Server upload unreachable; switching to local browser decoder.',
+            status || undefined
+          );
+        }
+
+        throw new Error(
+          chunkRes
+            ? await readErrorMessageFromResponse(
+                chunkRes,
+                `Chunk upload failed (HTTP ${chunkRes.status}).`
+              )
+            : 'Chunk upload failed.'
         );
       }
 
-      const canRetry = networkError || isTransientServerStatus(status);
-      if (canRetry && attempt < SERVER_CHUNK_MAX_RETRIES) {
-        const nextAttempt = attempt + 2;
-        const maxAttempts = SERVER_CHUNK_MAX_RETRIES + 1;
-        onProgress?.({
-          stage: 'read',
-          step: 'Server Upload',
-          elapsedSec: elapsedSec(),
-          label: `Connection blip${status ? ` (HTTP ${status})` : ''} — retrying chunk (attempt ${nextAttempt}/${maxAttempts})...`,
-        });
-        await sleepWithAbort(retryBaseDelayMs * Math.pow(2, attempt), signal);
-        continue;
-      }
-
-      if (canRetry) {
+      if (!chunkUploaded) {
         throw new ServerDecodeUnavailableError(
-          status
-            ? `Server upload interrupted (HTTP ${status}); switching to local browser decoder.`
-            : 'Server upload unreachable; switching to local browser decoder.',
-          status || undefined
+          'Server chunk upload did not complete; switching to local browser decoder.'
         );
       }
 
-      throw new Error(
-        chunkRes
-          ? await readErrorMessageFromResponse(
-              chunkRes,
-              `Chunk upload failed (HTTP ${chunkRes.status}).`
-            )
-          : 'Chunk upload failed.'
-      );
+      offset = end;
+      const uploadedMbLabel = (offset / (1024 * 1024)).toFixed(1);
+      const pct = totalBytes > 0 ? Math.min(100, Math.round((offset / totalBytes) * 100)) : 100;
+      onProgress?.({
+        stage: 'read',
+        step: 'Server Upload',
+        elapsedSec: elapsedSec(),
+        label: `Uploading save to server (${uploadedMbLabel} / ${totalMbLabel} MB — ${pct}%)...`,
+      });
     }
-
-    if (!chunkUploaded) {
-      throw new ServerDecodeUnavailableError(
-        'Server chunk upload did not complete; switching to local browser decoder.'
-      );
-    }
-
-    offset = end;
-    const uploadedMbLabel = (offset / (1024 * 1024)).toFixed(1);
-    const pct = totalBytes > 0 ? Math.min(100, Math.round((offset / totalBytes) * 100)) : 100;
-    onProgress?.({
-      stage: 'read',
-      step: 'Server Upload',
-      elapsedSec: elapsedSec(),
-      label: `Uploading save to server (${uploadedMbLabel} / ${totalMbLabel} MB — ${pct}%)...`,
+  } catch (uploadErr) {
+    void Promise.resolve(
+      fetchImpl(`/api/fm27/decode-save/upload/${encodeURIComponent(uploadId)}`, {
+        method: 'DELETE',
+      })
+    ).catch(() => {
+      // non-blocking cleanup
     });
+    throw uploadErr;
   }
 
   // 3. Finalize upload & start async Python Full Sync job

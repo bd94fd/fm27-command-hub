@@ -34,6 +34,18 @@ from typing import Any
 
 import fmsave
 
+# Ensure sibling modules (e.g. fm_layout_patcher.py) are importable in CLI, spec_from_file_location, and Pyodide
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else ""
+if _THIS_DIR and _THIS_DIR not in sys.path:
+    sys.path.insert(0, _THIS_DIR)
+
+try:
+    import fm_layout_patcher as _layout_patcher
+
+    _layout_patcher.apply_fmsave_runtime_patches()
+except Exception:
+    _layout_patcher = None  # type: ignore[assignment]
+
 MAPPER_CACHE_BUSTER = "?v=15"
 
 # Detect native server Python vs browser Pyodide (emscripten) for realistic budgets
@@ -65,6 +77,7 @@ _STATE: dict[str, Any] = {
     "club_division_id": None,
     "manager_staff_uid": None,
     "first_team_id": None,
+    "club_name_by_team_id": {},
     "tactics_man_note_recorded": False,
     "import_scope": "managed_club_only",
     "fast_sync": False,
@@ -94,6 +107,7 @@ _STATE: dict[str, Any] = {
     "selections": {},
     "set_pieces": {},
     "training": {},
+    "squad_planner": [],
     "job_vacancies": [],
     "player_match_stats": {},
     "team_match_stats": [],
@@ -104,6 +118,100 @@ _STATE: dict[str, Any] = {
     "comp_name_by_id": {},
     "nation_lookup": {},
 }
+
+# Verified Football Manager canonical competition database_id -> Competition Name lookup
+FM_COMPETITION_DB_ID_NAMES: dict[int, str] = {
+    # Belgium
+    1: "Jupiler Pro League",
+    2: "Challenger Pro League",
+    3: "Eerste Nationale",
+    4: "Tweede Afdeling",
+    1301404: "Croky Cup",
+    2000370106: "Eerste Nationale VV",
+    2000388070: "Eerste Nationale ACFF",
+    # England
+    11: "Premier League",
+    12: "Sky Bet Championship",
+    13: "Sky Bet League One",
+    14: "Sky Bet League Two",
+    1301426: "Emirates FA Cup",
+    1301427: "Carabao Cup",
+    # UEFA & Major European Leagues
+    16: "Ligue 1",
+    17: "Ligue 2",
+    22: "Bundesliga",
+    23: "2. Bundesliga",
+    29: "Eredivisie",
+    30: "Keuken Kampioen Divisie",
+    32: "Serie A",
+    33: "Serie B",
+    60: "Liga Portugal",
+    61: "Liga Portugal 2",
+    67: "LaLiga",
+    68: "LaLiga Hypermotion",
+    1301394: "UEFA Champions League",
+    1301395: "UEFA Europa League",
+    85060711: "UEFA Conference League",
+}
+
+# Extended FM27 Training Session raw code -> human label lookup
+# Covers all raw u16 codes observed in FM27 training_man calendars (incl. codes fmsave leaves as UNKNOWN)
+FM27_TRAINING_SESSION_CODE_LABELS: dict[int, str] = {
+    0: "Passing Style",
+    1: "Build-Up Play",
+    2: "Chance Creation",
+    3: "Attacking Transition",
+    4: "Final Third & Finishing",
+    5: "Pressing Intensity",
+    6: "Pressing Trap",
+    7: "Defensive Transition & Shape",
+    100: "Defensive Shape",
+    101: "Aerial & Box Defending",
+    102: "1v1 Defending",
+    103: "Defensive Line Control",
+    104: "Set-Piece Delivery",
+    105: "Set-Piece Defending",
+    106: "Attacking Movement & Combinations",
+    107: "Attacking Overlap & Width",
+    108: "Counter-Attacking Transitions",
+    200: "General Outfield",
+    201: "Technical Development",
+    202: "Tactical Development",
+    203: "Physical Development",
+    204: "Goalkeeping & Distribution",
+    300: "Rest",
+    301: "Recovery",
+    302: "Light Conditioning",
+    303: "Conditioning",
+    400: "Match Review & Team Cohesion",
+    401: "Match Preparation",
+    402: "Travel",
+    500: "Match",
+    600: "Individual Focus / Unassigned",
+}
+
+_PROHIBITED_CA_PA_KEY_RE = re.compile(
+    r"^(?:ca|pa|current_?ability|potential_?ability|internal_?reliability|hidden_?personality)$",
+    re.IGNORECASE,
+)
+
+
+def deep_scrub_ca_pa(node: Any) -> Any:
+    """Recursively strips any raw CA/PA or raw hidden integer keys across the entire JSON graph."""
+    if isinstance(node, dict):
+        cleaned: dict[str, Any] = {}
+        for k, v in node.items():
+            ks = str(k)
+            if _PROHIBITED_CA_PA_KEY_RE.match(ks):
+                continue
+            cleaned[ks] = deep_scrub_ca_pa(v)
+        return cleaned
+    if isinstance(node, list):
+        return [deep_scrub_ca_pa(item) for item in node]
+    if isinstance(node, tuple):
+        return [deep_scrub_ca_pa(item) for item in node]
+    return node
+
 
 # Verified Football Manager canonical nation database_id -> Country Name lookup
 # (fmsave stores save-local nation_id joined to Nation.database_id via save.nations()).
@@ -677,6 +785,7 @@ def step_close() -> None:
     _STATE["club_division_id"] = None
     _STATE["manager_staff_uid"] = None
     _STATE["first_team_id"] = None
+    _STATE["club_name_by_team_id"] = {}
     _STATE["tactics_man_note_recorded"] = False
     _STATE["import_scope"] = "managed_club_only"
     _STATE["fast_sync"] = False
@@ -706,6 +815,7 @@ def step_close() -> None:
     _STATE["selections"] = {}
     _STATE["set_pieces"] = {}
     _STATE["training"] = {}
+    _STATE["squad_planner"] = []
     _STATE["job_vacancies"] = []
     _STATE["player_match_stats"] = {}
     _STATE["team_match_stats"] = []
@@ -815,8 +925,18 @@ def _open_table_stream(
 
 
 def _open_save_non_strict(path: str) -> Any:
-    """Open .fm save passing strict=False (or other non-strict kwargs) whenever fmsave.open supports it."""
+    """Open .fm save passing strict=False and competition_names whenever fmsave.open supports them."""
+    if _layout_patcher is not None:
+        try:
+            _layout_patcher.apply_fmsave_runtime_patches()
+        except Exception:
+            pass
     open_kwargs = _get_non_strict_kwargs(fmsave.open)
+    comp_kw = _inspect_supported_kwargs(
+        fmsave.open, {"competition_names": FM_COMPETITION_DB_ID_NAMES}
+    )
+    if "competition_names" in comp_kw:
+        open_kwargs["competition_names"] = FM_COMPETITION_DB_ID_NAMES
     if open_kwargs:
         return fmsave.open(path, **open_kwargs)
     return fmsave.open(path)
@@ -835,6 +955,14 @@ def step_open(
     _STATE["import_scope"] = (import_scope or "managed_club_only").strip()
     _STATE["fast_sync"] = bool(fast_sync)
 
+    info = save.info
+    build_str = str(getattr(info, "build", "unknown"))
+    if _layout_patcher is not None and build_str.startswith("27."):
+        try:
+            _layout_patcher.register_dynamic_fm27_build(build_str)
+        except Exception:
+            pass
+
     # Enter ONE shared game_db section borrow across Steps 2-3 (incl. Group 4 & division benchmarks)
     ctx = getattr(save, "_context", None)
     if ctx is not None and hasattr(ctx, "section"):
@@ -845,7 +973,6 @@ def step_open(
         except Exception:
             _STATE["game_db_cm"] = None
 
-    info = save.info
     managed = []
     try:
         managed = list(save.managed_clubs())
@@ -869,17 +996,26 @@ def step_open(
     manager_name = getattr(target_club, "manager_name", None) if target_club else None
     manager_staff_uid = _int(getattr(target_club, "manager_staff_uid", None), None) if target_club else None
     club_balance = _int(getattr(target_club, "balance", None)) if target_club else None
+    scouting_budget = _int(getattr(target_club, "scouting_budget", None), None) if target_club else None
+    scouting_budget_rem = _int(getattr(target_club, "scouting_budget_remaining", None), None) if target_club else None
     club_rep = _int(_first_attr(target_club, ("reputation", "club_reputation")), None)
     club_div_id = _int(
         _first_attr(target_club, ("division_id", "competition_id", "league_id")),
         None,
     )
 
-    # Fallback to clubs() scan if no managed club found or to capture club reputation/division
+    # Scan clubs() to index team_id -> club_name, capture first_team_id, and resolve club reputation/division
+    club_name_by_team_id: dict[int, str] = {}
+    first_team_id: int | None = None
     try:
         for c in save.clubs():
             cid = getattr(c, "uid", None)
-            cname = getattr(c, "name", "") or ""
+            cname = getattr(c, "name", "") or getattr(c, "short_name", "") or ""
+            c_teams = getattr(c, "teams", None) or ()
+            for tm in c_teams:
+                tm_id = _int(getattr(tm, "team_id", None), None)
+                if tm_id is not None and cname and not getattr(tm, "is_affiliate", False):
+                    club_name_by_team_id[tm_id] = str(cname)
             if club_uid is None and hint_lower and hint_lower in cname.lower():
                 club_uid = cid
                 club_name = cname
@@ -891,18 +1027,33 @@ def step_open(
                         _first_attr(c, ("division_id", "competition_id", "league_id")),
                         None,
                     )
-                break
+                for tm in c_teams:
+                    if getattr(tm, "slot", None) == 0:
+                        first_team_id = _int(getattr(tm, "team_id", None), None)
+                        break
+                if first_team_id is None and c_teams:
+                    first_team_id = _int(getattr(c_teams[0], "team_id", None), None)
     except Exception as exc:
         _STATE["warnings"].append(f"clubs: {type(exc).__name__}")
 
-    # Pre-index competition names for fast lookup
+    _STATE["club_name_by_team_id"] = club_name_by_team_id
+    if first_team_id is not None:
+        _STATE["first_team_id"] = first_team_id
+
+    # Pre-index competition names for fast lookup (using explicit name or FM_COMPETITION_DB_ID_NAMES)
     comp_map: dict[int, str] = {}
     try:
         for c in save.competitions():
-            cid = getattr(c, "id", None)
+            cid = _int(getattr(c, "id", None), None)
+            if cid is None:
+                continue
             cname = getattr(c, "name", None)
-            if cid is not None and cname:
-                comp_map[int(cid)] = str(cname)
+            if not cname:
+                db_id = _int(getattr(c, "database_id", None), None)
+                if db_id is not None and db_id in FM_COMPETITION_DB_ID_NAMES:
+                    cname = FM_COMPETITION_DB_ID_NAMES[db_id]
+            if cname:
+                comp_map[cid] = str(cname)
     except Exception:
         pass
     _STATE["comp_name_by_id"] = comp_map
@@ -910,7 +1061,7 @@ def step_open(
     game_date = getattr(info, "game_date", None)
     meta = {
         "game": getattr(info, "game", "FM"),
-        "build": str(getattr(info, "build", "unknown")),
+        "build": build_str,
         "knownBuild": bool(getattr(info, "known_build", True)),
         "saveName": getattr(info, "save_name", None) or os.path.basename(path),
         "gameDateIso": _iso(game_date),
@@ -919,6 +1070,8 @@ def step_open(
         "clubName": club_name or "Managed Club",
         "managerName": manager_name or "Manager",
         "balance": club_balance,
+        "scoutingBudget": scouting_budget,
+        "scoutingBudgetRemaining": scouting_budget_rem,
         "fmsaveVersion": fmsave.__version__,
         "importScope": _STATE["import_scope"],
         "fastSync": _STATE["fast_sync"],
@@ -2335,8 +2488,100 @@ def _extract_club_scoped_capped(
     return items
 
 
+def _decode_tactic_slot_position(positions_tuple: Any, mask: int = 0) -> str | None:
+    """Decode fmsave TacticSlot in_possession_positions / out_of_possession_positions tuple
+    (which contains CodedValue[TacticPosition] items) and lateral bitmask
+    (0x200000 = Right-centre, 0x100000 = Left-centre) into an FM position code."""
+    if not positions_tuple or not isinstance(positions_tuple, (list, tuple)):
+        return None
+    pos0 = positions_tuple[0]
+    enum_obj = getattr(pos0, "label", pos0)
+    raw_name = getattr(enum_obj, "name", None) or str(enum_obj or "")
+    p_name = raw_name.strip().upper().split(".")[-1].replace(" ", "_")
+    is_right = bool(mask & 0x200000)
+    is_left = bool(mask & 0x100000)
+    side_suffix = "R" if is_right else ("L" if is_left else "")
+
+    if p_name in ("GOALKEEPER", "GK"):
+        return "GK"
+    if p_name in ("DEFENDER_RIGHT", "DR"):
+        return "DR"
+    if p_name in ("DEFENDER_LEFT", "DL"):
+        return "DL"
+    if p_name in ("DEFENDER_CENTRE", "DC"):
+        return f"DC{side_suffix}"
+    if p_name in ("WING_BACK_RIGHT", "WBR"):
+        return "WBR"
+    if p_name in ("WING_BACK_LEFT", "WBL"):
+        return "WBL"
+    if p_name in ("DEFENSIVE_MIDFIELDER", "DM"):
+        return f"DM{side_suffix}" if side_suffix else "DM"
+    if p_name in ("MIDFIELDER_RIGHT", "MR"):
+        return "MR"
+    if p_name in ("MIDFIELDER_LEFT", "ML"):
+        return "ML"
+    if p_name in ("MIDFIELDER_CENTRE", "MC"):
+        return f"MC{side_suffix}"
+    if p_name in ("ATTACKING_MIDFIELDER_RIGHT", "AMR"):
+        return "AMR"
+    if p_name in ("ATTACKING_MIDFIELDER_LEFT", "AML"):
+        return "AML"
+    if p_name in ("ATTACKING_MIDFIELDER_CENTRE", "AMC"):
+        return f"AMC{side_suffix}" if side_suffix else "AMC"
+    if p_name in ("STRIKER_CENTRE", "STRIKER", "ST", "STC"):
+        return f"STC{side_suffix}" if side_suffix else "STC"
+    return _label(pos0)
+
+
+def _derive_formation_from_positions(pos_codes: list[str]) -> str | None:
+    """Derive a clean human-readable FM formation string (e.g. '4-3-3 DM Wide', '4-2-3-1 DM AM Wide')
+    from the 11 decoded slot position codes."""
+    if not pos_codes:
+        return None
+    d_cnt = 0
+    wb_cnt = 0
+    dm_cnt = 0
+    m_cnt = 0
+    am_cnt = 0
+    st_cnt = 0
+    has_wide_am = False
+    for code in pos_codes:
+        c = (code or "").upper().strip()
+        if not c or c == "GK" or c.startswith("SLOT"):
+            continue
+        if c in ("DR", "DL", "DC", "DCR", "DCL"):
+            d_cnt += 1
+        elif c in ("WBR", "WBL"):
+            wb_cnt += 1
+        elif c in ("DM", "DMR", "DML"):
+            dm_cnt += 1
+        elif c in ("MC", "MCR", "MCL", "ML", "MR"):
+            m_cnt += 1
+        elif c in ("AMC", "AMCR", "AMCL", "AML", "AMR"):
+            am_cnt += 1
+            if c in ("AML", "AMR"):
+                has_wide_am = True
+        elif c in ("ST", "STC", "STCR", "STCL"):
+            st_cnt += 1
+
+    total_outfield = d_cnt + wb_cnt + dm_cnt + m_cnt + am_cnt + st_cnt
+    if total_outfield < 8:
+        return None
+
+    if d_cnt == 4 and wb_cnt == 0 and dm_cnt == 1 and m_cnt == 2 and am_cnt == 2 and st_cnt == 1 and has_wide_am:
+        return "4-3-3 DM Wide"
+    if d_cnt == 4 and wb_cnt == 0 and dm_cnt == 2 and m_cnt == 0 and am_cnt == 3 and st_cnt == 1:
+        return "4-2-3-1 DM AM Wide" if has_wide_am else "4-2-3-1 DM"
+    if d_cnt == 4 and wb_cnt == 0 and dm_cnt == 0 and m_cnt == 2 and am_cnt == 3 and st_cnt == 1:
+        return "4-2-3-1 Wide" if has_wide_am else "4-2-3-1"
+
+    lines = [c for c in (d_cnt, wb_cnt, dm_cnt, m_cnt, am_cnt, st_cnt) if c > 0]
+    return "-".join(str(c) for c in lines) if lines else None
+
+
 def step_3_3_tactics_and_mentoring() -> str:
-    """Step 3/6: Tactics & mentoring — managed-club-only tables (always runs in both Fast Sync & Full Sync)."""
+    """Step 3/6: Tactics, matchday selections, set pieces & mentoring — managed-club-only tables
+    (always runs in both Fast Sync & Full Sync)."""
     t0 = time.monotonic()
     save = _STATE["save"]
     club_uid = _STATE["club_uid"]
@@ -2344,11 +2589,89 @@ def step_3_3_tactics_and_mentoring() -> str:
         elapsed_ms = _record_step_timing("step_3_3_tactics_mentoring", t0)
         return json.dumps({"tactics": 0, "mentoring": 0, "elapsedMs": elapsed_ms})
 
+    player_name_lookup = {int(p["uid"]): str(p["name"]) for p in _STATE.get("players_out", [])}
+
+    # 0. Extract matchday selections (11 starters + substitutes) and set_pieces from tactics_man
+    starters_by_zero_idx: dict[int, dict[str, Any]] = {}
+    substitutes_list: list[dict[str, Any]] = []
+    try:
+        sel_fn = getattr(save, "selections", None)
+        if callable(sel_fn):
+            raw_sel = _safe_call(sel_fn, "selections", default=()) or ()
+            raw_starters: dict[int, dict[str, Any]] = {}
+            for sel in raw_sel:
+                if club_uid is not None and getattr(sel, "club_uid", None) != club_uid:
+                    continue
+                if getattr(sel, "team_slot", None) not in (None, 0):
+                    continue
+                s_slot = _int(getattr(sel, "slot", None), None)
+                if s_slot is None:
+                    continue
+                p_uid = _int(getattr(sel, "player_uid", None), None)
+                p_name = getattr(sel, "player_name", None) or (
+                    player_name_lookup.get(p_uid) if p_uid is not None else None
+                )
+                is_sub = bool(getattr(sel, "substitute", False))
+                entry = {
+                    "slot": s_slot,
+                    "substitute": is_sub,
+                    "playerUid": p_uid,
+                    "playerName": p_name,
+                }
+                if is_sub:
+                    substitutes_list.append(entry)
+                else:
+                    raw_starters[s_slot] = entry
+            if raw_starters:
+                if 0 in raw_starters:
+                    starters_by_zero_idx = dict(raw_starters)
+                else:
+                    starters_by_zero_idx = {max(0, k - 1): v for k, v in raw_starters.items()}
+        if starters_by_zero_idx or substitutes_list:
+            _STATE["selections"] = {
+                "starters": [starters_by_zero_idx[k] for k in sorted(starters_by_zero_idx)],
+                "substitutes": substitutes_list,
+            }
+    except Exception as exc:
+        _STATE["warnings"].append(f"selections: {type(exc).__name__}")
+
+    try:
+        sp_fn = getattr(save, "set_pieces", None)
+        if callable(sp_fn):
+            raw_sp = _safe_call(sp_fn, "set_pieces", default=()) or ()
+            named_routines: list[dict[str, Any]] = []
+            all_routines: list[dict[str, Any]] = []
+            total_sp = 0
+            for sp in raw_sp:
+                if club_uid is not None and getattr(sp, "club_uid", None) != club_uid:
+                    continue
+                if getattr(sp, "team_slot", None) not in (None, 0):
+                    continue
+                total_sp += 1
+                r_name = str(getattr(sp, "name", "") or "").strip()
+                raw_slot = getattr(sp, "slot", None)
+                if raw_slot is None:
+                    raw_slot = getattr(sp, "index", None)
+                item = {
+                    "slot": _int(raw_slot, total_sp - 1),
+                    "name": r_name,
+                }
+                if r_name:
+                    named_routines.append(item)
+                elif len(all_routines) < 25:
+                    all_routines.append(item)
+            if total_sp > 0:
+                _STATE["set_pieces"] = {
+                    "routines": named_routines if named_routines else all_routines,
+                    "totalSlots": total_sp,
+                }
+    except Exception as exc:
+        _STATE["warnings"].append(f"set_pieces: {type(exc).__name__}")
+
     # 1. Club tactics (6s cap, lazy stream, native club_uid filter)
     tactics_out: list[dict[str, Any]] = []
     tac_t0 = time.monotonic()
     tac_timed_out = False
-    player_name_lookup = {int(p["uid"]): str(p["name"]) for p in _STATE.get("players_out", [])}
 
     def _scan_tactics(stream: Any) -> None:
         nonlocal tac_timed_out
@@ -2366,24 +2689,62 @@ def step_3_3_tactics_and_mentoring() -> str:
             oop_form = _label(_first_attr(t, ("out_of_possession_formation", "oop_formation"))) or None
             raw_slots = _first_attr(t, ("slots", "positions", "lineup", "players", "roles"))
             slots_out = []
+            ip_pos_codes: list[str] = []
+            oop_pos_codes: list[str] = []
             if isinstance(raw_slots, (list, tuple)):
-                for s_idx, sl in enumerate(raw_slots[:11]):
-                    sl_pos = _label(_first_attr(sl, ("position", "slot_position", "pos"))) or f"Slot {s_idx + 1}"
+                slot_seq = list(raw_slots[:11])
+                for s_idx, sl in enumerate(slot_seq):
+                    explicit_pos = _label(_first_attr(sl, ("position", "slot_position", "pos")))
+                    decoded_ip_pos = _decode_tactic_slot_position(
+                        getattr(sl, "in_possession_positions", None),
+                        _int(getattr(sl, "in_possession_mask", 0), 0) or 0,
+                    )
+                    sl_pos = explicit_pos or decoded_ip_pos or f"Slot {s_idx + 1}"
+                    ip_pos_codes.append(sl_pos)
+
+                    oop_idx = _int(getattr(sl, "out_of_possession_position_index", None), s_idx)
+                    oop_ref = (
+                        slot_seq[oop_idx]
+                        if oop_idx is not None and 0 <= oop_idx < len(slot_seq)
+                        else sl
+                    )
+                    sl_oop_pos = (
+                        _decode_tactic_slot_position(
+                            getattr(oop_ref, "out_of_possession_positions", None),
+                            _int(getattr(oop_ref, "out_of_possession_mask", 0), 0) or 0,
+                        )
+                        or sl_pos
+                    )
+                    oop_pos_codes.append(sl_oop_pos)
+
                     sl_ip = _label(_first_attr(sl, ("in_possession_role", "ip_role", "role", "role_name")))
                     sl_oop = _label(_first_attr(sl, ("out_of_possession_role", "oop_role")))
+                    starter_sel = starters_by_zero_idx.get(s_idx) or {}
                     sl_puid = _int(_first_attr(sl, ("player_uid", "person_uid")), None)
+                    if sl_puid is None:
+                        sl_puid = starter_sel.get("playerUid")
                     sl_pname = (
                         getattr(sl, "player_name", None)
+                        or starter_sel.get("playerName")
                         or (player_name_lookup.get(sl_puid) if sl_puid is not None else None)
                     )
+                    ip_settings = getattr(sl, "in_possession_settings", None)
+                    oop_settings = getattr(sl, "out_of_possession_settings", None)
                     slots_out.append({
                         "slotIndex": s_idx,
                         "position": sl_pos,
+                        "outOfPossessionPosition": sl_oop_pos,
                         "inPossessionRole": sl_ip,
                         "outOfPossessionRole": sl_oop,
                         "playerUid": sl_puid,
                         "playerName": sl_pname,
+                        "settingCountIp": len(ip_settings) if isinstance(ip_settings, (list, tuple)) else 0,
+                        "settingCountOop": len(oop_settings) if isinstance(oop_settings, (list, tuple)) else 0,
                     })
+            if ip_form is None:
+                ip_form = _derive_formation_from_positions(ip_pos_codes)
+            if oop_form is None:
+                oop_form = _derive_formation_from_positions(oop_pos_codes)
             tactics_out.append({
                 "index": int(getattr(t, "index", len(tactics_out))),
                 "name": getattr(t, "name", None) or f"Tactic {len(tactics_out) + 1}",
@@ -2729,16 +3090,149 @@ def step_3_3_transfer_windows(fast_sync: bool | None = None) -> str:
     return json.dumps({"skipped": False, "isOpen": is_open, "elapsedMs": elapsed_ms})
 
 
+def _format_training_session_code(s: Any) -> str:
+    raw_code = _int(getattr(s, "raw", getattr(s, "value", s)), None)
+    if raw_code is not None and raw_code in FM27_TRAINING_SESSION_CODE_LABELS:
+        return FM27_TRAINING_SESSION_CODE_LABELS[raw_code]
+    enum_obj = getattr(s, "label", s)
+    name_attr = getattr(enum_obj, "name", None)
+    if isinstance(name_attr, str) and name_attr and name_attr.upper() != "UNKNOWN" and not name_attr.isdigit():
+        return name_attr.replace("_", " ").title()
+    lbl = _label(s)
+    if lbl and lbl.upper() != "UNKNOWN" and not lbl.isdigit():
+        return lbl
+    return f"Session {raw_code}" if raw_code is not None else "Rest"
+
+
+def _extract_typed_team_training(
+    save: Any, club_uid: int | None, game_date: date | None
+) -> dict[str, Any]:
+    """Extract a clean, typed 4-week team training calendar and deduplicated schedule library
+    for the managed club's First Team without _to_json_safe depth truncation."""
+    tr_fn = getattr(save, "training", None)
+    if not callable(tr_fn):
+        return {}
+    try:
+        raw_tr = _safe_call(tr_fn, "training", default=()) or ()
+        target_tr = None
+        for item in raw_tr:
+            if club_uid is not None and getattr(item, "club_uid", None) != club_uid:
+                continue
+            if getattr(item, "team_slot", None) not in (None, 0):
+                continue
+            target_tr = item
+            break
+        if target_tr is None:
+            return {}
+        if isinstance(target_tr, dict):
+            return target_tr
+
+        raw_calendar = getattr(target_tr, "weeks", None)
+        if raw_calendar is None:
+            raw_calendar = getattr(target_tr, "calendar", None) or ()
+        weeks_list = list(raw_calendar)
+        selected_weeks = weeks_list[-4:]
+        if isinstance(game_date, date) and weeks_list:
+            best_idx = 0
+            for idx, wk in enumerate(weeks_list):
+                wk_start = getattr(wk, "week_start", None) or getattr(wk, "start_date", None)
+                if isinstance(wk_start, date) and wk_start <= game_date:
+                    best_idx = idx
+            start_slice = max(0, best_idx - 1)
+            selected_weeks = weeks_list[start_slice : start_slice + 4]
+
+        calendar_out: list[dict[str, Any]] = []
+        for wk in selected_weeks:
+            days_out: list[dict[str, Any]] = []
+            for d in getattr(wk, "days", None) or ():
+                d_date = getattr(d, "day", None) or getattr(d, "date", None)
+                days_out.append({
+                    "date": _iso(d_date) or "",
+                    "dateDmy": _dmy(d_date) or "",
+                    "sessions": [
+                        _format_training_session_code(s)
+                        for s in (getattr(d, "sessions", None) or ())
+                    ],
+                })
+            wk_start = getattr(wk, "week_start", None) or getattr(wk, "start_date", None)
+            calendar_out.append({
+                "startDate": _iso(wk_start) or "",
+                "startDateDmy": _dmy(wk_start) or "",
+                "scheduleName": str(getattr(wk, "schedule_name", "") or "Custom Schedule"),
+                "days": days_out,
+            })
+
+        schedules_out: list[dict[str, Any]] = []
+        seen_sched: set[tuple[str, str]] = set()
+        for sc in getattr(target_tr, "schedule_library", None) or ():
+            folder = str(getattr(sc, "folder", "") or "").strip()
+            sname = str(getattr(sc, "name", "") or "").strip()
+            if not sname or (folder, sname) in seen_sched:
+                continue
+            seen_sched.add((folder, sname))
+            schedules_out.append({
+                "folder": folder,
+                "name": sname,
+            })
+            if len(schedules_out) >= 20:
+                break
+
+        return {
+            "clubUid": _int(getattr(target_tr, "club_uid", None), club_uid),
+            "teamSlot": _int(getattr(target_tr, "team_slot", None), 0),
+            "teamName": str(getattr(target_tr, "club_name", None) or getattr(target_tr, "team_name", "") or ""),
+            "totalWeeks": len(weeks_list),
+            "calendar": calendar_out,
+            "scheduleLibrary": schedules_out,
+        }
+    except Exception as exc:
+        _STATE["warnings"].append(f"training: {type(exc).__name__}")
+        return {}
+
+
+def _extract_squad_planner(
+    save: Any, player_name_lookup: dict[int, str]
+) -> list[dict[str, Any]]:
+    """Extract multi-season squad planner slots (seasons 0..2, slots 0..26) with resolved player names."""
+    sp_fn = getattr(save, "squad_planner", None)
+    if not callable(sp_fn):
+        return []
+    out: list[dict[str, Any]] = []
+    try:
+        raw_sp = _safe_call(sp_fn, "squad_planner", default=()) or ()
+        for item in raw_sp:
+            raw_uids = getattr(item, "player_uids", None) or ()
+            p_uids = [_int(u, 0) for u in raw_uids if _int(u, None) is not None]
+            if not p_uids:
+                continue
+            p_names = [
+                player_name_lookup.get(u) or f"UID {u}"
+                for u in p_uids
+            ]
+            out.append({
+                "seasonOffset": _int(getattr(item, "season_offset", None), 0) or 0,
+                "slot": _int(getattr(item, "slot", None), 0) or 0,
+                "playerUids": p_uids,
+                "playerNames": p_names,
+            })
+    except Exception as exc:
+        _STATE["warnings"].append(f"squad_planner: {type(exc).__name__}")
+    return out
+
+
 def step_3_3_secondary_ops(fast_sync: bool | None = None) -> str:
     """Step 3/6: Optional secondary club dumps (sponsorships, selections, set_pieces,
-    training, job_vacancies & division benchmarks) — Full Sync only."""
+    training, squad_planner, job_vacancies & division benchmarks) — Full Sync only."""
     t0 = time.monotonic()
     use_fast = _STATE.get("fast_sync", False) if fast_sync is None else bool(fast_sync)
     if use_fast:
         _STATE["sponsorships"] = []
-        _STATE["selections"] = {}
-        _STATE["set_pieces"] = {}
+        if not _STATE.get("selections"):
+            _STATE["selections"] = {}
+        if not _STATE.get("set_pieces"):
+            _STATE["set_pieces"] = {}
         _STATE["training"] = {}
+        _STATE["squad_planner"] = []
         _STATE["job_vacancies"] = []
         _STATE["division_benchmarks"] = None
         _record_fast_sync_skip_note()
@@ -2751,19 +3245,26 @@ def step_3_3_secondary_ops(fast_sync: bool | None = None) -> str:
     comp_map = _STATE.get("comp_name_by_id", {})
     club_div_id = _STATE.get("club_division_id")
     competition_rules = _STATE.get("competition_rules") or {}
+    player_name_lookup = {int(p["uid"]): str(p["name"]) for p in _STATE.get("players_out", [])}
 
     sponsorships: Any = []
-    selections: Any = {}
-    set_pieces: Any = {}
+    selections: Any = _STATE.get("selections") or {}
+    set_pieces: Any = _STATE.get("set_pieces") or {}
     training: Any = {}
+    squad_planner: list[dict[str, Any]] = []
     job_vacancies: Any = []
     division_benchmarks = None
 
     if save is not None:
         sponsorships = _extract_club_scoped_capped(save, club_uid, "sponsorships", [], filter_by_club=True)
-        selections = _extract_club_scoped_capped(save, club_uid, "selections", {}, filter_by_club=True)
-        set_pieces = _extract_club_scoped_capped(save, club_uid, "set_pieces", {}, filter_by_club=True)
-        training = _extract_club_scoped_capped(save, club_uid, "training", {}, filter_by_club=True)
+        if not selections:
+            selections = _extract_club_scoped_capped(save, club_uid, "selections", {}, filter_by_club=True)
+        if not set_pieces:
+            set_pieces = _extract_club_scoped_capped(save, club_uid, "set_pieces", {}, filter_by_club=True)
+        training = _extract_typed_team_training(save, club_uid, _STATE.get("game_date"))
+        if not training:
+            training = _extract_club_scoped_capped(save, club_uid, "training", {}, filter_by_club=True)
+        squad_planner = _extract_squad_planner(save, player_name_lookup)
         job_vacancies = _extract_club_scoped_capped(save, club_uid, "job_vacancies", [], filter_by_club=False)
 
         if _STATE.get("import_scope") in ("club_and_division", "full_division", "full_league"):
@@ -2800,8 +3301,10 @@ def step_3_3_secondary_ops(fast_sync: bool | None = None) -> str:
     _STATE["selections"] = selections if isinstance(selections, dict) else {"items": selections}
     _STATE["set_pieces"] = set_pieces if isinstance(set_pieces, dict) else {"routines": set_pieces}
     _STATE["training"] = training if isinstance(training, dict) else {"schedule": training}
+    _STATE["squad_planner"] = squad_planner
     _STATE["job_vacancies"] = job_vacancies if isinstance(job_vacancies, list) else []
     _STATE["division_benchmarks"] = division_benchmarks
+    del player_name_lookup
 
     gc.collect()
     elapsed_ms = _record_step_timing("step_3_3_secondary_ops", t0)
@@ -3116,6 +3619,8 @@ def step_4_2_player_match_stats(fast_sync: bool | None = None) -> str:
         p_uid = _int(getattr(stat, "player_uid", None))
         if p_uid not in squad_uids:
             return
+        if not getattr(stat, "has_stats", True):
+            return
         is_comp = getattr(stat, "is_competitive", True)
         kind_str = str(getattr(stat, "kind", "")).lower()
         if not is_comp or "friendly" in kind_str:
@@ -3123,13 +3628,19 @@ def step_4_2_player_match_stats(fast_sync: bool | None = None) -> str:
         rating_v = _float(getattr(stat, "rating", None) or getattr(stat, "match_rating", None), None)
         if rating_v is None or rating_v <= 0:
             return
+        opp_name = (
+            getattr(stat, "opponent_club_name", None)
+            or getattr(stat, "opponent_club_short_name", None)
+            or getattr(stat, "opponent_name", None)
+            or ""
+        )
         uid_key = str(p_uid)
         player_match_stats.setdefault(uid_key, []).append({
             "date": _iso(getattr(stat, "date", None)) or "",
             "rating": round(rating_v, 2),
             "goals": _int(getattr(stat, "goals", None), 0) or 0,
             "assists": _int(getattr(stat, "assists", None), 0) or 0,
-            "opponent": getattr(stat, "opponent_name", None) or "",
+            "opponent": str(opp_name),
             "minutes": _int(getattr(stat, "minutes", None), 0) or 0,
         })
 
@@ -3745,6 +4256,7 @@ def step_team_match_stats(fast_sync: bool | None = None) -> str:
         except Exception as exc:
             _STATE["warnings"].append(f"team_match_stats: {type(exc).__name__}")
 
+        club_name_by_tid = _STATE.get("club_name_by_team_id") or {}
         for (date_iso, _ht, _at), pair in sorted(grouped_matches.items()):
             ours = pair.get("ours")
             opp = pair.get("opp")
@@ -3752,8 +4264,22 @@ def step_team_match_stats(fast_sync: bool | None = None) -> str:
                 continue
 
             match_id = str(getattr(ours, "match_id", None) or getattr(ours, "fixture_id", None) or f"{date_iso}-{_ht}-{_at}")
-            opponent = str(getattr(ours, "opponent_name", None) or "Opponent")
-            is_home = bool(getattr(ours, "is_home", True))
+            raw_is_home = getattr(ours, "is_home", None)
+            if raw_is_home is not None:
+                is_home = bool(raw_is_home)
+            elif _ht and getattr(ours, "team_id", None) is not None:
+                is_home = (_int(getattr(ours, "team_id", None), None) == _ht)
+            elif first_team_id is not None and _ht:
+                is_home = (first_team_id == _ht)
+            else:
+                is_home = True
+            opp_tid = _at if is_home else _ht
+            opponent = str(
+                getattr(ours, "opponent_name", None)
+                or getattr(ours, "opponent_club_name", None)
+                or (club_name_by_tid.get(opp_tid) if opp_tid else None)
+                or "Opponent"
+            )
             xg_for = _float(
                 getattr(ours, "expected_goals", None)
                 if getattr(ours, "expected_goals", None) is not None
@@ -3868,7 +4394,7 @@ def _build_current_payload() -> dict[str, Any]:
     """Assemble a clean JSON-serializable payload from current _STATE without closing the save.
     Used for Progressive Checkpoint Recovery (Stages 1-3) and finalization.
     Strictly contains ZERO raw CA/PA or raw hidden integers."""
-    return {
+    raw_payload = {
         "meta": _STATE["meta"],
         "clubUid": _STATE["club_uid"],
         "players": _STATE["players_out"],
@@ -3894,6 +4420,7 @@ def _build_current_payload() -> dict[str, Any]:
         "selections": _STATE["selections"],
         "setPieces": _STATE["set_pieces"],
         "training": _STATE["training"],
+        "squadPlanner": _STATE.get("squad_planner", []),
         "jobVacancies": _STATE["job_vacancies"],
         "recruitmentTargets": _STATE["recruitment_targets"],
         "fastSync": bool(_STATE.get("fast_sync", False)),
@@ -3901,6 +4428,7 @@ def _build_current_payload() -> dict[str, Any]:
         "extractionWarnings": list(_STATE["warnings"]),
         "stepTimingsMs": dict(_STATE["step_timings_ms"]),
     }
+    return deep_scrub_ca_pa(raw_payload)
 
 
 def step_snapshot_payload(stage: str = "") -> str:
@@ -4236,7 +4764,7 @@ def extract_pass_0_data(save_instance: Any, target_club_uid: int | None = None) 
     )
     comp_rules = _extract_typed_competition_rules(save_instance, user_club_uid, None, {})
 
-    return json.dumps({
+    return json.dumps(deep_scrub_ca_pa({
         "clubUid": user_club_uid,
         "squad": squad_players,
         "activeSuspensions": active_suspensions,
@@ -4255,7 +4783,7 @@ def extract_pass_0_data(save_instance: Any, target_club_uid: int | None = None) 
         "jobVacancies": _to_json_safe(_safe_call(lambda: save_instance.job_vacancies(), "job_vacancies", [])),
         "recruitmentTargets": recruitment_targets,
         "extractionWarnings": extraction_warnings,
-    })
+    }))
 
 
 def extract_fm_save_payload(

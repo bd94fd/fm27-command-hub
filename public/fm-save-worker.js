@@ -52,6 +52,17 @@ async function ensureBooted(reply, origin) {
       const micropip = instance.pyimport('micropip');
       await micropip.install(`fmsave==${FMSAVE_VERSION}`);
 
+      const patcherUrl = new URL('/fm_layout_patcher.py?v=15', origin || self.location.origin).href;
+      try {
+        const patcherResp = await fetch(patcherUrl, { cache: 'no-cache' });
+        if (patcherResp.ok) {
+          const patcherSource = await patcherResp.text();
+          instance.FS.writeFile('/home/pyodide/fm_layout_patcher.py', patcherSource);
+        }
+      } catch {
+        // Optional runtime layout patcher; mapper degrades gracefully if absent
+      }
+
       const mapperUrl = new URL('/fm-save-mapper.py?v=15', origin || self.location.origin).href;
       const mapperSource = await (await fetch(mapperUrl, { cache: 'no-cache' })).text();
       instance.FS.writeFile('/home/pyodide/fm_save_mapper.py', mapperSource);

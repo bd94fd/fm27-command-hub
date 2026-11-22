@@ -131,10 +131,22 @@ export interface DivisionBenchmarks {
 export interface TacticSlotAssignment {
   slotIndex: number;
   position: string;
+  outOfPossessionPosition?: string | null;
+  inPossessionRole?: string | null;
+  outOfPossessionRole?: string | null;
   ipRole?: string | null;
   oopRole?: string | null;
   playerUid?: number | null;
   playerName?: string | null;
+  settingCountIp?: number;
+  settingCountOop?: number;
+}
+
+export interface SquadPlannerSlot {
+  seasonOffset: number;
+  slot: number;
+  playerUids: number[];
+  playerNames: string[];
 }
 
 export interface DeepTacticRecord {
@@ -322,6 +334,7 @@ export interface Pass0ExtractionPayload {
   selections: Record<string, unknown>;
   setPieces: Record<string, unknown>;
   training: Record<string, unknown>;
+  squadPlanner?: SquadPlannerSlot[];
   jobVacancies: JobVacancyEntry[];
   recruitmentTargets: RecruitmentTarget[];
   extractionWarnings?: string[];

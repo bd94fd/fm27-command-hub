@@ -445,6 +445,8 @@ export interface DecodedFmSavePayload {
     clubName: string;
     managerName: string;
     balance: number | null;
+    scoutingBudget?: number | null;
+    scoutingBudgetRemaining?: number | null;
     fmsaveVersion: string;
     fileName?: string;
     fileSizeMb?: number;
@@ -537,6 +539,12 @@ export interface DecodedFmSavePayload {
   selections?: Record<string, unknown>;
   setPieces?: Record<string, unknown>;
   training?: Record<string, unknown>;
+  squadPlanner?: Array<{
+    seasonOffset: number;
+    slot: number;
+    playerUids: number[];
+    playerNames: string[];
+  }>;
   jobVacancies?: JobVacancyEntry[];
   recruitmentTargets?: RecruitmentTarget[];
   fastSync?: boolean;

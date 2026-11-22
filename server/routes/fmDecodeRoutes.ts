@@ -515,6 +515,22 @@ export function createFmDecodeRouter(): express.Router {
     }
   );
 
+  router.delete('/fm27/decode-save/upload/:uploadId', async (req, res) => {
+    const uploadId =
+      typeof req.params.uploadId === 'string' ? req.params.uploadId.trim() : '';
+    if (!isValidUuid(uploadId)) {
+      return res.status(400).json({ error: 'Invalid uploadId.' });
+    }
+    const entry = pendingUploads.get(uploadId);
+    if (entry) {
+      pendingUploads.delete(uploadId);
+      await fs.promises.unlink(entry.filePath).catch(() => {
+        // ignore if already deleted
+      });
+    }
+    return res.json({ ok: true });
+  });
+
   router.post('/fm27/decode-save/finish', async (req, res) => {
     await pruneExpiredUploadsAndJobs();
     const runtime = await detectServerPythonFmsave();
