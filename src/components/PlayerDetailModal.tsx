@@ -297,29 +297,29 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
     if (typeof document === 'undefined') return;
     const canvas = document.createElement('canvas');
     canvas.width = 760;
-    canvas.height = 460;
+    canvas.height = 500;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     // Background gradient (dark slate / emerald border)
-    const bg = ctx.createLinearGradient(0, 0, 760, 460);
+    const bg = ctx.createLinearGradient(0, 0, 760, 500);
     bg.addColorStop(0, '#020617');
     bg.addColorStop(0.55, '#0f172a');
     bg.addColorStop(1, '#022c22');
     ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, 760, 460);
+    ctx.fillRect(0, 0, 760, 500);
 
     ctx.strokeStyle = 'rgba(16, 185, 129, 0.45)';
     ctx.lineWidth = 3;
-    ctx.strokeRect(8, 8, 744, 444);
+    ctx.strokeRect(8, 8, 744, 484);
 
     // Top Accent Bar
     ctx.fillStyle = '#10b981';
     ctx.fillRect(28, 28, 704, 4);
 
-    // Header: Name, Number, Position & Stars (Strictly Zero Raw CA/PA)
+    // Header: Name, Position & Stars (Strictly Zero Raw CA/PA, no fake #0)
     ctx.fillStyle = '#34d399';
-    ctx.font = 'bold 14px monospace';
+    ctx.font = 'bold 13px monospace';
     ctx.fillText(
       `FM27 COMMAND HUB · PATCH 27.1.0 DUAL-PHASE PLAYER CARD`,
       28,
@@ -328,7 +328,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
 
     ctx.fillStyle = '#f8fafc';
     ctx.font = 'bold 30px sans-serif';
-    ctx.fillText(`#${player.number} ${player.name}`, 28, 92);
+    ctx.fillText(player.name, 28, 92);
 
     ctx.fillStyle = '#fbbf24';
     ctx.font = 'bold 18px monospace';
@@ -346,24 +346,24 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
       144
     );
 
-    // Dual-Phase IP/OOP Role Fit & Physical Engine Panel
+    // Dual-Phase IP/OOP Role Fit & Physical Engine Panel (Stacked cleanly so long role names NEVER collide)
     const ipRoleObj = FM27_ROLES.find((r) => r.name === effectiveIpRole);
     const oopRoleObj = FM27_ROLES.find((r) => r.name === effectiveOopRole);
     const ipFitScore = ipRoleObj ? scorePlayerForFm27Role(player, ipRoleObj) : 75;
     const oopFitScore = oopRoleObj ? scorePlayerForFm27Role(player, oopRoleObj) : 75;
 
     ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-    ctx.fillRect(28, 162, 704, 68);
+    ctx.fillRect(28, 160, 704, 102);
     ctx.strokeStyle = 'rgba(51, 65, 85, 0.9)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(28, 162, 704, 68);
+    ctx.strokeRect(28, 160, 704, 102);
 
     ctx.fillStyle = '#34d399';
     ctx.font = 'bold 13px monospace';
     ctx.fillText(
       `IN POSSESSION (IP): ${effectiveIpRole || player.ipRole} (${ipFitScore}% Fit)`,
       44,
-      188
+      185
     );
 
     ctx.fillStyle = '#38bdf8';
@@ -371,26 +371,23 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
     ctx.fillText(
       `OUT OF POSSESSION (OOP): ${effectiveOopRole || player.oopRole} (${oopFitScore}% Fit)`,
       44,
-      214
+      209
     );
+
+    // Subtle divider between roles and physical engine / archetype row
+    ctx.strokeStyle = 'rgba(51, 65, 85, 0.6)';
+    ctx.beginPath();
+    ctx.moveTo(44, 223);
+    ctx.lineTo(716, 223);
+    ctx.stroke();
 
     ctx.fillStyle = '#a7f3d0';
-    ctx.font = 'bold 13px monospace';
-    ctx.fillText(
-      `Engine ${engineMetrics.physicalEngineScore}/100 · ${engineMetrics.topSpeedMps} m/s · +${engineMetrics.jumpHeightMeters}m Jump`,
-      430,
-      188
-    );
-
-    if (playbookArchetype) {
-      ctx.fillStyle = '#bae6fd';
-      ctx.font = '12px monospace';
-      ctx.fillText(
-        `Archetype: ${playbookArchetype.name} (${playbookArchetype.score}%)`,
-        430,
-        214
-      );
-    }
+    ctx.font = 'bold 12px monospace';
+    const engineSummary = `Engine ${engineMetrics.physicalEngineScore}/100 · ${engineMetrics.topSpeedMps} m/s · +${engineMetrics.jumpHeightMeters}m Jump`;
+    const archetypeSummary = playbookArchetype
+      ? ` · ${playbookArchetype.name} (${playbookArchetype.score}%)`
+      : '';
+    ctx.fillText(`${engineSummary}${archetypeSummary}`, 44, 246, 672);
 
     // 12 Key Attributes Grid (3 Columns x 4 Rows)
     const keyGrid: Array<{ label: string; value: number }> = isGoalkeeper
@@ -429,7 +426,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
       const col = Math.floor(idx / 4);
       const row = idx % 4;
       const x = 28 + col * (colWidth + 13);
-      const y = 246 + row * (rowHeight + 6);
+      const y = 278 + row * (rowHeight + 6);
 
       ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
       ctx.fillRect(x, y, colWidth, rowHeight);
@@ -459,7 +456,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
         : 'Scout Badges: Verified 1–20 Display Scale (Zero Raw CA/PA)';
     ctx.fillStyle = '#34d399';
     ctx.font = 'bold 12px monospace';
-    ctx.fillText(badgeLine.slice(0, 88), 28, 428);
+    ctx.fillText(badgeLine.slice(0, 88), 28, 468);
 
     const safeSlug = player.name
       .toLowerCase()

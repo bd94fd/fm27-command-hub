@@ -118,7 +118,7 @@ export const MatchPrepCard: React.FC<MatchPrepCardProps> = ({
     [players, activeSuspensions, nextFixtureObj]
   );
 
-  // Active XI injury / ban / <85% fitness warnings
+  // Active XI injury / ban / sharpness & durability warnings
   const xiWarnings = useMemo(() => {
     const items: Array<{ player: string; badge: string; detail: string; severity: 'error' | 'warning' }> = [];
     for (const p of activeXiPlayers) {
@@ -139,11 +139,22 @@ export const MatchPrepCard: React.FC<MatchPrepCardProps> = ({
           severity: 'error',
         });
       }
-      if (typeof p.condition === 'number' && p.condition < 85) {
+      if (typeof p.sharpness === 'number' && p.sharpness < 65) {
         items.push({
           player: p.name,
-          badge: `COND ${p.condition}%`,
-          detail: 'Below Playbook v2.0 85% kickoff floor',
+          badge: `SHARP ${p.sharpness}%`,
+          detail: 'Low match sharpness — build rhythm via bench cameo or reserves',
+          severity: 'warning',
+        });
+      }
+      if (
+        p.scoutBadges?.some((b) => b.toLowerCase().includes('injury')) &&
+        (p.attributes.stamina || 10) <= 11
+      ) {
+        items.push({
+          player: p.name,
+          badge: `LOAD RISK`,
+          detail: `Injury-Prone · Stamina ${p.attributes.stamina} — plan 62' sub`,
           severity: 'warning',
         });
       }
@@ -151,7 +162,7 @@ export const MatchPrepCard: React.FC<MatchPrepCardProps> = ({
     return items;
   }, [activeXiPlayers, suspensionLookup]);
 
-  // 62' & 75' stamina substitution scripts (never subbing both starting CBs together)
+  // 62' & 75' stamina & durability substitution scripts (never subbing both starting CBs together)
   const subScripts = useMemo(() => {
     const xiIds = new Set(activeXiPlayers.map((p) => p.id));
     const bench = players.filter(
@@ -167,7 +178,7 @@ export const MatchPrepCard: React.FC<MatchPrepCardProps> = ({
     const isGkSlot = (slot: SolvedSlot) =>
       slot.positionGroup === 'Goalkeeper';
 
-    // Candidate non-GK starters sorted by lowest stamina / condition
+    // Candidate non-GK starters sorted by lowest long-term durability (Stamina + Natural Fitness + Sharpness)
     const subCandidates =
       activeSlots.length > 0
         ? activeSlots
@@ -175,10 +186,12 @@ export const MatchPrepCard: React.FC<MatchPrepCardProps> = ({
             .sort((a, b) => {
               const aScore =
                 (a.player!.attributes.stamina || 10) * 5 +
-                (a.player!.condition ?? 85);
+                (a.player!.attributes.naturalFitness || 10) * 3 +
+                (a.player!.sharpness ?? 80);
               const bScore =
                 (b.player!.attributes.stamina || 10) * 5 +
-                (b.player!.condition ?? 85);
+                (b.player!.attributes.naturalFitness || 10) * 3 +
+                (b.player!.sharpness ?? 80);
               return aScore - bScore;
             })
         : [];
@@ -214,7 +227,7 @@ export const MatchPrepCard: React.FC<MatchPrepCardProps> = ({
           if (b.fit.combinedFitPct !== a.fit.combinedFitPct) {
             return b.fit.combinedFitPct - a.fit.combinedFitPct;
           }
-          return (b.candidate.condition ?? 85) - (a.candidate.condition ?? 85);
+          return (b.candidate.sharpness ?? 80) - (a.candidate.sharpness ?? 80);
         });
 
       const bestMatch = rankedBench[0];
@@ -226,7 +239,11 @@ export const MatchPrepCard: React.FC<MatchPrepCardProps> = ({
       usedBenchIds.add(replacement.id);
       if (isCbSlot(slot)) cbSubbedCount++;
 
-      const line = `${replacement.name} (${replacement.position}, ${bestMatch.fit.combinedFitPct}% fit) ON for ${slot.player.name} (${slot.label}, Sta ${slot.player.attributes.stamina}, C${slot.player.condition ?? '?'}%)`;
+      const sharpTag =
+        typeof slot.player.sharpness === 'number'
+          ? `, Shp ${slot.player.sharpness}%`
+          : '';
+      const line = `${replacement.name} (${replacement.position}, ${bestMatch.fit.combinedFitPct}% fit) ON for ${slot.player.name} (${slot.label}, Sta ${slot.player.attributes.stamina}${sharpTag})`;
       if (window62.length < 2) {
         window62.push(line);
       } else if (window75.length < 2) {

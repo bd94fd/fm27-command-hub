@@ -4205,6 +4205,14 @@ def step_4_3_season_history(fast_sync: bool | None = None) -> str:
         fast_psh = _extract_club_season_history_fast(save)
         if fast_psh is not None:
             season_history = fast_psh
+        elif _IS_PYODIDE:
+            # On browser Pyodide, falling back to a full global stream scan of
+            # player_season_history can exceed the 300s ceiling on large saves.
+            warning_msg = (
+                "player_season_history: skipped slow global fallback in browser mode "
+                "(preserved squad & all other tables)"
+            )
+            _STATE["warnings"].append(warning_msg)
         else:
             primary_iter, fallback_table, used_scoped = _open_table_stream(
                 save,

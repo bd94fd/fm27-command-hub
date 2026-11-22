@@ -4,6 +4,8 @@ import {
   solveBestXi,
   FORMATION_PRESETS,
   isSuspensionActiveForCompetition,
+  buildLineupFromSavedTactic,
+  computeDurabilityProfile,
 } from './bestXiSolver.ts';
 import { PlayerRecord } from '../types/fm27.ts';
 
@@ -331,4 +333,85 @@ test('AMC-only attacking midfielder (AMC:20, MC:2) does NOT displace natural MC:
   );
 });
 
+test('buildLineupFromSavedTactic maps live .fm save XI onto pitch slots', () => {
+  const squad = buildFullSquad();
+  const savedTactic = {
+    index: 0,
+    name: '433 Counter Positive',
+    styleName: 'Counter',
+    mentality: 'Positive',
+    inPossessionFormation: '4-3-3 DM Wide',
+    outOfPossessionFormation: '4-3-3 DM Wide',
+    slots: [
+      { slotIndex: 0, position: 'GK', playerUid: 1, playerName: squad[0].name },
+      { slotIndex: 1, position: 'DR', playerUid: 2, playerName: squad[1].name },
+      { slotIndex: 2, position: 'DCR', playerUid: 3, playerName: squad[2].name },
+      { slotIndex: 3, position: 'DCL', playerUid: 4, playerName: squad[3].name },
+      { slotIndex: 4, position: 'DL', playerUid: 5, playerName: squad[4].name },
+      { slotIndex: 5, position: 'DM', playerUid: 6, playerName: squad[5].name },
+      { slotIndex: 6, position: 'MCR', playerUid: 7, playerName: squad[6].name },
+      { slotIndex: 7, position: 'MCL', playerUid: 8, playerName: squad[7].name },
+      { slotIndex: 8, position: 'AMR', playerUid: 9, playerName: squad[8].name },
+      { slotIndex: 9, position: 'AML', playerUid: 10, playerName: squad[9].name },
+      { slotIndex: 10, position: 'STC', playerUid: 11, playerName: squad[10].name },
+    ],
+  };
 
+  const built = buildLineupFromSavedTactic(savedTactic, squad, '4-3-3 DM Wide');
+  assert.ok(built, 'Should map live save tactic');
+  assert.equal(built.matchedCount, 11);
+  assert.equal(built.slots.find((s) => s.slotId === 'ST')?.player?.id, squad[10].id);
+  assert.equal(built.slots.find((s) => s.slotId === 'DM')?.player?.id, squad[5].id);
+});
+
+test('computeDurabilityProfile scores long-term Stamina, Natural Fitness, Sharpness & Injury-Proneness', () => {
+  const ironman = makePlayer('iron', 'Ironman Anchor', 'DM', {
+    sharpness: 92,
+    attributes: {
+      pace: 12, acceleration: 12, stamina: 16, naturalFitness: 15,
+      jumpingReach: 12, determination: 14, passing: 13, finishing: 8,
+      tackling: 14, firstTouch: 12, decisions: 13, workRate: 15, offTheBall: 11,
+    },
+  });
+  const fragile = makePlayer('fragile', 'Fragile Winger', 'AMR', {
+    sharpness: 55,
+    scoutBadges: ['Injury-Prone'],
+    attributes: {
+      pace: 15, acceleration: 15, stamina: 9, naturalFitness: 8,
+      jumpingReach: 7, determination: 10, passing: 11, finishing: 11,
+      tackling: 5, firstTouch: 13, decisions: 11, workRate: 10, offTheBall: 13,
+    },
+  });
+
+  const dIron = computeDurabilityProfile(ironman);
+  const dFragile = computeDurabilityProfile(fragile);
+  assert.equal(dIron.label, 'Ironman');
+  assert.equal(dFragile.label, 'Injury-Prone');
+  assert.ok(dIron.score > dFragile.score + 20);
+});
+
+test('solveBestXi prefers adjacent DM/FB cover at CB instead of putting a pure striker at CB', () => {
+  // Remove one CB so only 1 natural CB remains; include an extra DM and an extra ST
+  const squad = buildFullSquad().filter((p) => p.id !== 'p4');
+  const backupDm = makePlayer('dm-cover', 'Cover DM', 'DM', {
+    ability: 3.0,
+    positionRatings: { DM: 20, DC: 8, ST: 1 },
+  });
+  const youthStriker = makePlayer('st-youth', 'Youth Striker', 'ST', {
+    ability: 4.5,
+    positionRatings: { ST: 20, DC: 1, DM: 1 },
+  });
+
+  const res = solveBestXi([...squad, backupDm, youthStriker], {
+    shape: '4-3-3 DM Wide',
+  });
+  const cbIds = res.startingXI
+    .filter((s) => s.slotId === 'DCL' || s.slotId === 'DCR')
+    .map((s) => s.player?.id);
+
+  assert.equal(
+    cbIds.includes('st-youth'),
+    false,
+    `Pure striker must not be placed at CB when DM/FB cover exists, got ${cbIds.join(', ')}`
+  );
+});

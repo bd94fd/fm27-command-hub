@@ -194,55 +194,55 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
               </p>
             </div>
 
-            {/* View Switcher: Table / Analytics View / Compare (2 Players) */}
-            <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg self-start lg:self-auto">
+            {/* View Switcher: Table / Analytics / Compare / Progression */}
+            <div className="grid grid-cols-2 sm:flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg w-full sm:w-auto">
               <button
                 type="button"
                 onClick={() => setViewMode('table')}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                className={`inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
                   viewMode === 'table'
                     ? 'bg-emerald-600 text-white shadow-xs'
                     : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
-                <Table2 className="w-3.5 h-3.5" />
-                Squad Table
+                <Table2 className="w-3.5 h-3.5 shrink-0" />
+                <span>Squad Table</span>
               </button>
               <button
                 type="button"
                 onClick={() => setViewMode('analytics')}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                className={`inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
                   viewMode === 'analytics'
                     ? 'bg-emerald-600 text-white shadow-xs'
                     : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
-                <BarChart3 className="w-3.5 h-3.5" />
-                Analytics View
+                <BarChart3 className="w-3.5 h-3.5 shrink-0" />
+                <span>Analytics</span>
               </button>
               <button
                 type="button"
                 onClick={() => setViewMode('compare')}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                className={`inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
                   viewMode === 'compare'
                     ? 'bg-emerald-600 text-white shadow-xs'
                     : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
-                <GitCompare className="w-3.5 h-3.5" />
-                Compare (2 Players)
+                <GitCompare className="w-3.5 h-3.5 shrink-0" />
+                <span>Compare</span>
               </button>
               <button
                 type="button"
                 onClick={() => setViewMode('progression')}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                className={`inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
                   viewMode === 'progression'
                     ? 'bg-emerald-600 text-white shadow-xs'
                     : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
-                <TrendingUp className="w-3.5 h-3.5" />
-                Progression
+                <TrendingUp className="w-3.5 h-3.5 shrink-0" />
+                <span>Progression</span>
               </button>
             </div>
           </div>
@@ -392,7 +392,7 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
                 >
                   {players.map((p) => (
                     <option key={p.id} value={p.id}>
-                      #{p.number} {p.name} ({p.position})
+                      {p.name} ({p.position})
                     </option>
                   ))}
                 </select>
@@ -434,7 +434,7 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
                     >
                       {players.map((p) => (
                         <option key={`a-${p.id}`} value={p.id}>
-                          #{p.number} {p.name} ({p.position} · {p.ability.toFixed(1)}★ · £{p.wagePw}/wk)
+                          {p.name} ({p.position} · {p.ability.toFixed(1)}★ · £{p.wagePw}/wk)
                         </option>
                       ))}
                     </select>
@@ -451,7 +451,7 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
                     >
                       {players.map((p) => (
                         <option key={`b-${p.id}`} value={p.id}>
-                          #{p.number} {p.name} ({p.position} · {p.ability.toFixed(1)}★ · £{p.wagePw}/wk)
+                          {p.name} ({p.position} · {p.ability.toFixed(1)}★ · £{p.wagePw}/wk)
                         </option>
                       ))}
                     </select>
@@ -559,7 +559,7 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
                       <td className="py-2.5 pr-3 max-w-[330px]">
                         <div className="flex flex-wrap items-center gap-1.5 font-semibold text-slate-900 dark:text-slate-100">
                           <span>
-                            #{p.number} {p.name}
+                            {p.name}
                           </span>
                           {activeBan && (
                             <span

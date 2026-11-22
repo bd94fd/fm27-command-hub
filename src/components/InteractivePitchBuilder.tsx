@@ -19,7 +19,9 @@ import {
   OUT_OF_POSSESSION_ROLES,
 } from '../utils/fm27RoleMatcher';
 import {
+  buildLineupFromSavedTactic,
   buildSuspensionLookup,
+  computeDurabilityProfile,
   evaluatePlayerForSlot,
   FORMATION_PRESETS,
   FormationPresetKey,
@@ -171,14 +173,25 @@ export function evaluatePlaybookGuardrails(
         detail: 'Player is flagged Injured in the current save.',
       });
     }
-    if (typeof p.condition === 'number' && p.condition < 85) {
+    const durability = computeDurabilityProfile(p);
+    if (durability.sharpness !== null && durability.sharpness < 65) {
       alerts.push({
-        id: `cond-${slot.slotId}`,
+        id: `sharp-${slot.slotId}`,
         severity: 'warning',
         category: 'availability',
-        title: `${slot.label}: ${p.name} Low Condition (${p.condition}%)`,
+        title: `${slot.label}: ${p.name} Low Sharpness (${durability.sharpness}%)`,
         detail:
-          'Playbook v2.0 Law 5 requires starters >= 85% Condition to avoid late-game stamina collapse.',
+          'Match sharpness is below 65% — consider rotating in for 30m or playing a friendly/reserve match to build match rhythm.',
+      });
+    }
+    if (durability.isInjuryProne && durability.stamina <= 11) {
+      alerts.push({
+        id: `dur-${slot.slotId}`,
+        severity: 'warning',
+        category: 'availability',
+        title: `${slot.label}: ${p.name} Injury-Prone / Low Stamina (Sta ${durability.stamina})`,
+        detail:
+          'Plan a 62m substitution window and avoid back-to-back 90m starts in double gameweeks.',
       });
     }
     if (!slot.isNaturalPosition) {
@@ -229,11 +242,26 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
   onChangeApplyToAnalystOnly,
   onSolvedLineupChange,
 }) => {
-  const [matchdayMode, setMatchdayMode] = useState(false);
-  const [viewBTeam, setViewBTeam] = useState(false);
+  const [sharpnessFilter, setSharpnessFilter] = useState(false);
+  const [lineupMode, setLineupMode] = useState<'save' | 'best' | 'bteam'>(
+    () => (savedTactics.length > 0 && (savedTactics[0].slots?.length || 0) >= 5 ? 'save' : 'best')
+  );
   const [selectedSlotId, setSelectedSlotId] = useState<string>('ST');
   const [pitchPhaseMode, setPitchPhaseMode] =
     useState<PitchPhaseMode>('rest-defense');
+
+  const savedTacticLineup = useMemo(
+    () =>
+      buildLineupFromSavedTactic(savedTactics[0], players, activeShape, {
+        customSlots,
+        activeSuspensions,
+        nextCompetitionName,
+      }),
+    [savedTactics, players, activeShape, customSlots, activeSuspensions, nextCompetitionName]
+  );
+
+  const effectiveLineupMode: 'save' | 'best' | 'bteam' =
+    lineupMode === 'save' && !savedTacticLineup ? 'best' : lineupMode;
 
   const solved = useMemo(
     () =>
@@ -244,15 +272,20 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
         excludeSuspended: true,
         activeSuspensions,
         nextCompetitionName,
-        minCondition: matchdayMode ? 80 : undefined,
+        minSharpness: sharpnessFilter ? 70 : undefined,
       }),
-    [players, activeShape, customSlots, activeSuspensions, nextCompetitionName, matchdayMode]
+    [players, activeShape, customSlots, activeSuspensions, nextCompetitionName, sharpnessFilter]
   );
 
-  // Merge manual player overrides from customSlots onto the solved XI
+  // Merge manual player overrides from customSlots onto the active XI
   const activeSlots: SolvedSlot[] = useMemo(() => {
-    const base = viewBTeam ? solved.rotatedBTeam : solved.startingXI;
-    if (viewBTeam) return base;
+    const base =
+      effectiveLineupMode === 'bteam'
+        ? solved.rotatedBTeam
+        : effectiveLineupMode === 'save' && savedTacticLineup
+          ? savedTacticLineup.slots
+          : solved.startingXI;
+    if (effectiveLineupMode === 'bteam') return base;
 
     const playerById = new Map(players.map((p) => [p.id, p]));
     const customMap = new Map(customSlots.map((c) => [c.slotId, c]));
@@ -278,13 +311,13 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
         isNaturalPosition: score.isNaturalPosition,
       };
     });
-  }, [solved, viewBTeam, players, customSlots]);
+  }, [solved, effectiveLineupMode, savedTacticLineup, players, customSlots]);
 
   useEffect(() => {
-    if (onSolvedLineupChange && !viewBTeam) {
+    if (onSolvedLineupChange && effectiveLineupMode !== 'bteam') {
       onSolvedLineupChange(activeSlots);
     }
-  }, [activeSlots, viewBTeam, onSolvedLineupChange]);
+  }, [activeSlots, effectiveLineupMode, onSolvedLineupChange]);
 
   const guardrails = useMemo(
     () =>
@@ -343,7 +376,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
       playerId: null,
     }));
     onChangeCustomSlots(cleared);
-    setViewBTeam(false);
+    setLineupMode('best');
   };
 
   const ipOptionsForSelected = useMemo(() => {
@@ -370,22 +403,74 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
     return null;
   }
 
+  const activeAvgFit = useMemo(() => {
+    const filled = activeSlots.filter((s) => s.player !== null);
+    if (filled.length === 0) return 0;
+    return Math.round(
+      filled.reduce((sum, s) => sum + s.combinedFitPct, 0) / filled.length
+    );
+  }, [activeSlots]);
+
   return (
-    <div className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-5">
+    <div className="p-4 sm:p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-4">
       {/* Header & Controls */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-4 border-b border-slate-200 dark:border-slate-800">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
         <div>
-          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-emerald-500" />
-            Interactive Dual-Phase Pitch Builder ({activeShape})
+          <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-emerald-500 shrink-0" />
+            <span>Dual-Phase Pitch Builder ({activeShape})</span>
           </h2>
           <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-            68 authentic FM27 IP/OOP roles · Familiarity-gated Best XI &amp;
-            Rotated B-Team solver · Dual-Phase Rest-Defense Matrix.
+            {effectiveLineupMode === 'save'
+              ? `Showing your live .fm save lineup (${savedTactics[0]?.name || 'Active Tactic'}) — tap any player to inspect or adjust IP/OOP roles.`
+              : effectiveLineupMode === 'bteam'
+                ? 'Showing rotated B-Team XI for cup fixtures and double-gameweek rotation.'
+                : 'Showing familiarity-gated Suggested Best XI based on role fit & star ability.'}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* 3-Way Lineup Mode Switcher */}
+          <div className="inline-flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-950 border border-slate-800">
+            {savedTacticLineup && (
+              <button
+                type="button"
+                onClick={() => setLineupMode('save')}
+                className={`px-2.5 py-1.5 rounded-md text-xs font-semibold transition cursor-pointer ${
+                  effectiveLineupMode === 'save'
+                    ? 'bg-emerald-600 text-white'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Last Match XI
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleAutoPick}
+              className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-semibold transition cursor-pointer ${
+                effectiveLineupMode === 'best'
+                  ? 'bg-emerald-600 text-white'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <RefreshCw className="w-3 h-3" />
+              Best XI
+            </button>
+            <button
+              type="button"
+              onClick={() => setLineupMode('bteam')}
+              className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-semibold transition cursor-pointer ${
+                effectiveLineupMode === 'bteam'
+                  ? 'bg-amber-600 text-white'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Users className="w-3 h-3" />
+              B-Team
+            </button>
+          </div>
+
           {/* Shape Selector */}
           <select
             aria-label="Formation preset shape"
@@ -396,7 +481,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
               onChangeCustomSlots([]);
               setSelectedSlotId(FORMATION_PRESETS[nextShape][10]?.slotId || 'GK');
             }}
-            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100"
+            className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100"
           >
             {PRESET_KEYS.map((key) => (
               <option key={key} value={key}>
@@ -405,41 +490,21 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
             ))}
           </select>
 
-          <button
-            type="button"
-            onClick={handleAutoPick}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            Auto-Pick Best XI
-          </button>
+          {effectiveLineupMode !== 'save' && (
+            <button
+              type="button"
+              onClick={() => setSharpnessFilter((v) => !v)}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+                sharpnessFilter
+                  ? 'bg-sky-500/15 border-sky-500/40 text-sky-700 dark:text-sky-300'
+                  : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400'
+              }`}
+            >
+              Sharp Only {sharpnessFilter ? '(≥70%)' : '(Off)'}
+            </button>
+          )}
 
-          <button
-            type="button"
-            onClick={() => setMatchdayMode((v) => !v)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
-              matchdayMode
-                ? 'bg-sky-500/15 border-sky-500/40 text-sky-700 dark:text-sky-300'
-                : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400'
-            }`}
-          >
-            Matchday Mode {matchdayMode ? '(≥80% Cond)' : '(Off)'}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setViewBTeam((v) => !v)}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
-              viewBTeam
-                ? 'bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-300'
-                : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300'
-            }`}
-          >
-            <Users className="w-3.5 h-3.5" />
-            {viewBTeam ? 'Viewing Rotated B-Team' : 'Show Rotated B-Team'}
-          </button>
-
-          <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 ml-1 cursor-pointer">
+          <label className="hidden sm:inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 ml-1 cursor-pointer">
             <input
               type="checkbox"
               checked={applyToAnalystOnly}
@@ -647,7 +712,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                   type="button"
                   onClick={() => setSelectedSlotId(slot.slotId)}
                   style={{ left: `${displayX}%`, top: `${displayY}%` }}
-                  className={`absolute -translate-x-1/2 -translate-y-1/2 px-2 py-1.5 rounded-lg text-center transition-all duration-300 max-w-[118px] border ${categoryRing} ${
+                  className={`absolute -translate-x-1/2 -translate-y-1/2 px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-lg text-center transition-all duration-300 w-[72px] sm:w-auto sm:max-w-[116px] border ${categoryRing} ${
                     isSelected
                       ? 'bg-emerald-500 text-slate-950 border-white shadow-lg scale-105 z-20'
                       : hasWarning
@@ -655,16 +720,16 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                         : 'bg-slate-950/85 text-slate-100 border-emerald-400/40 hover:border-emerald-300 z-10'
                   }`}
                 >
-                  <div className="text-[10px] font-mono font-bold leading-tight">
+                  <div className="text-[9px] sm:text-[10px] font-mono font-bold leading-tight truncate">
                     {slot.label}{' '}
                     {slot.player ? `· ${slot.combinedFitPct}%` : '· --'}
                   </div>
-                  <div className="text-[11px] font-semibold truncate max-w-[102px]">
+                  <div className="text-[10px] sm:text-[11px] font-semibold truncate">
                     {slot.player
                       ? slot.player.name.split(' ').slice(-1)[0]
                       : 'Empty'}
                   </div>
-                  <div className="text-[9px] opacity-80 truncate max-w-[102px]">
+                  <div className="text-[8px] sm:text-[9px] opacity-80 truncate">
                     {pitchPhaseMode === 'oop'
                       ? slot.oopRole
                       : pitchPhaseMode === 'rest-defense' && restNode
@@ -689,12 +754,12 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                 <div
                   key={lane.lane}
                   title={lane.detail}
-                  className={`rounded-lg border px-2 py-1.5 text-center ${badgeCls}`}
+                  className={`rounded-lg border px-1.5 sm:px-2 py-1.5 text-center ${badgeCls}`}
                 >
-                  <div className="text-[10px] font-bold truncate">
+                  <div className="text-[9px] sm:text-[10px] font-bold truncate">
                     {lane.lane}
                   </div>
-                  <div className="text-[10px] font-mono">
+                  <div className="text-[9px] sm:text-[10px] font-mono">
                     {lane.status} ({lane.coverageCount})
                   </div>
                 </div>
@@ -707,19 +772,27 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
         <div className="lg:col-span-5 space-y-4">
           {selectedSlot && (
             <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-start justify-between gap-2">
                 <div>
                   <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">
                     SLOT: {selectedSlot.label} ({selectedSlot.positionGroup})
                   </span>
                   <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
                     {selectedSlot.player
-                      ? `#${selectedSlot.player.number} ${selectedSlot.player.name}`
+                      ? selectedSlot.player.name
                       : 'Unassigned Slot'}
                   </h3>
+                  {selectedSlot.player && (() => {
+                    const dur = computeDurabilityProfile(selectedSlot.player);
+                    return (
+                      <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">
+                        {dur.label} · {dur.summary}
+                      </div>
+                    );
+                  })()}
                 </div>
                 {selectedSlot.player && (
-                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 shrink-0">
                     Fit {selectedSlot.combinedFitPct}% (IP {selectedSlot.ipFitPct}% / OOP{' '}
                     {selectedSlot.oopFitPct}%)
                   </span>
@@ -732,7 +805,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                   Assigned Player
                 </label>
                 <select
-                  disabled={viewBTeam}
+                  disabled={effectiveLineupMode === 'bteam'}
                   value={selectedSlot.player?.id || ''}
                   onChange={(e) =>
                     handleUpdateSlot(selectedSlot.slotId, {
@@ -747,8 +820,10 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                       p,
                       selectedSlot.positionGroup,
                       selectedSlot.ipRole,
-                      selectedSlot.oopRole
+                      selectedSlot.oopRole,
+                      selectedSlot.flank
                     );
+                    const dur = computeDurabilityProfile(p);
                     const tag =
                       p.status === 'Injured'
                         ? ' [INJ]'
@@ -757,8 +832,9 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                         : '';
                     return (
                       <option key={p.id} value={p.id}>
-                        {p.name} ({p.position}) · {sc.combinedFitPct}% · C
-                        {p.condition ?? '?'}%{tag}
+                        {p.name} ({p.position}) · {sc.combinedFitPct}% · Sta {dur.stamina}
+                        {dur.sharpness !== null ? ` · Shp ${dur.sharpness}%` : ''}
+                        {tag}
                       </option>
                     );
                   })}
@@ -819,7 +895,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                 Playbook v2.0 Live Guardrails
               </div>
               <span className="text-[11px] font-mono text-slate-500">
-                Avg Fit: {solved.averageFitPct}%
+                Avg Fit: {activeAvgFit}%
               </span>
             </div>
 

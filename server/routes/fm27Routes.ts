@@ -261,10 +261,11 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
 
   router.post('/fm27/match-debrief', guard, async (req, res) => {
     try {
-      const { clubName, matchSummary, activeShape } = req.body as {
+      const { clubName, matchSummary, activeShape, activeTacticSummary } = req.body as {
         clubName?: string;
         matchSummary?: Record<string, unknown>;
         activeShape?: string;
+        activeTacticSummary?: string;
       };
 
       if (!gemini.hasApiKey()) {
@@ -281,6 +282,7 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
         {
           clubName: targetClub,
           activeShape: activeShape || '4-3-3 DM Wide',
+          activeTacticRoles: activeTacticSummary || undefined,
           match: matchSummary || {},
         },
         null,
@@ -294,7 +296,7 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
               role: 'user',
               parts: [
                 {
-                  text: `Generate a structured FM27 Patch 27.1.0 Post-Match Tactical Debrief for this match:\n${compactPayload}`,
+                  text: `Generate a structured FM27 Patch 27.1.0 Post-Match Tactical Debrief for this match. Strictly reference ONLY the club's actual formation and IP/OOP roles provided in activeTacticRoles (never invent roles the club does not use):\n${compactPayload}`,
                 },
               ],
             },

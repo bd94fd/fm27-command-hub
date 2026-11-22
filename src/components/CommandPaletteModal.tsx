@@ -89,8 +89,8 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
       {
         id: 'nav-sync',
         category: 'Navigation',
-        title: 'AI Analyst & Live .fm Save Sync',
-        subtitle: 'Upload .fm saves, chat with the AI Tactical Co-Pilot, or sync Google Docs/Sheets',
+        title: 'Hub & AI Tactical Analyst',
+        subtitle: 'Import your .fm save or chat with the AI Tactical Co-Pilot',
         badge: 'Tab',
         onSelect: () => {
           onSelectTab('sync');
@@ -402,8 +402,8 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
           )}
         </div>
 
-        {/* Footer Hints */}
-        <div className="flex items-center justify-between border-t border-slate-800 bg-slate-950/70 px-4 py-2 text-[11px] text-slate-400">
+        {/* Footer Hints (Desktop Only) */}
+        <div className="hidden sm:flex items-center justify-between border-t border-slate-800 bg-slate-950/70 px-4 py-2 text-[11px] text-slate-400">
           <div className="flex items-center gap-3">
             <span>
               <kbd className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-200">

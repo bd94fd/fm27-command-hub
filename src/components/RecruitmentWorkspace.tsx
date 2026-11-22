@@ -509,6 +509,32 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
+            {youthReservesCount > 0 && (
+              <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-950 border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIncludeYouthInAudit(false)}
+                  className={`px-2 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+                    !includeYouthInAudit
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  First Team ({firstTeamPlayers.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIncludeYouthInAudit(true)}
+                  className={`px-2 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+                    includeYouthInAudit
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  All Squad ({players.length})
+                </button>
+              </div>
+            )}
             {transferWindows && typeof transferWindows.isOpen === 'boolean' && (
               <span
                 className={`rounded-md border px-2 py-0.5 text-[11px] font-mono font-semibold ${
@@ -684,7 +710,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
             [
               {
                 id: 'advice',
-                label: `Squad Advice (${players.length})`,
+                label: `Squad Advice (${auditPlayers.length})`,
                 icon: Sparkles,
               },
               {
@@ -735,7 +761,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
             Awaiting .fm Save
           </div>
           <p className="text-xs text-slate-400 max-w-md mx-auto">
-            Load your `.fm` save in the <strong>Analyst</strong> tab to generate club-aware transfer, contract, youth, and wage advice.
+            Load your `.fm` save in the <strong>Hub</strong> tab to generate club-aware transfer, contract, youth, and wage advice.
           </p>
         </div>
       ) : (
@@ -748,7 +774,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                 <div className="flex flex-wrap gap-1.5">
                   {(
                     [
-                      { id: 'ALL', label: `All (${players.length})` },
+                      { id: 'ALL', label: `All (${auditPlayers.length})` },
                       {
                         id: 'Protect Youth Asset',
                         label: `Youth (${audit.countsByVerdict['Protect Youth Asset']})`,
@@ -837,8 +863,9 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                             {item.annualWage.toLocaleString()}/yr) · Exp{' '}
                             <span className="font-mono text-slate-200">
                               {p.expires}
-                            </span>{' '}
-                            · {p.minutes}m
+                            </span>
+                            {item.monthsLeft !== null ? ` (${Math.max(0, item.monthsLeft)} mos)` : ''}{' '}
+                            · {p.minutes} mins played
                           </div>
                         </button>
 

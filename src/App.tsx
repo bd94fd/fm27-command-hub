@@ -10,15 +10,15 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  Command,
-  Crosshair,
   Database,
   Download,
   MessageSquare,
+  Search,
   Shield,
   Trash2,
   Trophy,
   Upload,
+  UserCheck,
   Users,
 } from 'lucide-react';
 import { KVV_ZELZATE_META, SQUAD_PLAYERS } from './data/squadData';
@@ -86,11 +86,6 @@ const RecruitmentWorkspace = lazy(() =>
 const StaffDirectory = lazy(() =>
   import('./components/StaffDirectory').then((m) => ({
     default: m.StaffDirectory,
-  }))
-);
-const SetPiecesAndTraining = lazy(() =>
-  import('./components/SetPiecesAndTraining').then((m) => ({
-    default: m.SetPiecesAndTraining,
   }))
 );
 const MatchLogArchive = lazy(() =>
@@ -193,8 +188,16 @@ export default function App() {
     return () => window.removeEventListener('keydown', onGlobalKeyDown);
   }, []);
 
+  const [tacticsSubTab, setTacticsSubTab] = useState<'pitch' | 'prep' | 'setpieces' | 'playbook'>('pitch');
+
   const handleSelectTab = (tab: ActiveTab) => {
-    setActiveTab(tab);
+    if (tab === 'setpieces') {
+      setTacticsSubTab('setpieces');
+      setActiveTab('tactics');
+    } else {
+      if (tab === 'tactics') setTacticsSubTab('pitch');
+      setActiveTab(tab);
+    }
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -601,18 +604,15 @@ export default function App() {
           className="hidden md:flex items-center gap-4 lg:gap-5 text-xs lg:text-sm font-medium text-slate-600 dark:text-slate-400 overflow-x-auto"
         >
           {[
-            { id: 'sync' as const, label: 'AI Analyst & Sync' },
+            { id: 'sync' as const, label: 'Hub & Analyst' },
             { id: 'squad' as const, label: `Squad (${players.length})` },
-            { id: 'tactics' as const, label: 'War Room & Playbook' },
-            {
-              id: 'recruitment' as const,
-              label: 'Transfers & Audit',
-            },
-            ...(staff.length > 0
-              ? [{ id: 'staff' as const, label: `Staff (${staff.length})` }]
-              : []),
-            { id: 'setpieces' as const, label: 'Corners & Training' },
+            { id: 'tactics' as const, label: 'Tactics & Corners' },
+            { id: 'recruitment' as const, label: 'Transfers' },
             { id: 'matches' as const, label: `Matches (${matches.length})` },
+            {
+              id: 'staff' as const,
+              label: staff.length > 0 ? `Staff (${staff.length})` : 'Staff',
+            },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -629,7 +629,7 @@ export default function App() {
           ))}
         </nav>
 
-        {/* Actions: FM27 Knowledge Base + Backup/Restore/Reset */}
+        {/* Actions: Quick Search + FM27 Knowledge Base + Backup/Restore/Reset */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <input
             ref={backupFileInputRef}
@@ -642,20 +642,17 @@ export default function App() {
           <button
             type="button"
             onClick={() => setShowCommandPalette(true)}
-            title="Open Quick-Jump Command Palette (⌘K / Ctrl+K)"
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+            title="Quick Search players, staff, and scout targets"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
           >
-            <Command className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="hidden sm:inline">Jump</span>
-            <kbd className="hidden lg:inline rounded bg-slate-950/90 px-1 py-0.5 font-mono text-[10px] text-emerald-300">
-              ⌘K
-            </kbd>
+            <Search className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Search</span>
           </button>
 
           <button
             type="button"
             onClick={() => setShowKnowledgeBase(true)}
-            title="Open FM27 Patch 27.1.0 Knowledge Base & Fact-Checker"
+            title="Open FM27 Patch 27.1.0 Knowledge Base"
             className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
           >
             <BookOpen className="w-3.5 h-3.5" />
@@ -709,45 +706,42 @@ export default function App() {
       </header>
 
       {/* Main Content Container (extra bottom padding on mobile for fixed bottom nav) */}
-      <main className="flex-1 max-w-[1400px] w-full mx-auto px-3 sm:px-6 pt-3 sm:pt-6 pb-24 md:pb-8 space-y-4 sm:space-y-6">
-        {/* Mobile Compact Status Bar (1 tap to expand KPIs & Save Receipt; eliminates 2 screens of scrolling) */}
-        <div className="md:hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3.5 py-2.5 flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
-              <span
-                className={`w-2 h-2 rounded-full shrink-0 ${
-                  hydratedFmSave ? 'bg-emerald-400' : 'bg-slate-500'
-                }`}
-              />
-              <span className="truncate">
-                {hydratedFmSave
-                  ? `${saveDate} · ${hydratedFmSave.leagueRecordLabel || `${players.length} Players`}`
-                  : 'Awaiting .fm Save'}
-              </span>
+      <main className="flex-1 max-w-[1400px] w-full mx-auto px-3 sm:px-6 pt-3 sm:pt-5 pb-24 md:pb-8 space-y-4 sm:space-y-5">
+        {/* Compact Status Bar (shown once a save is loaded so first-entry welcome hero stays clean) */}
+        {(hydratedFmSave || players.length > 0) && (
+          <div className="md:hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3.5 py-2.5 flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
+                <span className="w-2 h-2 rounded-full shrink-0 bg-emerald-400" />
+                <span className="truncate">
+                  {saveDate} · {hydratedFmSave?.leagueRecordLabel || `${players.length} Players`}
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                Next: {nextFixture} · Bal: {balance}
+              </div>
             </div>
-            <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
-              Next: {nextFixture} · Bal: {balance}
-            </div>
+            <button
+              type="button"
+              onClick={() => setShowMobileDetails((v) => !v)}
+              className="inline-flex items-center gap-1 shrink-0 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-[11px] font-medium text-slate-200"
+            >
+              {showMobileDetails ? (
+                <>
+                  Hide <ChevronUp className="w-3.5 h-3.5" />
+                </>
+              ) : (
+                <>
+                  Club KPIs <ChevronDown className="w-3.5 h-3.5" />
+                </>
+              )}
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowMobileDetails((v) => !v)}
-            className="inline-flex items-center gap-1 shrink-0 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-[11px] font-medium text-slate-200"
-          >
-            {showMobileDetails ? (
-              <>
-                Hide <ChevronUp className="w-3.5 h-3.5" />
-              </>
-            ) : (
-              <>
-                Club KPIs <ChevronDown className="w-3.5 h-3.5" />
-              </>
-            )}
-          </button>
-        </div>
+        )}
 
-        {/* Executive Club & Save Baseline Strip (always visible on desktop, expandable on mobile) */}
-        <div className={showMobileDetails ? 'space-y-4' : 'hidden md:block space-y-6'}>
+        {/* Executive Club & Save Baseline Strip (shown once a save is loaded; expandable on mobile) */}
+        {(hydratedFmSave || players.length > 0) && (
+        <div className={showMobileDetails ? 'space-y-4' : 'hidden md:block space-y-5'}>
           <section className="p-4 sm:p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-5">
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
               <div>
@@ -872,10 +866,11 @@ export default function App() {
           {/* Live .fm Save Verification Receipt */}
           {hydratedFmSave && <LiveFmSaveProofCard hydrated={hydratedFmSave} />}
         </div>
+        )}
 
-        {/* Active View Area (AutoSyncWorkspace stays mounted so chat history & Google OAuth persist across tabs) */}
+        {/* Active View Area (AutoSyncWorkspace stays mounted so chat history persists across tabs) */}
         <div className={activeTab === 'sync' ? '' : 'hidden'}>
-          <AppErrorBoundary scopeLabel="AI Analyst & Live .fm Save Sync">
+          <AppErrorBoundary scopeLabel="Hub & AI Analyst">
             <AutoSyncWorkspace
               matches={matches}
               players={players}
@@ -907,6 +902,7 @@ export default function App() {
           <AppErrorBoundary scopeLabel="Tactical War Room">
             <Suspense fallback={<LazyTabFallback label="Tactical War Room" />}>
               <TacticalWarRoom
+                key={tacticsSubTab}
                 players={players}
                 saveDate={saveDate}
                 nextFixture={nextFixture}
@@ -917,6 +913,7 @@ export default function App() {
                 activeShape={activeShape}
                 customSlots={customSlots}
                 applyToAnalystOnly={applyToAnalystOnly}
+                initialSubTab={tacticsSubTab}
                 onChangeShape={setActiveShape}
                 onChangeCustomSlots={setCustomSlots}
                 onChangeApplyToAnalystOnly={setApplyToAnalystOnly}
@@ -999,19 +996,6 @@ export default function App() {
           </AppErrorBoundary>
         )}
 
-        {activeTab === 'setpieces' && (
-          <AppErrorBoundary scopeLabel="Set Pieces & Training">
-            <Suspense fallback={<LazyTabFallback label="Set Pieces & Training" />}>
-              <SetPiecesAndTraining
-                players={players}
-                saveDate={saveDate}
-                upcomingFixtures={hydratedFmSave?.decodedPayload.upcomingFixtures || []}
-                clubName={clubName}
-              />
-            </Suspense>
-          </AppErrorBoundary>
-        )}
-
         {activeTab === 'matches' && (
           <AppErrorBoundary scopeLabel="Match Log Archive">
             <Suspense fallback={<LazyTabFallback label="Match Log Archive" />}>
@@ -1025,6 +1009,26 @@ export default function App() {
                 }
                 clubName={hydratedFmSave?.decodedPayload.meta.clubName}
                 saveDate={saveDate}
+                activeShape={
+                  hydratedFmSave?.decodedPayload.tactics?.[0]?.inPossessionFormation ||
+                  activeShape
+                }
+                activeTacticSummary={(() => {
+                  const t0 = hydratedFmSave?.decodedPayload.tactics?.[0];
+                  if (t0?.slots && t0.slots.length > 0) {
+                    const slotList = t0.slots
+                      .map(
+                        (s) =>
+                          `${s.position}${s.inPossessionRole ? ` (${s.inPossessionRole} IP / ${s.outOfPossessionRole || s.inPossessionRole} OOP)` : ''}`
+                      )
+                      .join(', ');
+                    return `${t0.name} (${t0.mentality}, IP ${t0.inPossessionFormation || activeShape} / OOP ${t0.outOfPossessionFormation || t0.inPossessionFormation || activeShape}): ${slotList}`;
+                  }
+                  if (customSlots.length > 0) {
+                    return `${activeShape}: ${customSlots.map((c) => `${c.slotId} (${c.ipRole} IP / ${c.oopRole} OOP)`).join(', ')}`;
+                  }
+                  return `${activeShape} (No-Nonsense GK, Full-Backs, Centre-Back + Ball-Playing CB, Defensive Midfielder, Box-to-Box CM + Channel CM, Winger + Inside Forward / Tracking Wingers OOP, Channel Forward)`;
+                })()}
               />
             </Suspense>
           </AppErrorBoundary>
@@ -1033,14 +1037,14 @@ export default function App() {
 
       <footer className="hidden md:flex px-6 py-4 border-t border-slate-200 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 flex-row items-center justify-between gap-2">
         <span>
-          FM27 Command Hub · Football Manager 27 on PC (Patch 27.1.0 Verified Knowledge Base)
+          FM27 Command Hub · Football Manager 27 (Patch 27.1.0 Verified Knowledge Base)
         </span>
         <span>
-          Anchor Tag Protected: [INSERT NEXT CHRONOLOGICAL EVENT HERE]
+          Dual-Phase IP/OOP Tactics · Live .fm Save Analytics
         </span>
       </footer>
 
-      {/* Fixed Thumb-Friendly Mobile Bottom Navigation Bar */}
+      {/* Fixed Thumb-Friendly Mobile Bottom Navigation Bar (All 6 Sections 1-Tap Accessible) */}
       <nav
         aria-label="Mobile navigation"
         className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-slate-900/95 backdrop-blur border-t border-slate-800 px-1.5 pt-1.5 grid grid-cols-6 gap-1"
@@ -1050,12 +1054,12 @@ export default function App() {
       >
         {(
           [
-            { id: 'sync', label: 'Analyst', icon: MessageSquare },
+            { id: 'sync', label: 'Hub', icon: MessageSquare },
             { id: 'squad', label: 'Squad', icon: Users },
             { id: 'tactics', label: 'Tactics', icon: Shield },
             { id: 'recruitment', label: 'Transfers', icon: Briefcase },
-            { id: 'setpieces', label: 'Corners', icon: Crosshair },
             { id: 'matches', label: 'Matches', icon: Trophy },
+            { id: 'staff', label: 'Staff', icon: UserCheck },
           ] as const
         ).map((item) => {
           const Icon = item.icon;

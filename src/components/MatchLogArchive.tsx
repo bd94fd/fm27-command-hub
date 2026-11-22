@@ -103,6 +103,8 @@ interface MatchLogArchiveProps {
   liveSaveFileName?: string | null;
   clubName?: string;
   saveDate?: string;
+  activeShape?: string;
+  activeTacticSummary?: string | null;
 }
 
 export function getFootballSeasonLabel(dateStr: string): string {
@@ -149,6 +151,8 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
   liveSaveFileName,
   clubName,
   saveDate,
+  activeShape = '4-3-3 DM Wide',
+  activeTacticSummary = null,
 }) => {
   const seasons = useMemo(() => {
     const set = new Set<string>();
@@ -184,6 +188,8 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clubName: clubName || 'Managed Club',
+          activeShape,
+          activeTacticSummary: activeTacticSummary || undefined,
           matchSummary: {
             date: m.date,
             competition: m.competition,

@@ -52,7 +52,19 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
   );
 
   if (!staff || staff.length === 0) {
-    return null;
+    return (
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-8 text-center space-y-2.5">
+        <UserCheck className="h-8 w-8 text-sky-400 mx-auto" />
+        <h2 className="text-base sm:text-lg font-bold text-white">
+          Awaiting .fm Save — Backroom Staff Directory
+        </h2>
+        <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+          Import your <span className="font-mono text-emerald-400">.fm</span> save
+          in the <strong>Hub</strong> tab to audit all 8 backroom departments
+          (Coaching, Medical, Recruitment, Youth Development) and spot weak hiring gaps.
+        </p>
+      </div>
+    );
   }
 
   return (

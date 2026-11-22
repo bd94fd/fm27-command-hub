@@ -3,18 +3,18 @@ import {
   Send,
   Upload,
   Sparkles,
-  CloudUpload,
   X,
   CheckCircle2,
   AlertCircle,
-  Settings2,
-  LogOut,
   RefreshCw,
-  FileArchive,
   ShieldCheck,
   Zap,
   ChevronDown,
   ChevronUp,
+  Clock,
+  Shield,
+  Briefcase,
+  MessageSquare,
 } from 'lucide-react';
 import {
   MatchLogEntry,
@@ -54,8 +54,6 @@ import {
   parseJsonApiResponse,
   sanitizeReaderNotes,
 } from '../utils/apiResponse';
-import { useWorkspaceSync } from '../hooks/useWorkspaceSync';
-import { WorkspaceSyncControls } from './sync/WorkspaceSyncControls';
 
 export type PlayerAutoUpdate = ExtendedPlayerAutoUpdate;
 
@@ -79,11 +77,8 @@ export interface ChatTurnPayload {
   analysisMarkdown?: string;
   immediateClicks?: string[];
   followUpQuestions?: string[];
-  targetSheetTable?: string;
   chronicleTitle?: string;
   chronicleOutcomeMetric?: string;
-  docEventBulletBlock?: string;
-  sheetRowValues?: string[];
   eventNumber?: number;
   playerUpdatesApplied?: string[];
 }
@@ -111,14 +106,6 @@ interface AutoSyncWorkspaceProps {
   onApplyDecodedFmSave?: (decoded: DecodedFmSavePayload) => HydratedSaveState;
   pendingPrompt?: string | null;
   onClearPendingPrompt?: () => void;
-}
-
-interface PendingWorkspaceMutation {
-  eventNumber: number;
-  title: string;
-  docEventBulletBlock: string;
-  sheetRowValues: string[];
-  chronicleRowValues: string[];
 }
 
 export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
@@ -153,15 +140,14 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       : latestMatch?.date || '--';
 
   const [turns, setTurns] = useState<ChatTurnPayload[]>([]);
-  const [importScope, setImportScope] =
-    useState<FmImportScope>('managed_club_only');
+  const [importScope] = useState<FmImportScope>('managed_club_only');
   const [serverDecodeAvailable, setServerDecodeAvailable] = useState<boolean | null>(
     null
   );
   const fastSyncManuallyToggledRef = useRef<boolean>(false);
   const [fastSync, setFastSync] = useState<boolean>(false);
   const [extractionWarnings, setExtractionWarnings] = useState<string[]>([]);
-  const [showReaderNotes, setShowReaderNotes] = useState<boolean>(false);
+  const [showSyncDetails, setShowSyncDetails] = useState<boolean>(false);
   const [lastStepTimingsMs, setLastStepTimingsMs] = useState<Record<string, number>>({});
   const [reasoningMode, setReasoningMode] =
     useState<AnalystReasoningMode>('deep_high');
@@ -178,6 +164,8 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   const [chatError, setChatError] = useState<string | null>(null);
   const feedEndRef = useRef<HTMLDivElement | null>(null);
 
+  const hasLoadedSave = players.length > 0 || Boolean(hydratedFmSave);
+
   useEffect(() => {
     if (pendingPrompt) {
       setMessageInput(pendingPrompt);
@@ -191,8 +179,6 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       if (!active) return;
       setServerDecodeAvailable(status.serverDecodeAvailable);
       if (!fastSyncManuallyToggledRef.current) {
-        // Keep Full Sync (fastSync=false) whenever server decoding is available;
-        // only auto-enable Fast Sync on mobile when falling back to browser Pyodide.
         if (status.serverDecodeAvailable) {
           setFastSync(false);
         } else if (typeof window !== 'undefined') {
@@ -221,44 +207,6 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     }, 1000);
     return () => window.clearInterval(timer);
   }, [Boolean(fmDecodeStage)]);
-
-  // Google Workspace Connection, Diff-Preview & Audit Log Sync Hook
-  const {
-    showGoogleSettings,
-    setShowGoogleSettings,
-    googleUser,
-    accessToken,
-    isLoggingIn,
-    docUrlOrId,
-    sheetUrlOrId,
-    docInfo,
-    sheetMeta,
-    selectedMatchLogTab,
-    setSelectedMatchLogTab,
-    selectedChroniclesTab,
-    setSelectedChroniclesTab,
-    workspaceStatus,
-    workspaceError,
-    isSyncingWorkspace,
-    pendingSync,
-    auditLogs,
-    handleDocUrlChange,
-    handleSheetUrlChange,
-    handleGoogleLogin,
-    handleGoogleLogout,
-    handleVerifyFiles,
-    requestSync,
-    confirmPendingSync,
-    cancelPendingSync,
-  } = useWorkspaceSync();
-
-  const handleRequestDirectPush = (payload: PendingWorkspaceMutation) => {
-    if (!accessToken || (!docUrlOrId.trim() && !sheetUrlOrId.trim())) {
-      setShowGoogleSettings(true);
-      return;
-    }
-    requestSync(payload);
-  };
 
   const dispatchToAnalyst = async (params: {
     promptText: string;
@@ -327,7 +275,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
 
     const finalPrompt =
       promptText ||
-      `Imported ${attachedNames.join(', ')} — update everything in the Squad Database, Match Log & Master Sheet, analyze every result and attribute against Bobby Dean's Playbook v2.0, and produce a complete tactical & rotation plan from the current in-game date (${detectedExportDate || currentSaveDate}).`;
+      `Imported ${attachedNames.join(', ')} — analyse my squad, played results, league standing, finances, and injuries against Bobby Dean's Playbook v2.0, and give me a concise tactical & rotation plan from ${detectedExportDate || currentSaveDate} forward.`;
 
     const userTurn: ChatTurnPayload = {
       id: `user-${Date.now()}`,
@@ -442,7 +390,6 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         }
       }
 
-      // Automatically add completed match if explicitly reported in screenshot/chat (never fabricate missing stats)
       const alreadyHydratedMatch = fmFilesToSend.some(
         (f) => f.kind === 'FM_SAVE_DECODED'
       );
@@ -474,7 +421,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           shotsAgainst: mf.shotsAgainst || '—',
           cccFor: typeof mf.cccFor === 'number' ? mf.cccFor : null,
           cccAgainst: typeof mf.cccAgainst === 'number' ? mf.cccAgainst : null,
-          goalTimeline: mf.goalTimeline || 'Logged from Data Hub screenshot',
+          goalTimeline: mf.goalTimeline || 'Logged from screenshot',
           potm: mf.potm || '—',
           defensiveWatchpoints: mf.defensiveWatchpoints || '—',
           tacticalAudit:
@@ -496,11 +443,8 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         followUpQuestions: Array.isArray(data.followUpQuestions)
           ? data.followUpQuestions
           : [],
-        targetSheetTable: data.targetSheetTable || 'TABLE_1G_MATCH_LOG',
         chronicleTitle: data.chronicleTitle || data.screenDetected,
         chronicleOutcomeMetric: data.chronicleOutcomeMetric || 'Updated',
-        docEventBulletBlock: data.docEventBulletBlock,
-        sheetRowValues: data.sheetRowValues || [],
         eventNumber: assignedEventNum,
         playerUpdatesApplied: appliedPlayerNames,
       };
@@ -518,7 +462,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         )
       ) {
         friendlyMsg =
-          'The AI Tactical Analyst is temporarily busy due to high demand. Automatic retries and model failover were attempted — please wait a few seconds and try again.';
+          'The AI Tactical Analyst is temporarily busy due to high demand. Automatic retries were attempted — please wait a few seconds and try again.';
       } else if (rawMsg.trim().includes('{"error"') || rawMsg.trim().startsWith('{')) {
         try {
           const parsed = JSON.parse(rawMsg.slice(rawMsg.indexOf('{'))) as {
@@ -621,10 +565,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           setLastStepTimingsMs({});
           setFmDecodeStage({
             stage: 'read',
-            label:
-              serverDecodeAvailable === false
-                ? `Starting local Pyodide 3.14 + fmsave 0.14.3 reader for ${file.name}${fastSync ? ' (Fast Sync)' : ''}...`
-                : `Uploading & decoding full save on server (${file.name})...`,
+            label: `Reading ${file.name}${fastSync ? ' (Fast Sync)' : ''}...`,
           });
           const decoded = await decodeFmSaveFile(
             file,
@@ -658,7 +599,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             id: `fm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             name: file.name,
             kind: 'FM_SAVE_DECODED',
-            badgeLabel: `${file.name} (${decoded.meta.clubName} · ${decoded.meta.gameDateDmy || 'Decoded'} · ${decoded.players.length} players, ${decoded.playedMatches.length} matches)`,
+            badgeLabel: `${file.name} (${decoded.meta.clubName} · ${decoded.meta.gameDateDmy || 'Decoded'})`,
             promptContext:
               hydrated?.analystPromptContext || JSON.stringify(decoded.meta),
             hydratedSave: hydrated,
@@ -666,7 +607,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
 
           if (!messageInput.trim()) {
             await dispatchToAnalyst({
-              promptText: `I just imported my live .fm save file ${file.name} (Managed Club: ${decoded.meta.clubName} · Manager: ${decoded.meta.managerName} · In-Game Date: ${decoded.meta.gameDateDmy || 'Live'}). Everything has been populated in the app — audit our current squad, played results, league standing, finances, and injuries against Bobby Dean's Playbook v2.0, and give me a tailored tactical, Starting XI, 62m/75m substitution, set-piece, and rotation plan from ${decoded.meta.gameDateDmy || 'today'} forward.`,
+              promptText: `I just imported my live .fm save file ${file.name} (${decoded.meta.clubName} · ${decoded.meta.gameDateDmy || 'Live'}). Give me a concise tactical audit of our squad, recent results, finances, and next-match plan.`,
               imagesToSend: [],
               fmFilesToSend: [decodedEntry],
             });
@@ -681,7 +622,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           setChatError(
             err instanceof Error
               ? err.message
-              : `Could not decode ${file.name}. Ensure it is a valid FM26/FM27 .fm save file.`
+              : `Could not read ${file.name}. Make sure it is a valid FM26/FM27 .fm save file.`
           );
         }
       } else if (
@@ -694,10 +635,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         try {
           const text = await file.text();
           const parsed = parseFmStructuredExport(text, file.name);
-          if (
-            parsed.parsedPlayers.length > 0 &&
-            onBulkMergePlayers
-          ) {
+          if (parsed.parsedPlayers.length > 0 && onBulkMergePlayers) {
             onBulkMergePlayers(parsed.parsedPlayers);
           }
           if (parsed.detectedDate && onUpdateSaveDate) {
@@ -705,7 +643,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           }
           const countDesc =
             parsed.parsedPlayers.length > 0
-              ? `${parsed.parsedPlayers.length} players synced to Squad DB`
+              ? `${parsed.parsedPlayers.length} players synced`
               : `${parsed.rowCount} rows parsed`;
 
           setAttachedFmFiles((prev) => [
@@ -714,7 +652,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               id: `exp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
               name: file.name,
               kind: 'FM_EXPORT',
-              badgeLabel: `${file.name} (${parsed.format} · ${countDesc})`,
+              badgeLabel: `${file.name} (${countDesc})`,
               promptContext: parsed.promptContext,
               parsedExport: parsed,
             },
@@ -733,7 +671,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         }
       } else {
         setChatError(
-          `Unsupported file "${file.name}". Drop a .fm save file, FM27 .csv/.html/.rtf export, or screenshot image.`
+          `Unsupported file "${file.name}". Drop a .fm save file or screenshot image.`
         );
       }
     }
@@ -774,7 +712,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       attachedFmFiles.length === 0
     ) {
       setChatError(
-        'Drop your .fm save file, attach a screenshot/export, or type a message first.'
+        'Import your .fm save file, attach a screenshot, or type a question first.'
       );
       return;
     }
@@ -800,890 +738,542 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         ? `Manager · ${clubName}`
         : 'FM27 Manager';
 
-  return (
-    <div className="space-y-6">
-      {/* Google Workspace Diff-Preview Confirmation Modal & Audit Log History Drawer */}
-      <WorkspaceSyncControls
-        pendingSync={pendingSync}
-        isSyncing={isSyncingWorkspace}
-        auditLogs={auditLogs}
-        onConfirmSync={confirmPendingSync}
-        onCancelSync={cancelPendingSync}
-      />
+  const cleanedNotes = sanitizeReaderNotes(extractionWarnings);
+  const hasTimingOrNotes =
+    Object.keys(lastStepTimingsMs).length > 0 || cleanedNotes.length > 0;
 
-      {/* SINGLE STREAMLINED WORKSPACE: Interactive Back-and-Forth Tactical Co-Pilot */}
-      <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDraggingFile(true);
-        }}
-        onDragLeave={() => setIsDraggingFile(false)}
-        onDrop={handleDropFiles}
-        className={`p-6 bg-white dark:bg-slate-900 border rounded-xl space-y-5 transition-colors ${
-          isDraggingFile
-            ? 'border-emerald-500 ring-2 ring-emerald-500/30'
-            : 'border-slate-200 dark:border-slate-800'
-        }`}
-      >
-        {/* Top Header + Scope Selector + Compact Google Connection Toggle */}
-        <div className="flex flex-col gap-3.5 pb-4 border-b border-slate-200 dark:border-slate-800">
-          <div className="min-w-0">
-            <div className="text-xs font-mono uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-              {serverDecodeAvailable
-                ? 'Bobby Dean Playbook v2.0 + Native Server .FM Full Sync Engine (Python 3 · fmsave · Browser Fallback Ready)'
-                : 'Bobby Dean Playbook v2.0 + Local Browser .FM Save Reader (Pyodide 3.14 · fmsave · WORKERFS Zero-Copy)'}
+  return (
+    <div
+      onDragOver={(e) => {
+        e.preventDefault();
+        setIsDraggingFile(true);
+      }}
+      onDragLeave={() => setIsDraggingFile(false)}
+      onDrop={handleDropFiles}
+      className={`rounded-2xl border bg-white dark:bg-slate-900 overflow-hidden transition-colors ${
+        isDraggingFile
+          ? 'border-emerald-500 ring-2 ring-emerald-500/30'
+          : 'border-slate-200 dark:border-slate-800'
+      }`}
+    >
+      {/* FIRST-ENTRY HERO (shown cleanly when no save & no chat yet) */}
+      {!hasLoadedSave && turns.length === 0 && !fmDecodeStage ? (
+        <div className="p-6 sm:p-10 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950/60 text-center space-y-6">
+          <div className="space-y-2.5 max-w-xl mx-auto">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-[11px] font-semibold text-emerald-300">
+              <Sparkles className="w-3.5 h-3.5" />
+              Football Manager 27 · Patch 27.1.0 Ready
             </div>
-            <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 mt-0.5">
-              FM27 Tactical Analyst Chat &amp; Direct .fm Save Sync
+            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
+              Your FM27 Tactical Command Hub
             </h2>
-            <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 max-w-4xl">
-              Drop or select your{' '}
-              <span className="font-mono text-emerald-400">.fm</span> save file
-              below{' '}
-              {serverDecodeAvailable
-                ? '(decoded natively on this app server in Full Sync mode — 100% of tables extracted fast on mobile & desktop, temporary files deleted immediately after decode, with automatic browser Pyodide fallback).'
-                : '(decoded locally in your browser via Pyodide Web Worker when server decoding is unavailable).'}{' '}
-              Automatically extracts your managed club, squad attributes &amp;
-              star ratings, season stats, fixtures, league table, tactics,
-              finances, and injuries, populates every tab, and builds your
-              tactical plan from the current in-game date forward.
+            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+              Drop your <span className="font-mono text-emerald-300">.fm</span> save
+              file to unlock your live squad analytics, dual-phase IP/OOP pitch
+              builder, smart transfer audit, backroom staff ratings, and AI
+              tactical co-pilot.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5 w-full min-w-0">
-            {/* Analyst Reasoning Depth Selector */}
-            <div className="flex items-center gap-1.5 min-w-0 max-w-full w-full sm:w-auto">
-              <label
-                htmlFor="analyst-reasoning-mode-select"
-                className="text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap shrink-0"
-              >
-                Analyst Brain:
-              </label>
-              <select
-                id="analyst-reasoning-mode-select"
-                aria-label="Analyst Reasoning Depth"
-                value={reasoningMode}
-                onChange={(e) =>
-                  setReasoningMode(e.target.value as AnalystReasoningMode)
-                }
-                className="min-w-0 flex-1 sm:flex-none max-w-full px-2.5 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 rounded-lg"
-              >
-                <option value="deep_high">
-                  Deep Tactical Reasoning (Gemini 3.5 Flash — Default)
-                </option>
-                <option value="max_xhigh">
-                  Max Engine &amp; Squad Synthesis (Gemini 3.5 Flash)
-                </option>
-                <option value="fast_lite">
-                  Rapid Touchline Co-Pilot (Gemini 3.5 Flash Lite)
-                </option>
-              </select>
-            </div>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <label
+              htmlFor="welcome-fm-upload"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 rounded-xl shadow-lg shadow-emerald-500/20 cursor-pointer transition"
+            >
+              <Upload className="w-4 h-4" />
+              <span>Import .fm Save File</span>
+              <input
+                id="welcome-fm-upload"
+                type="file"
+                accept=".fm,image/*,.csv,.html,.htm,.rtf,.txt"
+                multiple
+                onChange={handleFilesSelected}
+                className="hidden"
+              />
+            </label>
 
-            {/* Scope Selector Before/When Importing */}
-            <div className="flex items-center gap-1.5 min-w-0 max-w-full w-full sm:w-auto">
-              <label
-                htmlFor="fm-import-scope-select"
-                className="text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap shrink-0"
-              >
-                Import Scope:
-              </label>
-              <select
-                id="fm-import-scope-select"
-                aria-label="FM Save Import Scope"
-                value={importScope}
-                onChange={(e) =>
-                  setImportScope(e.target.value as FmImportScope)
-                }
-                className="min-w-0 flex-1 sm:flex-none max-w-full px-2.5 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 rounded-lg"
-              >
-                <option value="managed_club_only">
-                  My Managed Club Only (Fastest for Mobile)
-                </option>
-                <option value="club_and_division">
-                  My Managed Club + Full Division Table
-                </option>
-              </select>
-            </div>
+            <label
+              htmlFor="fm-fast-sync-welcome-toggle"
+              className={`w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3.5 py-2.5 text-xs font-medium rounded-xl border cursor-pointer transition select-none ${
+                fastSync
+                  ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+                  : 'bg-slate-900/80 text-slate-300 border-slate-700 hover:border-slate-500'
+              }`}
+            >
+              <input
+                id="fm-fast-sync-welcome-toggle"
+                type="checkbox"
+                checked={fastSync}
+                onChange={(e) => {
+                  fastSyncManuallyToggledRef.current = true;
+                  setFastSync(e.target.checked);
+                }}
+                className="accent-amber-500 w-3.5 h-3.5 cursor-pointer"
+              />
+              <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span>Fast Sync (Recommended on Mobile)</span>
+            </label>
+          </div>
 
-            {!accessToken ? (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl mx-auto pt-2 text-left">
+            <div className="p-3.5 rounded-xl bg-slate-900/75 border border-slate-800 space-y-1">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-300">
+                <Shield className="w-4 h-4" />
+                Live Dual-Phase Tactics
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Starts on your last-match XI with separate IP/OOP roles, corners, and rest-defence checks.
+              </p>
+            </div>
+            <div className="p-3.5 rounded-xl bg-slate-900/75 border border-slate-800 space-y-1">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-sky-300">
+                <Briefcase className="w-4 h-4" />
+                Transfers &amp; Scouting
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Contract horizons, wage savings, youth promotion, and 500-target Club DNA scouting.
+              </p>
+            </div>
+            <div className="p-3.5 rounded-xl bg-slate-900/75 border border-slate-800 space-y-1">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
+                <MessageSquare className="w-4 h-4" />
+                AI Tactical Analyst
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Ask matchday questions or drop screenshots for instant Playbook v2.0 advice.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* COMPACT HEADER ONCE SAVE IS LOADED OR CHAT IS ACTIVE */
+        <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/60 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+            <div className="min-w-0">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                AI Tactical Analyst
+              </h2>
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                {players.length > 0
+                  ? `${clubName && clubName !== '--' ? clubName : 'Club'} · ${players.length} players · ${matches.length} matches`
+                  : 'Ask any FM27 tactical question'}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <select
+              aria-label="Analyst Reasoning Depth"
+              value={reasoningMode}
+              onChange={(e) =>
+                setReasoningMode(e.target.value as AnalystReasoningMode)
+              }
+              className="px-2 py-1 text-[11px] font-medium bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded-lg"
+            >
+              <option value="deep_high">Deep Analyst</option>
+              <option value="max_xhigh">Max Synthesis</option>
+              <option value="fast_lite">Fast Co-Pilot</option>
+            </select>
+
+            {hasTimingOrNotes && (
               <button
                 type="button"
-                onClick={handleGoogleLogin}
-                disabled={isLoggingIn}
-                className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-slate-800 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
+                onClick={() => setShowSyncDetails((v) => !v)}
+                className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-slate-400 hover:text-slate-200 bg-slate-900 border border-slate-800 rounded-lg cursor-pointer"
               >
-                <svg
-                  version="1.1"
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 48 48"
-                  className="w-4 h-4 block shrink-0"
-                >
-                  <path
-                    fill="#EA4335"
-                    d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
-                  />
-                  <path
-                    fill="#4285F4"
-                    d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
-                  />
-                  <path
-                    fill="#FBBC05"
-                    d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
-                  />
-                  <path
-                    fill="#34A853"
-                    d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
-                  />
-                </svg>
+                <Clock className="w-3 h-3 text-emerald-400" />
                 <span>
-                  {isLoggingIn ? 'Signing in...' : 'Sign in with Google'}
+                  Sync Info{cleanedNotes.length > 0 ? ` (${cleanedNotes.length})` : ''}
                 </span>
+                {showSyncDetails ? (
+                  <ChevronUp className="w-3 h-3" />
+                ) : (
+                  <ChevronDown className="w-3 h-3" />
+                )}
               </button>
-            ) : (
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-mono text-emerald-600 dark:text-emerald-400">
-                  {googleUser?.email || 'Google Connected'}
-                </span>
-                <button
-                  type="button"
-                  onClick={handleGoogleLogout}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-md cursor-pointer"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  Sign out
-                </button>
-              </div>
             )}
 
-            <button
-              type="button"
-              onClick={() => setShowGoogleSettings((prev) => !prev)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg cursor-pointer"
-            >
-              <Settings2 className="w-3.5 h-3.5 text-emerald-500" />
-              <span>
-                {showGoogleSettings
-                  ? 'Hide Sheet/Doc Links'
-                  : 'Link Google Sheet & Doc'}
-              </span>
-            </button>
-          </div>
-        </div>
-
-        {/* Live Context & Conversation Memory Status Strip */}
-        <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg flex flex-wrap items-center justify-between gap-2 text-xs">
-          <div className="flex flex-wrap items-center gap-2 text-slate-600 dark:text-slate-300">
-            <span className="inline-flex items-center gap-1 font-mono font-semibold text-emerald-600 dark:text-emerald-400">
-              <Sparkles className="w-3.5 h-3.5" />
-              Active Analyst Context:
-            </span>
-            <span>
-              FM27 Patch 27.1.0 Physics &middot; Playbook v2.0 (All 9 Sections)
-            </span>
-            <span>&middot;</span>
-            {players.length > 0 ? (
-              <span className="font-mono text-emerald-400">
-                {clubName && clubName !== '--' ? clubName : 'Managed Club'} (
-                {players.length} Players, War Room XI, Set-Pieces &amp;{' '}
-                {matches.length} Matches Synced)
-              </span>
-            ) : (
-              <span className="font-mono text-amber-400">
-                0 Players / 0 Matches (Drop .fm Save to Bind Live Club State)
-              </span>
-            )}
-            <span>&middot;</span>
-            <span className="font-mono text-slate-500 dark:text-slate-400">
-              {turns.length} Chat Turn{turns.length === 1 ? '' : 's'} in Memory
-            </span>
-          </div>
-
-          {turns.length > 0 && (
-            <button
-              type="button"
-              onClick={() => {
-                setTurns([]);
-                setChatError(null);
-              }}
-              className="px-2.5 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 bg-slate-200/70 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 rounded-md cursor-pointer transition-colors"
-            >
-              Clear Chat Memory
-            </button>
-          )}
-        </div>
-
-        {/* Collapsible One-Time Google Sheet & Doc URL Drawer */}
-        {showGoogleSettings && (
-          <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl space-y-3">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
-              <div className="lg:col-span-5">
-                <label
-                  htmlFor="google-sheet-url"
-                  className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1"
-                >
-                  Master Google Sheet URL or ID
-                </label>
-                <input
-                  id="google-sheet-url"
-                  type="text"
-                  placeholder="https://docs.google.com/spreadsheets/d/.../edit"
-                  value={sheetUrlOrId}
-                  onChange={(e) => handleSheetUrlChange(e.target.value)}
-                  className="w-full px-3 py-1.5 text-xs font-mono bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg"
-                />
-              </div>
-              <div className="lg:col-span-5">
-                <label
-                  htmlFor="google-doc-url"
-                  className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1"
-                >
-                  Master Google Doc URL or ID (Optional)
-                </label>
-                <input
-                  id="google-doc-url"
-                  type="text"
-                  placeholder="https://docs.google.com/document/d/.../edit"
-                  value={docUrlOrId}
-                  onChange={(e) => handleDocUrlChange(e.target.value)}
-                  className="w-full px-3 py-1.5 text-xs font-mono bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg"
-                />
-              </div>
-              <div className="lg:col-span-2 flex items-end">
-                <button
-                  type="button"
-                  disabled={isSyncingWorkspace}
-                  onClick={handleVerifyFiles}
-                  className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-900 dark:text-slate-100 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 rounded-lg cursor-pointer"
-                >
-                  <RefreshCw
-                    className={`w-3.5 h-3.5 ${isSyncingWorkspace ? 'animate-spin' : ''}`}
-                  />
-                  Verify Links
-                </button>
-              </div>
-            </div>
-
-            {sheetMeta && sheetMeta.sheetNames.length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                <div>
-                  <label
-                    htmlFor="sheet-tab-1g"
-                    className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1"
-                  >
-                    Target Tab for Match / Scouting / Tactical Rows:
-                  </label>
-                  <select
-                    id="sheet-tab-1g"
-                    value={selectedMatchLogTab}
-                    onChange={(e) => setSelectedMatchLogTab(e.target.value)}
-                    className="w-full px-2.5 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md"
-                  >
-                    {sheetMeta.sheetNames.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label
-                    htmlFor="sheet-tab-10"
-                    className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1"
-                  >
-                    Target Tab for Tab 10 (Chronicles):
-                  </label>
-                  <select
-                    id="sheet-tab-10"
-                    value={selectedChroniclesTab}
-                    onChange={(e) => setSelectedChroniclesTab(e.target.value)}
-                    className="w-full px-2.5 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md"
-                  >
-                    {sheetMeta.sheetNames.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {workspaceError && (
-          <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2 text-xs text-red-600 dark:text-red-400">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{workspaceError}</span>
-          </div>
-        )}
-
-        {workspaceStatus && (
-          <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-300">
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-            <span>{workspaceStatus}</span>
-          </div>
-        )}
-
-        {/* Quick One-Click Conversation Starters */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-slate-500 dark:text-slate-400 mr-1">
-            Quick Prompts:
-          </span>
-          <button
-            type="button"
-            disabled={isSending}
-            onClick={() =>
-              handleSendToAnalyst(
-                undefined,
-                players.length > 0
-                  ? `Give me our complete Pre-Match Tactical Gameplan for ${clubName || 'our managed club'} from ${currentSaveDate} forward (${nextFixture !== '--' ? `Next: ${nextFixture}` : 'next fixture'}), including our best Dual-Phase 4-3-3 Starting XI, Tracking Winger OOP roles, and 62m/75m substitution windows based on our imported squad's Stamina and Condition.`
-                  : 'Explain how Bobby Dean’s FM27 Playbook v2.0 Dual-Phase 4-3-3, Tracking Winger OOP flank lock, and 62m/75m 2-window substitution script work in Patch 27.1.0.'
-              )
-            }
-            className="px-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-emerald-500/15 hover:text-emerald-400 border border-slate-300 dark:border-slate-700 rounded-lg transition-colors cursor-pointer"
-          >
-            {players.length > 0
-              ? 'Next Fixture Dual-Phase 4-3-3 & 62m/75m Sub Plan'
-              : 'How Playbook v2.0 Dual-Phase 4-3-3 Works'}
-          </button>
-          <button
-            type="button"
-            disabled={isSending}
-            onClick={() =>
-              handleSendToAnalyst(
-                undefined,
-                players.length > 0
-                  ? `Audit our ${players.length}-man squad at ${clubName || 'our club'} against Playbook v2.0 Section 7 & Section 9: wage budget compliance, highest earners vs minutes played, top star ratings & FM27 engine scores, Set-Piece Aerial Threats (JR + Heading), and 3-player Mentoring group recommendations.`
-                  : 'How do we counter a 3-5-2 / 5-3-2 wing-back system or a high-pressing 4-2-3-1 in FM27 without breaking the 3-man midfield Zone 5 guardrail?'
-              )
-            }
-            className="px-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-emerald-500/15 hover:text-emerald-400 border border-slate-300 dark:border-slate-700 rounded-lg transition-colors cursor-pointer"
-          >
-            {players.length > 0
-              ? 'Audit Squad Wages, Star Ratings & Set-Piece Threats'
-              : 'Countering 3-5-2 Wing-Backs & 4-2-3-1 Presses in FM27'}
-          </button>
-          <button
-            type="button"
-            disabled={isSending}
-            onClick={() =>
-              handleSendToAnalyst(
-                undefined,
-                players.length > 0
-                  ? `Rank our squad's top Patch 27.1.0 physical engine outliers (Top Sprint Speed m/s, Vertical Jump Reach, and Stamina Drain) and tell me who should be our A1/A2/A3 corner targets, Left/Right inswinger takers, and D1/D2 recovery defenders.`
-                  : 'How does FM27 Patch 27.1.0 weight Pace, Acceleration, Jumping Reach, and Stamina, and how should I set up Attacking & Defending Corners?'
-              )
-            }
-            className="px-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-emerald-500/15 hover:text-emerald-400 border border-slate-300 dark:border-slate-700 rounded-lg transition-colors cursor-pointer"
-          >
-            {players.length > 0
-              ? 'Patch 27.1.0 Speed/Jump Leaders & Corner Specialists'
-              : 'Patch 27.1.0 Physical Weights & Corner Routines'}
-          </button>
-          <button
-            type="button"
-            disabled={isSending}
-            onClick={() =>
-              handleSendToAnalyst(
-                undefined,
-                players.length > 0
-                  ? `Walk me through our in-match touchline contingency script for ${nextFixture !== '--' ? nextFixture : 'our next match'}: what exact single tweak and shout do we use at 62m and 75m if we are chasing 0-1 vs protecting a 1-0 lead?`
-                  : 'What is the exact 62m / 75m touchline contingency script when chasing a goal late vs protecting a 1-goal lead in FM27?'
-              )
-            }
-            className="px-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-emerald-500/15 hover:text-emerald-400 border border-slate-300 dark:border-slate-700 rounded-lg transition-colors cursor-pointer"
-          >
-            62m / 75m Touchline Contingency Script (Chasing vs Leading)
-          </button>
-        </div>
-
-        {/* Conversation Feed or Clean "Awaiting .fm Save" Empty State */}
-        <div className="space-y-4 max-h-[600px] overflow-y-auto pr-1">
-          {turns.length === 0 && !isSending && (
-            <div className="p-6 rounded-xl bg-slate-50 dark:bg-slate-950 border border-dashed border-emerald-500/40 text-center space-y-3">
-              <FileArchive className="w-8 h-8 text-emerald-500 mx-auto" />
-              <div className="space-y-1">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                  Awaiting .fm Save File — Zero Pre-Filled Club Data Loaded
-                </h3>
-                <p className="text-xs text-slate-600 dark:text-slate-400 max-w-2xl mx-auto leading-relaxed">
-                  Drop your Football Manager{' '}
-                  <span className="font-mono text-emerald-400">.fm</span> save
-                  file anywhere in this workspace or click{' '}
-                  <strong>Import .fm Save / Image</strong> below.{' '}
-                  {serverDecodeAvailable ? (
-                    <>
-                      Your save is decoded natively on the built-in Express
-                      server with Python 3 +{' '}
-                      <span className="font-mono">fmsave</span> in{' '}
-                      <strong>Full Sync</strong> mode (100% of Pass 0 &amp; Pass
-                      1 tables, nothing skipped, fast on mobile) and purged from
-                      temp storage immediately — with automatic local Pyodide
-                      browser fallback if needed.
-                    </>
-                  ) : (
-                    <>
-                      Your save is mounted via zero-copy{' '}
-                      <span className="font-mono">WORKERFS</span> inside a local
-                      Pyodide 3.14 Web Worker with{' '}
-                      <span className="font-mono">fmsave</span> (native zstd +
-                      Progressive Checkpoint Recovery).
-                    </>
-                  )}{' '}
-                  You can also chat directly with the Tactical Analyst about any
-                  FM27 tactic, role pairing, or match scenario right now.
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
-                <label
-                  htmlFor="chat-empty-state-fm-upload"
-                  className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg cursor-pointer transition-colors"
-                >
-                  <Upload className="w-4 h-4" />
-                  <span>Select .fm Save File</span>
-                  <input
-                    id="chat-empty-state-fm-upload"
-                    type="file"
-                    accept=".fm,image/*,.csv,.html,.htm,.rtf,.txt"
-                    multiple
-                    onChange={handleFilesSelected}
-                    className="hidden"
-                  />
-                </label>
-                <label
-                  htmlFor="fm-fast-sync-empty-toggle"
-                  className={`inline-flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-lg border cursor-pointer transition-colors select-none ${
-                    fastSync
-                      ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
-                      : 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:border-slate-500'
-                  }`}
-                >
-                  <input
-                    id="fm-fast-sync-empty-toggle"
-                    type="checkbox"
-                    checked={fastSync}
-                    onChange={(e) => {
-                      fastSyncManuallyToggledRef.current = true;
-                      setFastSync(e.target.checked);
-                    }}
-                    className="accent-amber-500 w-3.5 h-3.5 cursor-pointer"
-                  />
-                  <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span>Fast Sync (Club Core — Recommended on Mobile)</span>
-                </label>
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-mono text-slate-500 dark:text-slate-400">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                  {serverDecodeAvailable
-                    ? 'Native Server Full Sync Ready (100% Tables · Mobile-Fast)'
-                    : 'Local Browser Pyodide Fallback · Automatic Server Detection'}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {turns.map((turn) => {
-            if (turn.role === 'user') {
-              return (
-                <div
-                  key={turn.id}
-                  className="ml-auto max-w-3xl p-4 rounded-xl bg-emerald-950/50 border border-emerald-500/30 text-slate-100"
-                >
-                  <div className="flex items-center justify-between text-[11px] font-mono text-emerald-400 mb-1">
-                    <span>{displayManagerLabel}</span>
-                    {turn.imageNames && turn.imageNames.length > 0 && (
-                      <span>Attached: {turn.imageNames.join(', ')}</span>
-                    )}
-                  </div>
-                  <p className="text-xs leading-relaxed whitespace-pre-wrap">
-                    {turn.userText}
-                  </p>
-                </div>
-              );
-            }
-
-            return (
-              <div
-                key={turn.id}
-                className="p-5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-4"
+            {turns.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setTurns([]);
+                  setChatError(null);
+                }}
+                className="px-2 py-1 text-[11px] font-medium text-slate-400 hover:text-white bg-slate-900 border border-slate-800 rounded-lg cursor-pointer"
               >
-                <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-200 dark:border-slate-800">
-                  <div>
-                    <span className="text-xs font-mono font-semibold text-emerald-600 dark:text-emerald-400">
-                      Chief Tactical Analyst · {turn.screenDetected}
-                    </span>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                      In-Game Date: {turn.inGameDate} · Target Sheet Table:{' '}
-                      <span className="font-mono">{turn.targetSheetTable}</span>{' '}
-                      · Event #{turn.eventNumber}
-                    </div>
-                  </div>
+                Clear Chat
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
-                  {turn.docEventBulletBlock && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleRequestDirectPush({
-                          eventNumber: turn.eventNumber || nextEventNum,
-                          title:
-                            turn.chronicleTitle ||
-                            `Event #${turn.eventNumber || nextEventNum}`,
-                          docEventBulletBlock: turn.docEventBulletBlock || '',
-                          sheetRowValues: turn.sheetRowValues || [],
-                          chronicleRowValues: [
-                            `Event #${turn.eventNumber || nextEventNum}`,
-                            turn.inGameDate || currentSaveDate,
-                            clubName && clubName !== '--'
-                              ? clubName
-                              : 'FM27 Save',
-                            turn.targetSheetTable || 'Tactical & Match Audit',
-                            turn.chronicleTitle || 'FM27 Tactical Update',
-                            turn.chronicleOutcomeMetric || 'Audited',
-                            turn.docEventBulletBlock || '',
-                          ],
-                        })
-                      }
-                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors cursor-pointer"
-                    >
-                      <CloudUpload className="w-3.5 h-3.5" />
-                      Push to Linked Google Sheet &amp; Doc
-                    </button>
-                  )}
-                </div>
+      {/* COLLAPSIBLE SYNC TIMING & READER NOTES (hidden by default to keep mobile clean) */}
+      {showSyncDetails && hasTimingOrNotes && (
+        <div className="px-4 py-3 border-b border-slate-800 bg-slate-950/80 space-y-2 text-[11px]">
+          {Object.keys(lastStepTimingsMs).length > 0 && (
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+              <span className="font-mono font-semibold text-emerald-400">
+                Timings:
+              </span>
+              {Object.entries(lastStepTimingsMs).map(([key, ms]) => (
+                <span key={key} className="font-mono text-slate-400 tabular-nums">
+                  {formatStepTimingLabel(key)}{' '}
+                  {ms === 0 && key !== 'totalDecodeMs'
+                    ? '0ms'
+                    : `${(ms / 1000).toFixed(1)}s`}
+                </span>
+              ))}
+            </div>
+          )}
+          {cleanedNotes.length > 0 && (
+            <ul className="list-disc pl-4 space-y-0.5 text-amber-200/90">
+              {cleanedNotes.slice(0, 6).map((note, idx) => (
+                <li key={idx}>{note}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
-                {turn.playerUpdatesApplied &&
-                  turn.playerUpdatesApplied.length > 0 && (
-                    <div className="px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300 flex items-center gap-2">
-                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                      <span>
-                        Automatically updated in-app Squad Database for:{' '}
-                        <strong>
-                          {turn.playerUpdatesApplied.slice(0, 12).join(', ')}
-                          {turn.playerUpdatesApplied.length > 12
-                            ? ` (+${turn.playerUpdatesApplied.length - 12} more)`
-                            : ''}
-                        </strong>
-                      </span>
-                    </div>
-                  )}
+      {/* MAIN CHAT BODY + COMPOSER */}
+      <div className="p-3.5 sm:p-5 space-y-3.5">
+        {/* Compact Horizontal Quick-Prompt Chips */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+          {[
+            {
+              label: players.length > 0 ? 'Next Match Plan' : 'Dual-Phase 4-3-3',
+              prompt:
+                players.length > 0
+                  ? `Give me our Pre-Match Tactical Gameplan for ${clubName || 'our club'} (${nextFixture !== '--' ? nextFixture : 'next fixture'}), including our Starting XI, Tracking Winger OOP roles, and 62m/75m substitution windows.`
+                  : 'Explain how Bobby Dean’s FM27 Playbook v2.0 Dual-Phase 4-3-3 and 62m/75m substitution script work.',
+            },
+            {
+              label: players.length > 0 ? 'Squad & Wage Audit' : 'Countering 3-5-2',
+              prompt:
+                players.length > 0
+                  ? `Audit our squad at ${clubName || 'our club'}: wage budget compliance, top earners vs minutes played, youth prospects to promote, and mentoring groups.`
+                  : 'How do we counter a 3-5-2 wing-back system or a high-pressing 4-2-3-1 in FM27?',
+            },
+            {
+              label: players.length > 0 ? 'Set-Piece Leaders' : 'Corner Routines',
+              prompt:
+                players.length > 0
+                  ? `Who should be our top corner aerial threats, left/right corner takers, and fast recovery defenders?`
+                  : 'How should I set up Attacking and Defending Corners in FM27?',
+            },
+            {
+              label: '62m / 75m Subs Script',
+              prompt:
+                players.length > 0
+                  ? `Walk me through our 62m and 75m touchline script for ${nextFixture !== '--' ? nextFixture : 'our next match'}: chasing 0-1 vs protecting 1-0.`
+                  : 'What is the exact 62m / 75m touchline script when chasing vs protecting a lead in FM27?',
+            },
+          ].map((qp) => (
+            <button
+              key={qp.label}
+              type="button"
+              disabled={isSending}
+              onClick={() => handleSendToAnalyst(undefined, qp.prompt)}
+              className="shrink-0 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800/90 hover:bg-emerald-500/15 hover:text-emerald-300 border border-slate-200 dark:border-slate-700 rounded-full transition cursor-pointer disabled:opacity-50"
+            >
+              {qp.label}
+            </button>
+          ))}
+        </div>
 
-                {/* Automatic FM27 Knowledge Base Accuracy Verification */}
-                {turn.analysisMarkdown && (() => {
-                  const check = verifyFm27Accuracy(turn.analysisMarkdown);
-                  return (
-                    <div
-                      className={`mb-2 rounded-lg border px-2.5 py-1.5 text-[11px] flex flex-wrap items-center justify-between gap-2 ${
-                        check.passed
-                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                          : 'border-amber-500/40 bg-amber-500/10 text-amber-300'
-                      }`}
-                    >
-                      <span className="font-semibold flex items-center gap-1.5">
-                        <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-                        {check.passed
-                          ? 'FM27 Knowledge Base Verified (Patch 27.1.0 · No retired FM24 roles or raw CA/PA)'
-                          : `FM27 Accuracy Notice: ${check.warnings.join(' · ')}`}
-                      </span>
-                      {check.citedVerifiedRoles.length > 0 && (
-                        <span className="font-mono text-[10px] opacity-80">
-                          Verified Roles: {check.citedVerifiedRoles.slice(0, 4).join(', ')}
+        {/* Scrollable Chat Feed (bounded height so mobile page never balloons) */}
+        {(turns.length > 0 || isSending) && (
+          <div className="space-y-3 max-h-[55vh] overflow-y-auto pr-1">
+            {turns.map((turn) => {
+              if (turn.role === 'user') {
+                return (
+                  <div
+                    key={turn.id}
+                    className="ml-auto max-w-2xl p-3.5 rounded-xl bg-emerald-950/50 border border-emerald-500/30 text-slate-100"
+                  >
+                    <div className="flex items-center justify-between text-[10px] font-mono text-emerald-400 mb-1">
+                      <span>{displayManagerLabel}</span>
+                      {turn.imageNames && turn.imageNames.length > 0 && (
+                        <span className="truncate ml-2">
+                          {turn.imageNames.join(', ')}
                         </span>
                       )}
                     </div>
-                  );
-                })()}
-
-                {/* Analysis Body with Clean Formatted Headings, Bullets, and Bold Spans */}
-                <div className="space-y-2 text-xs text-slate-800 dark:text-slate-200 leading-relaxed font-sans">
-                  {(turn.analysisMarkdown || '')
-                    .split('\n')
-                    .map((rawLine, lineIdx) => {
-                      const line = rawLine.trim();
-                      if (!line) return <div key={lineIdx} className="h-1" />;
-
-                      const renderInlineBold = (text: string) => {
-                        const parts = text.split(/(\*\*[^*]+\*\*)/g);
-                        return parts.map((part, pIdx) => {
-                          if (part.startsWith('**') && part.endsWith('**')) {
-                            return (
-                              <strong
-                                key={pIdx}
-                                className="font-semibold text-slate-950 dark:text-white"
-                              >
-                                {part.slice(2, -2)}
-                              </strong>
-                            );
-                          }
-                          return <span key={pIdx}>{part}</span>;
-                        });
-                      };
-
-                      if (line.startsWith('### ')) {
-                        return (
-                          <h3
-                            key={lineIdx}
-                            className="text-sm font-bold text-emerald-700 dark:text-emerald-400 pt-1"
-                          >
-                            {renderInlineBold(line.replace(/^###\s+/, ''))}
-                          </h3>
-                        );
-                      }
-                      if (line.startsWith('#### ')) {
-                        return (
-                          <h4
-                            key={lineIdx}
-                            className="text-xs font-bold uppercase tracking-wide text-slate-900 dark:text-slate-100 pt-2"
-                          >
-                            {renderInlineBold(line.replace(/^####\s+/, ''))}
-                          </h4>
-                        );
-                      }
-                      if (line.startsWith('* ') || line.startsWith('- ')) {
-                        return (
-                          <div
-                            key={lineIdx}
-                            className="flex items-start gap-2 pl-2"
-                          >
-                            <span className="text-emerald-500 font-bold">
-                              •
-                            </span>
-                            <div className="flex-1">
-                              {renderInlineBold(line.replace(/^[*-]\s+/, ''))}
-                            </div>
-                          </div>
-                        );
-                      }
-                      return <p key={lineIdx}>{renderInlineBold(line)}</p>;
-                    })}
-                </div>
-
-                {/* 3 Immediate In-Game Clicks */}
-                {turn.immediateClicks && turn.immediateClicks.length > 0 && (
-                  <div className="p-3.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                    <div className="text-xs font-bold text-emerald-700 dark:text-emerald-400 mb-2 flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      3 Immediate In-Game Clicks (Before Hitting Continue)
-                    </div>
-                    <ol className="list-decimal pl-5 space-y-1.5 text-xs text-slate-700 dark:text-slate-300">
-                      {turn.immediateClicks.map((clickItem, idx) => (
-                        <li key={idx}>
-                          {clickItem.replace(/^\s*\d+[.)]\s+/, '')}
-                        </li>
-                      ))}
-                    </ol>
+                    <p className="text-xs leading-relaxed whitespace-pre-wrap">
+                      {turn.userText}
+                    </p>
                   </div>
-                )}
+                );
+              }
 
-                {/* Context-Aware Suggested Follow-Up Questions */}
-                {turn.followUpQuestions &&
-                  turn.followUpQuestions.length > 0 && (
-                    <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-2">
-                      <div className="text-[11px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                        Continue Tactical Discussion (1-Click Follow-Up):
+              return (
+                <div
+                  key={turn.id}
+                  className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-3"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-200 dark:border-slate-800">
+                    <span className="text-xs font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+                      Tactical Analyst{turn.screenDetected ? ` · ${turn.screenDetected}` : ''}
+                    </span>
+                    {turn.inGameDate && turn.inGameDate !== '--' && (
+                      <span className="text-[10px] font-mono text-slate-500">
+                        {turn.inGameDate}
+                      </span>
+                    )}
+                  </div>
+
+                  {turn.playerUpdatesApplied &&
+                    turn.playerUpdatesApplied.length > 0 && (
+                      <div className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-300 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                        <span>
+                          Updated Squad DB:{' '}
+                          <strong>
+                            {turn.playerUpdatesApplied.slice(0, 8).join(', ')}
+                            {turn.playerUpdatesApplied.length > 8
+                              ? ` (+${turn.playerUpdatesApplied.length - 8} more)`
+                              : ''}
+                          </strong>
+                        </span>
                       </div>
-                      <div className="flex flex-wrap gap-2">
+                    )}
+
+                  {turn.analysisMarkdown && (() => {
+                    const check = verifyFm27Accuracy(turn.analysisMarkdown);
+                    if (check.passed) return null;
+                    return (
+                      <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-300 flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                        <span>Notice: {check.warnings.join(' · ')}</span>
+                      </div>
+                    );
+                  })()}
+
+                  <div className="space-y-1.5 text-xs text-slate-800 dark:text-slate-200 leading-relaxed">
+                    {(turn.analysisMarkdown || '')
+                      .split('\n')
+                      .map((rawLine, lineIdx) => {
+                        const line = rawLine.trim();
+                        if (!line) return <div key={lineIdx} className="h-1" />;
+
+                        const renderInlineBold = (text: string) => {
+                          const parts = text.split(/(\*\*[^*]+\*\*)/g);
+                          return parts.map((part, pIdx) => {
+                            if (part.startsWith('**') && part.endsWith('**')) {
+                              return (
+                                <strong
+                                  key={pIdx}
+                                  className="font-semibold text-slate-950 dark:text-white"
+                                >
+                                  {part.slice(2, -2)}
+                                </strong>
+                              );
+                            }
+                            return <span key={pIdx}>{part}</span>;
+                          });
+                        };
+
+                        if (line.startsWith('### ')) {
+                          return (
+                            <h3
+                              key={lineIdx}
+                              className="text-sm font-bold text-emerald-700 dark:text-emerald-400 pt-1"
+                            >
+                              {renderInlineBold(line.replace(/^###\s+/, ''))}
+                            </h3>
+                          );
+                        }
+                        if (line.startsWith('#### ')) {
+                          return (
+                            <h4
+                              key={lineIdx}
+                              className="text-xs font-bold uppercase tracking-wide text-slate-900 dark:text-slate-100 pt-1.5"
+                            >
+                              {renderInlineBold(line.replace(/^####\s+/, ''))}
+                            </h4>
+                          );
+                        }
+                        if (line.startsWith('* ') || line.startsWith('- ')) {
+                          return (
+                            <div
+                              key={lineIdx}
+                              className="flex items-start gap-2 pl-1.5"
+                            >
+                              <span className="text-emerald-500 font-bold">•</span>
+                              <div className="flex-1">
+                                {renderInlineBold(line.replace(/^[*-]\s+/, ''))}
+                              </div>
+                            </div>
+                          );
+                        }
+                        return <p key={lineIdx}>{renderInlineBold(line)}</p>;
+                      })}
+                  </div>
+
+                  {turn.immediateClicks && turn.immediateClicks.length > 0 && (
+                    <div className="p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                      <div className="text-xs font-bold text-emerald-700 dark:text-emerald-400 mb-1.5 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Immediate In-Game Actions
+                      </div>
+                      <ol className="list-decimal pl-4 space-y-1 text-xs text-slate-700 dark:text-slate-300">
+                        {turn.immediateClicks.map((clickItem, idx) => (
+                          <li key={idx}>
+                            {clickItem.replace(/^\s*\d+[.)]\s+/, '')}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
+
+                  {turn.followUpQuestions &&
+                    turn.followUpQuestions.length > 0 && (
+                      <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex flex-wrap gap-1.5">
                         {turn.followUpQuestions.map((q, qIdx) => (
                           <button
                             key={qIdx}
                             type="button"
                             disabled={isSending}
                             onClick={() => handleSendToAnalyst(undefined, q)}
-                            className="px-3 py-1.5 text-xs font-medium text-left text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                            className="px-2.5 py-1.5 text-[11px] font-medium text-left text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-lg transition cursor-pointer disabled:opacity-50"
                           >
                             {q}
                           </button>
                         ))}
                       </div>
-                    </div>
-                  )}
-              </div>
-            );
-          })}
+                    )}
+                </div>
+              );
+            })}
 
-          {isSending && (
-            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center gap-3 text-xs text-slate-600 dark:text-slate-300">
-              <Sparkles className="w-4 h-4 text-emerald-500 animate-spin" />
-              <span>
-                Analyzing live save state against Bobby Dean Playbook v2.0 &amp;
-                preparing tactical plan...
+            {isSending && (
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center gap-2.5 text-xs text-slate-600 dark:text-slate-300">
+                <Sparkles className="w-4 h-4 text-emerald-500 animate-spin shrink-0" />
+                <span>Analysing your club &amp; preparing tactical advice...</span>
+              </div>
+            )}
+            <div ref={feedEndRef} />
+          </div>
+        )}
+
+        {/* Decode Progress Bar */}
+        {fmDecodeStage && (
+          <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-between gap-3 text-xs text-emerald-300">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <RefreshCw className="w-4 h-4 shrink-0 animate-spin text-emerald-400" />
+              <span className="leading-snug break-words">
+                {fmDecodeStage.label}
               </span>
             </div>
-          )}
-          <div ref={feedEndRef} />
-        </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="font-mono text-[11px] text-emerald-400/90 tabular-nums">
+                {decodeElapsedSec}s
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  cancelFmSaveDecode();
+                  setFmDecodeStage(null);
+                }}
+                className="px-2.5 py-1 text-[11px] font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-md cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
 
-        {/* Message & Multi-Screenshot Composer */}
-        <form
-          onSubmit={(e) => handleSendToAnalyst(e)}
-          className="space-y-3 pt-2 border-t border-slate-200 dark:border-slate-800"
-        >
-          {fmDecodeStage && (
-            <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg flex items-center justify-between gap-3 text-xs text-emerald-300">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <RefreshCw className="w-4 h-4 shrink-0 animate-spin text-emerald-400" />
-                <span className="leading-snug break-words">
-                  {fmDecodeStage.label}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="font-mono text-[11px] text-emerald-400/90 tabular-nums">
-                  {decodeElapsedSec}s
-                </span>
+        {chatError && (
+          <div className="p-2.5 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2 text-xs text-red-400">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{chatError}</span>
+          </div>
+        )}
+
+        {(attachedFmFiles.length > 0 || uploadedImages.length > 0) && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {attachedFmFiles.map((fmFile) => (
+              <div
+                key={fmFile.id}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 rounded-md"
+              >
+                <span>{fmFile.badgeLabel}</span>
                 <button
                   type="button"
-                  onClick={() => {
-                    cancelFmSaveDecode();
-                    setFmDecodeStage(null);
-                  }}
-                  className="px-2.5 py-1 text-[11px] font-semibold text-slate-200 bg-slate-800/80 hover:bg-slate-700 border border-slate-600 rounded-md cursor-pointer transition-colors"
+                  aria-label={`Remove ${fmFile.name}`}
+                  onClick={() => handleRemoveFmFile(fmFile.id)}
+                  className="hover:text-white cursor-pointer"
                 >
-                  Cancel
+                  <X className="w-3.5 h-3.5" />
                 </button>
               </div>
-            </div>
-          )}
-
-          {Object.keys(lastStepTimingsMs).length > 0 && (
-            <div className="px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-[11px] flex flex-wrap items-center gap-x-2.5 gap-y-1">
-              <span className="font-mono font-semibold uppercase tracking-wider text-emerald-500">
-                Decode Timing:
-              </span>
-              {Object.entries(lastStepTimingsMs).map(([key, ms]) => {
-                const isSlow = key !== 'totalDecodeMs' && ms >= 5000;
-                return (
-                  <span
-                    key={key}
-                    className={`font-mono tabular-nums ${
-                      isSlow
-                        ? 'text-amber-400 font-semibold'
-                        : key === 'totalDecodeMs'
-                          ? 'text-emerald-400 font-semibold'
-                          : 'text-slate-600 dark:text-slate-400'
-                    }`}
-                  >
-                    {formatStepTimingLabel(key)}{' '}
-                    {ms === 0 && key !== 'totalDecodeMs'
-                      ? '0ms'
-                      : `${(ms / 1000).toFixed(1)}s`}
-                  </span>
-                );
-              })}
-            </div>
-          )}
-
-          {(() => {
-            const cleanedNotes = sanitizeReaderNotes(extractionWarnings);
-            if (cleanedNotes.length === 0) return null;
-            return (
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowReaderNotes((prev) => !prev)}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/30 text-[11px] font-medium text-amber-300 transition cursor-pointer"
-                  >
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-400" />
-                    <span>FM27 27.1 Reader Notes ({cleanedNotes.length})</span>
-                    {showReaderNotes ? (
-                      <ChevronUp className="w-3.5 h-3.5 shrink-0" />
-                    ) : (
-                      <ChevronDown className="w-3.5 h-3.5 shrink-0" />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Dismiss reader notes"
-                    onClick={() => {
-                      setExtractionWarnings([]);
-                      setShowReaderNotes(false);
-                    }}
-                    className="text-slate-400 hover:text-white cursor-pointer shrink-0 p-1"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-                {showReaderNotes && (
-                  <div className="p-2.5 bg-amber-500/10 border border-amber-500/25 rounded-lg text-[11px] text-amber-200/90 space-y-1">
-                    <ul className="list-disc pl-4 space-y-0.5">
-                      {cleanedNotes.slice(0, 8).map((note, idx) => (
-                        <li key={idx}>{note}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
-          {chatError && (
-            <div className="p-2.5 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2 text-xs text-red-500">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{chatError}</span>
-            </div>
-          )}
-
-          {(attachedFmFiles.length > 0 || uploadedImages.length > 0) && (
-            <div className="flex flex-wrap items-center gap-2">
-              {attachedFmFiles.map((fmFile) => (
-                <div
-                  key={fmFile.id}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 rounded-md"
-                >
-                  <span>{fmFile.badgeLabel}</span>
-                  <button
-                    type="button"
-                    aria-label={`Remove ${fmFile.name}`}
-                    onClick={() => handleRemoveFmFile(fmFile.id)}
-                    className="hover:text-white cursor-pointer"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-              {uploadedImages.map((img, index) => (
-                <div
-                  key={index}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded-md"
-                >
-                  <span>{img.name}</span>
-                  <button
-                    type="button"
-                    aria-label={`Remove ${img.name}`}
-                    onClick={() => handleRemoveImage(index)}
-                    className="hover:text-white cursor-pointer"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-3">
-            <div className="flex flex-col gap-1.5 shrink-0">
-              <label
-                htmlFor="chat-multi-file-upload"
-                className="inline-flex items-center justify-center gap-2 px-3.5 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 rounded-lg cursor-pointer transition-colors"
+            ))}
+            {uploadedImages.map((img, index) => (
+              <div
+                key={index}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded-md"
               >
-                <Upload className="w-4 h-4 text-emerald-500" />
-                <span>Import .fm Save / Image</span>
-                <input
-                  id="chat-multi-file-upload"
-                  type="file"
-                  accept=".fm,image/*,.csv,.html,.htm,.rtf,.txt"
-                  multiple
-                  onChange={handleFilesSelected}
-                  className="hidden"
-                />
-              </label>
+                <span>{img.name}</span>
+                <button
+                  type="button"
+                  aria-label={`Remove ${img.name}`}
+                  onClick={() => handleRemoveImage(index)}
+                  className="hover:text-white cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Compact Composer Bar */}
+        <form onSubmit={(e) => handleSendToAnalyst(e)} className="space-y-2">
+          <div className="flex items-end gap-2">
+            <label
+              htmlFor="chat-multi-file-upload"
+              title="Import .fm save or attach a screenshot"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl cursor-pointer transition shrink-0"
+            >
+              <Upload className="w-4 h-4 text-emerald-400" />
+              <span className="hidden sm:inline">Import .fm / Image</span>
+              <input
+                id="chat-multi-file-upload"
+                type="file"
+                accept=".fm,image/*,.csv,.html,.htm,.rtf,.txt"
+                multiple
+                onChange={handleFilesSelected}
+                className="hidden"
+              />
+            </label>
+
+            <textarea
+              rows={2}
+              aria-label="Message your FM27 Tactical Analyst"
+              placeholder="Ask tactics, drop a .fm save, or attach a screenshot..."
+              value={messageInput}
+              onChange={(e) => setMessageInput(e.target.value)}
+              className="flex-1 min-w-0 px-3 py-2 text-xs leading-relaxed bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+            />
+
+            <button
+              type="submit"
+              disabled={isSending || Boolean(fmDecodeStage)}
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 rounded-xl transition cursor-pointer shrink-0 disabled:opacity-50"
+            >
+              <Send className="w-4 h-4" />
+              <span className="hidden sm:inline">Send</span>
+            </button>
+          </div>
+
+          {hasLoadedSave && (
+            <div className="flex items-center justify-between text-[11px] text-slate-500">
               <label
                 htmlFor="fm-fast-sync-composer-toggle"
-                title="Auto-enabled on mobile (<768px). Skips global injuries, facilities, competition rules, transfer windows, optional club dumps, market scan, and player_season_stats / match / career history — keeps full squad, 52 attributes, traits, scout badges, direct contracts/bans/injuries, finances, club staff, tactics, mentoring, fixtures & full domestic league table."
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium rounded-lg border cursor-pointer transition-colors select-none ${
-                  fastSync
-                    ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
-                    : 'bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-800 hover:border-slate-600'
-                }`}
+                className="inline-flex items-center gap-1.5 cursor-pointer select-none hover:text-slate-300"
               >
                 <input
                   id="fm-fast-sync-composer-toggle"
@@ -1693,33 +1283,16 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                     fastSyncManuallyToggledRef.current = true;
                     setFastSync(e.target.checked);
                   }}
-                  className="accent-amber-500 w-3.5 h-3.5 cursor-pointer"
+                  className="accent-amber-500 w-3 h-3 cursor-pointer"
                 />
-                <Zap className="w-3 h-3 text-amber-400 shrink-0" />
-                <span>Fast Sync (Club Core — Recommended on Mobile)</span>
+                <Zap className="w-3 h-3 text-amber-400" />
+                <span>Fast Sync on next .fm upload</span>
               </label>
+              <span>
+                {serverDecodeAvailable ? 'Server Sync Ready' : 'Local Reader Ready'}
+              </span>
             </div>
-
-            <div className="flex-1">
-              <textarea
-                rows={3}
-                aria-label="Message your FM27 Tactical Analyst"
-                placeholder="Drop your .fm save file here for instant full-club sync & plan — or talk tactics / attach screenshots..."
-                value={messageInput}
-                onChange={(e) => setMessageInput(e.target.value)}
-                className="w-full px-3.5 py-2 text-xs leading-relaxed bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={isSending || Boolean(fmDecodeStage)}
-              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors cursor-pointer shrink-0 disabled:opacity-50"
-            >
-              <Send className="w-4 h-4" />
-              <span>Send to Analyst</span>
-            </button>
-          </div>
+          )}
         </form>
       </div>
     </div>

@@ -208,7 +208,7 @@ describe('server routes & JSON 404', () => {
 
     const appSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/App.tsx'), 'utf8');
     assert.match(appSrc, /const TacticalWarRoom = lazy\(/);
-    assert.match(appSrc, /const SetPiecesAndTraining = lazy\(/);
+    assert.match(appSrc, /const StaffDirectory = lazy\(/);
     assert.match(appSrc, /const MatchLogArchive = lazy\(/);
     assert.match(appSrc, /const PlayerDetailModal = lazy\(/);
     assert.match(appSrc, /const StaffDetailModal = lazy\(/);
