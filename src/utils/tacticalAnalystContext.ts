@@ -205,7 +205,7 @@ export const FM27_ENGINE_KNOWLEDGE_BASE = `=== FOOTBALL MANAGER 27 (PATCH 27.1.0
  * so the Tactical Analyst uses the EXACT same Best XI solver, competition-aware suspension
  * logic, Transfers positional depth chart, and Set-Piece rankings as every other tab.
  */
-export const MAX_LIVE_ANALYST_CONTEXT_CHARS = 5800;
+export const MAX_LIVE_ANALYST_CONTEXT_CHARS = 9600;
 
 export function buildLiveTacticalAnalystContext(
   state: LiveAnalystStateInput
@@ -231,7 +231,7 @@ export function buildLiveTacticalAnalystContext(
       '=== FM27 PATCH 27.1.0 & PLAYBOOK v2.0 CORE RULES ===',
       '- Dual-Phase 4-3-3: Tracking Winger (TW) OOP both flanks; Balanced Ground Build-Up + Short/Mixed GK Dist + Standard Passing.',
       '- Laws: 1 tweak/20-25m; never sub both CBs protecting lead; <=2 2H sub windows (60-63m, 75m+); keep 3 midfielders late (never 4-2-4); <=125m double-GW cap + Post-Match Rest.',
-      '- Truth: ZERO raw CA/PA; match War Room XI, 100%-Fit XI, Transfers Depth & PosFam (never pick MC<10 at CM over natural MC:15-20).',
+      '- Truth: ZERO raw CA/PA; match War Room XI, 100%-Fit XI, Transfers Action Plan & PosFam; NEVER put SURPLUS/Sell players on bench when cover exists; NEVER loan Promote-to-Backup youth; cite full season stats (Apps, Mins, G/xG, A/xA, Rt).',
     ].join('\n'),
   ];
 
@@ -490,6 +490,121 @@ export function buildLiveTacticalAnalystContext(
     );
   }
 
+  // 5b. Authoritative Transfers & Squad Advice Action Plan (exact match with Transfers -> Squad Advice tab)
+  const isSurplusPlayer = (p: PlayerRecord): boolean =>
+    p.status === 'Surplus' ||
+    /surplus/i.test(p.contractDetails?.promisedPlayingTime || '');
+
+  const adviceById = new Map(
+    transferAudit.playerAdvice.map((a) => [a.player.id, a])
+  );
+
+  const actionPlanLines: string[] = [];
+  const surplusPlayers = players.filter((p) => isSurplusPlayer(p));
+  if (surplusPlayers.length > 0) {
+    actionPlanLines.push(
+      `SURPLUS TO REQUIREMENTS (Active Sale Targets — DO NOT PICK ON BENCH/XI IF COVER EXISTS): ${surplusPlayers
+        .map(
+          (p) =>
+            `${p.name}(£${p.wagePw}/wk,${p.minutes}m,${p.goals}G/${p.xG.toFixed(2)}xG,${p.assists}A)`
+        )
+        .join(' | ')}`
+    );
+  }
+
+  const sellList = transferAudit.playerAdvice.filter(
+    (a) => a.verdict === 'Sell / Transfer List'
+  );
+  if (sellList.length > 0) {
+    actionPlanLines.push(
+      `Sell / Transfer List: ${sellList
+        .map((a) => {
+          const youthTag = a.tags.find((t) => t.startsWith('Youth Ready: '));
+          const succPart = youthTag
+            ? `, promote ${youthTag.replace('Youth Ready: ', '')}`
+            : '';
+          const surpPart = isSurplusPlayer(a.player) ? ', SURPLUS' : '';
+          return `${a.player.name}(£${a.player.wagePw}/wk${surpPart}${succPart})`;
+        })
+        .join(' | ')}`
+    );
+  }
+
+  const replaceList = transferAudit.playerAdvice.filter(
+    (a) => a.verdict === 'Replace Before Selling'
+  );
+  if (replaceList.length > 0) {
+    actionPlanLines.push(
+      `Replace Before Selling: ${replaceList
+        .map((a) => `${a.player.name}(£${a.player.wagePw}/wk)`)
+        .join(' | ')}`
+    );
+  }
+
+  const promoteYouthList = transferAudit.playerAdvice.filter((a) =>
+    a.tags.some((t) => t.startsWith('Promote to Backup'))
+  );
+  if (promoteYouthList.length > 0) {
+    actionPlanLines.push(
+      `Promote to Backup (DO NOT LOAN OUT): ${promoteYouthList
+        .map((a) => {
+          const tag = a.tags.find((t) => t.startsWith('Promote to Backup'))!;
+          return `${a.player.name}(${a.player.ability.toFixed(1)}★/${a.player.potential.toFixed(1)}★,£${a.player.wagePw}/wk,${tag})`;
+        })
+        .join(' | ')}`
+    );
+  }
+
+  const protectList = transferAudit.playerAdvice.filter(
+    (a) => a.verdict === 'Protect Youth Asset'
+  );
+  if (protectList.length > 0) {
+    actionPlanLines.push(
+      `Protect Youth Asset: ${protectList
+        .map((a) => `${a.player.name}(exp ${a.player.expires})`)
+        .join(' | ')}`
+    );
+  }
+
+  const renewList = transferAudit.playerAdvice.filter(
+    (a) => a.verdict === 'Renew Now'
+  );
+  if (renewList.length > 0) {
+    actionPlanLines.push(
+      `Renew Now: ${renewList
+        .map((a) => `${a.player.name}(£${a.player.wagePw}/wk,exp ${a.player.expires})`)
+        .join(' | ')}`
+    );
+  }
+
+  const letExpireList = transferAudit.playerAdvice.filter(
+    (a) => a.verdict === 'Let Expire'
+  );
+  if (letExpireList.length > 0) {
+    actionPlanLines.push(
+      `Let Expire: ${letExpireList
+        .map((a) => `${a.player.name}(£${a.player.wagePw}/wk,exp ${a.player.expires})`)
+        .join(' | ')}`
+    );
+  }
+
+  const loanList = transferAudit.playerAdvice.filter(
+    (a) => a.verdict === 'Loan Out'
+  );
+  if (loanList.length > 0) {
+    actionPlanLines.push(
+      `Loan Out: ${loanList
+        .map((a) => `${a.player.name}(${a.player.age}y,${a.player.ability.toFixed(1)}★/${a.player.potential.toFixed(1)}★)`)
+        .join(' | ')}`
+    );
+  }
+
+  if (actionPlanLines.length > 0) {
+    sections.push(
+      `=== TRANSFERS & SQUAD ADVICE ACTION PLAN (MUST MATCH TRANSFERS TAB) ===\n${actionPlanLines.join('\n')}`
+    );
+  }
+
   // 6. Corners & Set-Piece Specialist Rankings (exact match with Set Pieces tab)
   if (setPiecePlan.aerialThreats.length > 0) {
     const aerialStr = setPiecePlan.aerialThreats
@@ -521,24 +636,36 @@ export function buildLiveTacticalAnalystContext(
     sections.push(`=== RECENT MATCHES ===\n${matchLines.join(' | ')}`);
   }
 
-  // 8. Top 19 First-Team Squad Profiles with PosFam, Stars, Attributes & Transfer Verdict (zero raw CA/PA)
-  const verdictById = new Map(
-    transferAudit.playerAdvice.map((a) => [a.player.id, a.verdict])
-  );
+  // 8. First-Team & Key Squad Profiles with FULL Season Stats, Wages, Standing, PosFam & Transfer Verdict (zero raw CA/PA)
+  const formatShortExpiry = (exp: string): string => {
+    const m = (exp || '').match(/(\d{1,2})\/(\d{1,2})\/20(\d{2})/);
+    if (m) return `${m[2].padStart(2, '0')}/${m[3]}`;
+    const iso = (exp || '').match(/20(\d{2})-(\d{2})/);
+    if (iso) return `${iso[2]}/${iso[1]}`;
+    return exp && exp !== 'N/A' && exp !== '--' ? exp : '-';
+  };
+
   const topSquad = [...players]
     .sort((a, b) => {
       const unitA = a.teamSlot === undefined || a.teamSlot === 0 ? 0 : 1;
       const unitB = b.teamSlot === undefined || b.teamSlot === 0 ? 0 : 1;
+      const hasAction = (p: PlayerRecord) => {
+        const adv = adviceById.get(p.id);
+        return adv && (adv.verdict !== 'Hold' || adv.tags.some((t) => t.startsWith('Promote to Backup')))
+          ? 0
+          : 1;
+      };
       const rank = (s: PlayerRecord['status']) =>
-        s === 'Starter' ? 0 : s === 'Rotation' ? 1 : s === 'Youth' ? 2 : 3;
+        s === 'Starter' ? 0 : s === 'Rotation' ? 1 : s === 'Youth' ? 2 : s === 'Surplus' ? 3 : 4;
       return (
         unitA - unitB ||
+        (unitA === 1 ? hasAction(a) - hasAction(b) : 0) ||
         (b.ability || 0) - (a.ability || 0) ||
-        rank(a.status) - rank(b.status) ||
-        (b.minutes || 0) - (a.minutes || 0)
+        (b.minutes || 0) - (a.minutes || 0) ||
+        rank(a.status) - rank(b.status)
       );
     })
-    .slice(0, 19);
+    .slice(0, 26);
 
   const squadLines = topSquad.map((p) => {
     const a = p.attributes;
@@ -556,16 +683,49 @@ export function buildLiveTacticalAnalystContext(
         ? ' [CUP-BAN]'
         : '';
     const injTag = p.status === 'Injured' ? ' [INJ]' : '';
-    const posFamStr = formatCompactPositionRatings(p);
-    const verdict = verdictById.get(p.id);
-    const shortVerdict =
-      verdict && verdict !== 'Hold'
-        ? `|${verdict.replace('Sell / Transfer List', 'Sell').replace('Replace Before Selling', 'Replace').replace('Protect Youth Asset', 'Youth')}`
+    const unitTag =
+      p.teamSlot && p.teamSlot > 0
+        ? p.squadUnit === 'U18'
+          ? '[U18]'
+          : p.squadUnit === 'U21'
+            ? '[U21]'
+            : '[RES]'
         : '';
-    return `${p.name}|${p.position}|${p.age}y|${p.ability.toFixed(1)}★/${p.potential.toFixed(1)}★|C${p.condition ?? '?'}%|${posFamStr ? `${posFamStr}|` : ''}P${a.pace}S${a.stamina}J${a.jumpingReach}Pa${a.passing}F${a.finishing}T${a.tackling}D${a.decisions}W${a.workRate}|${p.rating !== null ? p.rating.toFixed(2) : '-'}rt${shortVerdict}${banTag}${injTag}`;
+    const standing = isSurplusPlayer(p)
+      ? 'SURPLUS'
+      : p.status === 'Starter'
+        ? 'Start'
+        : p.status === 'Rotation'
+          ? 'Rot'
+          : p.status === 'Youth'
+            ? 'Yth'
+            : p.status;
+    const posFamStr = formatCompactPositionRatings(p);
+    const adv = adviceById.get(p.id);
+    const isPromoted = adv?.tags.some((t) => t.startsWith('Promote to Backup'));
+    const shortVerdict = isPromoted
+      ? '|Promote'
+      : adv && adv.verdict !== 'Hold'
+        ? `|${adv.verdict
+            .replace('Sell / Transfer List', 'Sell')
+            .replace('Replace Before Selling', 'Replace')
+            .replace('Protect Youth Asset', 'ProtectYth')
+            .replace('Let Expire', 'LetExp')
+            .replace('Renew Now', 'Renew')
+            .replace('Loan Out', 'Loan')}`
+        : '';
+    const hasPlayed =
+      (p.minutes || 0) > 0 ||
+      p.rating !== null ||
+      (p.goals || 0) > 0 ||
+      (p.assists || 0) > 0;
+    const statsStr = hasPlayed
+      ? `${p.apps || '0'}/${p.minutes}m ${p.goals}G(${(p.xG || 0).toFixed(2)}xG) ${p.assists}A(${(p.xA || 0).toFixed(2)}xA) ${p.rating !== null ? `${p.rating.toFixed(2)}rt` : '-rt'}`
+      : '0m';
+    return `${p.name}${unitTag}|${p.position}|${p.age}y|${p.ability.toFixed(1)}★/${p.potential.toFixed(1)}★|${standing}|£${p.wagePw}/wk|${formatShortExpiry(p.expires)}|C${p.condition ?? '?'}%|${posFamStr ? `${posFamStr}|` : ''}${statsStr}|P${a.pace}S${a.stamina}J${a.jumpingReach}Pa${a.passing}F${a.finishing}T${a.tackling}D${a.decisions}W${a.workRate}${shortVerdict}${banTag}${injTag}`;
   });
   sections.push(
-    `=== TOP ${topSquad.length} FIRST-TEAM SQUAD (OF ${players.length}) ===\n${squadLines.join('\n')}`
+    `=== SQUAD PROFILES & SEASON STATS (${topSquad.length} OF ${players.length}) ===\n${squadLines.join('\n')}`
   );
 
   let output = sections.join('\n\n');
@@ -678,6 +838,7 @@ export function applyAnalystPlayerUpdates(
       'Starter',
       'Rotation',
       'Youth',
+      'Surplus',
       'Injured',
     ];
     const nextStatus =

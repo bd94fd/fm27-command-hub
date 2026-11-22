@@ -189,7 +189,7 @@ test('Issue 1: server.ts + server/ modules enforce gemini-3.5-flash-lite/gemini-
   );
 });
 
-test('Issue 1: buildLiveTacticalAnalystContext stays strictly under 6,000 chars even with 47 players and 60 scouted targets', () => {
+test('Issue 1: buildLiveTacticalAnalystContext stays strictly under 10,000 chars even with 47 players and 60 scouted targets', () => {
   const squad47: PlayerRecord[] = Array.from({ length: 47 }, (_, idx) =>
     makePlayer({
       name: `Squad Player ${idx + 1}`,
@@ -214,8 +214,8 @@ test('Issue 1: buildLiveTacticalAnalystContext stays strictly under 6,000 chars 
   });
 
   assert.ok(
-    ctx.length <= MAX_LIVE_ANALYST_CONTEXT_CHARS && ctx.length < 6000,
-    `Expected compact Analyst context < 6000 chars, got ${ctx.length}`
+    ctx.length <= MAX_LIVE_ANALYST_CONTEXT_CHARS && ctx.length <= 10_000,
+    `Expected compact Analyst context <= 10000 chars, got ${ctx.length}`
   );
   assert.doesNotMatch(ctx, /\bCA\s*\d+|\bPA\s*\d+/i);
   assert.doesNotMatch(ctx, /PASS 0 SCOUTED FREE AGENTS/i);

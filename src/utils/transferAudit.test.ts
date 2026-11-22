@@ -401,5 +401,135 @@ test('Squad Advice separates AM (AMC) from CM (MC) so an AMC:20 / MC:2 player is
   assert.equal(amBucket.players[0]?.id, 'amc-1');
 });
 
+test('Squad Advice enforces Surplus To Requirements -> Sell and reconciles promoted youth successors so they are never also marked Loan Out', () => {
+  const squad: PlayerRecord[] = [
+    makePlayer({
+      id: 'w-starter-1',
+      name: 'Nathan Kaninda',
+      position: 'AM (R)',
+      age: 23,
+      ability: 4.5,
+      potential: 4.5,
+      minutes: 600,
+      expires: '30/06/2029',
+      wagePw: 400,
+      status: 'Starter',
+      positionRatings: { AMR: 20 },
+    }),
+    makePlayer({
+      id: 'w-starter-2',
+      name: 'Matteo Polizzi',
+      position: 'AM (L)',
+      age: 24,
+      ability: 4.0,
+      potential: 4.5,
+      minutes: 550,
+      expires: '30/06/2029',
+      wagePw: 360,
+      status: 'Starter',
+      positionRatings: { AML: 20 },
+    }),
+    makePlayer({
+      id: 'w-boudry',
+      name: 'Quinten Boudry',
+      position: 'AM (L), WB (L)',
+      age: 27,
+      ability: 4.0,
+      potential: 4.5,
+      minutes: 292,
+      expires: '30/06/2029',
+      wagePw: 410,
+      status: 'Rotation',
+      positionRatings: { AML: 20, WBL: 16 },
+    }),
+    makePlayer({
+      id: 'w-hoepel',
+      name: 'Jerayson Hoepel',
+      position: 'AM (R)',
+      age: 19,
+      ability: 3.5,
+      potential: 5.0,
+      minutes: 45,
+      expires: '30/06/2029',
+      wagePw: 176,
+      status: 'Youth',
+      positionRatings: { AMR: 20 },
+    }),
+    makePlayer({
+      id: 'st-epolo',
+      name: 'Mbey Epolo',
+      position: 'ST (C)',
+      age: 24,
+      ability: 4.0,
+      potential: 4.5,
+      minutes: 650,
+      expires: '30/06/2029',
+      wagePw: 420,
+      status: 'Starter',
+      positionRatings: { ST: 20 },
+    }),
+    makePlayer({
+      id: 'st-ackx',
+      name: 'Wolf Ackx',
+      position: 'ST (C), AM (L)',
+      age: 25,
+      ability: 3.5,
+      potential: 5.0,
+      minutes: 730,
+      goals: 0,
+      xG: 1.42,
+      assists: 1,
+      xA: 1.8,
+      rating: 6.63,
+      expires: '30/06/2029',
+      wagePw: 541,
+      status: 'Surplus',
+      contractDetails: {
+        promisedPlayingTime: 'Surplus To Requirements',
+        optionalExtensionYears: 0,
+        releaseClauses: [],
+        bonuses: {},
+        loanWageContributionPct: null,
+      },
+      positionRatings: { ST: 20, AML: 19 },
+    }),
+    makePlayer({
+      id: 'st-ndefe',
+      name: 'Mauricio Jr Ndefe',
+      position: 'ST (C), AM (L)',
+      age: 19,
+      ability: 3.5,
+      potential: 4.5,
+      minutes: 90,
+      expires: '30/06/2029',
+      wagePw: 0,
+      status: 'Youth',
+      positionRatings: { ST: 20, AML: 18 },
+    }),
+  ];
+
+  const audit = buildSquadTransferAudit(squad, '15/09/2027', {
+    balanceLabel: '-£749K',
+    wagePayrollWeekly: 10257,
+    wageBudgetWeekly: 10203,
+  });
+
+  const byId = Object.fromEntries(audit.playerAdvice.map((a) => [a.player.id, a]));
+  assert.equal(byId['st-ackx'].verdict, 'Sell / Transfer List');
+  assert.ok(byId['st-ackx'].tags.includes('Surplus To Requirements'));
+
+  assert.equal(byId['w-boudry'].verdict, 'Sell / Transfer List');
+  assert.match(byId['w-boudry'].headline, /Jerayson Hoepel/);
+  // Hoepel must NOT simultaneously be marked Loan Out when promoted for Boudry
+  assert.notEqual(byId['w-hoepel'].verdict, 'Loan Out');
+  assert.ok(byId['w-hoepel'].tags.some((t) => t.startsWith('Promote to Backup')));
+  assert.match(byId['w-hoepel'].headline, /do NOT loan out/i);
+
+  // Ndefe must NOT simultaneously be marked Loan Out when promoted for Ackx
+  assert.notEqual(byId['st-ndefe'].verdict, 'Loan Out');
+  assert.ok(byId['st-ndefe'].tags.some((t) => t.startsWith('Promote to Backup')));
+});
+
+
 
 

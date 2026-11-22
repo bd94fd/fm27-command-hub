@@ -410,6 +410,13 @@ interface SlotScore {
   isNaturalPosition: boolean;
 }
 
+function isSurplusPlayer(player: PlayerRecord): boolean {
+  return (
+    player.status === 'Surplus' ||
+    /surplus/i.test(player.contractDetails?.promisedPlayingTime || '')
+  );
+}
+
 export function evaluatePlayerForSlot(
   player: PlayerRecord,
   positionGroup: string,
@@ -431,6 +438,8 @@ export function evaluatePlayerForSlot(
 
   // Weighted selection score blends role attribute fit (58%), star ability (42%),
   // and an exact-natural familiarity bonus (18-20/20 on exact flank edges accomplished 15-17/20).
+  // Players explicitly marked Surplus To Requirements are heavily deprioritized so they never
+  // take Starting XI or B-Team/bench slots ahead of active first-team or youth options.
   const abilityNorm = Math.min(100, Math.max(0, ((player.ability || 2.5) / 5) * 100));
   const exactNaturalBonus =
     fam !== null
@@ -442,8 +451,9 @@ export function evaluatePlayerForSlot(
       : isNaturalPosition
         ? 4
         : -20;
+  const surplusPenalty = isSurplusPlayer(player) ? -22 : 0;
   const selectionScore = Math.round(
-    combinedFitPct * 0.58 + abilityNorm * 0.42 + exactNaturalBonus
+    combinedFitPct * 0.58 + abilityNorm * 0.42 + exactNaturalBonus + surplusPenalty
   );
 
   return { ipFitPct, oopFitPct, combinedFitPct, selectionScore, isNaturalPosition };
@@ -657,6 +667,9 @@ function solveSingleLineup(
     }
     if (player.status === 'Injured') {
       warnings.push('Player is currently injured');
+    }
+    if (isSurplusPlayer(player)) {
+      warnings.push('Marked Surplus To Requirements (Transfer Listed)');
     }
     const ban = getPlayerSuspension(player, suspensionLookup);
     if (ban) {

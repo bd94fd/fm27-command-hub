@@ -300,3 +300,121 @@ test('buildLiveTacticalAnalystContext aligns with War Room XI, 100%-Fit XI, Tran
   assert.equal(ctx.includes('DO NOT SELECT AS STARTER'), false);
 });
 
+test('buildLiveTacticalAnalystContext exposes full season stats (G/xG/A/xA/mins), SURPLUS status, Transfers Action Plan, and deprioritizes Surplus players on B-Team', () => {
+  const epolo: PlayerRecord = {
+    ...samplePlayers[1],
+    id: 'p-epolo',
+    name: 'Mbey Epolo',
+    position: 'ST (C)',
+    apps: '6',
+    minutes: 510,
+    goals: 4,
+    xG: 3.1,
+    assists: 1,
+    xA: 0.9,
+    rating: 7.2,
+    ability: 4.0,
+    potential: 4.5,
+    wagePw: 420,
+    expires: '30/06/2029',
+    status: 'Starter',
+    positionRatings: { ST: 20 },
+  };
+  const wolf: PlayerRecord = {
+    ...samplePlayers[1],
+    id: 'p-wolf',
+    name: 'Wolf Ackx',
+    position: 'ST (C), AM (L)',
+    apps: '8 (3)',
+    minutes: 730,
+    goals: 0,
+    xG: 1.42,
+    assists: 1,
+    xA: 1.8,
+    rating: 6.63,
+    ability: 3.5,
+    potential: 5.0,
+    wagePw: 541,
+    expires: '30/06/2029',
+    status: 'Surplus',
+    contractDetails: {
+      promisedPlayingTime: 'Surplus To Requirements',
+      optionalExtensionYears: 0,
+      releaseClauses: [],
+      bonuses: {},
+      loanWageContributionPct: null,
+    },
+    positionRatings: { ST: 20, AML: 19 },
+  };
+  const ndefe: PlayerRecord = {
+    ...samplePlayers[1],
+    id: 'p-ndefe',
+    name: 'Mauricio Jr Ndefe',
+    position: 'ST (C), AM (L)',
+    apps: '2',
+    minutes: 90,
+    goals: 1,
+    xG: 0.65,
+    assists: 0,
+    xA: 0.2,
+    rating: 6.9,
+    age: 19,
+    ability: 3.5,
+    potential: 4.5,
+    wagePw: 0,
+    expires: '30/06/2029',
+    status: 'Youth',
+    positionRatings: { ST: 20, AML: 18 },
+  };
+
+  const fillerStarters: PlayerRecord[] = [
+    { ...samplePlayers[0], id: 'f-gk2', name: 'Jasper Baeyens', position: 'GK', ability: 3.0, positionRatings: { GK: 20 } },
+    { ...samplePlayers[1], id: 'f-rb', name: 'Arthur Devos', position: 'D (R)', positionRatings: { DR: 20 } },
+    { ...samplePlayers[1], id: 'f-rb2', name: 'Backup RB', position: 'D (R)', ability: 3.0, positionRatings: { DR: 20 } },
+    { ...samplePlayers[1], id: 'f-cb1', name: 'Brend Leeflang', position: 'D (C)', positionRatings: { DC: 20 } },
+    { ...samplePlayers[1], id: 'f-cb2', name: 'Brendan Schoonbaert', position: 'D (C)', positionRatings: { DC: 20 } },
+    { ...samplePlayers[1], id: 'f-cb3', name: 'Tijs Temmerman', position: 'D (C)', ability: 3.0, positionRatings: { DC: 20 } },
+    { ...samplePlayers[1], id: 'f-cb4', name: 'Bjerre Verlinden', position: 'D (C)', ability: 3.0, positionRatings: { DC: 20 } },
+    { ...samplePlayers[1], id: 'f-lb', name: 'Lazarus Nkemdirim', position: 'D (L)', positionRatings: { DL: 20 } },
+    { ...samplePlayers[1], id: 'f-lb2', name: 'Backup LB', position: 'D (L)', ability: 3.0, positionRatings: { DL: 20 } },
+    { ...samplePlayers[1], id: 'f-dm', name: 'Benjamin Melkebeke', position: 'DM', positionRatings: { DM: 20 } },
+    { ...samplePlayers[1], id: 'f-dm2', name: 'Backup DM', position: 'DM', ability: 3.0, positionRatings: { DM: 20 } },
+    { ...samplePlayers[1], id: 'f-cm1', name: 'Soren Coens', position: 'M (C)', positionRatings: { MC: 20 } },
+    { ...samplePlayers[1], id: 'f-cm2', name: 'Sander Dieltjens', position: 'M (C)', positionRatings: { MC: 20 } },
+    { ...samplePlayers[1], id: 'f-cm3', name: 'Backup CM1', position: 'M (C)', ability: 3.0, positionRatings: { MC: 20 } },
+    { ...samplePlayers[1], id: 'f-cm4', name: 'Backup CM2', position: 'M (C)', ability: 3.0, positionRatings: { MC: 20 } },
+    { ...samplePlayers[1], id: 'f-lw', name: 'Matteo Polizzi', position: 'AM (L)', positionRatings: { AML: 20 } },
+    { ...samplePlayers[1], id: 'f-rw2', name: 'Jerayson Hoepel', position: 'AM (R)', ability: 3.5, positionRatings: { AMR: 20 } },
+    { ...samplePlayers[1], id: 'f-lw2', name: 'Quinten Boudry', position: 'AM (L)', ability: 3.5, positionRatings: { AML: 20 } },
+  ];
+
+  const ctx = buildLiveTacticalAnalystContext({
+    clubName: 'KVV Zelzate',
+    managerName: 'Bobby Dean',
+    saveDate: '15/09/2027',
+    nextFixture: '18/09/2027 vs KSV Cercle Brugge U23 (A)',
+    leagueStandingSub: '#6 of 16',
+    wageSpend: '£10,257 / £10,203 p/w',
+    balance: '-£749K',
+    players: [...samplePlayers, ...fillerStarters, epolo, wolf, ndefe],
+    matches: sampleMatches,
+    hydratedFmSave: null,
+  });
+
+  // Authoritative Transfers Action Plan block present
+  assert.ok(ctx.includes('TRANSFERS & SQUAD ADVICE ACTION PLAN (MUST MATCH TRANSFERS TAB)'));
+  assert.ok(ctx.includes('SURPLUS TO REQUIREMENTS (Active Sale Targets'));
+  assert.ok(ctx.includes('Wolf Ackx(£541/wk,730m,0G/1.42xG,1A)'));
+  assert.ok(ctx.includes('Promote to Backup (DO NOT LOAN OUT)'));
+  assert.ok(ctx.includes('Mauricio Jr Ndefe'));
+
+  // Full season stats & standing exposed on player profile lines
+  assert.ok(ctx.includes('8 (3)/730m 0G(1.42xG) 1A(1.80xA) 6.63rt'));
+  assert.ok(ctx.includes('|SURPLUS|£541/wk|'));
+
+  // Non-surplus backup Ndefe beats Surplus Wolf Ackx for the B-Team ST slot
+  const bTeamLine = ctx.split('\n').find((l) => l.startsWith('B-Team:')) || '';
+  assert.ok(bTeamLine.includes('ST:Mauricio Jr Ndefe'), `Expected Ndefe as B-Team ST, got: ${bTeamLine}`);
+});
+
+
