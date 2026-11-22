@@ -6966,15 +6966,24 @@ def extract_pass_0_data(save_instance: Any, target_club_uid: int | None = None) 
     squad_players: list[dict[str, Any]] = []
     squad_uids: set[int] = set()
 
+    def _coalesce_uid(obj: Any, primary: str, fallback: str, default: Any = None) -> Any:
+        val = _get_attr(obj, primary, None)
+        if val is not None:
+            return val
+        val = _get_attr(obj, fallback, None)
+        return val if val is not None else default
+
     if p_iter is not None:
         for p in p_iter:
-            c_uid = _get_attr(p, "club_uid", None) or _get_attr(p, "team_id", None)
+            c_uid = _coalesce_uid(p, "club_uid", "team_id", None)
             if user_club_uid is None and c_uid is not None:
                 user_club_uid = c_uid
             if c_uid != user_club_uid:
                 continue
             squad_raw_players.append(p)
-            p_uid = _int(_get_attr(p, "uid", None) or _get_attr(p, "id", 0), 0) or 0
+            p_uid = _int(_coalesce_uid(p, "uid", "id", 0), 0)
+            if p_uid is None:
+                p_uid = 0
             squad_uids.add(p_uid)
             attrs = getattr(p, "attributes", None)
             pers = getattr(p, "personality", None)
@@ -7051,7 +7060,7 @@ def extract_pass_0_data(save_instance: Any, target_club_uid: int | None = None) 
     )
     if tms_iter is not None:
         for t_stat in tms_iter:
-            t_uid = _get_attr(t_stat, "club_uid", None) or _get_attr(t_stat, "team_id", None)
+            t_uid = _coalesce_uid(t_stat, "club_uid", "team_id", None)
             if t_uid == user_club_uid:
                 team_match_stats.append({
                     "matchId": str(_get_attr(t_stat, "match_id", "")),
@@ -7097,7 +7106,7 @@ def extract_pass_0_data(save_instance: Any, target_club_uid: int | None = None) 
     )
     if staff_iter is not None:
         for s in staff_iter:
-            c_uid = _get_attr(s, "club_uid", None) or _get_attr(s, "team_id", None)
+            c_uid = _coalesce_uid(s, "club_uid", "team_id", None)
             if c_uid == user_club_uid:
                 s_attrs = getattr(s, "attributes", None)
                 if s_attrs is not None and callable(getattr(s_attrs, "to_display_scale", None)):
@@ -7127,7 +7136,7 @@ def extract_pass_0_data(save_instance: Any, target_club_uid: int | None = None) 
         for f_idx, f in enumerate(fin_iter):
             if (f_idx & 63) == 0 and (time.monotonic() - fin_t0) >= FINANCES_BUDGET_SEC:
                 break
-            c_uid = _get_attr(f, "club_uid", None) or _get_attr(f, "team_id", None)
+            c_uid = _coalesce_uid(f, "club_uid", "team_id", None)
             if c_uid is not None and c_uid != user_club_uid:
                 continue
             finances_history.append(f)
@@ -7147,7 +7156,7 @@ def extract_pass_0_data(save_instance: Any, target_club_uid: int | None = None) 
             break
         if len(recruitment_targets) >= SCOUT_MAX_CANDIDATES:
             break
-        c_uid = _get_attr(p, "club_uid", None) or _get_attr(p, "team_id", None)
+        c_uid = _coalesce_uid(p, "club_uid", "team_id", None)
         if c_uid == user_club_uid:
             continue
         contract_months = _int(_get_attr(p, "contract_expiry_months", 999), 999)

@@ -16,6 +16,9 @@ export default defineConfig(() => {
         injectRegister: 'auto',
         manifest: false,
         workbox: {
+          cleanupOutdatedCaches: true,
+          skipWaiting: true,
+          clientsClaim: true,
           globPatterns: ['**/*.{js,css,html,svg,woff2,json}'],
           navigateFallback: '/index.html',
           navigateFallbackDenylist: [/^\/api\//],
