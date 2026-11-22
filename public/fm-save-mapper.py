@@ -2313,6 +2313,13 @@ def step_3_2_staff() -> str:
                 if not s_name:
                     return
                 s_attrs = getattr(s, "attributes", None)
+                if s_attrs is not None and callable(getattr(s_attrs, "to_display_scale", None)):
+                    try:
+                        scaled_attrs = s_attrs.to_display_scale()
+                        if scaled_attrs is not None:
+                            s_attrs = scaled_attrs
+                    except Exception:
+                        pass
                 s_contract = getattr(s, "contract", None)
                 s_def = _clamp_attr(_first_attr(s_attrs, ("defending", "coaching_defending")) if s_attrs else _first_attr(s, ("coaching_defending", "defending")), 10)
                 s_att = _clamp_attr(_first_attr(s_attrs, ("attacking", "coaching_attacking")) if s_attrs else _first_attr(s, ("coaching_attacking", "attacking")), 10)
@@ -2734,6 +2741,7 @@ def step_3_3_tactics_and_mentoring() -> str:
                         "slotIndex": s_idx,
                         "position": sl_pos,
                         "outOfPossessionPosition": sl_oop_pos,
+                        "outOfPossessionPositionIndex": oop_idx,
                         "inPossessionRole": sl_ip,
                         "outOfPossessionRole": sl_oop,
                         "playerUid": sl_puid,

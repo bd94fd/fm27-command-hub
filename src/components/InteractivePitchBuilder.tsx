@@ -13,7 +13,7 @@ import {
   Users,
 } from 'lucide-react';
 import { PlayerRecord } from '../types/fm27';
-import { ActiveSuspensionRecord } from '../types/fmSave';
+import { ActiveSuspensionRecord, DeepTacticRecord } from '../types/fmSave';
 import {
   IN_POSSESSION_ROLES,
   OUT_OF_POSSESSION_ROLES,
@@ -193,6 +193,7 @@ export function evaluatePlaybookGuardrails(
 export interface InteractivePitchBuilderProps {
   players: PlayerRecord[];
   activeSuspensions?: ActiveSuspensionRecord[];
+  savedTactics?: DeepTacticRecord[];
   activeShape: FormationPresetKey;
   customSlots: PersistedCustomSlot[];
   applyToAnalystOnly: boolean;
@@ -212,6 +213,7 @@ const PRESET_KEYS: FormationPresetKey[] = [
 export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = ({
   players,
   activeSuspensions = [],
+  savedTactics = [],
   activeShape,
   customSlots,
   applyToAnalystOnly,
@@ -482,6 +484,63 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
           ))}
         </div>
       </div>
+
+      {/* Pack 5: Live Decoded FM27 Save Dual-Phase IP -> OOP Slot Shape */}
+      {savedTactics.length > 0 && savedTactics[0].slots && savedTactics[0].slots.length > 0 && (
+        <div className="px-3.5 py-2.5 rounded-xl bg-slate-950/70 border border-sky-500/30 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-mono font-bold text-sky-400">
+                Live .fm Save Tactic: {savedTactics[0].name}
+              </span>
+              <span className="rounded bg-emerald-500/15 border border-emerald-500/35 px-2 py-0.5 text-[11px] font-mono text-emerald-300">
+                IP: {savedTactics[0].inPossessionFormation || activeShape}
+              </span>
+              <span className="rounded bg-sky-500/15 border border-sky-500/35 px-2 py-0.5 text-[11px] font-mono text-sky-300">
+                OOP: {savedTactics[0].outOfPossessionFormation || savedTactics[0].inPossessionFormation || activeShape}
+              </span>
+            </div>
+            <span className="text-[11px] text-slate-400 font-mono">
+              {savedTactics[0].mentality} Mentality
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {savedTactics[0].slots.map((sl) => {
+              const ipPos = sl.position || `S${sl.slotIndex + 1}`;
+              const oopPos = sl.outOfPossessionPosition || ipPos;
+              const shifted = oopPos !== ipPos;
+              return (
+                <span
+                  key={sl.slotIndex}
+                  className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-mono ${
+                    shifted
+                      ? 'bg-sky-500/15 border-sky-500/40 text-sky-200'
+                      : 'bg-slate-900 border-slate-800 text-slate-300'
+                  }`}
+                  title={
+                    sl.inPossessionRole || sl.outOfPossessionRole
+                      ? `${sl.inPossessionRole || 'IP'} / ${sl.outOfPossessionRole || 'OOP'}`
+                      : undefined
+                  }
+                >
+                  {sl.playerName && (
+                    <span className="font-sans font-semibold text-white">
+                      {sl.playerName.split(' ').slice(-1)[0]}:
+                    </span>
+                  )}
+                  <span className="text-emerald-300">{ipPos}</span>
+                  {shifted && (
+                    <>
+                      <span className="text-slate-500">&rarr;</span>
+                      <span className="text-sky-300 font-bold">{oopPos} (OOP)</span>
+                    </>
+                  )}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Main Grid: Pitch Canvas + Selected Slot Inspector */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">

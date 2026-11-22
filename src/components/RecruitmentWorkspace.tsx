@@ -1060,19 +1060,29 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
               {audit.positionalNeeds.map((b) => {
                 const isThin = b.status === 'Need Signing';
                 const isOver = b.status === 'Overstocked';
+                const isSuccessionGap = b.hasSuccessionGap;
                 return (
                   <div
                     key={b.code}
                     className={`rounded-2xl border p-4 space-y-2.5 ${
                       isThin
                         ? 'border-rose-500/40 bg-rose-950/20'
-                        : isOver
-                          ? 'border-amber-500/40 bg-amber-950/15'
-                          : 'border-slate-800 bg-slate-900/60'
+                        : isSuccessionGap
+                          ? 'border-purple-500/45 bg-purple-950/20'
+                          : isOver
+                            ? 'border-amber-500/40 bg-amber-950/15'
+                            : 'border-slate-800 bg-slate-900/60'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <h4 className="text-xs font-bold text-white">{b.label}</h4>
+                      <div className="flex items-center gap-1.5">
+                        <h4 className="text-xs font-bold text-white">{b.label}</h4>
+                        {isSuccessionGap && (
+                          <span className="rounded bg-purple-500/25 border border-purple-500/50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-purple-200">
+                            Succession Gap
+                          </span>
+                        )}
+                      </div>
                       <span
                         className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
                           isThin
@@ -1085,6 +1095,12 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                         {b.currentCount} (Ideal {b.idealMin}–{b.idealMax})
                       </span>
                     </div>
+
+                    {isSuccessionGap && (
+                      <div className="rounded-lg border border-purple-500/35 bg-purple-950/40 p-2 text-[11px] text-purple-200">
+                        All first-team options are <strong>28+</strong> with <strong>no U23 cover</strong> — scout a U23 successor.
+                      </div>
+                    )}
 
                     {isThin && (
                       <div className="rounded-lg border border-rose-500/30 bg-rose-950/40 p-2 text-[11px] text-rose-200 space-y-1">

@@ -179,6 +179,7 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
         <InteractivePitchBuilder
           players={scopedPlayers}
           activeSuspensions={combinedSuspensions}
+          savedTactics={hydratedFmSave?.decodedPayload?.tactics}
           activeShape={activeShape}
           customSlots={customSlots}
           applyToAnalystOnly={applyToAnalystOnly}

@@ -786,11 +786,16 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
                 </div>
 
                 {/* Youth Intake / Newgen Radar */}
-                <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-sky-400">
-                      Youth Intake &amp; Newgen Radar (Brand-New UIDs)
-                    </h3>
+                <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-sky-400">
+                        Youth Intake &amp; Newgen Radar (Ranked by Stars · Club DNA Fit % · Physical Score)
+                      </h3>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Brand-new player UIDs since {progressionDiff.baselineSaveDate} — strictly zero raw CA/PA.
+                      </p>
+                    </div>
                     <span className="text-xs font-mono text-sky-400">
                       {progressionDiff.youthIntakeHighlights.length} U18 /{' '}
                       {progressionDiff.newgenRadar.length} total
@@ -801,27 +806,52 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
                       No new player UIDs added since {progressionDiff.baselineSaveDate}.
                     </p>
                   ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {progressionDiff.newgenRadar.map((n) => (
-                        <span
-                          key={n.uid}
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs border ${
-                            n.isYouthIntakeHighlight
-                              ? 'bg-sky-500/15 text-sky-300 border-sky-500/40 font-semibold'
-                              : 'bg-slate-800/60 text-slate-300 border-slate-700'
-                          }`}
-                        >
-                          <span>{n.playerName}</span>
-                          <span className="text-[11px] opacity-80">
-                            {n.position} · Age {n.age}
-                          </span>
-                          {n.isYouthIntakeHighlight && (
-                            <span className="px-1.5 py-0.5 text-[10px] rounded bg-sky-500/30 text-sky-100">
-                              U18 INTAKE
-                            </span>
-                          )}
-                        </span>
-                      ))}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                      {progressionDiff.newgenRadar.map((n, idx) => {
+                        const matchedPlayer = players.find((p) => p.uid === n.uid);
+                        return (
+                          <button
+                            key={n.uid}
+                            type="button"
+                            onClick={() => matchedPlayer && onSelectPlayer?.(matchedPlayer)}
+                            className={`text-left rounded-xl p-2.5 text-xs border transition ${
+                              n.isYouthIntakeHighlight
+                                ? 'bg-sky-500/10 text-sky-200 border-sky-500/40 hover:border-sky-400'
+                                : 'bg-slate-800/50 text-slate-300 border-slate-700 hover:border-slate-600'
+                            } ${matchedPlayer && onSelectPlayer ? 'cursor-pointer' : ''}`}
+                          >
+                            <div className="flex items-center justify-between gap-1.5">
+                              <span className="font-bold text-white truncate">
+                                #{idx + 1} {n.playerName}
+                              </span>
+                              {n.isYouthIntakeHighlight && (
+                                <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-sky-500/30 text-sky-100 shrink-0">
+                                  U18 INTAKE
+                                </span>
+                              )}
+                            </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-mono">
+                              <span className="text-slate-300">
+                                {n.position} · Age {n.age}
+                              </span>
+                              <span className="text-amber-400 font-bold">
+                                {n.abilityStars.toFixed(1)}★/{n.potentialStars.toFixed(1)}★
+                              </span>
+                            </div>
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px] font-mono">
+                              <span className="rounded bg-emerald-500/15 border border-emerald-500/35 px-1.5 py-0.5 text-emerald-300 font-semibold">
+                                DNA Fit {n.clubDnaFitPct}% ({n.bestArchetypeShortLabel})
+                              </span>
+                              <span className="rounded bg-indigo-500/15 border border-indigo-500/35 px-1.5 py-0.5 text-indigo-300">
+                                Phys {n.physicalEngineScore}/100
+                              </span>
+                              <span className="text-slate-400">
+                                Det {n.determination} · Pac {n.pace}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

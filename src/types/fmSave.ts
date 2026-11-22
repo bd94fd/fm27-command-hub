@@ -132,6 +132,7 @@ export interface TacticSlotAssignment {
   slotIndex: number;
   position: string;
   outOfPossessionPosition?: string | null;
+  outOfPossessionPositionIndex?: number | null;
   inPossessionRole?: string | null;
   outOfPossessionRole?: string | null;
   ipRole?: string | null;

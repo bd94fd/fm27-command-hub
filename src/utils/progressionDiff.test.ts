@@ -228,8 +228,82 @@ test('computeProgressionDiff detects risers, fallers, Mentoring Determination Ju
   assert.equal(diff.newgenRadar.length, 2);
   assert.equal(diff.newgenRadar[0].uid, 9001);
   assert.equal(diff.newgenRadar[0].isYouthIntakeHighlight, true);
+  assert.equal(diff.newgenRadar[0].abilityStars, 3.0);
+  assert.equal(diff.newgenRadar[0].potentialStars, 4.0);
+  assert.ok(diff.newgenRadar[0].clubDnaFitPct >= 50);
+  assert.ok(diff.newgenRadar[0].physicalEngineScore >= 50);
   assert.equal(diff.newgenRadar[1].uid, 9002);
   assert.equal(diff.newgenRadar[1].isYouthIntakeHighlight, false);
   assert.equal(diff.youthIntakeHighlights.length, 1);
   assert.equal(diff.youthIntakeHighlights[0].playerName, 'Academy Wonderkid');
 });
+
+test('Pack 5 Youth Intake Radar ranks U18 intake players strictly by Star Ratings, Club DNA Fit %, and Physical Score with zero raw CA/PA', () => {
+  const baseline = buildProgressionSnapshot('2027-03-01', 'KVV Zelzate', [
+    makePlayer(1001, 'Senior Starter', 26),
+  ]);
+
+  const rawTopProspect = {
+    ...makePlayer(9101, 'High DNA Intake Winger', 16, {
+      pace: 16,
+      acceleration: 16,
+      stamina: 14,
+      workRate: 15,
+      dribbling: 14,
+      determination: 16,
+    }),
+    position: 'AM (R)',
+    ability: 2.5,
+    potential: 4.5,
+  };
+  const rawSecondProspect = {
+    ...makePlayer(9102, 'Solid Intake Midfielder', 17, {
+      pace: 12,
+      acceleration: 12,
+      stamina: 13,
+      passing: 13,
+      determination: 14,
+    }),
+    position: 'MC',
+    ability: 2.0,
+    potential: 4.5,
+  };
+  const rawThirdProspect = {
+    ...makePlayer(9103, 'Depth Intake Defender', 16, {
+      pace: 11,
+      acceleration: 11,
+      jumpingReach: 12,
+      tackling: 11,
+      determination: 11,
+    }),
+    position: 'DC',
+    ability: 1.5,
+    potential: 3.5,
+  };
+
+  const latest = buildProgressionSnapshot('2027-03-20', 'KVV Zelzate', [
+    makePlayer(1001, 'Senior Starter', 26),
+    rawThirdProspect,
+    rawSecondProspect,
+    rawTopProspect,
+  ]);
+
+  const diff = computeProgressionDiff(baseline, latest);
+  assert.equal(diff.youthIntakeHighlights.length, 3);
+  assert.equal(diff.youthIntakeHighlights[0].uid, 9101);
+  assert.equal(diff.youthIntakeHighlights[1].uid, 9102);
+  assert.equal(diff.youthIntakeHighlights[2].uid, 9103);
+  assert.ok(
+    diff.youthIntakeHighlights[0].clubDnaFitPct >
+      diff.youthIntakeHighlights[1].clubDnaFitPct
+  );
+  assert.ok(
+    diff.youthIntakeHighlights[0].physicalEngineScore >
+      diff.youthIntakeHighlights[1].physicalEngineScore
+  );
+
+  // Verify zero raw CA/PA fields exist anywhere in snapshot or radar report
+  const serialized = JSON.stringify({ latest, diff });
+  assert.doesNotMatch(serialized, /"ca"|"pa"|"currentAbility"|"potentialAbility"/i);
+});
+

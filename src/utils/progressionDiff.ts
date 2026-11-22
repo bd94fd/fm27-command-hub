@@ -4,6 +4,10 @@
  */
 
 import { PlayerRecord } from '../types/fm27';
+import {
+  evaluatePlayerClubDna,
+  loadPersistedClubDnaWeights,
+} from './clubDnaEngine';
 
 export const FM27_PROGRESSION_ARCHIVE_KEY =
   'fm27_command_hub_progression_archive_v1';
@@ -20,6 +24,8 @@ export interface PlayerProgressionSnapshot {
   name: string;
   position: string;
   age: number;
+  abilityStars?: number;
+  potentialStars?: number;
   attributes: Record<string, number>;
 }
 
@@ -58,6 +64,11 @@ export interface YouthIntakeFlag {
   position: string;
   age: number;
   isYouthIntakeHighlight: boolean;
+  abilityStars: number;
+  potentialStars: number;
+  clubDnaFitPct: number;
+  bestArchetypeShortLabel: string;
+  physicalEngineScore: number;
   determination: number;
   pace: number;
 }
@@ -133,6 +144,41 @@ function extractNumericCamelCaseAttributes(
 }
 
 /**
+ * Computes the FM27 Patch 27.1.0 Physical Engine Score (0-100) from 1-20 attributes.
+ */
+function computeSnapshotPhysicalEngineScore(
+  attrs: Record<string, number>
+): number {
+  const pace = Number(attrs.pace) || 10;
+  const acceleration = Number(attrs.acceleration) || pace;
+  const jumpingReach = Number(attrs.jumpingReach) || 10;
+  const stamina = Number(attrs.stamina) || 10;
+  const raw =
+    pace * 1.4 + acceleration * 1.5 + jumpingReach * 1.1 + stamina * 1.0;
+  return Math.min(100, Math.max(0, Math.round(raw)));
+}
+
+/**
+ * Estimates relative 1.0-5.0 star ratings from visible 1-20 attributes when an older
+ * snapshot did not store abilityStars/potentialStars (strictly zero raw CA/PA).
+ */
+function estimateStarsFromVisibleAttributes(
+  attrs: Record<string, number>,
+  age: number
+): { abilityStars: number; potentialStars: number } {
+  const vals = Object.values(attrs).filter(
+    (v) => typeof v === 'number' && Number.isFinite(v) && v >= 1 && v <= 20
+  );
+  const avg =
+    vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : 11;
+  const rawAbility = Math.min(5, Math.max(1, 1.5 + (avg - 8) * 0.35));
+  const abilityStars = Math.round(rawAbility * 2) / 2;
+  const youthRoom = age <= 18 ? 1.5 : age <= 21 ? 1.0 : 0.5;
+  const potentialStars = Math.min(5, Math.max(abilityStars, abilityStars + youthRoom));
+  return { abilityStars, potentialStars };
+}
+
+/**
  * Builds a compact progression snapshot keyed by numeric player `uid`.
  */
 export function buildProgressionSnapshot(
@@ -147,11 +193,21 @@ export function buildProgressionSnapshot(
     if (typeof p.uid !== 'number' || !Number.isFinite(p.uid) || p.uid <= 0) {
       continue;
     }
+    const abilityStars =
+      typeof p.ability === 'number' && Number.isFinite(p.ability)
+        ? Math.min(5, Math.max(1, p.ability))
+        : undefined;
+    const potentialStars =
+      typeof p.potential === 'number' && Number.isFinite(p.potential)
+        ? Math.min(5, Math.max(abilityStars ?? 1, p.potential))
+        : undefined;
     playersByUid[p.uid] = {
       uid: p.uid,
       name: p.name,
       position: p.position,
       age: p.age,
+      abilityStars,
+      potentialStars,
       attributes: extractNumericCamelCaseAttributes(p.attributes),
     };
   }
@@ -307,18 +363,47 @@ export function computeProgressionDiff(
 
   const baselinePlayers = baseline.players || {};
   const latestPlayers = latest.players || {};
+  const dnaWeights = loadPersistedClubDnaWeights();
 
   for (const latestPlayer of Object.values(latestPlayers)) {
     const uid = latestPlayer.uid;
     const basePlayer = baselinePlayers[uid];
 
     if (!basePlayer) {
+      const dnaEval = evaluatePlayerClubDna(
+        latestPlayer.position,
+        latestPlayer.attributes as Partial<PlayerRecord['attributes']>,
+        dnaWeights
+      );
+      const physicalEngineScore = computeSnapshotPhysicalEngineScore(
+        latestPlayer.attributes
+      );
+      const estimatedStars = estimateStarsFromVisibleAttributes(
+        latestPlayer.attributes,
+        latestPlayer.age
+      );
+      const abilityStars =
+        typeof latestPlayer.abilityStars === 'number' &&
+        Number.isFinite(latestPlayer.abilityStars)
+          ? latestPlayer.abilityStars
+          : estimatedStars.abilityStars;
+      const potentialStars =
+        typeof latestPlayer.potentialStars === 'number' &&
+        Number.isFinite(latestPlayer.potentialStars)
+          ? Math.max(abilityStars, latestPlayer.potentialStars)
+          : estimatedStars.potentialStars;
+
       newgenRadar.push({
         uid,
         playerName: latestPlayer.name,
         position: latestPlayer.position,
         age: latestPlayer.age,
         isYouthIntakeHighlight: latestPlayer.age <= 18,
+        abilityStars,
+        potentialStars,
+        clubDnaFitPct: dnaEval.overallDnaScore,
+        bestArchetypeShortLabel: dnaEval.bestArchetypeShortLabel,
+        physicalEngineScore,
         determination: latestPlayer.attributes.determination ?? 0,
         pace: latestPlayer.attributes.pace ?? 0,
       });
@@ -391,6 +476,10 @@ export function computeProgressionDiff(
   newgenRadar.sort(
     (a, b) =>
       Number(b.isYouthIntakeHighlight) - Number(a.isYouthIntakeHighlight) ||
+      b.potentialStars - a.potentialStars ||
+      b.clubDnaFitPct - a.clubDnaFitPct ||
+      b.physicalEngineScore - a.physicalEngineScore ||
+      b.abilityStars - a.abilityStars ||
       a.age - b.age ||
       a.playerName.localeCompare(b.playerName)
   );

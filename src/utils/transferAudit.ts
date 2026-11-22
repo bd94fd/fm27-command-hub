@@ -50,6 +50,7 @@ export interface PositionalSigningNeed {
   idealMin: number;
   idealMax: number;
   status: 'Need Signing' | 'Overstocked' | 'Balanced';
+  hasSuccessionGap: boolean;
   players: PlayerRecord[];
   scoutProfile: string;
 }
@@ -70,6 +71,7 @@ export interface SquadTransferAuditSummary {
   countsByVerdict: Record<TransferActionVerdict, number>;
   playerAdvice: PlayerTransferAdvice[];
   positionalNeeds: PositionalSigningNeed[];
+  successionGapCodes: string[];
   tierBenchmarks: DynamicSquadTierBenchmarks;
 }
 
@@ -434,6 +436,17 @@ export function buildSquadTransferAudit(
     const matched = players
       .filter((p) => matchesPositionBucket(p, d.code))
       .sort((a, b) => playerStrengthScore(b) - playerStrengthScore(a));
+    const firstTeamMatched = matched.filter(
+      (p) => p.teamSlot === undefined || p.teamSlot === 0
+    );
+    const activeFirstTeamOptions =
+      firstTeamMatched.length > 0 ? firstTeamMatched : matched;
+    const hasU23Cover = matched.some((p) => p.age <= 23);
+    const hasSuccessionGap =
+      activeFirstTeamOptions.length > 0 &&
+      activeFirstTeamOptions.every((p) => p.age >= 28) &&
+      !hasU23Cover;
+
     const status: PositionalSigningNeed['status'] =
       players.length === 0
         ? 'Balanced'
@@ -449,10 +462,15 @@ export function buildSquadTransferAudit(
       idealMin: d.idealMin,
       idealMax: d.idealMax,
       status,
+      hasSuccessionGap,
       players: matched,
       scoutProfile: d.scoutProfile,
     };
   });
+
+  const successionGapCodes = positionalNeeds
+    .filter((b) => b.hasSuccessionGap)
+    .map((b) => b.code);
 
   // Compute paid-player median wage (ignoring £0 youth/amateur deals) so wage benchmarks are realistic!
   const paidWages = players
@@ -542,6 +560,7 @@ export function buildSquadTransferAudit(
 
     const tags: string[] = [];
     if (bestBucket) tags.push(`#${bestRank} ${bestBucket.code}`);
+    if (bestBucket?.hasSuccessionGap) tags.push('Succession Gap');
     if (isHighPotYouth) tags.push('Youth Asset');
     if (youthSuccessor && p.age >= 24 && !isTrueStarter) {
       tags.push(`Youth Ready: ${youthSuccessor.name}`);
@@ -746,6 +765,7 @@ export function buildSquadTransferAudit(
     countsByVerdict,
     playerAdvice,
     positionalNeeds,
+    successionGapCodes,
     tierBenchmarks,
   };
 }

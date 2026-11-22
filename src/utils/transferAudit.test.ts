@@ -308,3 +308,60 @@ test('Squad Advice positional ranking gates on >= 15/20 familiarity so an AML (u
   );
 });
 
+test('Pack 5 Succession Gap Flag: flags position groups where every first-team option is 28+ with no U23 cover', () => {
+  const squad: PlayerRecord[] = [
+    // RB group: two veterans (29 and 31) with zero U23 cover -> Succession Gap
+    makePlayer({
+      id: 'rb-vet-1',
+      name: 'Veteran RB Starter',
+      position: 'D (R)',
+      age: 29,
+      teamSlot: 0,
+      positionRatings: { DR: 20 },
+    }),
+    makePlayer({
+      id: 'rb-vet-2',
+      name: 'Veteran RB Backup',
+      position: 'D (R)',
+      age: 31,
+      teamSlot: 0,
+      positionRatings: { DR: 19 },
+    }),
+    // LB group: one 30yo starter + one 21yo U23 backup -> NO Succession Gap
+    makePlayer({
+      id: 'lb-vet',
+      name: 'Veteran LB Starter',
+      position: 'D (L)',
+      age: 30,
+      teamSlot: 0,
+      positionRatings: { DL: 20 },
+    }),
+    makePlayer({
+      id: 'lb-u23',
+      name: 'Young LB Cover',
+      position: 'D (L)',
+      age: 21,
+      teamSlot: 0,
+      positionRatings: { DL: 18 },
+    }),
+  ];
+
+  const audit = buildSquadTransferAudit(squad, '12/10/2027', {
+    balanceLabel: '£100K',
+    wagePayrollWeekly: 2000,
+    wageBudgetWeekly: 5000,
+  });
+
+  assert.deepEqual(audit.successionGapCodes, ['RB']);
+  const rbNeed = audit.positionalNeeds.find((b) => b.code === 'RB');
+  const lbNeed = audit.positionalNeeds.find((b) => b.code === 'LB');
+  assert.equal(rbNeed?.hasSuccessionGap, true);
+  assert.equal(lbNeed?.hasSuccessionGap, false);
+
+  const rbAdvice = audit.playerAdvice.find((a) => a.player.id === 'rb-vet-1');
+  const lbAdvice = audit.playerAdvice.find((a) => a.player.id === 'lb-vet');
+  assert.ok(rbAdvice?.tags.includes('Succession Gap'));
+  assert.equal(lbAdvice?.tags.includes('Succession Gap'), false);
+});
+
+

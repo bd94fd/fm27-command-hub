@@ -1383,6 +1383,9 @@ test('Reordered 4-Stage Pipeline & ?v=15 Static Guardrails: Club Core + Fixtures
   assert.match(mapperSrc, /CONTRACTS_SUSPENSIONS_BUDGET_SEC\s*=/);
   assert.match(mapperSrc, /"extractionWarnings"/);
   assert.match(mapperSrc, /"stepTimingsMs"/);
+  assert.match(mapperSrc, /to_display_scale/);
+  assert.match(mapperSrc, /out_of_possession_position_index/);
+  assert.match(mapperSrc, /"outOfPossessionPositionIndex"/);
 
   // Guard against global list(...) materialization on massive Step 3 & Step 4 tables
   assert.doesNotMatch(mapperSrc, /list\([^)]*save\.staff\(/);
