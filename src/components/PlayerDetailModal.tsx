@@ -42,6 +42,8 @@ import {
   buildPlayerProgressionSeries,
   loadProgressionArchive,
 } from '../utils/progressionDiff';
+import { evaluatePlayerMetaScore } from '../utils/metaScoreEngine';
+import { evaluateDualPhaseRoles } from '../utils/dualPhaseRoleEngine';
 
 interface PlayerDetailModalProps {
   player: PlayerRecord | null;
@@ -577,6 +579,34 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     Best Fit: {analysis.bestIpRole.role.name} · {analysis.bestIpRole.fitPct}%
                   </span>
                 )}
+                {(() => {
+                  const meta = evaluatePlayerMetaScore(player);
+                  const dual = evaluateDualPhaseRoles(player, 1);
+                  return (
+                    <>
+                      {meta.metaScore !== null && (
+                        <span
+                          className="rounded-md bg-emerald-500/15 border border-emerald-500/35 px-2 py-0.5 text-xs font-semibold text-emerald-300"
+                          title={`FM-Arena Meta Score (${meta.tier})${meta.paMetaScore !== null ? ` · Projected Pot Meta ${meta.paMetaScore.toFixed(1)}` : ''}`}
+                        >
+                          Meta {meta.metaScore.toFixed(1)}
+                          {meta.paMetaScore !== null && meta.paMetaScore > meta.metaScore
+                            ? ` → ${meta.paMetaScore.toFixed(1)} Pot`
+                            : ''}
+                        </span>
+                      )}
+                      {(dual.bestInPossession || dual.bestOutOfPossession) && (
+                        <span
+                          className="rounded-md bg-cyan-500/15 border border-cyan-500/30 px-2 py-0.5 text-[11px] font-medium text-cyan-200"
+                          title="FM27 Touchline Dual-Phase Best Roles (In-Possession / Out-of-Possession)"
+                        >
+                          IP: {dual.bestInPossession?.name ?? '--'} · OOP:{' '}
+                          {dual.bestOutOfPossession?.name ?? '--'}
+                        </span>
+                      )}
+                    </>
+                  );
+                })()}
                 {player.squadUnit && player.squadUnit !== 'First Team' && (
                   <span className="rounded-md bg-indigo-500/15 border border-indigo-500/35 px-2 py-0.5 text-[11px] font-semibold text-indigo-300">
                     {player.squadUnit}
