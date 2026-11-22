@@ -1,6 +1,6 @@
 # Production 2-Stage Dockerfile for FM27 Command Hub
 # Uses Debian slim (glibc) for full Vite 8 / Rolldown, tsx, and native Python 3.14 fmsave 0.14.3 decoding
-FROM ghcr.io/astral-sh/uv:0.6.6 AS uv-bin
+FROM ghcr.io/astral-sh/uv:0.13.9 AS uv-bin
 
 # Stage 1: Build Frontend & Prune Dev Dependencies
 FROM node:22-slim AS builder
