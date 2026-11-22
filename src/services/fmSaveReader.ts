@@ -90,9 +90,17 @@ export async function checkServerDecodeStatus(
   }
 }
 
-export const SERVER_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024; // 4 MB per chunk (safely under proxy 413 limit & server 8 MB chunk cap)
+export const SERVER_UPLOAD_CHUNK_BYTES = 2 * 1024 * 1024; // 2 MB per chunk (faster over mobile/Cloudflare & safer against HTTP 520/524 drops)
 export const SERVER_MAX_SAVE_BYTES = 1024 * 1024 * 1024; // 1024 MB (1 GB) max total .fm save size
 export const SERVER_JOB_POLL_INTERVAL_MS = 1_200; // 1.2s polling cadence
+export const SERVER_CHUNK_MAX_RETRIES = 3;
+export const SERVER_POLL_MAX_RETRIES = 5;
+
+const TRANSIENT_SERVER_STATUSES = new Set([408, 429, 502, 503, 504, 520, 522, 524]);
+
+function isTransientServerStatus(status: number): boolean {
+  return TRANSIENT_SERVER_STATUSES.has(status);
+}
 
 function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -142,6 +150,7 @@ export async function decodeFmSaveViaServer(
     fastSync?: boolean;
     chunkSizeBytes?: number;
     pollIntervalMs?: number;
+    retryBaseDelayMs?: number;
   } = {},
   onProgress?: (progress: FmSaveProgressStage) => void,
   fetchImpl: typeof fetch = fetch,
@@ -159,6 +168,7 @@ export async function decodeFmSaveViaServer(
     10,
     options.pollIntervalMs ?? SERVER_JOB_POLL_INTERVAL_MS
   );
+  const retryBaseDelayMs = Math.max(10, options.retryBaseDelayMs ?? 1_000);
   const startedAtMs = Date.now();
   const totalBytes = file.size || 0;
   const totalMbLabel = (totalBytes / (1024 * 1024)).toFixed(1);
@@ -191,10 +201,7 @@ export async function decodeFmSaveViaServer(
 
     if (
       allowFallbackStatus &&
-      (res.status === 503 ||
-        res.status === 502 ||
-        res.status === 504 ||
-        res.status === 404)
+      (isTransientServerStatus(res.status) || res.status === 404)
     ) {
       throw new ServerDecodeUnavailableError(
         `Server decoder unavailable (HTTP ${res.status}).`,
@@ -231,7 +238,7 @@ export async function decodeFmSaveViaServer(
     throw new Error('Server did not return an uploadId.');
   }
 
-  // 2. Upload 3 MB chunks sequentially
+  // 2. Upload chunks sequentially with idempotent offset header & automatic retry on transient proxy errors (e.g. HTTP 520/502/504)
   let offset = 0;
   while (offset < totalBytes) {
     if (signal?.aborted) {
@@ -240,31 +247,83 @@ export async function decodeFmSaveViaServer(
     const end = Math.min(offset + chunkSizeBytes, totalBytes);
     const slice = file.slice(offset, end);
 
-    const chunkRes = await fetchOrThrowUnavailable(
-      '/api/fm27/decode-save/chunk',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/octet-stream',
-          'x-fm-upload-id': uploadId,
-        },
-        body: slice,
-      },
-      false
-    );
+    let chunkUploaded = false;
+    for (let attempt = 0; attempt <= SERVER_CHUNK_MAX_RETRIES; attempt++) {
+      if (signal?.aborted) {
+        throw new Error('CANCELLED_BY_USER');
+      }
 
-    if (chunkRes.status === 503) {
-      throw new ServerDecodeUnavailableError(
-        'Server decoder unavailable (HTTP 503).',
-        503
+      let chunkRes: Response | null = null;
+      let networkError = false;
+      try {
+        chunkRes = await fetchImpl('/api/fm27/decode-save/chunk', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/octet-stream',
+            'x-fm-upload-id': uploadId,
+            'x-fm-chunk-offset': String(offset),
+          },
+          body: slice,
+          signal,
+        });
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          throw new Error('CANCELLED_BY_USER');
+        }
+        networkError = true;
+      }
+
+      if (chunkRes && chunkRes.ok) {
+        chunkUploaded = true;
+        break;
+      }
+
+      const status = chunkRes?.status ?? 0;
+
+      // 404 means server restarted and lost the in-memory upload session -> fall back cleanly
+      if (status === 404) {
+        throw new ServerDecodeUnavailableError(
+          'Server restarted during upload; switching to local browser decoder.',
+          404
+        );
+      }
+
+      const canRetry = networkError || isTransientServerStatus(status);
+      if (canRetry && attempt < SERVER_CHUNK_MAX_RETRIES) {
+        const nextAttempt = attempt + 2;
+        const maxAttempts = SERVER_CHUNK_MAX_RETRIES + 1;
+        onProgress?.({
+          stage: 'read',
+          step: 'Server Upload',
+          elapsedSec: elapsedSec(),
+          label: `Connection blip${status ? ` (HTTP ${status})` : ''} — retrying chunk (attempt ${nextAttempt}/${maxAttempts})...`,
+        });
+        await sleepWithAbort(retryBaseDelayMs * Math.pow(2, attempt), signal);
+        continue;
+      }
+
+      if (canRetry) {
+        throw new ServerDecodeUnavailableError(
+          status
+            ? `Server upload interrupted (HTTP ${status}); switching to local browser decoder.`
+            : 'Server upload unreachable; switching to local browser decoder.',
+          status || undefined
+        );
+      }
+
+      throw new Error(
+        chunkRes
+          ? await readErrorMessageFromResponse(
+              chunkRes,
+              `Chunk upload failed (HTTP ${chunkRes.status}).`
+            )
+          : 'Chunk upload failed.'
       );
     }
-    if (!chunkRes.ok) {
-      throw new Error(
-        await readErrorMessageFromResponse(
-          chunkRes,
-          `Chunk upload failed (HTTP ${chunkRes.status}).`
-        )
+
+    if (!chunkUploaded) {
+      throw new ServerDecodeUnavailableError(
+        'Server chunk upload did not complete; switching to local browser decoder.'
       );
     }
 
@@ -302,15 +361,9 @@ export async function decodeFmSaveViaServer(
         clubHint: options.clubHint || '',
       }),
     },
-    false
+    true
   );
 
-  if (finishRes.status === 503) {
-    throw new ServerDecodeUnavailableError(
-      'Server decoder unavailable (HTTP 503).',
-      503
-    );
-  }
   if (!finishRes.ok) {
     throw new Error(
       await readErrorMessageFromResponse(
@@ -340,20 +393,59 @@ export async function decodeFmSaveViaServer(
         `/api/fm27/decode-save/job/${encodeURIComponent(jobId)}`,
         { method: 'GET', cache: 'no-store', signal }
       );
-      consecutivePollErrors = 0;
     } catch (err: unknown) {
       if (err instanceof Error && err.name === 'AbortError') {
         throw new Error('CANCELLED_BY_USER');
       }
       consecutivePollErrors += 1;
-      if (consecutivePollErrors >= 3) {
-        throw new Error(
-          'Lost connection while checking server decode progress. Please retry.'
+      if (consecutivePollErrors >= SERVER_POLL_MAX_RETRIES) {
+        throw new ServerDecodeUnavailableError(
+          'Lost connection while checking server decode progress; switching to local browser decoder.'
         );
       }
-      await sleepWithAbort(pollIntervalMs, signal);
+      onProgress?.({
+        stage: 'parse',
+        step: 'Server Full Sync',
+        elapsedSec: elapsedSec(),
+        label: `Server busy — reconnecting to decode status (${consecutivePollErrors}/${SERVER_POLL_MAX_RETRIES})...`,
+      });
+      await sleepWithAbort(
+        Math.min(3_000, Math.max(pollIntervalMs, retryBaseDelayMs * consecutivePollErrors)),
+        signal
+      );
       continue;
     }
+
+    if (isTransientServerStatus(jobRes.status)) {
+      consecutivePollErrors += 1;
+      if (consecutivePollErrors >= SERVER_POLL_MAX_RETRIES) {
+        throw new ServerDecodeUnavailableError(
+          `Server decoder unavailable (HTTP ${jobRes.status}); switching to local browser decoder.`,
+          jobRes.status
+        );
+      }
+      onProgress?.({
+        stage: 'parse',
+        step: 'Server Full Sync',
+        elapsedSec: elapsedSec(),
+        label: `Server busy (HTTP ${jobRes.status}) — reconnecting to decode status (${consecutivePollErrors}/${SERVER_POLL_MAX_RETRIES})...`,
+      });
+      await sleepWithAbort(
+        Math.min(3_000, Math.max(pollIntervalMs, retryBaseDelayMs * consecutivePollErrors)),
+        signal
+      );
+      continue;
+    }
+
+    // 404 on an active job means the Render container restarted mid-decode and cleared in-memory jobs -> fall back cleanly
+    if (jobRes.status === 404) {
+      throw new ServerDecodeUnavailableError(
+        'Server restarted during decode; switching to local browser decoder.',
+        404
+      );
+    }
+
+    consecutivePollErrors = 0;
 
     if (!jobRes.ok) {
       throw new Error(
@@ -615,6 +707,7 @@ export async function decodeFmSaveWithServerFirst(
     viewportWidth?: number;
     chunkSizeBytes?: number;
     pollIntervalMs?: number;
+    retryBaseDelayMs?: number;
   } = {},
   deps: {
     fetchImpl?: typeof fetch;
@@ -656,6 +749,7 @@ export async function decodeFmSaveWithServerFirst(
             fastSync: serverFastSync,
             chunkSizeBytes: options.chunkSizeBytes,
             pollIntervalMs: options.pollIntervalMs,
+            retryBaseDelayMs: options.retryBaseDelayMs,
           },
           onProgress,
           fetchImpl,
@@ -669,7 +763,7 @@ export async function decodeFmSaveWithServerFirst(
           stage: 'boot',
           step: 'Browser Fallback',
           label:
-            'Server decoder unavailable (503) — falling back to local browser Pyodide worker...',
+            'Server decoder unavailable or restarted — switching automatically to local browser decoder...',
         });
       }
     }

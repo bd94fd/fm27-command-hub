@@ -347,6 +347,7 @@ function startAsyncNativeFmDecodeJob(
 
     if (code === 0) {
       const rawJson = Buffer.concat(stdoutChunks).toString('utf8').trim();
+      stdoutChunks.length = 0;
       if (!rawJson) {
         job.status = 'error';
         job.error = 'Native Python decoder returned empty output.';
@@ -456,7 +457,35 @@ export function createFmDecodeRouter(): express.Router {
 
       entry.lastActivityAt = Date.now();
 
-      const nextTotalBytes = entry.bytesReceived + req.body.length;
+      const rawOffsetHeader = req.headers['x-fm-chunk-offset'];
+      let writeOffset = entry.bytesReceived;
+      if (rawOffsetHeader !== undefined) {
+        const offsetStr = Array.isArray(rawOffsetHeader)
+          ? rawOffsetHeader[0]
+          : String(rawOffsetHeader);
+        if (!/^\d+$/.test(offsetStr.trim())) {
+          return res.status(400).json({
+            error: 'Invalid x-fm-chunk-offset header. Must be a non-negative integer.',
+          });
+        }
+        const parsedOffset = Number(offsetStr.trim());
+        if (!Number.isSafeInteger(parsedOffset) || parsedOffset < 0) {
+          return res.status(400).json({
+            error: 'Invalid x-fm-chunk-offset header.',
+          });
+        }
+        if (parsedOffset > entry.bytesReceived) {
+          return res.status(409).json({
+            error: `Out-of-order chunk offset (${parsedOffset} > ${entry.bytesReceived}).`,
+          });
+        }
+        writeOffset = parsedOffset;
+      }
+
+      const nextTotalBytes = Math.max(
+        entry.bytesReceived,
+        writeOffset + req.body.length
+      );
       if (nextTotalBytes > MAX_TOTAL_UPLOAD_BYTES) {
         const attemptedMb = (nextTotalBytes / (1024 * 1024)).toFixed(1);
         pendingUploads.delete(uploadId);
@@ -467,7 +496,12 @@ export function createFmDecodeRouter(): express.Router {
       }
 
       try {
-        await fs.promises.appendFile(entry.filePath, req.body);
+        const fh = await fs.promises.open(entry.filePath, 'r+');
+        try {
+          await fh.write(req.body, 0, req.body.length, writeOffset);
+        } finally {
+          await fh.close();
+        }
         entry.bytesReceived = nextTotalBytes;
         entry.lastActivityAt = Date.now();
         return res.json({ ok: true, bytesReceived: entry.bytesReceived });
@@ -521,6 +555,18 @@ export function createFmDecodeRouter(): express.Router {
       });
     }
 
+    // Prevent concurrent Python decodes from exceeding Render Free tier 512 MB RAM
+    const hasRunningJob = Array.from(decodeJobs.values()).some(
+      (j) => j.status === 'running'
+    );
+    if (hasRunningJob) {
+      await fs.promises.unlink(entry.filePath).catch(() => {});
+      return res.status(503).json({
+        error:
+          'Another .fm save decode is currently in progress on the server. Falling back to local browser decoder.',
+      });
+    }
+
     if (decodeJobs.size >= MAX_TRACKED_JOBS) {
       // Evict oldest completed job if at capacity
       for (const [oldId, oldJob] of decodeJobs.entries()) {
@@ -564,10 +610,14 @@ export function createFmDecodeRouter(): express.Router {
     }
 
     if (job.status === 'done') {
+      const payload = job.payload;
+      const progress = job.progress;
+      // Release potentially large decoded payload from server RAM immediately upon delivery
+      decodeJobs.delete(jobId);
       return res.json({
         status: 'done',
-        progress: job.progress,
-        payload: job.payload,
+        progress,
+        payload,
       });
     }
 

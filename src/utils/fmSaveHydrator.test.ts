@@ -1740,8 +1740,8 @@ test('Fast Sync Defaults & Reordered Timing Labels: shouldDefaultFastSync auto-d
   assert.doesNotMatch(hydrated.analystPromptContext, /\bCA\s*\d+|\bPA\s*\d+/i);
 });
 
-test('Server-First 4 MB Chunked Upload + 1 GB Cap + Async Job Polling: slices 9.5 MB file into 4 MB chunks, runs /init -> /chunk -> /finish -> /job polling with Full Sync on mobile, and enforces 1 GB limit with actual MB message', async () => {
-  assert.equal(SERVER_UPLOAD_CHUNK_BYTES, 4 * 1024 * 1024);
+test('Server-First 2 MB Chunked Upload + 1 GB Cap + Async Job Polling: slices 9.5 MB file into chunks, runs /init -> /chunk -> /finish -> /job polling with Full Sync on mobile, and enforces 1 GB limit with actual MB message', async () => {
+  assert.equal(SERVER_UPLOAD_CHUNK_BYTES, 2 * 1024 * 1024);
   assert.equal(SERVER_MAX_SAVE_BYTES, 1024 * 1024 * 1024);
   assert.equal(SERVER_JOB_POLL_INTERVAL_MS, 1_200);
 
@@ -1920,8 +1920,10 @@ test('Server-First 4 MB Chunked Upload + 1 GB Cap + Async Job Polling: slices 9.
 
   assert.equal(browserFallbackCalled, false);
   assert.deepEqual(chunkSizesReceived, [
-    4 * 1024 * 1024,
-    4 * 1024 * 1024,
+    2 * 1024 * 1024,
+    2 * 1024 * 1024,
+    2 * 1024 * 1024,
+    2 * 1024 * 1024,
     totalBytes - 8 * 1024 * 1024,
   ]);
   assert.equal(bytesAccumulated, totalBytes);
@@ -2036,8 +2038,8 @@ test('Server-First Automatic Fallback: falls back seamlessly to browser Pyodide 
   assert.equal(fallbackReceivedOptsList[0].scope, 'club_and_division');
   assert.equal(fallbackReceivedOptsList[0].fastSync, true, 'Mobile browser fallback should auto-enable Fast Sync');
   assert.ok(
-    stages503.some((s) => /503.*falling back/i.test(s.label)),
-    'Expected 503 fallback progress update'
+    stages503.some((s) => /unavailable.*switching automatically to local browser decoder/i.test(s.label)),
+    'Expected browser fallback progress update'
   );
 
   // Case 2: Status reports serverDecodeAvailable: false -> skips /init and falls back directly
@@ -2153,7 +2155,8 @@ test('Server Chunked Decode Guardrails: Express server/routes/fmDecodeRoutes.ts 
   assert.match(decodeRouterSrc, /lastActivityAt/);
   assert.match(decodeRouterSrc, /stdoutChunks\.push/);
   assert.match(decodeRouterSrc, /express\.raw\(\{\s*type:\s*['"]application\/octet-stream['"]\s*,\s*limit:\s*['"]8mb['"]/);
-  assert.match(decodeRouterSrc, /fs\.promises\.appendFile/);
+  assert.match(decodeRouterSrc, /fs\.promises\.open/);
+  assert.match(decodeRouterSrc, /x-fm-chunk-offset/);
   assert.match(decodeRouterSrc, /os\.tmpdir\(\)/);
   assert.match(decodeRouterSrc, /shell:\s*false/);
   assert.match(decodeRouterSrc, /fs\.promises\.unlink/);
@@ -2171,6 +2174,167 @@ test('Server Chunked Decode Guardrails: Express server/routes/fmDecodeRoutes.ts 
   assert.match(mapperSrc, /def step_players\(/);
   assert.match(mapperSrc, /def step_finalize\(/);
 });
+
+test('Server Chunk Upload Resilience: retries transient HTTP 520 with idempotent x-fm-chunk-offset and completes cleanly', async () => {
+  const mockUploadId = '11111111-1111-4111-8111-111111111111';
+  const mockJobId = '22222222-2222-4222-8222-222222222222';
+  const chunkOffsets: string[] = [];
+  let chunkAttempts = 0;
+
+  const mockFetch: typeof fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === '/api/fm27/decode-status') {
+      return new Response(JSON.stringify({ serverDecodeAvailable: true }), { status: 200 });
+    }
+    if (url === '/api/fm27/decode-save/init') {
+      return new Response(JSON.stringify({ uploadId: mockUploadId }), { status: 200 });
+    }
+    if (url === '/api/fm27/decode-save/chunk') {
+      chunkAttempts += 1;
+      const headers = new Headers(init?.headers);
+      chunkOffsets.push(headers.get('x-fm-chunk-offset') || '');
+      if (chunkAttempts === 1) {
+        return new Response('Cloudflare 520', { status: 520 });
+      }
+      return new Response(JSON.stringify({ ok: true, bytesReceived: 6 }), { status: 200 });
+    }
+    if (url === '/api/fm27/decode-save/finish') {
+      return new Response(JSON.stringify({ jobId: mockJobId }), { status: 200 });
+    }
+    if (url === `/api/fm27/decode-save/job/${mockJobId}`) {
+      return new Response(
+        JSON.stringify({
+          status: 'done',
+          progress: 'Complete',
+          payload: {
+            meta: { clubName: 'KVV Zelzate', fileName: 'retry-520.fm' },
+            players: [],
+          },
+        }),
+        { status: 200 }
+      );
+    }
+    return new Response('Not found', { status: 404 });
+  }) as typeof fetch;
+
+  const blob = new Blob(['abcdef']);
+  const result = await decodeFmSaveWithServerFirst(
+    blob,
+    undefined,
+    { fileName: 'retry-520.fm', chunkSizeBytes: 1024, pollIntervalMs: 10, retryBaseDelayMs: 10 },
+    { fetchImpl: mockFetch }
+  );
+
+  assert.equal(chunkAttempts, 2, 'Expected 1 retry after HTTP 520');
+  assert.deepEqual(chunkOffsets, ['0', '0'], 'Expected identical idempotent offset on retry');
+  assert.equal(result.meta.clubName, 'KVV Zelzate');
+});
+
+test('Server Decode Polling Resilience: retries transient HTTP 502 blips and completes when server recovers', async () => {
+  const mockUploadId = '33333333-3333-4333-8333-333333333333';
+  const mockJobId = '44444444-4444-4444-8444-444444444444';
+  let pollAttempts = 0;
+
+  const mockFetch: typeof fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === '/api/fm27/decode-status') {
+      return new Response(JSON.stringify({ serverDecodeAvailable: true }), { status: 200 });
+    }
+    if (url === '/api/fm27/decode-save/init') {
+      return new Response(JSON.stringify({ uploadId: mockUploadId }), { status: 200 });
+    }
+    if (url === '/api/fm27/decode-save/chunk') {
+      return new Response(JSON.stringify({ ok: true, bytesReceived: 6 }), { status: 200 });
+    }
+    if (url === '/api/fm27/decode-save/finish') {
+      return new Response(JSON.stringify({ jobId: mockJobId }), { status: 200 });
+    }
+    if (url === `/api/fm27/decode-save/job/${mockJobId}`) {
+      pollAttempts += 1;
+      if (pollAttempts <= 2) {
+        return new Response('Bad Gateway', { status: 502 });
+      }
+      return new Response(
+        JSON.stringify({
+          status: 'done',
+          progress: 'Complete',
+          payload: {
+            meta: { clubName: 'KVV Zelzate', fileName: 'retry-502.fm' },
+            players: [],
+          },
+        }),
+        { status: 200 }
+      );
+    }
+    return new Response('Not found', { status: 404 });
+  }) as typeof fetch;
+
+  const blob = new Blob(['abcdef']);
+  const result = await decodeFmSaveWithServerFirst(
+    blob,
+    undefined,
+    { fileName: 'retry-502.fm', chunkSizeBytes: 1024, pollIntervalMs: 10, retryBaseDelayMs: 10 },
+    { fetchImpl: mockFetch }
+  );
+
+  assert.equal(pollAttempts, 3, 'Expected polling to survive 2 transient HTTP 502 responses');
+  assert.equal(result.meta.clubName, 'KVV Zelzate');
+});
+
+test('Server Decode Restart Fallback: persistent HTTP 502 / 404 during polling automatically falls back to browser Pyodide worker', async () => {
+  const mockUploadId = '55555555-5555-4555-8555-555555555555';
+  const mockJobId = '66666666-6666-4666-8666-666666666666';
+  let pollAttempts = 0;
+  let fallbackCalled = false;
+
+  const mockFetch: typeof fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === '/api/fm27/decode-status') {
+      return new Response(JSON.stringify({ serverDecodeAvailable: true }), { status: 200 });
+    }
+    if (url === '/api/fm27/decode-save/init') {
+      return new Response(JSON.stringify({ uploadId: mockUploadId }), { status: 200 });
+    }
+    if (url === '/api/fm27/decode-save/chunk') {
+      return new Response(JSON.stringify({ ok: true, bytesReceived: 6 }), { status: 200 });
+    }
+    if (url === '/api/fm27/decode-save/finish') {
+      return new Response(JSON.stringify({ jobId: mockJobId }), { status: 200 });
+    }
+    if (url === `/api/fm27/decode-save/job/${mockJobId}`) {
+      pollAttempts += 1;
+      if (pollAttempts === 1) {
+        return new Response('Bad Gateway', { status: 502 });
+      }
+      // Simulates Render container finishing restart with wiped in-memory job map
+      return new Response(JSON.stringify({ status: 'error', error: 'Decode job not found or expired.' }), {
+        status: 404,
+      });
+    }
+    return new Response('Not found', { status: 404 });
+  }) as typeof fetch;
+
+  const blob = new Blob(['abcdef']);
+  const result = await decodeFmSaveWithServerFirst(
+    blob,
+    undefined,
+    { fileName: 'fallback-502.fm', chunkSizeBytes: 1024, pollIntervalMs: 10, retryBaseDelayMs: 10 },
+    {
+      fetchImpl: mockFetch,
+      browserFallback: async () => {
+        fallbackCalled = true;
+        return {
+          meta: { clubName: 'KVV Zelzate', fileName: 'fallback-502.fm' },
+          players: [],
+        } as unknown as DecodedFmSavePayload;
+      },
+    }
+  );
+
+  assert.equal(fallbackCalled, true, 'Expected automatic fallback to local browser worker after server restart');
+  assert.equal(result.meta.clubName, 'KVV Zelzate');
+});
+
 
 
 
