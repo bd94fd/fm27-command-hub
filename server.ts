@@ -56,7 +56,7 @@ export async function createApp(
   app.use('/api', createFmDecodeRouter());
 
   // Strict JSON 404 handler for any unmatched /api/* route BEFORE Vite/SPA HTML fallback
-  app.all('/api/*', (req, res) => {
+  app.all('/api/{*splat}', (req, res) => {
     return res.status(404).json({
       error: `API endpoint not found: ${req.method} ${req.path}`,
     });
@@ -122,7 +122,7 @@ export async function createApp(
           },
         })
       );
-      app.get('*', (_req, res) => {
+      app.get('/{*splat}', (_req, res) => {
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
         res.sendFile(path.join(distPath, 'index.html'));
       });
