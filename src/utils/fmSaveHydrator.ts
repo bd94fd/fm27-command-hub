@@ -834,6 +834,9 @@ export function hydrateAppFromDecodedFmSave(
       (Boolean(p.apps) && p.apps !== '0') ||
       (p.rating !== null && p.rating !== undefined && p.rating > 0)
   );
+  // Only fall back to recent-match aggregates when Fast Sync skipped stage 4.8 Season Stats.
+  // On a Full Sync pre-season save (0 competitive matches played), players must stay at 0 / null.
+  const allowRecentFallback = Boolean(decoded.meta.fastSync) && !squadHasSeasonStats;
 
   for (const existing of currentSquad) {
     const existingUid = extractUidFromPlayerRecord(existing);
@@ -985,7 +988,7 @@ export function hydrateAppFromDecodedFmSave(
     } else if (pRatings && pRatings.length > 0) {
       next.last5Ratings = pRatings;
       next.last5Form = calculateLast5Form(pRatings);
-      if (!hasPlayerSeasonStats && !squadHasSeasonStats) {
+      if (!hasPlayerSeasonStats && allowRecentFallback) {
         const agg = aggregateRecentMatchProduction(pRatings);
         next.apps = agg.apps;
         next.minutes = agg.minutes;
@@ -1090,7 +1093,7 @@ export function hydrateAppFromDecodedFmSave(
       (dp.apps && dp.apps !== '0') ||
       (dp.rating !== null && dp.rating !== undefined && dp.rating > 0);
     const recentAgg =
-      !hasSeasonStats && !squadHasSeasonStats && pRatings.length > 0
+      !hasSeasonStats && allowRecentFallback && pRatings.length > 0
         ? aggregateRecentMatchProduction(pRatings)
         : null;
 
@@ -1314,6 +1317,9 @@ export function hydrateAppFromDecodedFmSave(
     const gdStr = ls.goalDiff >= 0 ? `+${ls.goalDiff}` : `${ls.goalDiff}`;
     leagueRecordLabel = `${ls.played} GP · ${ls.won}W-${ls.drawn}D-${ls.lost}L · ${ls.points} Pts`;
     leagueStandingLabel = `#${ls.position} of ${ls.totalTeams} (${ls.goalsFor} GF / ${ls.goalsAgainst} GA · ${gdStr} GD)`;
+  } else {
+    leagueRecordLabel = '0 GP · Pre-Season';
+    leagueStandingLabel = 'No league table yet — 0 competitive matches played';
   }
 
   let squadOutputLabel: string | null = null;

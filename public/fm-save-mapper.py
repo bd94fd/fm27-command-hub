@@ -569,14 +569,14 @@ def _to_json_safe(obj: Any, depth: int = 0) -> Any:
         return out
     if isinstance(obj, (list, tuple, set)):
         return [_to_json_safe(v, depth + 1) for v in list(obj)[:40]]
-    lbl = _label(obj)
-    if lbl is not None and not lbl.startswith("<"):
-        return lbl
-    if hasattr(obj, "__dict__"):
+    if hasattr(obj, "__dict__") and not hasattr(obj, "value"):
         return _to_json_safe(
             {k: v for k, v in vars(obj).items() if not k.startswith("_")},
             depth + 1,
         )
+    lbl = _label(obj)
+    if lbl is not None and not lbl.startswith("<"):
+        return lbl
     return str(obj)
 
 

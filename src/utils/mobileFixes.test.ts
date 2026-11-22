@@ -665,6 +665,7 @@ test('Fixes 3 & 5 (TypeScript): promisedPlayingTime single source of truth for S
         clubUid: 100,
         clubName: 'KVV Zelzate',
         managerName: 'Bobby Dean',
+        fastSync: true,
       },
       players: [
         {

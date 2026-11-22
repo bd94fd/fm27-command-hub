@@ -24,11 +24,11 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
   const [showReaderNotes, setShowReaderNotes] = useState(false);
   const { decodedPayload: d } = hydrated;
 
-  const topPlayers = [...d.players]
+  const topPlayers = [...hydrated.updatedSquad]
     .sort(
       (a, b) =>
         (b.minutes || 0) - (a.minutes || 0) ||
-        (b.abilityStars || 0) - (a.abilityStars || 0) ||
+        (b.ability || 0) - (a.ability || 0) ||
         (b.rating || 0) - (a.rating || 0)
     )
     .slice(0, 5);
