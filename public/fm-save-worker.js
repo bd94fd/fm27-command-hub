@@ -52,7 +52,7 @@ async function ensureBooted(reply, origin) {
       const micropip = instance.pyimport('micropip');
       await micropip.install(`fmsave==${FMSAVE_VERSION}`);
 
-      const patcherUrl = new URL('/fm_layout_patcher.py?v=15', origin || self.location.origin).href;
+      const patcherUrl = new URL('/fm_layout_patcher.py?v=16', origin || self.location.origin).href;
       try {
         const patcherResp = await fetch(patcherUrl, { cache: 'no-cache' });
         if (patcherResp.ok) {
@@ -63,7 +63,7 @@ async function ensureBooted(reply, origin) {
         // Optional runtime layout patcher; mapper degrades gracefully if absent
       }
 
-      const mapperUrl = new URL('/fm-save-mapper.py?v=15', origin || self.location.origin).href;
+      const mapperUrl = new URL('/fm-save-mapper.py?v=16', origin || self.location.origin).href;
       const mapperSource = await (await fetch(mapperUrl, { cache: 'no-cache' })).text();
       instance.FS.writeFile('/home/pyodide/fm_save_mapper.py', mapperSource);
       mapperModule = instance.pyimport('fm_save_mapper');
@@ -325,6 +325,7 @@ self.onmessage = async (event) => {
         });
         await yieldTick();
         mapperModule.step_team_match_stats(false);
+        emitCheckpoint('stage_4_club_ops');
 
         activeStep = 'Stage 4/4: player_season_stats';
         reply({

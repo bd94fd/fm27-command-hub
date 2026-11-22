@@ -45,6 +45,7 @@ import {
   AutoSyncWorkspace,
   PlayerAutoUpdate,
 } from './components/AutoSyncWorkspace';
+import { applyAnalystPlayerUpdates } from './utils/tacticalAnalystContext';
 import { LiveFmSaveProofCard } from './components/LiveFmSaveProofCard';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
 import {
@@ -481,51 +482,7 @@ export default function App() {
 
   const handleApplyPlayerUpdates = (updates: PlayerAutoUpdate[]) => {
     if (!updates || updates.length === 0) return;
-    setPlayers((prev) =>
-      prev.map((player) => {
-        const match = updates.find((u) => {
-          const target = u.name.trim().toLowerCase();
-          const pName = player.name.toLowerCase();
-          return (
-            pName === target ||
-            pName.includes(target) ||
-            target.includes(pName.split(' ').slice(-1)[0])
-          );
-        });
-        if (!match) return player;
-
-        const addGoals =
-          typeof match.goalsAdded === 'number' && !Number.isNaN(match.goalsAdded)
-            ? match.goalsAdded
-            : 0;
-        const addAssists =
-          typeof match.assistsAdded === 'number' &&
-          !Number.isNaN(match.assistsAdded)
-            ? match.assistsAdded
-            : 0;
-        const addMinutes =
-          typeof match.minutesAdded === 'number' &&
-          !Number.isNaN(match.minutesAdded)
-            ? match.minutesAdded
-            : 0;
-
-        return {
-          ...player,
-          rating:
-            typeof match.rating === 'number' && !Number.isNaN(match.rating)
-              ? match.rating
-              : player.rating,
-          goals: player.goals + addGoals,
-          assists: player.assists + addAssists,
-          minutes: player.minutes + addMinutes,
-          apps: addMinutes > 0 ? `${player.apps} (+1)` : player.apps,
-          notes:
-            match.notes && match.notes.trim().length > 0
-              ? match.notes.trim()
-              : player.notes,
-        };
-      })
-    );
+    setPlayers((prev) => applyAnalystPlayerUpdates(prev, updates).updatedPlayers);
   };
 
   // Recruitment & Shortlist handlers
@@ -932,6 +889,9 @@ export default function App() {
               wageSpend={wageSpend}
               balance={balance}
               hydratedFmSave={hydratedFmSave}
+              activeShape={activeShape}
+              customSlots={customSlots}
+              applyToAnalystOnly={applyToAnalystOnly}
               onUpdateSaveDate={setSaveDate}
               onAddMatch={handleAddMatch}
               onApplyPlayerUpdates={handleApplyPlayerUpdates}

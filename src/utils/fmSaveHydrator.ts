@@ -27,8 +27,9 @@ import {
 } from '../types/fmSave';
 import { normalizePlayerName } from './fmFileImporter';
 import { inferFm27Roles } from './fm27RoleMatcher';
+import { isSuspensionActiveForCompetition } from './bestXiSolver';
 
-export const WORKER_CACHE_BUSTER = '?v=15';
+export const WORKER_CACHE_BUSTER = '?v=16';
 
 export function resolveSquadUnit(
   teamSlot?: number | null
@@ -1407,6 +1408,8 @@ export function hydrateAppFromDecodedFmSave(
   }));
 
   // 4. Build Rich Ground-Truth Context for Tactical Analyst (ZERO raw CA/PA or raw hidden numbers!)
+  const nextFixtureCompetition = decoded.upcomingFixtures[0]?.competition || null;
+
   const topPlayersSummary = decoded.players
     .slice(0, 28)
     .map((p) => {
@@ -1430,7 +1433,29 @@ export function hydrateAppFromDecodedFmSave(
       const pBans = bansByUid.get(p.uid) || [];
       const banStr =
         pBans.length > 0
-          ? ` | [BANNED ${pBans.map((b) => `${b.matchesRemaining}m ${b.scope}`).join(', ')}]`
+          ? ` | [${pBans
+              .map((b) =>
+                isSuspensionActiveForCompetition(b, nextFixtureCompetition)
+                  ? `BANNED NEXT ${b.matchesRemaining}m ${b.scope}`
+                  : `CUP-BAN-ONLY ${b.matchesRemaining}m ${b.competitionName}`
+              )
+              .join(', ')}]`
+          : '';
+      const posEntries = p.positionRatings
+        ? Object.entries(p.positionRatings)
+            .filter(([, v]) => typeof v === 'number' && Number.isFinite(v) && v > 0)
+            .map(([k, v]) => [k.toUpperCase(), Math.round(v as number)] as [string, number])
+        : [];
+      const posUpper = new Map<string, number>(posEntries);
+      const notablePos = posEntries
+        .filter(([, v]) => v >= 12)
+        .sort((x, y) => y[1] - x[1]);
+      if ((posUpper.get('AMC') ?? 0) >= 15 && typeof posUpper.get('MC') === 'number' && (posUpper.get('MC') as number) < 12) {
+        notablePos.push(['MC', posUpper.get('MC') as number]);
+      }
+      const posFamStr =
+        notablePos.length > 0
+          ? ` | PosFam[${notablePos.slice(0, 5).map(([k, v]) => `${k}:${v}`).join(',')}]`
           : '';
       const cd = p.contractDetails;
       const clauseParts: string[] = [];
@@ -1446,7 +1471,7 @@ export function hydrateAppFromDecodedFmSave(
         );
       }
       const clauseStr = clauseParts.length > 0 ? ` | Contract: ${clauseParts.join(' · ')}` : '';
-      return `- ${p.name} (${p.position}, Age ${p.age}, ${abilityStars.toFixed(1)}★/${potentialStars.toFixed(1)}★, £${p.wagePw}/wk exp ${p.expires}): Apps ${p.apps}, ${p.minutes}m, Rat ${p.rating ?? '-'}, ${p.goals}G (${p.xG} xG), ${p.assists}A (${p.xA} xA), Tck ${p.tckPct}%, Hdr ${p.hdrPct}% | ${attrStr}${formStr}${banStr}${clauseStr}${badgeStr}${traitStr}`;
+      return `- ${p.name} (${p.position}, Age ${p.age}, ${abilityStars.toFixed(1)}★/${potentialStars.toFixed(1)}★, £${p.wagePw}/wk exp ${p.expires}): Apps ${p.apps}, ${p.minutes}m, Rat ${p.rating ?? '-'}, ${p.goals}G (${p.xG} xG), ${p.assists}A (${p.xA} xA), Tck ${p.tckPct}%, Hdr ${p.hdrPct}%${posFamStr} | ${attrStr}${formStr}${banStr}${clauseStr}${badgeStr}${traitStr}`;
     })
     .join('\n');
 
@@ -1480,10 +1505,15 @@ export function hydrateAppFromDecodedFmSave(
   const suspensionLines =
     activeSuspensionsList.length > 0
       ? activeSuspensionsList
-          .map(
-            (b) =>
-              `- ${b.playerName}: BANNED (${b.matchesRemaining}m remaining · ${b.competitionName} [${b.scope}] · ${b.reason}) — DO NOT SELECT AS STARTER`
-          )
+          .map((b) => {
+            const blocksNext = isSuspensionActiveForCompetition(
+              b,
+              nextFixtureCompetition
+            );
+            return blocksNext
+              ? `- ${b.playerName}: BANNED FOR NEXT MATCH (${b.matchesRemaining}m remaining · ${b.competitionName} [${b.scope}] · ${b.reason}) — DO NOT SELECT AS STARTER`
+              : `- ${b.playerName}: OTHER-COMPETITION BAN ONLY (${b.matchesRemaining}m in ${b.competitionName} [${b.scope}] · ${b.reason}) — AVAILABLE FOR NEXT MATCH (${nextFixtureCompetition})`;
+          })
           .join('\n')
       : '- No active disciplinary suspensions.';
 

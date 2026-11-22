@@ -129,7 +129,8 @@ export const TACTICAL_CHAT_SCHEMA: Schema = {
     immediateClicks: {
       type: Type.ARRAY,
       items: { type: Type.STRING },
-      description: '3 concrete, numbered in-game clicks/actions tailored to this exact turn',
+      description:
+        '3 concrete in-game clicks/actions tailored to this exact turn. Do NOT prefix items with "1.", "2.", "3." because the UI renders them in a numbered list.',
     },
     followUpQuestions: {
       type: Type.ARRAY,
@@ -191,7 +192,7 @@ export const TACTICAL_CHAT_SCHEMA: Schema = {
     playerUpdates: {
       type: Type.ARRAY,
       description:
-        'Any squad player IP/OOP role changes, status changes (Starter/Rotation/Youth/Injured), rating, goals, assists, minutes, condition, or tactical note updates agreed upon in this chat turn or extracted from a screenshot',
+        'ONLY populate when the manager explicitly asks to update/save a player role, status, or note, OR when a newly uploaded screenshot reports fresh match stats/roles. Leave EMPTY [] for pure Q&A, player comparisons, hypothetical fitness questions, or tactical discussions.',
       items: {
         type: Type.OBJECT,
         properties: {

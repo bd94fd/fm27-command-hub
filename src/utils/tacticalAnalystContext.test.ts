@@ -232,3 +232,71 @@ test('applyAnalystPlayerUpdates updates player IP/OOP roles, status, stats, and 
   assert.equal(karinda.rating, 7.45);
   assert.ok(karinda.notes.includes('Switched to Inside Forward IP'));
 });
+
+test('buildLiveTacticalAnalystContext aligns with War Room XI, 100%-Fit XI, Transfers Depth Chart, PosFam, and Cup-only bans', () => {
+  const shala: PlayerRecord = {
+    ...samplePlayers[1],
+    id: 'p-shala',
+    uid: 501,
+    name: 'Visar Shala',
+    position: 'AM (RC), ST (C)',
+    ability: 3.5,
+    potential: 4.5,
+    positionRatings: { AMC: 20, AMR: 18, ST: 15, MC: 2 },
+  };
+  const coens: PlayerRecord = {
+    ...samplePlayers[1],
+    id: 'p-coens',
+    uid: 502,
+    name: 'Søren Coens',
+    position: 'M (C)',
+    ability: 3.5,
+    potential: 4.0,
+    positionRatings: { MC: 20, DM: 15 },
+    activeSuspensions: [
+      {
+        playerUid: 502,
+        playerName: 'Søren Coens',
+        matchesRemaining: 1,
+        competitionName: 'Croky Cup',
+        scope: 'cup',
+        reason: 'Red Card',
+      },
+    ],
+  };
+
+  const ctx = buildLiveTacticalAnalystContext({
+    clubName: 'KVV Zelzate',
+    managerName: 'Bobby Dean',
+    saveDate: '15/09/2027',
+    nextFixture: '18/09/2027 vs KSV Cercle Brugge U23 (A)',
+    leagueStandingSub: '#6 of 16',
+    wageSpend: '£5,000 / £5,500 p/w',
+    balance: '£200K',
+    players: [...samplePlayers, shala, coens],
+    matches: sampleMatches,
+    hydratedFmSave: {
+      decodedPayload: {
+        meta: { clubName: 'KVV Zelzate', managerName: 'Bobby Dean' },
+        upcomingFixtures: [
+          {
+            dateIso: '2027-09-18',
+            dateDmy: '18/09/2027',
+            competition: 'Eerste Nationale VV',
+            opponent: 'KSV Cercle Brugge U23',
+            venue: 'A',
+          },
+        ],
+      },
+      activeSuspensions: coens.activeSuspensions,
+    } as never,
+  });
+
+  assert.ok(ctx.includes('100%-FIT FULL-STRENGTH BEST XI'));
+  assert.ok(ctx.includes('TRANSFERS & SQUAD ADVICE POSITIONAL DEPTH CHART'));
+  assert.ok(ctx.includes('PosFam[AMC:20,AMR:18,ST:15,MC:2]'));
+  assert.ok(ctx.includes('OTHER-COMPETITION BANS ONLY'));
+  assert.ok(ctx.includes('ELIGIBLE for Eerste Nationale VV'));
+  assert.equal(ctx.includes('DO NOT SELECT AS STARTER'), false);
+});
+

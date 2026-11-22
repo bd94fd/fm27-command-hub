@@ -473,7 +473,7 @@
     }
   },
   {
-    "positionGroup": "Defensive Midfielder",
+    "positionGroup": "Central Midfielder",
     "name": "Box-to-Box Midfielder",
     "phase": "In Possession",
     "priorities": {
@@ -500,7 +500,7 @@
     }
   },
   {
-    "positionGroup": "Defensive Midfielder",
+    "positionGroup": "Central Midfielder",
     "name": "Box-to-Box Playmaker",
     "phase": "In Possession",
     "priorities": {
@@ -867,7 +867,7 @@
     }
   },
   {
-    "positionGroup": "Attacking Midfielder",
+    "positionGroup": "Central Midfielder",
     "name": "Channel Midfielder",
     "phase": "In Possession",
     "priorities": {
@@ -966,7 +966,7 @@
     }
   },
   {
-    "positionGroup": "Attacking Midfielder",
+    "positionGroup": "Wide Midfielder / Winger",
     "name": "Wide Forward",
     "phase": "In Possession",
     "priorities": {
@@ -989,7 +989,7 @@
     }
   },
   {
-    "positionGroup": "Attacking Midfielder",
+    "positionGroup": "Wide Midfielder / Winger",
     "name": "Inside Forward",
     "phase": "In Possession",
     "priorities": {
@@ -1014,7 +1014,7 @@
     }
   },
   {
-    "positionGroup": "Attacking Midfielder",
+    "positionGroup": "Wide Midfielder / Winger",
     "name": "Inside Outlet Winger",
     "phase": "Out of Possession",
     "priorities": {
@@ -1024,7 +1024,7 @@
     }
   },
   {
-    "positionGroup": "Attacking Midfielder",
+    "positionGroup": "Wide Midfielder / Winger",
     "name": "Tracking Winger",
     "phase": "Out of Possession",
     "priorities": {
@@ -1034,7 +1034,7 @@
     }
   },
   {
-    "positionGroup": "Attacking Midfielder",
+    "positionGroup": "Wide Midfielder / Winger",
     "name": "Wide Outlet Winger",
     "phase": "Out of Possession",
     "priorities": {

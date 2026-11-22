@@ -168,11 +168,15 @@ function getBucketFamiliarity(p: PlayerRecord, code: string): number | null {
     case 'DM':
       return maxOf('dm');
     case 'CM':
-      return maxOf('mc', 'cm', 'amc');
+      return maxOf('mc', 'cm');
+    case 'AM':
+      return maxOf('amc', 'am');
     case 'W':
       return maxOf('amr', 'aml', 'mr', 'ml', 'rw', 'lw');
-    case 'ST':
-      return maxOf('st', 'stc');
+    case 'ST': {
+      const hasStKey = 'st' in lower || 'stc' in lower || 'cf' in lower;
+      return hasStKey ? maxOf('st', 'stc', 'cf') : null;
+    }
     default:
       return 0;
   }
@@ -196,7 +200,9 @@ function matchesPositionBucket(p: PlayerRecord, code: string): boolean {
     case 'DM':
       return pos.includes('DM');
     case 'CM':
-      return /\b(M|AM)\s*\([RLC]*C|MC|AMC/.test(pos);
+      return /\bMC\b|\bCM\b|(?<!A)\bM\s*\([RLC]*C/.test(pos);
+    case 'AM':
+      return /\bAMC\b|\bAM\s*\([RLC]*C/.test(pos);
     case 'W':
       return /\b(M|AM)\s*\([RLC]*[RL][RLC]*\)|AMR|AML|MR|ML|RW|LW/.test(pos);
     case 'ST':
@@ -412,7 +418,15 @@ export function buildSquadTransferAudit(
       idealMin: 4,
       idealMax: 6,
       starterSlots: 2,
-      scoutProfile: 'CM / AM IP + WCM OOP — Passing ≥ 12, First Touch ≥ 12, Work Rate ≥ 12, Stamina ≥ 12',
+      scoutProfile: 'Channel / Box-to-Box CM IP + Pressing / Screening CM OOP — Passing ≥ 12, First Touch ≥ 12, Work Rate ≥ 12, Stamina ≥ 12',
+    },
+    {
+      code: 'AM',
+      label: 'Attacking Mids (AMC)',
+      idealMin: 0,
+      idealMax: 3,
+      starterSlots: 1,
+      scoutProfile: 'Attacking Midfielder / Advanced Playmaker IP + Tracking AM OOP (4-2-3-1 / 3-4-2-1 shapes)',
     },
     {
       code: 'W',

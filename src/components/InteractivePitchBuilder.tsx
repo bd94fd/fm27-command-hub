@@ -71,13 +71,18 @@ const HOLDING_PIVOT_OOP_ROLES = new Set([
 export function evaluatePlaybookGuardrails(
   slots: SolvedSlot[],
   shape: FormationPresetKey,
-  activeSuspensions: ActiveSuspensionRecord[] = []
+  activeSuspensions: ActiveSuspensionRecord[] = [],
+  nextCompetitionName?: string | null
 ): PlaybookGuardrailAlert[] {
   const alerts: PlaybookGuardrailAlert[] = [];
   const players = slots
     .map((s) => s.player)
     .filter((p): p is PlayerRecord => Boolean(p));
-  const suspensionLookup = buildSuspensionLookup(players, activeSuspensions);
+  const suspensionLookup = buildSuspensionLookup(
+    players,
+    activeSuspensions,
+    nextCompetitionName
+  );
 
   // 1. Rest-defence flank check (both full-backs high IP without holding cover)
   const fbSlots = slots.filter(
@@ -193,6 +198,7 @@ export function evaluatePlaybookGuardrails(
 export interface InteractivePitchBuilderProps {
   players: PlayerRecord[];
   activeSuspensions?: ActiveSuspensionRecord[];
+  nextCompetitionName?: string | null;
   savedTactics?: DeepTacticRecord[];
   activeShape: FormationPresetKey;
   customSlots: PersistedCustomSlot[];
@@ -213,6 +219,7 @@ const PRESET_KEYS: FormationPresetKey[] = [
 export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = ({
   players,
   activeSuspensions = [],
+  nextCompetitionName = null,
   savedTactics = [],
   activeShape,
   customSlots,
@@ -222,7 +229,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
   onChangeApplyToAnalystOnly,
   onSolvedLineupChange,
 }) => {
-  const [matchdayMode, setMatchdayMode] = useState(true);
+  const [matchdayMode, setMatchdayMode] = useState(false);
   const [viewBTeam, setViewBTeam] = useState(false);
   const [selectedSlotId, setSelectedSlotId] = useState<string>('ST');
   const [pitchPhaseMode, setPitchPhaseMode] =
@@ -236,9 +243,10 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
         excludeInjured: true,
         excludeSuspended: true,
         activeSuspensions,
+        nextCompetitionName,
         minCondition: matchdayMode ? 80 : undefined,
       }),
-    [players, activeShape, customSlots, activeSuspensions, matchdayMode]
+    [players, activeShape, customSlots, activeSuspensions, nextCompetitionName, matchdayMode]
   );
 
   // Merge manual player overrides from customSlots onto the solved XI
@@ -258,7 +266,8 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
         overridePlayer,
         slot.positionGroup,
         slot.ipRole,
-        slot.oopRole
+        slot.oopRole,
+        slot.flank
       );
       return {
         ...slot,
@@ -278,8 +287,14 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
   }, [activeSlots, viewBTeam, onSolvedLineupChange]);
 
   const guardrails = useMemo(
-    () => evaluatePlaybookGuardrails(activeSlots, activeShape, activeSuspensions),
-    [activeSlots, activeShape, activeSuspensions]
+    () =>
+      evaluatePlaybookGuardrails(
+        activeSlots,
+        activeShape,
+        activeSuspensions,
+        nextCompetitionName
+      ),
+    [activeSlots, activeShape, activeSuspensions, nextCompetitionName]
   );
 
   const restDefenseMatrix = useMemo(

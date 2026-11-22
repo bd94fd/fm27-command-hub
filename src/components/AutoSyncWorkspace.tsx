@@ -48,6 +48,8 @@ import {
   buildLiveTacticalAnalystContext,
   ExtendedPlayerAutoUpdate,
 } from '../utils/tacticalAnalystContext';
+import { FormationPresetKey } from '../utils/bestXiSolver';
+import { PersistedCustomSlot } from '../services/fmStorage';
 import {
   parseJsonApiResponse,
   sanitizeReaderNotes,
@@ -99,6 +101,9 @@ interface AutoSyncWorkspaceProps {
   wageSpend?: string;
   balance?: string;
   hydratedFmSave?: HydratedSaveState | null;
+  activeShape?: FormationPresetKey;
+  customSlots?: PersistedCustomSlot[];
+  applyToAnalystOnly?: boolean;
   onUpdateSaveDate?: (date: string) => void;
   onAddMatch: (match: MatchLogEntry) => void;
   onApplyPlayerUpdates?: (updates: PlayerAutoUpdate[]) => void;
@@ -129,6 +134,9 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   wageSpend = '--',
   balance = '--',
   hydratedFmSave = null,
+  activeShape = '4-3-3 DM Wide',
+  customSlots = [],
+  applyToAnalystOnly = false,
   onUpdateSaveDate,
   onAddMatch,
   onApplyPlayerUpdates,
@@ -156,7 +164,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   const [showReaderNotes, setShowReaderNotes] = useState<boolean>(false);
   const [lastStepTimingsMs, setLastStepTimingsMs] = useState<Record<string, number>>({});
   const [reasoningMode, setReasoningMode] =
-    useState<AnalystReasoningMode>('fast_lite');
+    useState<AnalystReasoningMode>('deep_high');
   const [messageInput, setMessageInput] = useState('');
   const [uploadedImages, setUploadedImages] = useState<
     Array<{ base64: string; mimeType: string; name: string }>
@@ -384,6 +392,9 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         staff,
         recruitmentCases,
         userQuery: finalPrompt,
+        activeShape,
+        customSlots,
+        applyToAnalystOnly,
       });
 
       const historyForApi = buildConversationTranscript(turns, 14);
@@ -857,14 +868,14 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                 }
                 className="min-w-0 flex-1 sm:flex-none max-w-full px-2.5 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 rounded-lg"
               >
-                <option value="fast_lite">
-                  Rapid Touchline Co-Pilot (Gemini 3.5 Flash Lite — Default)
-                </option>
                 <option value="deep_high">
-                  Deep Tactical Reasoning (Gemini 3.5 Flash)
+                  Deep Tactical Reasoning (Gemini 3.5 Flash — Default)
                 </option>
                 <option value="max_xhigh">
                   Max Engine &amp; Squad Synthesis (Gemini 3.5 Flash)
+                </option>
+                <option value="fast_lite">
+                  Rapid Touchline Co-Pilot (Gemini 3.5 Flash Lite)
                 </option>
               </select>
             </div>
@@ -1455,7 +1466,9 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                     </div>
                     <ol className="list-decimal pl-5 space-y-1.5 text-xs text-slate-700 dark:text-slate-300">
                       {turn.immediateClicks.map((clickItem, idx) => (
-                        <li key={idx}>{clickItem}</li>
+                        <li key={idx}>
+                          {clickItem.replace(/^\s*\d+[.)]\s+/, '')}
+                        </li>
                       ))}
                     </ol>
                   </div>

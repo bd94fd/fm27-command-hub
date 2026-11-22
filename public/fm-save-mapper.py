@@ -46,7 +46,7 @@ try:
 except Exception:
     _layout_patcher = None  # type: ignore[assignment]
 
-MAPPER_CACHE_BUSTER = "?v=15"
+MAPPER_CACHE_BUSTER = "?v=16"
 
 # Detect native server Python vs browser Pyodide (emscripten) for realistic budgets
 _IS_PYODIDE = sys.platform == "emscripten"
@@ -85,6 +85,12 @@ _STATE: dict[str, Any] = {
     "game_date": None,
     "wage_budget_weekly": None,
     "squad_uids": set(),
+    "squad_pindex_map": {},
+    "squad_season_players_by_uid": {},
+    "squad_history_selectors": {},
+    "squad_omitted_history_selectors": frozenset(),
+    "squad_match_windows": {},
+    "club_index_refs": None,
     "missing_contract_uids": set(),
     "suspensions_hint_uids": set(),
     "players_out": [],
@@ -793,6 +799,12 @@ def step_close() -> None:
     _STATE["game_date"] = None
     _STATE["wage_budget_weekly"] = None
     _STATE["squad_uids"] = set()
+    _STATE["squad_pindex_map"] = {}
+    _STATE["squad_season_players_by_uid"] = {}
+    _STATE["squad_history_selectors"] = {}
+    _STATE["squad_omitted_history_selectors"] = frozenset()
+    _STATE["squad_match_windows"] = {}
+    _STATE["club_index_refs"] = None
     _STATE["missing_contract_uids"] = set()
     _STATE["suspensions_hint_uids"] = set()
     _STATE["players_out"] = []
@@ -1686,13 +1698,27 @@ def step_players() -> str:
                     pos_ratings = {str(k): _clamp_attr(v, 1) for k, v in raw_pos_map.items()}
                 else:
                     pos_ratings = {}
-                    for code in (
-                        "GK", "DL", "DC", "DR", "WBL", "DM", "WBR",
-                        "ML", "MC", "MR", "AML", "AMC", "AMR", "ST",
+                    for code, attr_candidates in (
+                        ("GK", ("gk", "GK")),
+                        ("DL", ("dl", "DL")),
+                        ("DC", ("dc", "DC")),
+                        ("DR", ("dr", "DR")),
+                        ("WBL", ("wbl", "WBL")),
+                        ("DM", ("dm", "DM")),
+                        ("WBR", ("wbr", "WBR")),
+                        ("ML", ("ml", "ML")),
+                        ("MC", ("mc", "MC")),
+                        ("MR", ("mr", "MR")),
+                        ("AML", ("aml", "AML")),
+                        ("AMC", ("amc", "AMC")),
+                        ("AMR", ("amr", "AMR")),
+                        ("ST", ("stc", "st", "STC", "ST")),
                     ):
-                        val = getattr(raw_pos_map, code.lower(), None)
-                        if val is None:
-                            val = getattr(raw_pos_map, code, None)
+                        val = None
+                        for cand_attr in attr_candidates:
+                            val = getattr(raw_pos_map, cand_attr, None)
+                            if val is not None:
+                                break
                         if val is not None:
                             pos_ratings[code] = _clamp_attr(val, 1)
                     if not pos_ratings:
@@ -1809,6 +1835,8 @@ def step_players() -> str:
             if inj is None:
                 continue
             kind_str = str(getattr(inj, "kind", "") or "").lower()
+            if "history" in kind_str or "past" in kind_str:
+                continue
             inj_date = getattr(inj, "date", None)
             days_rem = _int(_first_attr(inj, ("days_remaining", "days_left", "duration_days")), None)
             is_active = (
@@ -1816,7 +1844,7 @@ def step_players() -> str:
                 or "current" in kind_str
                 or "active" in kind_str
                 or (days_rem is not None and days_rem > 0)
-                or (game_date and inj_date and (game_date - inj_date).days <= 30)
+                or (not kind_str and game_date and inj_date and (game_date - inj_date).days <= 30)
                 or (not kind_str and inj_date is None)
             )
             if not is_active:
@@ -1866,12 +1894,88 @@ def step_players() -> str:
         if not has_rich_contract:
             missing_contract_uids.add(uid)
 
+    # Capture lightweight club-scoped metadata (47 players instead of 100k+ global) while
+    # player_records, club_index, and history selectors are already warm in memory.
+    # This allows Stage 4 season_stats, player_match_stats, and season_history to decode ONLY
+    # our managed club's squad in < 1s without re-opening game_db or re-parsing 100k players.
+    squad_pindex_map: dict[int, Any] = {}
+    squad_season_players_by_uid: dict[int, Any] = {}
+    squad_history_selectors: dict[int, int] = {}
+    squad_omitted_selectors: frozenset[int] = frozenset()
+    squad_match_windows: dict[int, tuple[int, int, int, Any]] = {}
+    club_index_refs = None
+    try:
+        ctx = getattr(save, "_context", None)
+        if ctx is not None and raw_players:
+            from fmsave.readers.season_stats import SeasonPlayer
+            from fmsave._save import (
+                GOALKEEPER_POSITION,
+                HISTORY_SELECTORS_CACHE_KEY,
+                OMITTED_HISTORY_SELECTORS_CACHE_KEY,
+            )
+
+            player_records = ctx.player_records() if hasattr(ctx, "player_records") else None
+            club_index = ctx.club_index() if hasattr(ctx, "club_index") else None
+            if club_index is not None:
+                club_index_refs = (club_index.team_to_club, club_index.club_by_uid)
+
+            raw_selectors = (
+                ctx.cached_value(HISTORY_SELECTORS_CACHE_KEY)
+                if hasattr(ctx, "cached_value")
+                else None
+            )
+            raw_omitted = (
+                ctx.cached_value(OMITTED_HISTORY_SELECTORS_CACHE_KEY)
+                if hasattr(ctx, "cached_value")
+                else None
+            )
+            if raw_omitted is not None:
+                squad_omitted_selectors = frozenset(raw_omitted)
+
+            pindexes = getattr(player_records, "pindexes", None) if player_records is not None else None
+            pos_by_uid = getattr(player_records, "position_by_uid", None) if player_records is not None else None
+            rec_offsets = getattr(player_records, "record_offsets", None) if player_records is not None else None
+            ambiguous_pos = getattr(player_records, "ambiguous_positions", frozenset()) if player_records is not None else frozenset()
+
+            for rp in raw_players:
+                r_uid = _int(getattr(rp, "uid", None), None)
+                if r_uid is None or r_uid not in squad_uids:
+                    continue
+                sp = SeasonPlayer(
+                    uid=r_uid,
+                    name=getattr(rp, "name", None),
+                    team_id=getattr(rp, "team_id", None),
+                    goalkeeper=GOALKEEPER_POSITION in (getattr(rp, "natural_positions", None) or ()),
+                )
+                squad_season_players_by_uid[r_uid] = sp
+                if isinstance(raw_selectors, dict) and r_uid in raw_selectors:
+                    squad_history_selectors[r_uid] = raw_selectors[r_uid]
+                elif raw_selectors is not None:
+                    sel_v = raw_selectors.get(r_uid)
+                    if sel_v is not None:
+                        squad_history_selectors[r_uid] = sel_v
+                if pos_by_uid is not None and pindexes is not None and r_uid in pos_by_uid:
+                    pos_idx = pos_by_uid[r_uid]
+                    squad_pindex_map[pindexes[pos_idx]] = sp
+                    if rec_offsets is not None and pos_idx not in ambiguous_pos:
+                        cur_off = rec_offsets[pos_idx]
+                        nxt_off = rec_offsets[pos_idx + 1] if (pos_idx + 1) < len(rec_offsets) else -1
+                        squad_match_windows[pos_idx] = (cur_off, nxt_off, r_uid, sp)
+    except Exception:
+        pass
+
     players_out.sort(key=lambda x: (-sort_keys.get(x["uid"], 0.0), x["name"]))
     _STATE["direct_injuries"] = direct_injuries[:15]
     _STATE["active_injuries"] = list(direct_injuries[:15])
     _STATE["active_suspensions"] = direct_suspensions
     _STATE["missing_contract_uids"] = missing_contract_uids
     _STATE["suspensions_hint_uids"] = suspensions_hint_uids
+    _STATE["squad_pindex_map"] = squad_pindex_map
+    _STATE["squad_season_players_by_uid"] = squad_season_players_by_uid
+    _STATE["squad_history_selectors"] = squad_history_selectors
+    _STATE["squad_omitted_history_selectors"] = squad_omitted_selectors
+    _STATE["squad_match_windows"] = squad_match_windows
+    _STATE["club_index_refs"] = club_index_refs
     _STATE["players_out"] = players_out
     _STATE["squad_uids"] = squad_uids
     del raw_players, sort_keys, bans_by_uid
@@ -2891,8 +2995,10 @@ def step_3_3_injuries(fast_sync: bool | None = None) -> str:
             p_uid = getattr(inj, "player_uid", None)
             if p_uid not in squad_uids and (club_uid is None or getattr(inj, "club_uid", None) != club_uid):
                 continue
-            kind_str = str(getattr(inj, "kind", "")).lower()
-            if "current" in kind_str or "active" in kind_str or (game_date and getattr(inj, "date", None) and (game_date - inj.date).days <= 30):
+            kind_str = str(getattr(inj, "kind", "") or "").lower()
+            if "history" in kind_str or "past" in kind_str:
+                continue
+            if "current" in kind_str or "active" in kind_str or (not kind_str and game_date and getattr(inj, "date", None) and (game_date - inj.date).days <= 30):
                 type_name = getattr(inj, "type_name", None) or getattr(inj, "injury_type", None) or "Injury"
                 k = (p_uid, str(type_name).lower())
                 if k in seen_keys:
@@ -2905,7 +3011,7 @@ def step_3_3_injuries(fast_sync: bool | None = None) -> str:
                     "date": _dmy(getattr(inj, "date", None)),
                     "severity": _label(getattr(inj, "severity", None)),
                     "cause": _label(getattr(inj, "cause", None)),
-                    "kind": kind_str,
+                    "kind": kind_str or "current",
                 })
                 if len(active_injuries) >= 25:
                     break
@@ -3393,9 +3499,325 @@ def step_club_extras_and_release_gamedb(fast_sync: bool | None = None) -> str:
     })
 
 
+def _extract_club_season_stats_fast(save: Any) -> list[Any] | None:
+    """Club-scoped direct season_stats reader: decodes ONLY our ~47 managed squad players
+    from the season_stats section without re-opening game_db, re-parsing 100k global players,
+    or validating 400k other-club records. Returns None if fast-path is unavailable."""
+    pindex_map = _STATE.get("squad_pindex_map")
+    club_refs = _STATE.get("club_index_refs")
+    container_index = getattr(save, "_container_index", None)
+    ctx = getattr(save, "_context", None)
+    if not pindex_map or not club_refs or container_index is None or ctx is None:
+        return None
+    try:
+        from fmsave.models import PlayerSeasonStats, SeasonStatsKind
+        from fmsave.readers.season_stats import (
+            _GOALS_POSITION,
+            _MINUTES_SINCE_GOAL_POSITION,
+            _club_fields,
+            _decode,
+            _line_readers,
+            find_season_stats_layout,
+            read_season_stats_section,
+        )
+
+        layout = find_season_stats_layout(ctx.info.build)
+        body, walk = read_season_stats_section(container_index, layout)
+        outfield_reader, goalkeeper_reader = _line_readers(layout)
+        slot_kinds = tuple(SeasonStatsKind(kind) for kind in layout.slot_kinds)
+        rating_scale = layout.rating_scale
+        team_to_club, club_by_uid = club_refs
+
+        rows: list[Any] = []
+        keys_seen: set[int] = set()
+        for record in walk.records:
+            pidx = record.key - 1
+            player = pindex_map.get(pidx)
+            if player is None or record.key in keys_seen:
+                continue
+            keys_seen.add(record.key)
+            line_reader = goalkeeper_reader if player.goalkeeper else outfield_reader
+            teams = [(player.team_id, record.own_lines), *record.other_teams]
+            for team_id, team_lines in teams:
+                c_uid, c_name, c_short, t_slot = _club_fields(
+                    team_id, team_to_club, club_by_uid
+                )
+                for slot, line in enumerate(team_lines):
+                    if line is None:
+                        continue
+                    kind = slot_kinds[slot]
+                    decoded = _decode(body, line, line_reader, rating_scale)
+                    minutes_since_goal = decoded.pop(_MINUTES_SINCE_GOAL_POSITION)
+                    if kind is not SeasonStatsKind.OVERALL or not decoded[_GOALS_POSITION]:
+                        minutes_since_goal = None
+                    rows.append(
+                        PlayerSeasonStats(
+                            player.uid,
+                            player.name,
+                            kind,
+                            team_id,
+                            c_uid,
+                            c_name,
+                            c_short,
+                            t_slot,
+                            *decoded,
+                            minutes_since_last_goal=minutes_since_goal,
+                        )
+                    )
+            if len(keys_seen) >= len(pindex_map):
+                break
+        return rows
+    except Exception:
+        return None
+
+
+def _extract_club_match_stats_fast(save: Any) -> dict[str, list[dict[str, Any]]] | None:
+    """Club-scoped direct player_match_stats reader: scans ONLY the ~47 managed squad players'
+    byte windows inside game_db instead of regex-scanning 800MB across 100k global players."""
+    match_windows = _STATE.get("squad_match_windows")
+    club_refs = _STATE.get("club_index_refs")
+    ctx = getattr(save, "_context", None)
+    game_date = _STATE.get("game_date")
+    if not match_windows or not club_refs or ctx is None or game_date is None:
+        return None
+    try:
+        from fmsave._save import GAME_DB_SECTION
+        from fmsave._scan import decode_date
+        from fmsave.readers.matches import (
+            MISSING_REFERENCE,
+            _match_search,
+            _read_match_record,
+            find_match_record_layout,
+        )
+
+        save_info = ctx.info
+        layout = find_match_record_layout(
+            save_info.section_schemas.get(GAME_DB_SECTION), save_info.build
+        )
+        if not layout.nonempty_supported:
+            return {}
+        search = _match_search(layout, game_date.year)
+        team_to_club, club_by_uid = club_refs
+        rating_scale = layout.rating_scale
+
+        out: dict[str, list[dict[str, Any]]] = {}
+
+        def _walk_child_local(game_db: bytes, first_at: int, count: int, end: int):
+            if count > (end - first_at) // search.header_bytes:
+                return None
+            at = first_at
+            recs = []
+            for _ in range(count):
+                decoded = _read_match_record(game_db, at, search, end)
+                if decoded is None:
+                    return None
+                rec, size = decoded
+                at += size
+                if (
+                    game_date.year - layout.years_before_clock
+                    <= rec.date.year
+                    <= game_date.year + layout.years_after_clock
+                    and search.lowest_team_id <= rec.opponent_team_id <= search.highest_team_id
+                    and search.lowest_competition_id <= rec.competition_id <= search.highest_competition_id
+                ):
+                    recs.append(rec)
+            return recs, at
+
+        with ctx.section(GAME_DB_SECTION) as game_db:
+            db_len = len(game_db)
+            for _pos_idx, (cur_off, nxt_off, p_uid, _sp) in match_windows.items():
+                owned_start = max(0, cur_off - search.owner_back_offset)
+                end = (
+                    max(owned_start, nxt_off - search.owner_back_offset)
+                    if nxt_off >= 0
+                    else db_len
+                )
+                cursor = owned_start
+                player_recs = []
+                while cursor < end:
+                    hit = search.parent_pattern.search(game_db, cursor, end)
+                    if hit is None:
+                        break
+                    parent_at = hit.start()
+                    cursor = parent_at + 1
+                    list_at = parent_at + layout.parent_header_bytes
+                    first_at = list_at + search.list_header_bytes
+                    if first_at + search.header_bytes > end:
+                        continue
+                    if decode_date(game_db, first_at + search.date_offset) is None:
+                        continue
+                    first_header = search.header_struct.unpack_from(game_db, first_at)
+                    if not (
+                        search.lowest_team_id
+                        <= first_header[search.opponent_team_id_index]
+                        <= search.highest_team_id
+                    ):
+                        continue
+                    first_comp = first_header[search.competition_id_index]
+                    if not (
+                        0 <= first_comp <= search.highest_competition_id
+                        or first_comp == MISSING_REFERENCE
+                    ):
+                        continue
+                    child_count = game_db[parent_at + layout.parent_count_offset]
+                    recs_batch = []
+                    ok = True
+                    for _ in range(child_count):
+                        if (
+                            list_at + search.list_header_bytes > end
+                            or game_db[list_at : list_at + 2] not in layout.list_markers
+                        ):
+                            ok = False
+                            break
+                        _team, cnt = search.list_header_struct.unpack_from(game_db, list_at)
+                        if cnt == 0:
+                            ok = False
+                            break
+                        walked = _walk_child_local(
+                            game_db, list_at + search.list_header_bytes, cnt, end
+                        )
+                        if walked is None:
+                            ok = False
+                            break
+                        child_recs, list_at = walked
+                        recs_batch.extend(child_recs)
+                        cursor = list_at
+                    if ok and recs_batch:
+                        cursor = list_at
+                        player_recs.extend(recs_batch)
+
+                uid_key = str(p_uid)
+                for rec in player_recs:
+                    if not getattr(rec, "has_stats", True):
+                        continue
+                    raw_rating = getattr(rec, "rating_raw", None)
+                    if raw_rating is None:
+                        raw_rating = getattr(rec, "rating", None)
+                    if raw_rating is None or raw_rating <= 0:
+                        continue
+                    rating_v = (
+                        float(raw_rating) / float(rating_scale)
+                        if (rating_scale and raw_rating > 10)
+                        else float(raw_rating)
+                    )
+                    if rating_v <= 0 or rating_v > 10.5:
+                        continue
+                    opp_name = ""
+                    opp_entry = team_to_club.get(rec.opponent_team_id)
+                    if opp_entry is not None:
+                        opp_club = club_by_uid.get(opp_entry[0])
+                        if opp_club is not None:
+                            opp_name = getattr(opp_club, "name", None) or getattr(opp_club, "short_name", None) or ""
+                    out.setdefault(uid_key, []).append({
+                        "date": _iso(rec.date) or "",
+                        "rating": round(rating_v, 2),
+                        "goals": _int(getattr(rec, "goals", None), 0) or 0,
+                        "assists": _int(getattr(rec, "assists", None), 0) or 0,
+                        "opponent": str(opp_name),
+                        "minutes": _int(getattr(rec, "minutes", None), 0) or 0,
+                    })
+        return out
+    except Exception:
+        return None
+
+
+def _extract_club_season_history_fast(save: Any) -> dict[str, list[dict[str, Any]]] | None:
+    """Club-scoped direct player_season_history reader: decodes ONLY our ~47 managed squad
+    players' history lists from the archive section without re-opening game_db or validating
+    500,000 global archive units."""
+    players_by_uid = _STATE.get("squad_season_players_by_uid")
+    selectors = _STATE.get("squad_history_selectors")
+    omitted_selectors = _STATE.get("squad_omitted_history_selectors") or frozenset()
+    club_refs = _STATE.get("club_index_refs")
+    container_index = getattr(save, "_container_index", None)
+    ctx = getattr(save, "_context", None)
+    if (
+        not players_by_uid
+        or not selectors
+        or not club_refs
+        or container_index is None
+        or ctx is None
+    ):
+        return None
+    try:
+        from fmsave._save import ARCHIVE_SECTION
+        from fmsave.readers.season_history import (
+            _ABSENT,
+            _METADATA,
+            find_history_layout,
+            read_history_index,
+        )
+        from fmsave.readers.season_stats import (
+            _club_fields as season_club_fields,
+            decode_season_line,
+            find_season_stats_layout,
+        )
+
+        if ARCHIVE_SECTION not in container_index.sections:
+            return {}
+        layout = find_history_layout(ctx.info.build)
+        stat_layout = find_season_stats_layout(ctx.info.build)
+        index = read_history_index(container_index, layout)
+        header_bytes = len(layout.archive_header)
+        team_to_club, club_by_uid = club_refs
+
+        out: dict[str, list[dict[str, Any]]] = {}
+        with ctx.section(ARCHIVE_SECTION) as archive:
+            if not archive.startswith(layout.archive_header):
+                return None
+            arch_len = len(archive)
+            for uid, player in players_by_uid.items():
+                selector = selectors.get(uid, _ABSENT)
+                if (
+                    selector == _ABSENT
+                    or selector in omitted_selectors
+                    or not (0 <= selector < len(index.lists))
+                ):
+                    continue
+                offsets = index.lists[selector]
+                if not offsets:
+                    continue
+                uid_key = str(uid)
+                for offset in offsets:
+                    at = header_bytes + offset
+                    if at + 152 > arch_len:
+                        continue
+                    team_id, _comp, _unk, year = _METADATA.unpack_from(archive, at + 1)
+                    team_id = None if team_id == _ABSENT else team_id
+                    _c_uid, c_name, _c_short, _t_slot = season_club_fields(
+                        team_id, team_to_club, club_by_uid
+                    )
+                    line = bytearray(stat_layout.line_bytes)
+                    line[:2] = stat_layout.line_marker
+                    line[2:6] = archive[at + 13 : at + 17]
+                    line[6:11] = archive[at + 24 : at + 29]
+                    line[11:14] = archive[at + 17 : at + 20]
+                    line[14] = archive[at + 29]
+                    line[15:19] = archive[at + 20 : at + 24]
+                    line[19:139] = archive[at + 32 : at + 152]
+                    decoded = decode_season_line(bytes(line), 0, player.goalkeeper, stat_layout)
+                    # decoded tuple starts with: starts, substitute_appearances, minutes, rated_appearances, average_rating, potm, goals, assists, ...
+                    starts = _int(decoded[0], 0) or 0
+                    subs = _int(decoded[1], 0) or 0
+                    avg_rat = _float(decoded[4], 0.0) or 0.0
+                    goals = _int(decoded[6], 0) or 0
+                    assists = _int(decoded[7], 0) or 0
+                    out.setdefault(uid_key, []).append({
+                        "season": str(year) if year else "Season",
+                        "club": str(c_name or "Club"),
+                        "apps": starts + subs,
+                        "goals": goals,
+                        "assists": assists,
+                        "avgRating": round(avg_rat, 2),
+                    })
+        return out
+    except Exception:
+        return None
+
+
 def step_4_1_season_stats(fast_sync: bool | None = None) -> str:
-    """Stage 4 (Full Sync): Season stats — lazy stream with native inspect.signature filters,
-    O(1) squad_uids skip, early exit, 12.0s hard cap, and GC cleanup.
+    """Stage 4 (Full Sync): Season stats — uses club-scoped direct decode (~47 players,
+    < 1s, zero game_db re-open) with graceful fallback to lazy stream on test stubs.
     Skipped immediately when fast_sync=True."""
     use_fast = _STATE.get("fast_sync", False) if fast_sync is None else bool(fast_sync)
     if use_fast:
@@ -3517,28 +3939,33 @@ def step_4_1_season_stats(fast_sync: bool | None = None) -> str:
         })
 
     try:
-        primary_iter, fallback_table, used_scoped = _open_table_stream(
-            save,
-            "player_season_stats",
-            club_uid=club_uid,
-            squad_uids=squad_uids,
-            try_where_club=True,
-        )
-        if primary_iter is not None:
-            try:
-                _scan_stream(primary_iter)
-            except Exception:
-                if fallback_table is not None and not timed_out:
-                    _scan_stream(fallback_table)
-            else:
-                if (
-                    used_scoped
-                    and not best_by_uid
-                    and fallback_table is not None
-                    and not timed_out
-                    and (time.monotonic() - t0) < SEASON_STATS_BUDGET_SEC
-                ):
-                    _scan_stream(fallback_table)
+        fast_rows = _extract_club_season_stats_fast(save)
+        if fast_rows is not None:
+            for row in fast_rows:
+                _consume_stat_row(row)
+        else:
+            primary_iter, fallback_table, used_scoped = _open_table_stream(
+                save,
+                "player_season_stats",
+                club_uid=club_uid,
+                squad_uids=squad_uids,
+                try_where_club=True,
+            )
+            if primary_iter is not None:
+                try:
+                    _scan_stream(primary_iter)
+                except Exception:
+                    if fallback_table is not None and not timed_out:
+                        _scan_stream(fallback_table)
+                else:
+                    if (
+                        used_scoped
+                        and not best_by_uid
+                        and fallback_table is not None
+                        and not timed_out
+                        and (time.monotonic() - t0) < SEASON_STATS_BUDGET_SEC
+                    ):
+                        _scan_stream(fallback_table)
 
         if timed_out:
             warning_msg = (
@@ -3601,7 +4028,7 @@ def step_4_1_season_stats(fast_sync: bool | None = None) -> str:
 
 def step_4_2_player_match_stats(fast_sync: bool | None = None) -> str:
     """Step 4/6 (2/4): Club-scoped player_match_stats (Last-5 Form ratings) —
-    lazy stream (NEVER list(...)), O(1) squad_uids skip, 12.0s hard cap, GC cleanup.
+    uses club-scoped byte-window direct decode (~47 players) with lazy-stream fallback.
     Skipped immediately when fast_sync=True."""
     use_fast = _STATE.get("fast_sync", False) if fast_sync is None else bool(fast_sync)
     if use_fast:
@@ -3665,28 +4092,32 @@ def step_4_2_player_match_stats(fast_sync: bool | None = None) -> str:
             _consume_pms(row)
 
     try:
-        primary_iter, fallback_table, used_scoped = _open_table_stream(
-            save,
-            "player_match_stats",
-            club_uid=club_uid,
-            squad_uids=squad_uids,
-            try_where_club=True,
-        )
-        if primary_iter is not None:
-            try:
-                _scan_pms(primary_iter)
-            except Exception:
-                if fallback_table is not None and not timed_out:
-                    _scan_pms(fallback_table)
-            else:
-                if (
-                    used_scoped
-                    and not player_match_stats
-                    and fallback_table is not None
-                    and not timed_out
-                    and (time.monotonic() - t0) < PLAYER_MATCH_STATS_BUDGET_SEC
-                ):
-                    _scan_pms(fallback_table)
+        fast_pms = _extract_club_match_stats_fast(save)
+        if fast_pms is not None:
+            player_match_stats = fast_pms
+        else:
+            primary_iter, fallback_table, used_scoped = _open_table_stream(
+                save,
+                "player_match_stats",
+                club_uid=club_uid,
+                squad_uids=squad_uids,
+                try_where_club=True,
+            )
+            if primary_iter is not None:
+                try:
+                    _scan_pms(primary_iter)
+                except Exception:
+                    if fallback_table is not None and not timed_out:
+                        _scan_pms(fallback_table)
+                else:
+                    if (
+                        used_scoped
+                        and not player_match_stats
+                        and fallback_table is not None
+                        and not timed_out
+                        and (time.monotonic() - t0) < PLAYER_MATCH_STATS_BUDGET_SEC
+                    ):
+                        _scan_pms(fallback_table)
 
         if timed_out:
             warning_msg = (
@@ -3723,8 +4154,9 @@ def step_4_2_player_match_stats(fast_sync: bool | None = None) -> str:
 
 
 def step_4_3_season_history(fast_sync: bool | None = None) -> str:
-    """Step 4/6 (3/4): Club-scoped player_season_history — lazy stream (NEVER list(...)),
-    O(1) squad_uids skip, 10.0s hard cap, GC cleanup. Skipped immediately when fast_sync=True."""
+    """Step 4/6 (3/4): Club-scoped player_season_history — uses direct archive decode
+    (~47 players, < 1s, zero game_db re-open) with lazy-stream fallback.
+    Skipped immediately when fast_sync=True."""
     use_fast = _STATE.get("fast_sync", False) if fast_sync is None else bool(fast_sync)
     if use_fast:
         _STATE["player_season_history"] = {}
@@ -3757,38 +4189,45 @@ def step_4_3_season_history(fast_sync: bool | None = None) -> str:
             if p_uid not in squad_uids:
                 continue
             uid_key = str(p_uid)
+            apps_val = _int(getattr(h, "apps", None) or getattr(h, "appearances", None), None)
+            if apps_val is None:
+                apps_val = (_int(getattr(h, "starts", None), 0) or 0) + (_int(getattr(h, "substitute_appearances", None), 0) or 0)
             season_history.setdefault(uid_key, []).append({
-                "season": str(getattr(h, "season", None) or getattr(h, "year", None) or "Season"),
+                "season": str(getattr(h, "season", None) or getattr(h, "season_year", None) or getattr(h, "year", None) or "Season"),
                 "club": str(getattr(h, "club_name", None) or "Club"),
-                "apps": _int(getattr(h, "apps", None) or getattr(h, "appearances", None), 0) or 0,
+                "apps": apps_val,
                 "goals": _int(getattr(h, "goals", None), 0) or 0,
                 "assists": _int(getattr(h, "assists", None), 0) or 0,
                 "avgRating": round(_float(getattr(h, "avg_rating", None) or getattr(h, "average_rating", None), 0.0) or 0.0, 2),
             })
 
     try:
-        primary_iter, fallback_table, used_scoped = _open_table_stream(
-            save,
-            "player_season_history",
-            club_uid=club_uid,
-            squad_uids=squad_uids,
-            try_where_club=False,
-        )
-        if primary_iter is not None:
-            try:
-                _scan_psh(primary_iter)
-            except Exception:
-                if fallback_table is not None and not timed_out:
-                    _scan_psh(fallback_table)
-            else:
-                if (
-                    used_scoped
-                    and not season_history
-                    and fallback_table is not None
-                    and not timed_out
-                    and (time.monotonic() - t0) < SEASON_HISTORY_BUDGET_SEC
-                ):
-                    _scan_psh(fallback_table)
+        fast_psh = _extract_club_season_history_fast(save)
+        if fast_psh is not None:
+            season_history = fast_psh
+        else:
+            primary_iter, fallback_table, used_scoped = _open_table_stream(
+                save,
+                "player_season_history",
+                club_uid=club_uid,
+                squad_uids=squad_uids,
+                try_where_club=False,
+            )
+            if primary_iter is not None:
+                try:
+                    _scan_psh(primary_iter)
+                except Exception:
+                    if fallback_table is not None and not timed_out:
+                        _scan_psh(fallback_table)
+                else:
+                    if (
+                        used_scoped
+                        and not season_history
+                        and fallback_table is not None
+                        and not timed_out
+                        and (time.monotonic() - t0) < SEASON_HISTORY_BUDGET_SEC
+                    ):
+                        _scan_psh(fallback_table)
 
         if timed_out:
             warning_msg = (
@@ -3850,6 +4289,21 @@ def step_4_4_contracts_and_suspensions(fast_sync: bool | None = None) -> str:
             "suspensionsCount": len(_STATE.get("active_suspensions", [])),
             "elapsedSec": 0.0,
             "timedOut": False,
+        })
+
+    # In real fmsave, players(), contracts(), and suspensions() come from ONE unified decode
+    # pass in step_players(), so p.contract and p.suspensions already contain 100% of squad
+    # contracts and suspensions. Calling save.contracts()/save.suspensions() after step_3_4
+    # evicted the player cache would re-parse all 100k+ global players (~42s) for zero new data.
+    if _STATE.get("club_index_refs") is not None and not _STATE.get("suspensions_hint_uids"):
+        elapsed_ms = _record_step_timing("step_4_4_contracts_and_suspensions", t0)
+        return json.dumps({
+            "contractsEnriched": 0,
+            "suspensionsCount": len(_STATE.get("active_suspensions", [])),
+            "elapsedSec": round(time.monotonic() - t0, 2),
+            "elapsedMs": elapsed_ms,
+            "timedOut": False,
+            "warnings": [],
         })
 
     contracts_enriched = 0
@@ -4087,43 +4541,31 @@ def step_fixtures(fast_sync: bool | None = None) -> str:
 
     club_fixtures = []
     if club_uid is not None:
-        t0 = time.monotonic()
+        # Release game_db borrow before save.fixtures() streams the large span section so
+        # game_db (~800MB) and span (~400MB) are never held in memory simultaneously.
+        _exit_game_db_borrow()
+        gc.collect()
         try:
             fix_table = save.fixtures()
-            used_scoped = False
-            if hasattr(fix_table, "where"):
-                try:
-                    seen_scoped = 0
-                    for f in fix_table.where(home_club_uid=club_uid):
-                        seen_scoped += 1
-                        if (seen_scoped & 255) == 0 and (time.monotonic() - t0) > 20.0:
-                            _STATE["warnings"].append("fixtures: 20s time cap reached")
-                            break
-                        if getattr(f, "home_team_slot", None) in (None, 0):
-                            club_fixtures.append(f)
-                    if (time.monotonic() - t0) <= 20.0:
-                        for f in fix_table.where(away_club_uid=club_uid):
-                            seen_scoped += 1
-                            if (seen_scoped & 255) == 0 and (time.monotonic() - t0) > 20.0:
-                                _STATE["warnings"].append("fixtures: 20s time cap reached")
-                                break
-                            if getattr(f, "away_team_slot", None) in (None, 0):
-                                club_fixtures.append(f)
-                    used_scoped = True
-                except Exception:
-                    used_scoped = False
-
-            if not used_scoped:
-                seen = 0
-                for f in fix_table:
-                    seen += 1
-                    if (seen & 511) == 0 and (time.monotonic() - t0) > 20.0:
-                        _STATE["warnings"].append("fixtures: 20s time cap reached")
-                        break
-                    is_home = (f.home_club_uid == club_uid and f.home_team_slot in (None, 0))
-                    is_away = (f.away_club_uid == club_uid and f.away_team_slot in (None, 0))
-                    if is_home or is_away:
-                        club_fixtures.append(f)
+            # Start the 20s iteration cap AFTER save.fixtures() finishes decompressing/building
+            # the table; otherwise a slow mobile table build (>20s) aborts before away fixtures.
+            t_scan = time.monotonic()
+            seen = 0
+            for f in fix_table:
+                seen += 1
+                if (seen & 511) == 0 and (time.monotonic() - t_scan) > 20.0:
+                    _STATE["warnings"].append("fixtures: 20s time cap reached")
+                    break
+                is_home = (
+                    getattr(f, "home_club_uid", None) == club_uid
+                    and getattr(f, "home_team_slot", None) in (None, 0)
+                )
+                is_away = (
+                    getattr(f, "away_club_uid", None) == club_uid
+                    and getattr(f, "away_team_slot", None) in (None, 0)
+                )
+                if is_home or is_away:
+                    club_fixtures.append(f)
         except Exception as exc:
             _STATE["warnings"].append(f"fixtures: {type(exc).__name__}")
 

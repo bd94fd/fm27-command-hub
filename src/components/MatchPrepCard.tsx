@@ -109,8 +109,13 @@ export const MatchPrepCard: React.FC<MatchPrepCardProps> = ({
   }, [activeSlots, players]);
 
   const suspensionLookup = useMemo(
-    () => buildSuspensionLookup(players, activeSuspensions),
-    [players, activeSuspensions]
+    () =>
+      buildSuspensionLookup(
+        players,
+        activeSuspensions,
+        nextFixtureObj?.competition ?? null
+      ),
+    [players, activeSuspensions, nextFixtureObj]
   );
 
   // Active XI injury / ban / <85% fitness warnings

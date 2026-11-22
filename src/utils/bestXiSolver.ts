@@ -101,6 +101,8 @@ export interface BestXiSolverOptions {
   excludeInjured?: boolean;
   excludeSuspended?: boolean;
   activeSuspensions?: ActiveSuspensionRecord[];
+  /** Optional next fixture competition name (e.g. "Eerste Nationale VV") so cup-only bans do not exclude players from league matches */
+  nextCompetitionName?: string | null;
   minCondition?: number;
   excludePlayerIds?: string[];
 }
@@ -247,10 +249,58 @@ function isNaturalForPositionGroup(
   return doesPlayerMatchFlankText(player, positionGroup, flank);
 }
 
+export function classifyCompetitionKind(
+  competitionName?: string | null
+): 'cup' | 'continental' | 'league' | 'unknown' {
+  const txt = (competitionName || '').trim().toLowerCase();
+  if (!txt || txt === '--' || txt === 'league / cup') return 'unknown';
+  if (/(champions|europa|conference|continental|uefa)/.test(txt)) {
+    return 'continental';
+  }
+  if (/(cup|beker|trophy|shield|\bfa\b|pokal|coupe|copa|coppa)/.test(txt)) {
+    return 'cup';
+  }
+  return 'league';
+}
+
+/**
+ * Returns true if a disciplinary ban applies to the given next fixture competition.
+ * When nextCompetitionName is omitted/unknown, preserves conservative exclusion for tests.
+ */
+export function isSuspensionActiveForCompetition(
+  ban: ActiveSuspensionRecord,
+  nextCompetitionName?: string | null
+): boolean {
+  if (ban.matchesRemaining !== undefined && ban.matchesRemaining <= 0) {
+    return false;
+  }
+  const scope = (ban.scope || 'league').toLowerCase();
+  if (scope === 'all') return true;
+  if (!nextCompetitionName) return true;
+
+  const nextNorm = nextCompetitionName.trim().toLowerCase();
+  const banCompNorm = (ban.competitionName || '').trim().toLowerCase();
+  if (banCompNorm && nextNorm && (nextNorm.includes(banCompNorm) || banCompNorm.includes(nextNorm))) {
+    return true;
+  }
+
+  const nextKind = classifyCompetitionKind(nextCompetitionName);
+  if (nextKind === 'unknown') return true;
+  if (scope === 'cup') return nextKind === 'cup';
+  if (scope === 'continental') return nextKind === 'continental';
+  if (scope === 'league') return nextKind === 'league';
+  return true;
+}
+
 export function buildSuspensionLookup(
   players: PlayerRecord[],
-  activeSuspensions: ActiveSuspensionRecord[] = []
-): { byUid: Map<number, ActiveSuspensionRecord>; byNameLower: Map<string, ActiveSuspensionRecord> } {
+  activeSuspensions: ActiveSuspensionRecord[] = [],
+  nextCompetitionName?: string | null
+): {
+  byUid: Map<number, ActiveSuspensionRecord>;
+  byNameLower: Map<string, ActiveSuspensionRecord>;
+  nextCompetitionName?: string | null;
+} {
   const byUid = new Map<number, ActiveSuspensionRecord>();
   const byNameLower = new Map<string, ActiveSuspensionRecord>();
 
@@ -260,7 +310,7 @@ export function buildSuspensionLookup(
   ];
 
   for (const ban of combined) {
-    if (ban.matchesRemaining !== undefined && ban.matchesRemaining <= 0) continue;
+    if (!isSuspensionActiveForCompetition(ban, nextCompetitionName)) continue;
     if (ban.playerUid && ban.playerUid > 0) {
       byUid.set(ban.playerUid, ban);
     }
@@ -269,25 +319,32 @@ export function buildSuspensionLookup(
     }
   }
 
-  return { byUid, byNameLower };
+  return { byUid, byNameLower, nextCompetitionName };
 }
 
 export function getPlayerSuspension(
   player: PlayerRecord,
-  lookup: { byUid: Map<number, ActiveSuspensionRecord>; byNameLower: Map<string, ActiveSuspensionRecord> }
+  lookup: {
+    byUid: Map<number, ActiveSuspensionRecord>;
+    byNameLower: Map<string, ActiveSuspensionRecord>;
+    nextCompetitionName?: string | null;
+  }
 ): ActiveSuspensionRecord | undefined {
   if (player.uid && lookup.byUid.has(player.uid)) {
     return lookup.byUid.get(player.uid);
   }
   const byName = lookup.byNameLower.get(player.name.trim().toLowerCase());
   if (byName) return byName;
-  return player.activeSuspensions?.find((b) => b.matchesRemaining > 0);
+  return player.activeSuspensions?.find((b) =>
+    isSuspensionActiveForCompetition(b, lookup.nextCompetitionName)
+  );
 }
 
 interface SlotScore {
   ipFitPct: number;
   oopFitPct: number;
   combinedFitPct: number;
+  selectionScore: number;
   isNaturalPosition: boolean;
 }
 
@@ -300,20 +357,44 @@ export function evaluatePlayerForSlot(
 ): SlotScore {
   const ipRole = findIpRole(ipRoleName, positionGroup);
   const oopRole = findOopRole(oopRoleName, positionGroup);
-  const ipFitPct = scorePlayerForFm27Role(player, ipRole);
-  const oopFitPct = scorePlayerForFm27Role(player, oopRole);
+  const slotContext = { positionGroup, flank };
+  const ipFitPct = scorePlayerForFm27Role(player, ipRole, slotContext);
+  const oopFitPct = scorePlayerForFm27Role(player, oopRole, slotContext);
+  const fam = getFlankAwareFamiliarity(player, positionGroup, flank);
   const isNaturalPosition = isNaturalForPositionGroup(player, positionGroup, flank);
   const rawCombined = Math.round(ipFitPct * 0.55 + oopFitPct * 0.45);
   const combinedFitPct = isNaturalPosition
     ? rawCombined
     : Math.max(1, Math.round(rawCombined * 0.72));
-  return { ipFitPct, oopFitPct, combinedFitPct, isNaturalPosition };
+
+  // Weighted selection score blends role attribute fit (58%), star ability (42%),
+  // and an exact-natural familiarity bonus (18-20/20 on exact flank edges accomplished 15-17/20).
+  const abilityNorm = Math.min(100, Math.max(0, ((player.ability || 2.5) / 5) * 100));
+  const exactNaturalBonus =
+    fam !== null
+      ? fam >= 18
+        ? 6
+        : fam >= 15
+          ? 0
+          : -20
+      : isNaturalPosition
+        ? 4
+        : -20;
+  const selectionScore = Math.round(
+    combinedFitPct * 0.58 + abilityNorm * 0.42 + exactNaturalBonus
+  );
+
+  return { ipFitPct, oopFitPct, combinedFitPct, selectionScore, isNaturalPosition };
 }
 
 function solveSingleLineup(
   eligiblePlayers: PlayerRecord[],
   templates: Array<FormationSlotTemplate & { ipRole: string; oopRole: string }>,
-  suspensionLookup: { byUid: Map<number, ActiveSuspensionRecord>; byNameLower: Map<string, ActiveSuspensionRecord> }
+  suspensionLookup: {
+    byUid: Map<number, ActiveSuspensionRecord>;
+    byNameLower: Map<string, ActiveSuspensionRecord>;
+    nextCompetitionName?: string | null;
+  }
 ): SolvedSlot[] {
   const usedIds = new Set<string>();
   const assigned = new Map<string, PlayerRecord | null>();
@@ -385,6 +466,9 @@ function solveSingleLineup(
         if (a.score.isNaturalPosition !== b.score.isNaturalPosition) {
           return a.score.isNaturalPosition ? -1 : 1;
         }
+        if (b.score.selectionScore !== a.score.selectionScore) {
+          return b.score.selectionScore - a.score.selectionScore;
+        }
         if (b.score.combinedFitPct !== a.score.combinedFitPct) {
           return b.score.combinedFitPct - a.score.combinedFitPct;
         }
@@ -431,8 +515,8 @@ function solveSingleLineup(
           continue;
         }
 
-        const currentSum = curA.combinedFitPct + curB.combinedFitPct;
-        const swappedSum = swpA.combinedFitPct + swpB.combinedFitPct;
+        const currentSum = curA.selectionScore + curB.selectionScore;
+        const swappedSum = swpA.selectionScore + swpB.selectionScore;
 
         if (
           swappedNaturalCount > currentNaturalCount ||
@@ -521,7 +605,11 @@ export function solveBestXi(
   const excludeSuspended = options.excludeSuspended ?? true;
   const minCondition = options.minCondition;
   const excludeIds = new Set(options.excludePlayerIds || []);
-  const suspensionLookup = buildSuspensionLookup(players, options.activeSuspensions || []);
+  const suspensionLookup = buildSuspensionLookup(
+    players,
+    options.activeSuspensions || [],
+    options.nextCompetitionName
+  );
 
   const baseTemplates = FORMATION_PRESETS[shape] || FORMATION_PRESETS['4-3-3 DM Wide'];
   const customMap = new Map(

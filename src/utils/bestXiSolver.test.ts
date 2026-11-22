@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { solveBestXi, FORMATION_PRESETS } from './bestXiSolver.ts';
+import {
+  solveBestXi,
+  FORMATION_PRESETS,
+  isSuspensionActiveForCompetition,
+} from './bestXiSolver.ts';
 import { PlayerRecord } from '../types/fm27.ts';
 
 function makePlayer(
@@ -260,4 +264,71 @@ test('solveBestXi respects left vs right flanks for full-backs and wingers', () 
   assert.equal(res.startingXI.find((s) => s.slotId === 'AMR')?.player?.id, 'rw-only');
   assert.equal(res.startingXI.find((s) => s.slotId === 'AML')?.player?.id, 'lw-only');
 });
+
+test('Cup-only suspensions (e.g. Croky Cup) do NOT exclude players from League matches, but DO exclude them from Cup matches', () => {
+  const cupBan = {
+    playerUid: 8,
+    playerName: 'CM One',
+    matchesRemaining: 1,
+    competitionName: 'Croky Cup',
+    scope: 'cup' as const,
+    reason: 'Red Card',
+  };
+
+  assert.equal(isSuspensionActiveForCompetition(cupBan, 'Eerste Nationale VV'), false);
+  assert.equal(isSuspensionActiveForCompetition(cupBan, 'Croky Cup'), true);
+  assert.equal(isSuspensionActiveForCompetition(cupBan, null), true);
+
+  const squad = buildFullSquad();
+  const leagueXi = solveBestXi(squad, {
+    shape: '4-3-3 DM Wide',
+    excludeSuspended: true,
+    activeSuspensions: [cupBan],
+    nextCompetitionName: 'Eerste Nationale VV',
+  });
+  const leagueIds = new Set(leagueXi.startingXI.map((s) => s.player?.id));
+  assert.equal(leagueIds.has('p8'), true, 'Cup-banned CM One must be eligible in league');
+
+  const cupXi = solveBestXi(squad, {
+    shape: '4-3-3 DM Wide',
+    excludeSuspended: true,
+    activeSuspensions: [cupBan],
+    nextCompetitionName: 'Croky Cup',
+  });
+  const cupIds = new Set(cupXi.startingXI.map((s) => s.player?.id));
+  assert.equal(cupIds.has('p8'), false, 'Cup-banned CM One must be excluded in Croky Cup');
+});
+
+test('AMC-only attacking midfielder (AMC:20, MC:2) does NOT displace natural MC:20 starters in 4-3-3 DM Wide', () => {
+  const squad = buildFullSquad();
+  const amcOnly = makePlayer('p99', 'Visar Shala', 'AM (RC), ST (C)', {
+    ability: 4.5,
+    positionRatings: { AMC: 20, AMR: 18, ST: 15, MC: 2 },
+    attributes: {
+      pace: 14,
+      acceleration: 14,
+      stamina: 11,
+      jumpingReach: 7,
+      determination: 14,
+      passing: 15,
+      finishing: 14,
+      tackling: 4,
+      firstTouch: 15,
+      decisions: 13,
+      workRate: 8,
+      offTheBall: 15,
+    },
+  });
+
+  const res = solveBestXi([...squad, amcOnly], { shape: '4-3-3 DM Wide' });
+  const cmIds = res.startingXI
+    .filter((s) => s.slotId === 'MCR' || s.slotId === 'MCL')
+    .map((s) => s.player?.id);
+  assert.equal(
+    cmIds.includes('p99'),
+    false,
+    `AMC-only (MC:2) must not be placed in 4-3-3 CM slots, got ${cmIds.join(', ')}`
+  );
+});
+
 

@@ -364,4 +364,42 @@ test('Pack 5 Succession Gap Flag: flags position groups where every first-team o
   assert.equal(lbAdvice?.tags.includes('Succession Gap'), false);
 });
 
+test('Squad Advice separates AM (AMC) from CM (MC) so an AMC:20 / MC:2 player is never ranked ahead of natural MC:20 central midfielders', () => {
+  const squad: PlayerRecord[] = [
+    makePlayer({
+      id: 'amc-1',
+      name: 'Visar Shala',
+      position: 'AM (RC), ST (C)',
+      ability: 3.5,
+      positionRatings: { AMC: 20, AMR: 18, ST: 15, MC: 2 },
+    }),
+    makePlayer({
+      id: 'cm-1',
+      name: 'Sander Dieltjens',
+      position: 'M (C)',
+      ability: 3.0,
+      positionRatings: { MC: 20, DM: 15 },
+    }),
+  ];
+
+  const audit = buildSquadTransferAudit(squad, '15/09/2027', {
+    balanceLabel: '£100K',
+    wagePayrollWeekly: 2000,
+    wageBudgetWeekly: 5000,
+  });
+
+  const cmBucket = audit.positionalNeeds.find((b) => b.code === 'CM');
+  const amBucket = audit.positionalNeeds.find((b) => b.code === 'AM');
+  assert.ok(cmBucket, 'CM bucket should exist');
+  assert.ok(amBucket, 'AM bucket should exist');
+  assert.equal(
+    cmBucket.players.some((p) => p.id === 'amc-1'),
+    false,
+    'AMC:20/MC:2 player must NOT appear in CM depth chart'
+  );
+  assert.equal(cmBucket.players[0]?.id, 'cm-1');
+  assert.equal(amBucket.players[0]?.id, 'amc-1');
+});
+
+
 

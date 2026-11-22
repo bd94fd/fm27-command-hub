@@ -105,8 +105,17 @@ export function inferFm27Roles(
     };
   }
 
-  // 5. Central Midfielder
-  if (p.includes('MC') || p.includes('M (C)')) {
+  // 5. Attacking Midfielder (C) — check BEFORE MC so 'AMC' never matches 'MC'
+  if (p.includes('AMC') || p.includes('AM (C)')) {
+    const isPlaymaker = (attrs.passing || 0) >= 13 && (attrs.decisions || 0) >= 12;
+    return {
+      ipRole: isPlaymaker ? 'Advanced Playmaker' : 'Attacking Midfielder',
+      oopRole: 'Tracking Attacking Midfielder',
+    };
+  }
+
+  // 6. Central Midfielder
+  if (/\bMC\b|M\s*\(C\)/.test(p)) {
     if ((attrs.passing || 0) >= 13 && (attrs.firstTouch || 0) >= 11) {
       return {
         ipRole: 'Deep-Lying Playmaker',
@@ -122,15 +131,6 @@ export function inferFm27Roles(
     return {
       ipRole: 'Central Midfielder',
       oopRole: 'Pressing Central Midfielder',
-    };
-  }
-
-  // 6. Attacking Midfielder (C)
-  if (p.includes('AMC') || p.includes('AM (C)')) {
-    const isPlaymaker = (attrs.passing || 0) >= 13 && (attrs.decisions || 0) >= 12;
-    return {
-      ipRole: isPlaymaker ? 'Advanced Playmaker' : 'Attacking Midfielder',
-      oopRole: 'Tracking Attacking Midfielder',
     };
   }
 
@@ -270,7 +270,7 @@ export function doesPlayerMatchRolePositionGroup(
     return combined.includes('DM');
   }
   if (grp === 'MC' || grp.includes('CENTRAL MIDFIELDER')) {
-    return combined.includes('MC') || combined.includes('M (C');
+    return /\bMC\b|\bCM\b|(?<!A)M\s*\(C/.test(combined);
   }
   if (grp === 'ML/MR' || grp.includes('WIDE MIDFIELDER') || grp.includes('WINGER')) {
     return (
@@ -306,7 +306,8 @@ export function doesPlayerMatchRolePositionGroup(
 
 export function getRolePositionFamiliarity(
   player: Pick<PlayerRecord, 'position' | 'secondaryPositions' | 'positionRatings'>,
-  positionGroup: string
+  positionGroup: string,
+  flank?: 'L' | 'C' | 'R'
 ): number | null {
   const ratings = player.positionRatings;
   if (!ratings) return null;
@@ -338,21 +339,32 @@ export function getRolePositionFamiliarity(
   } else if (grp === 'DC' || grp.includes('CENTRE-BACK') || grp.includes('CENTER-BACK')) {
     val = maxOf(['DC', 'CB']);
   } else if (grp === 'DL/DR' || (grp.includes('FULL-BACK') && !grp.includes('WING-BACK'))) {
-    val = maxOf(['DL', 'DR']);
+    if (flank === 'L') val = maxOf(['DL', 'WBL']);
+    else if (flank === 'R') val = maxOf(['DR', 'WBR']);
+    else val = maxOf(['DL', 'DR']);
   } else if (grp === 'WBL/WBR' || grp.includes('WING-BACK')) {
-    val = maxOf(['DL', 'DR', 'WBL', 'WBR']);
+    if (flank === 'L') val = maxOf(['DL', 'WBL']);
+    else if (flank === 'R') val = maxOf(['DR', 'WBR']);
+    else val = maxOf(['DL', 'DR', 'WBL', 'WBR']);
   } else if (grp === 'DM' || grp.includes('DEFENSIVE MIDFIELDER')) {
     val = maxOf(['DM']);
   } else if (grp === 'MC' || grp.includes('CENTRAL MIDFIELDER')) {
     val = maxOf(['MC']);
   } else if (grp === 'ML/MR' || (grp.includes('WIDE MIDFIELDER') && !grp.includes('WINGER'))) {
-    val = maxOf(['ML', 'MR']);
+    if (flank === 'L') val = maxOf(['ML', 'AML']);
+    else if (flank === 'R') val = maxOf(['MR', 'AMR']);
+    else val = maxOf(['ML', 'MR']);
   } else if (grp === 'AMC' || grp.includes('ATTACKING MIDFIELDER')) {
     val = maxOf(['AMC']);
   } else if (grp === 'AML/AMR' || grp.includes('WINGER')) {
-    val = maxOf(['AML', 'AMR', 'ML', 'MR']);
+    if (flank === 'L') val = maxOf(['AML', 'ML']);
+    else if (flank === 'R') val = maxOf(['AMR', 'MR']);
+    else val = maxOf(['AML', 'AMR', 'ML', 'MR']);
   } else if (grp === 'ST' || grp === 'STC' || grp.includes('STRIKER') || grp.includes('FORWARD')) {
     val = maxOf(['ST', 'STC', 'CF']);
+    // If an older cached save omitted ST/STC from positionRatings altogether, fall back
+    // to the player's position text instead of erroneously scoring strikers as 1/20.
+    if (val === null) return null;
   }
 
   return val ?? 1;
@@ -365,7 +377,8 @@ export function getRolePositionFamiliarity(
  */
 export function scorePlayerForFm27Role(
   player: PlayerRecord,
-  role: Fm27RoleItem
+  role: Fm27RoleItem,
+  slotContext?: { positionGroup?: string; flank?: 'L' | 'C' | 'R' }
 ): number {
   const attrs = player.attributes;
   const entries = Object.entries(role.priorities || {});
@@ -384,9 +397,15 @@ export function scorePlayerForFm27Role(
 
   let baseScore = totalWeight > 0 ? weightedSum / totalWeight : 50;
   const isGkPlayer = (player.position || '').toUpperCase().includes('GK');
-  const roleGrpUpper = role.positionGroup.toUpperCase();
+  const effectivePosGroup = slotContext?.positionGroup || role.positionGroup;
+  const effectiveFlank = slotContext?.flank;
+  const roleGrpUpper = effectivePosGroup.toUpperCase();
   const isGkRole = roleGrpUpper === 'GK' || roleGrpUpper.includes('GOALKEEPER');
-  const familiarity = getRolePositionFamiliarity(player, role.positionGroup);
+  const familiarity = getRolePositionFamiliarity(
+    player,
+    effectivePosGroup,
+    effectiveFlank
+  );
 
   if (isGkRole !== isGkPlayer) {
     baseScore *= 0.25;
@@ -406,7 +425,7 @@ export function scorePlayerForFm27Role(
     doesPlayerMatchRolePositionGroup(
       player.position,
       player.secondaryPositions,
-      role.positionGroup
+      effectivePosGroup
     )
   ) {
     baseScore = Math.min(99, baseScore + 8);

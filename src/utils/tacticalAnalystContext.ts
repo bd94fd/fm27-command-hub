@@ -4,14 +4,9 @@ import {
   RecruitmentCase,
   StaffRecord,
 } from '../types/fm27';
-import { PLAYBOOK_V2_REFERENCE_RULES } from '../data/matchAndTacticsData';
-import { buildFm27KnowledgeGroundingBlock } from '../data/fm27KnowledgeBase';
 import {
   buildDynamicSetPieceRoutines,
-  buildDynamicTacticalPlan,
-  buildDynamicTrainingSchedule,
   computeCompetitiveSummary,
-  computeFm27EngineMetrics,
 } from './fmSyncEngine';
 import { Pass0ExtractionPayload } from '../types/fmSave';
 import {
@@ -19,6 +14,44 @@ import {
   HydratedSaveState,
 } from './fmSaveHydrator';
 import { buildSquadTransferAudit } from './transferAudit';
+import {
+  CustomSlotOverride,
+  FormationPresetKey,
+  isSuspensionActiveForCompetition,
+  solveBestXi,
+} from './bestXiSolver';
+
+export function formatCompactPositionRatings(player: PlayerRecord): string {
+  const ratings = player.positionRatings;
+  if (!ratings) return '';
+  const entries = Object.entries(ratings)
+    .filter(([, v]) => typeof v === 'number' && Number.isFinite(v) && v > 0)
+    .map(([k, v]) => [k.toUpperCase(), Math.round(v as number)] as [string, number]);
+  if (entries.length === 0) return '';
+
+  const upperMap = new Map<string, number>(entries);
+  const notable = entries
+    .filter(([, v]) => v >= 12)
+    .sort((a, b) => b[1] - a[1]);
+
+  // Explicitly expose low MC familiarity when an AMC/Winger has AMC >= 15 so
+  // the analyst never mistakes an AMC-only creator (e.g. AMC:20, MC:2) for a CM.
+  const amcVal = upperMap.get('AMC') ?? 0;
+  const mcVal = upperMap.get('MC');
+  if (amcVal >= 15 && typeof mcVal === 'number' && mcVal < 12) {
+    notable.push(['MC', mcVal]);
+  }
+  const stVal = upperMap.get('ST') ?? upperMap.get('STC');
+  if (amcVal >= 15 && typeof stVal === 'number' && stVal >= 12 && !notable.some(([k]) => k === 'ST' || k === 'STC')) {
+    notable.push(['ST', stVal]);
+  }
+
+  if (notable.length === 0) {
+    const topTwo = [...entries].sort((a, b) => b[1] - a[1]).slice(0, 2);
+    return `PosFam[${topTwo.map(([k, v]) => `${k}:${v}`).join(',')}]`;
+  }
+  return `PosFam[${notable.slice(0, 6).map(([k, v]) => `${k}:${v}`).join(',')}]`;
+}
 
 export function buildTacticalAnalystContext(data: Pass0ExtractionPayload): string {
   const runway = calculateFinancialRunway(data.monthlyFinances);
@@ -30,7 +63,7 @@ export function buildTacticalAnalystContext(data: Pass0ExtractionPayload): strin
 
   const suspensionBlock =
     data.activeSuspensions && data.activeSuspensions.length > 0
-      ? `\nACTIVE SUSPENSIONS (DO NOT SELECT BANNED STARTERS):\n${data.activeSuspensions
+      ? `\nACTIVE SUSPENSIONS (CHECK COMPETITION SCOPE BEFORE EXCLUDING):\n${data.activeSuspensions
           .map(
             (b) =>
               `- ${b.playerName}: BANNED (${b.matchesRemaining}m · ${b.competitionName} [${b.scope}] · ${b.reason})`
@@ -46,7 +79,7 @@ export function buildTacticalAnalystContext(data: Pass0ExtractionPayload): strin
           : '';
       const banStr =
         p.activeSuspensions && p.activeSuspensions.length > 0
-          ? `, BANNED(${p.activeSuspensions[0].matchesRemaining}m)`
+          ? `, BANNED(${p.activeSuspensions[0].matchesRemaining}m ${p.activeSuspensions[0].scope})`
           : '';
       return `- ${p.name} (${p.primaryPosition}, ${p.age}y${extStr}${banStr}): Badges=[${p.scoutBadges.join(', ')}], Traits=[${p.traits.join(', ')}]`;
     })
@@ -124,6 +157,9 @@ export interface LiveAnalystStateInput {
   staff?: StaffRecord[];
   recruitmentCases?: RecruitmentCase[];
   userQuery?: string;
+  activeShape?: FormationPresetKey;
+  customSlots?: CustomSlotOverride[];
+  applyToAnalystOnly?: boolean;
   activeLineupOverride?: ActiveLineupOverride | null;
 }
 
@@ -166,9 +202,8 @@ export const FM27_ENGINE_KNOWLEDGE_BASE = `=== FOOTBALL MANAGER 27 (PATCH 27.1.0
 
 /**
  * Compiles the live, deterministic ground-truth snapshot of the entire FM27 Command Hub
- * so the Tactical Analyst knows every player, attribute, Patch 27.1.0 physical metric,
- * computed War Room Starting XI, 62m/75m substitution plan, Set-Piece assignment,
- * match result, upcoming fixture, finance figure, and injury on EVERY turn of the chat.
+ * so the Tactical Analyst uses the EXACT same Best XI solver, competition-aware suspension
+ * logic, Transfers positional depth chart, and Set-Piece rankings as every other tab.
  */
 export const MAX_LIVE_ANALYST_CONTEXT_CHARS = 5800;
 
@@ -186,15 +221,17 @@ export function buildLiveTacticalAnalystContext(
     players,
     matches,
     hydratedFmSave,
+    activeShape = '4-3-3 DM Wide',
+    customSlots = [],
   } = state;
 
   const hasSaveOrSquad = players.length > 0 || Boolean(hydratedFmSave);
   const sections: string[] = [
     [
       '=== FM27 PATCH 27.1.0 & PLAYBOOK v2.0 CORE RULES ===',
-      '- Dual-Phase 4-3-3: Tracking Winger (TW) OOP on both flanks stops 2v1 overlaps; Balanced Ground Build-Up + Short/Mixed GK Distribution + Standard Passing.',
-      '- Non-Negotiable Laws: 1 structural change per 20-25m; never sub both starting CBs protecting a lead; batch 5 subs into <=2 second-half windows (60-63m, 75m+); keep 3 midfielders late (never 4-2-4); <=125m double-GW stamina cap + Post-Match Rest day.',
-      '- Policy: ZERO raw CA/PA or hidden integers; use Star Ratings, visible attributes, and authentic FM27 IP/OOP roles only.',
+      '- Dual-Phase 4-3-3: Tracking Winger (TW) OOP both flanks; Balanced Ground Build-Up + Short/Mixed GK Dist + Standard Passing.',
+      '- Laws: 1 tweak/20-25m; never sub both CBs protecting lead; <=2 2H sub windows (60-63m, 75m+); keep 3 midfielders late (never 4-2-4); <=125m double-GW cap + Post-Match Rest.',
+      '- Truth: ZERO raw CA/PA; match War Room XI, 100%-Fit XI, Transfers Depth & PosFam (never pick MC<10 at CM over natural MC:15-20).',
     ].join('\n'),
   ];
 
@@ -207,28 +244,52 @@ export function buildLiveTacticalAnalystContext(
 
   const decoded = hydratedFmSave?.decodedPayload;
   const summary = computeCompetitiveSummary(matches);
-  const tacticalPlan = buildDynamicTacticalPlan(players);
   const setPiecePlan = buildDynamicSetPieceRoutines(players);
 
-  // 1. Club Standing, Next Opponent & Wage Runway
+  const nextFixtureObj = decoded?.upcomingFixtures?.[0] || null;
+  const nextCompetitionName = nextFixtureObj?.competition || null;
+
+  // Use the exact same First-Team pool as InteractivePitchBuilder / TacticalWarRoom
+  const firstTeamPool = players.filter(
+    (p) => p.teamSlot === undefined || p.teamSlot === 0
+  );
+  const solverPool = firstTeamPool.length >= 11 ? firstTeamPool : players;
+
+  const activeSuspensions =
+    hydratedFmSave?.activeSuspensions && hydratedFmSave.activeSuspensions.length > 0
+      ? hydratedFmSave.activeSuspensions
+      : players.flatMap((p) => p.activeSuspensions || []);
+
+  // 1. Club Standing, Next Opponent, Upcoming Schedule & Wage Runway
   const clubLines: string[] = [
     '=== LIVE CLUB SNAPSHOT ===',
-    `Club: ${clubName !== '--' ? clubName : decoded?.meta.clubName || 'Managed Club'} | Manager: ${managerName !== '--' ? managerName : decoded?.meta.managerName || 'Human Manager'} | Date: ${saveDate}`,
+    `Club: ${clubName !== '--' ? clubName : decoded?.meta.clubName || 'Managed Club'} | Mgr: ${managerName !== '--' ? managerName : decoded?.meta.managerName || 'Human Manager'} | Date: ${saveDate}`,
     `Standing: ${hydratedFmSave?.leagueRecordLabel || `${summary.played}GP (${summary.wins}W-${summary.draws}D-${summary.losses}L, ${summary.points}Pts)`} · ${leagueStandingSub}`,
-    `Next Opponent: ${nextFixture}`,
-    `Finances: Balance ${balance} | Wages ${wageSpend}${
+    `Next: ${nextFixture}${nextCompetitionName ? ` [${nextCompetitionName}]` : ''}`,
+    `Finances: Bal ${balance} | Wages ${wageSpend}${
       hydratedFmSave?.financialRunway
-        ? ` | Runway: ${hydratedFmSave.financialRunway.status} (${hydratedFmSave.financialRunway.runwayMonths < 999 ? `${hydratedFmSave.financialRunway.runwayMonths}m` : 'Positive'}, net £${Math.round(hydratedFmSave.financialRunway.monthlyBurnRate).toLocaleString()}/mo)`
+        ? ` | Runway: ${hydratedFmSave.financialRunway.status} (${hydratedFmSave.financialRunway.runwayMonths < 999 ? `${hydratedFmSave.financialRunway.runwayMonths}m` : 'Pos'}, net £${Math.round(hydratedFmSave.financialRunway.monthlyBurnRate).toLocaleString()}/mo)`
         : ''
     }`,
   ];
+
+  if (decoded?.upcomingFixtures && decoded.upcomingFixtures.length > 0) {
+    const upPreview = decoded.upcomingFixtures
+      .slice(0, 3)
+      .map(
+        (f) =>
+          `${f.dateDmy || f.dateIso} [${f.competition}] vs ${f.opponent}(${f.venue})`
+      )
+      .join(' | ');
+    clubLines.push(`Upcoming: ${upPreview}`);
+  }
 
   if (decoded?.leagueStanding) {
     const ls = decoded.leagueStanding;
     if (ls.nextOpponentStanding) {
       const no = ls.nextOpponentStanding;
       clubLines.push(
-        `Next Opponent Form: ${no.clubName} #${no.position} (${no.points}pts, ${no.played}GP, ${no.goalDiff >= 0 ? '+' : ''}${no.goalDiff}GD)`
+        `Next Opp: ${no.clubName} #${no.position} (${no.points}pts,${no.played}GP,${no.goalDiff >= 0 ? '+' : ''}${no.goalDiff}GD)`
       );
     }
     const tablePreview =
@@ -278,28 +339,44 @@ export function buildLiveTacticalAnalystContext(
     }
   }
 
-  // 2. Active Suspensions & Injuries
-  const activeSuspensions =
-    hydratedFmSave?.activeSuspensions && hydratedFmSave.activeSuspensions.length > 0
-      ? hydratedFmSave.activeSuspensions
-      : players.flatMap((p) => p.activeSuspensions || []);
+  // 2. Competition-Aware Suspensions & Active Injuries
   if (activeSuspensions.length > 0) {
-    clubLines.push(
-      `ACTIVE SUSPENSIONS — DO NOT SELECT AS STARTER (${activeSuspensions.length}): ${activeSuspensions
-        .slice(0, 8)
-        .map(
-          (b) =>
-            `${b.playerName || `UID ${b.playerUid}`} (${b.matchesRemaining}m ${b.scope} · ${b.reason})`
-        )
-        .join(' | ')}`
+    const blockingBans = activeSuspensions.filter((b) =>
+      isSuspensionActiveForCompetition(b, nextCompetitionName)
     );
+    const otherCompBans = activeSuspensions.filter(
+      (b) => !isSuspensionActiveForCompetition(b, nextCompetitionName)
+    );
+
+    if (blockingBans.length > 0) {
+      clubLines.push(
+        `ACTIVE SUSPENSIONS (${nextCompetitionName || 'Next Match'}) — DO NOT SELECT AS STARTER: ${blockingBans
+          .slice(0, 8)
+          .map(
+            (b) =>
+              `${b.playerName || `UID ${b.playerUid}`} (${b.matchesRemaining}m ${b.competitionName} [${b.scope}] · ${b.reason})`
+          )
+          .join(' | ')}`
+      );
+    }
+    if (otherCompBans.length > 0) {
+      clubLines.push(
+        `OTHER-COMPETITION BANS ONLY (AVAILABLE FOR NEXT MATCH ${nextCompetitionName || ''}): ${otherCompBans
+          .slice(0, 8)
+          .map(
+            (b) =>
+              `${b.playerName || `UID ${b.playerUid}`} (${b.matchesRemaining}m in ${b.competitionName} [${b.scope}] ONLY — ELIGIBLE for ${nextCompetitionName})`
+          )
+          .join(' | ')}`
+      );
+    }
   }
 
   if (decoded?.activeInjuries && decoded.activeInjuries.length > 0) {
     clubLines.push(
       `Active Injuries (${decoded.activeInjuries.length}): ${decoded.activeInjuries
-        .slice(0, 8)
-        .map((i) => `${i.playerName || 'Player'} (${i.typeName}, ${i.severity || i.kind})`)
+        .slice(0, 6)
+        .map((i) => `${i.playerName || 'Player'} (${i.typeName})`)
         .join(' | ')}`
     );
   } else {
@@ -307,7 +384,7 @@ export function buildLiveTacticalAnalystContext(
     clubLines.push(
       `Active Injuries: ${
         injuredInSquad.length > 0
-          ? injuredInSquad.slice(0, 8).map((p) => p.name).join(', ')
+          ? injuredInSquad.slice(0, 6).map((p) => p.name).join(', ')
           : '0'
       }`
     );
@@ -315,7 +392,22 @@ export function buildLiveTacticalAnalystContext(
 
   sections.push(clubLines.join('\n'));
 
-  // 3. Compact War Room XI (or Custom Active Lineup Override) & Set-Piece Specialists
+  // 3. Exact War Room Starting XI (Unified with InteractivePitchBuilder / TacticalWarRoom)
+  const warRoomSolved = solveBestXi(solverPool, {
+    shape: activeShape,
+    customSlots,
+    excludeInjured: true,
+    excludeSuspended: true,
+    activeSuspensions,
+    nextCompetitionName,
+  });
+
+  const fullFitSolved = solveBestXi(solverPool, {
+    shape: activeShape,
+    excludeInjured: false,
+    excludeSuspended: false,
+  });
+
   if (
     state.activeLineupOverride &&
     state.activeLineupOverride.slots.length > 0
@@ -330,18 +422,75 @@ export function buildLiveTacticalAnalystContext(
     sections.push(
       `=== ACTIVE PITCH BUILDER LINEUP OVERRIDE (${ov.shape}${ov.applyToAnalystOnly ? ' · Analyst-Only' : ''}) ===\n${ovCompact}`
     );
-  } else if (tacticalPlan.startingXI.length > 0) {
-    const xiCompact = tacticalPlan.startingXI
+  } else if (warRoomSolved.startingXI.length > 0) {
+    const cbNames = warRoomSolved.startingXI
+      .filter((s) => s.positionGroup === 'Centre-Back' && s.player)
+      .map((s) => s.player!.name)
+      .join(' + ');
+    const xiCompact = warRoomSolved.startingXI
+      .filter((s) => s.player)
       .map(
         (s) =>
-          `${s.slotCode}:${s.player.name}(${s.ipRole}/${s.oopRole},C${s.player.condition ?? '?'}%)`
+          `${s.label}:${s.player!.name}(${s.combinedFitPct}%,C${s.player!.condition ?? '?'}%)`
       )
       .join(' | ');
+    const header =
+      activeShape === '4-3-3 DM Wide'
+        ? '=== WAR ROOM COMPUTED DUAL-PHASE 4-3-3 STARTING XI ==='
+        : `=== WAR ROOM COMPUTED ${activeShape} STARTING XI ===`;
     sections.push(
-      `=== WAR ROOM COMPUTED DUAL-PHASE 4-3-3 STARTING XI ===\nCB Lock: ${tacticalPlan.cbPairNames}\n${xiCompact}`
+      `${header}\nAvgFit:${warRoomSolved.averageFitPct}% | CB Lock: ${cbNames || 'N/A'}\n${xiCompact}`
     );
   }
 
+  // 4. 100%-Fit Full-Strength Best XI & Rotated B-Team
+  if (fullFitSolved.startingXI.some((s) => s.player)) {
+    const fullXiLine = fullFitSolved.startingXI
+      .filter((s) => s.player)
+      .map((s) => `${s.label}:${s.player!.name}(${s.player!.ability.toFixed(1)}★,${s.combinedFitPct}%)`)
+      .join(' | ');
+    const bTeamLine = fullFitSolved.rotatedBTeam
+      .filter((s) => s.player)
+      .map((s) => `${s.label}:${s.player!.name}(${s.combinedFitPct}%)`)
+      .join(' | ');
+    sections.push(
+      `=== 100%-FIT FULL-STRENGTH BEST XI (${activeShape}) ===\nXI: ${fullXiLine}${
+        bTeamLine ? `\nB-Team: ${bTeamLine}` : ''
+      }`
+    );
+  }
+
+  // 5. Transfers & Squad Advice Positional Depth Chart (exact match with Transfers tab)
+  const transferAudit = buildSquadTransferAudit(
+    players,
+    saveDate,
+    {
+      balanceNum: decoded?.finances?.balance ?? null,
+      wagePayrollWeekly: decoded?.finances?.wagePayrollWeekly ?? null,
+      wageBudgetWeekly: decoded?.finances?.wageBudgetWeekly ?? null,
+      transferBudgetRemaining: decoded?.finances?.transferBudgetRemaining ?? null,
+      balanceLabel: balance,
+      wageSpendLabel: wageSpend,
+    },
+    hydratedFmSave?.divisionBenchmarks ?? null
+  );
+
+  if (transferAudit.positionalNeeds.length > 0) {
+    const depthLines = transferAudit.positionalNeeds
+      .filter((n) => n.players.length > 0 || n.status === 'Need Signing')
+      .map((n) => {
+        const ranked = n.players
+          .slice(0, 3)
+          .map((p, idx) => `#${idx + 1} ${p.name}(${p.ability.toFixed(1)}★)`)
+          .join(', ');
+        return `${n.code}[${n.status === 'Need Signing' ? 'NEED' : n.status === 'Overstocked' ? 'OVER' : 'OK'}]:${ranked || 'NONE'}`;
+      });
+    sections.push(
+      `=== TRANSFERS & SQUAD ADVICE POSITIONAL DEPTH CHART ===\n${depthLines.join(' | ')}`
+    );
+  }
+
+  // 6. Corners & Set-Piece Specialist Rankings (exact match with Set Pieces tab)
   if (setPiecePlan.aerialThreats.length > 0) {
     const aerialStr = setPiecePlan.aerialThreats
       .slice(0, 2)
@@ -360,31 +509,7 @@ export function buildLiveTacticalAnalystContext(
     );
   }
 
-  // 4. Top 25 First-Team Squad With Role Fits (compact, zero raw CA/PA)
-  const top25 = [...players]
-    .sort((a, b) => {
-      const rank = (s: PlayerRecord['status']) =>
-        s === 'Starter' ? 0 : s === 'Rotation' ? 1 : s === 'Youth' ? 2 : 3;
-      return (
-        rank(a.status) - rank(b.status) ||
-        (b.ability || 0) - (a.ability || 0) ||
-        (b.minutes || 0) - (a.minutes || 0)
-      );
-    })
-    .slice(0, 25);
-
-  const squadLines = top25.map((p) => {
-    const a = p.attributes;
-    const banTag =
-      p.activeSuspensions && p.activeSuspensions.length > 0 ? ' [BANNED]' : '';
-    const injTag = p.status === 'Injured' ? ' [INJ]' : '';
-    return `${p.name}|${p.position}|${p.age}y|${p.ability.toFixed(1)}★|C${p.condition ?? '?'}%|${p.ipRole}/${p.oopRole}|P${a.pace}S${a.stamina}J${a.jumpingReach}Pa${a.passing}F${a.finishing}T${a.tackling}D${a.decisions}|${p.rating !== null ? p.rating.toFixed(2) : '-'}rt${banTag}${injTag}`;
-  });
-  sections.push(
-    `=== TOP ${top25.length} FIRST-TEAM SQUAD (OF ${players.length}) ===\n${squadLines.join('\n')}`
-  );
-
-  // 5. Recent 5 Matches (compact)
+  // 7. Recent 5 Matches (placed before squad profiles so match form is never trimmed)
   if (matches.length > 0) {
     const matchLines = matches.slice(0, 5).map((m) => {
       const xgPart =
@@ -395,6 +520,53 @@ export function buildLiveTacticalAnalystContext(
     });
     sections.push(`=== RECENT MATCHES ===\n${matchLines.join(' | ')}`);
   }
+
+  // 8. Top 19 First-Team Squad Profiles with PosFam, Stars, Attributes & Transfer Verdict (zero raw CA/PA)
+  const verdictById = new Map(
+    transferAudit.playerAdvice.map((a) => [a.player.id, a.verdict])
+  );
+  const topSquad = [...players]
+    .sort((a, b) => {
+      const unitA = a.teamSlot === undefined || a.teamSlot === 0 ? 0 : 1;
+      const unitB = b.teamSlot === undefined || b.teamSlot === 0 ? 0 : 1;
+      const rank = (s: PlayerRecord['status']) =>
+        s === 'Starter' ? 0 : s === 'Rotation' ? 1 : s === 'Youth' ? 2 : 3;
+      return (
+        unitA - unitB ||
+        (b.ability || 0) - (a.ability || 0) ||
+        rank(a.status) - rank(b.status) ||
+        (b.minutes || 0) - (a.minutes || 0)
+      );
+    })
+    .slice(0, 19);
+
+  const squadLines = topSquad.map((p) => {
+    const a = p.attributes;
+    const pBans = activeSuspensions.filter(
+      (b) =>
+        (typeof p.uid === 'number' && b.playerUid === p.uid) ||
+        (b.playerName && b.playerName.toLowerCase() === p.name.toLowerCase())
+    );
+    const blocksNext = pBans.some((b) =>
+      isSuspensionActiveForCompetition(b, nextCompetitionName)
+    );
+    const banTag = blocksNext
+      ? ' [BANNED]'
+      : pBans.length > 0
+        ? ' [CUP-BAN]'
+        : '';
+    const injTag = p.status === 'Injured' ? ' [INJ]' : '';
+    const posFamStr = formatCompactPositionRatings(p);
+    const verdict = verdictById.get(p.id);
+    const shortVerdict =
+      verdict && verdict !== 'Hold'
+        ? `|${verdict.replace('Sell / Transfer List', 'Sell').replace('Replace Before Selling', 'Replace').replace('Protect Youth Asset', 'Youth')}`
+        : '';
+    return `${p.name}|${p.position}|${p.age}y|${p.ability.toFixed(1)}★/${p.potential.toFixed(1)}★|C${p.condition ?? '?'}%|${posFamStr ? `${posFamStr}|` : ''}P${a.pace}S${a.stamina}J${a.jumpingReach}Pa${a.passing}F${a.finishing}T${a.tackling}D${a.decisions}W${a.workRate}|${p.rating !== null ? p.rating.toFixed(2) : '-'}rt${shortVerdict}${banTag}${injTag}`;
+  });
+  sections.push(
+    `=== TOP ${topSquad.length} FIRST-TEAM SQUAD (OF ${players.length}) ===\n${squadLines.join('\n')}`
+  );
 
   let output = sections.join('\n\n');
   if (output.length > MAX_LIVE_ANALYST_CONTEXT_CHARS) {

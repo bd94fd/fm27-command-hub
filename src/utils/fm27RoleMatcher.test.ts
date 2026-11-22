@@ -51,12 +51,13 @@ test('inferFm27Roles returns authentic FM27 dual-phase roles from the canonical 
     );
 
     for (const forbidden of forbiddenRetired) {
+      const retiredWordRe = new RegExp(`\\b${forbidden}\\b`);
       assert.ok(
-        !roles.ipRole.includes(forbidden),
+        !retiredWordRe.test(roles.ipRole),
         `IP role "${roles.ipRole}" must not include retired token "${forbidden}"`
       );
       assert.ok(
-        !roles.oopRole.includes(forbidden),
+        !retiredWordRe.test(roles.oopRole),
         `OOP role "${roles.oopRole}" must not include retired token "${forbidden}"`
       );
     }

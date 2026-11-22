@@ -323,7 +323,7 @@ function getSlotSuitability(
       case 'RCM':
         return Math.max(
           getPosRating(pr, 'mc', 'cm'),
-          getPosRating(pr, 'amc', 'am')
+          Math.max(1, getPosRating(pr, 'amc', 'am') - 6)
         ) || 1;
       case 'RW':
         return Math.max(
@@ -337,12 +337,16 @@ function getSlotSuitability(
           getPosRating(pr, 'ml'),
           Math.max(1, getPosRating(pr, 'st', 'stc') - 4)
         );
-      case 'ST':
+      case 'ST': {
+        const stRating = getPosRating(pr, 'st', 'stc', 'cf');
+        if (stRating > 0) return stRating;
+        if (pos.includes('ST') || pos.includes('CF')) return 19;
         return Math.max(
-          getPosRating(pr, 'st', 'stc'),
-          Math.max(1, getPosRating(pr, 'amr', 'rw') - 4),
-          Math.max(1, getPosRating(pr, 'aml', 'lw') - 4)
+          1,
+          getPosRating(pr, 'amr', 'rw') - 4,
+          getPosRating(pr, 'aml', 'lw') - 4
         );
+      }
     }
   }
 
