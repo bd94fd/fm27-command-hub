@@ -60,6 +60,16 @@ export interface TargetContractDisplay {
   trialBadge: string | null;
 }
 
+export type MoneyballValueTier = 'Bargain' | 'Strong Value' | 'Fair' | 'Overpriced';
+
+export interface MoneyballValueRating {
+  score: number; // 0-100 zero-CA/PA value score
+  tier: MoneyballValueTier;
+  threeYearCostEur: number;
+  costLabel: string;
+  summary: string;
+}
+
 export interface EnrichedRecruitmentTarget {
   target: RecruitmentTarget;
   posGroup: Exclude<ScoutPositionGroup, 'ALL'>;
@@ -68,6 +78,7 @@ export interface EnrichedRecruitmentTarget {
   relevantAttributes: TargetAttributeChip[];
   depth: TargetDepthEvaluation;
   contractDisplay: TargetContractDisplay;
+  moneyball: MoneyballValueRating;
 }
 
 type PositionSlot = 'GK' | 'DC' | 'FB' | 'DM_MC' | 'AM_W' | 'ST';
@@ -844,6 +855,67 @@ export function matchesAgeBand(age: number, band: ScoutAgeBand): boolean {
   return age >= 29;
 }
 
+/**
+ * Computes a zero-CA/PA Moneyball Value Score (0-100) comparing FM27 role fit,
+ * playbook archetype fit, and age curve against 3-year wage commitment
+ * calibrated to the current squad's median weekly wage.
+ */
+export function computeMoneyballValueScore(params: {
+  target: RecruitmentTarget;
+  bestRoleFitPct: number;
+  archetypeScore: number;
+  squadPlayers: PlayerRecord[];
+}): MoneyballValueRating {
+  const { target, bestRoleFitPct, archetypeScore, squadPlayers } = params;
+  const weeklyWage = Math.max(0, target.demandedWageEur || 0);
+  const threeYearCostEur = Math.round(weeklyWage * 156);
+
+  const squadWages = squadPlayers
+    .map((p) => p.wagePw || 0)
+    .filter((w) => w > 0)
+    .sort((a, b) => a - b);
+  const medianSquadWage =
+    squadWages.length > 0
+      ? squadWages[Math.floor(squadWages.length / 2)]
+      : 1000;
+
+  // Age curve: U23 carries resale/growth upside, 23-28 peak, 29+ depreciating
+  const ageBonus =
+    target.age <= 22 ? 92 : target.age <= 26 ? 82 : target.age <= 29 ? 68 : 48;
+
+  const qualityScore =
+    bestRoleFitPct * 0.55 + archetypeScore * 0.25 + ageBonus * 0.2;
+
+  // Relative wage ratio vs squad median (free agents / Bosmans have €0 transfer fee)
+  const wageRatio = weeklyWage > 0 ? weeklyWage / Math.max(250, medianSquadWage) : 0.4;
+  const costPenalty = Math.max(0, (wageRatio - 1.0) * 22);
+  const freeAgentBonus = target.isFreeAgent ? 6 : target.contractExpiryMonths <= 6 ? 4 : 0;
+
+  const score = Math.max(
+    0,
+    Math.min(100, Math.round(qualityScore + freeAgentBonus - costPenalty))
+  );
+
+  const tier: MoneyballValueTier =
+    score >= 78
+      ? 'Bargain'
+      : score >= 65
+        ? 'Strong Value'
+        : score >= 50
+          ? 'Fair'
+          : 'Overpriced';
+
+  const costLabel =
+    threeYearCostEur >= 1_000_000
+      ? `€${(threeYearCostEur / 1_000_000).toFixed(2)}M / 3y`
+      : threeYearCostEur > 0
+        ? `€${Math.round(threeYearCostEur / 1000)}k / 3y`
+        : 'Trial / Low Wage';
+
+  const summary = `${tier} (${score}/100) · ${costLabel}`;
+  return { score, tier, threeYearCostEur, costLabel, summary };
+}
+
 export function enrichAndFilterScoutedTargets(params: {
   targets: RecruitmentTarget[];
   squadPlayers: PlayerRecord[];
@@ -864,15 +936,25 @@ export function enrichAndFilterScoutedTargets(params: {
   } = params;
   const q = searchQuery.trim().toLowerCase();
 
-  const enriched: EnrichedRecruitmentTarget[] = targets.map((target) => ({
-    target,
-    posGroup: getPositionGroup(target.primaryPosition),
-    bestRole: computeTargetBestRoleFit(target),
-    archetype: evaluatePlaybookArchetype(target.primaryPosition, target.attributes),
-    relevantAttributes: getPositionRelevantAttributes(target),
-    depth: evaluateTargetSquadDepth(target.primaryPosition, squadPlayers),
-    contractDisplay: formatTargetContractSummary(target),
-  }));
+  const enriched: EnrichedRecruitmentTarget[] = targets.map((target) => {
+    const bestRole = computeTargetBestRoleFit(target);
+    const archetype = evaluatePlaybookArchetype(target.primaryPosition, target.attributes);
+    return {
+      target,
+      posGroup: getPositionGroup(target.primaryPosition),
+      bestRole,
+      archetype,
+      relevantAttributes: getPositionRelevantAttributes(target),
+      depth: evaluateTargetSquadDepth(target.primaryPosition, squadPlayers),
+      contractDisplay: formatTargetContractSummary(target),
+      moneyball: computeMoneyballValueScore({
+        target,
+        bestRoleFitPct: bestRole.fitPct,
+        archetypeScore: archetype.score,
+        squadPlayers,
+      }),
+    };
+  });
 
   const filtered = enriched.filter((item) => {
     if (posGroup !== 'ALL' && item.posGroup !== posGroup) return false;
