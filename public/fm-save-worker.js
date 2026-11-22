@@ -52,7 +52,7 @@ async function ensureBooted(reply, origin) {
       const micropip = instance.pyimport('micropip');
       await micropip.install(`fmsave==${FMSAVE_VERSION}`);
 
-      const patcherUrl = new URL('/fm_layout_patcher.py?v=16', origin || self.location.origin).href;
+      const patcherUrl = new URL('/fm_layout_patcher.py?v=17', origin || self.location.origin).href;
       try {
         const patcherResp = await fetch(patcherUrl, { cache: 'no-cache' });
         if (patcherResp.ok) {
@@ -63,7 +63,7 @@ async function ensureBooted(reply, origin) {
         // Optional runtime layout patcher; mapper degrades gracefully if absent
       }
 
-      const mapperUrl = new URL('/fm-save-mapper.py?v=16', origin || self.location.origin).href;
+      const mapperUrl = new URL('/fm-save-mapper.py?v=17', origin || self.location.origin).href;
       const mapperSource = await (await fetch(mapperUrl, { cache: 'no-cache' })).text();
       instance.FS.writeFile('/home/pyodide/fm_save_mapper.py', mapperSource);
       mapperModule = instance.pyimport('fm_save_mapper');
@@ -223,98 +223,124 @@ self.onmessage = async (event) => {
       mapperModule.step_3_3_tactics_and_mentoring();
       emitCheckpoint('stage_2_club_core');
 
-      // ── STAGE 3: Fixtures & Full Domestic League Table (two separate JS-yielded steps)
-      activeStep = 'Stage 3/4 (1/2): Fixtures & match results';
-      reply({
-        type: 'stage',
-        stage: 'parse',
-        step: 'Stage 3/4 (1/2)',
-        elapsedSec: elapsedSec(),
-        label: `Stage 3/4 (1/2): Fixtures & match results (${elapsedSec()}s)...`,
-      });
-      await yieldTick();
-      const fixSummary = JSON.parse(mapperModule.step_fixtures(true));
-
-      activeStep = 'Stage 3/4 (2/2): Domestic league table';
-      reply({
-        type: 'stage',
-        stage: 'parse',
-        step: 'Stage 3/4 (2/2)',
-        elapsedSec: elapsedSec(),
-        label: `Stage 3/4 (2/2): Domestic league table — ${fixSummary.playedCount} results & ${fixSummary.upcomingCount} fixtures (${elapsedSec()}s)...`,
-      });
-      await yieldTick();
-      mapperModule.step_league_table();
-      emitCheckpoint('stage_3_fixtures_league');
-
-      // ── STAGE 4: Full Sync ONLY — Global club ops, Group 4 market scan, & heavy Player Stats
+      // ── STAGE 3 (Full Sync ONLY): All remaining game_db reads while game_db is STILL warm in RAM
+      // (eliminates 6-7x 800MB+ re-decompressions on mobile & multi-season saves), then releases game_db ONCE.
       if (!useFastSync) {
-        activeStep = 'Stage 4/4: Global injuries';
+        activeStep = 'Stage 3/4: Global injuries';
         reply({
           type: 'stage',
           stage: 'parse',
-          step: 'Stage 4/4',
+          step: 'Stage 3/4',
           elapsedSec: elapsedSec(),
-          label: `Stage 4/4: Global injuries (${elapsedSec()}s)...`,
+          label: `Stage 3/4: Global injuries (${elapsedSec()}s)...`,
         });
         await yieldTick();
         mapperModule.step_3_3_injuries(false);
 
-        activeStep = 'Stage 4/4: Facilities';
+        activeStep = 'Stage 3/4: Facilities';
         reply({
           type: 'stage',
           stage: 'parse',
-          step: 'Stage 4/4',
+          step: 'Stage 3/4',
           elapsedSec: elapsedSec(),
-          label: `Stage 4/4: Facilities (${elapsedSec()}s)...`,
+          label: `Stage 3/4: Facilities (${elapsedSec()}s)...`,
         });
         await yieldTick();
         mapperModule.step_3_3_facilities(false);
 
-        activeStep = 'Stage 4/4: Competition rules';
+        activeStep = 'Stage 3/4: Competition rules';
         reply({
           type: 'stage',
           stage: 'parse',
-          step: 'Stage 4/4',
+          step: 'Stage 3/4',
           elapsedSec: elapsedSec(),
-          label: `Stage 4/4: Competition rules (${elapsedSec()}s)...`,
+          label: `Stage 3/4: Competition rules (${elapsedSec()}s)...`,
         });
         await yieldTick();
         mapperModule.step_3_3_competition_rules(false);
 
-        activeStep = 'Stage 4/4: Transfer windows';
+        activeStep = 'Stage 3/4: Transfer windows';
         reply({
           type: 'stage',
           stage: 'parse',
-          step: 'Stage 4/4',
+          step: 'Stage 3/4',
           elapsedSec: elapsedSec(),
-          label: `Stage 4/4: Transfer windows (${elapsedSec()}s)...`,
+          label: `Stage 3/4: Transfer windows (${elapsedSec()}s)...`,
         });
         await yieldTick();
         mapperModule.step_3_3_transfer_windows(false);
 
-        activeStep = 'Stage 4/4: Sponsorships, set pieces & training';
+        activeStep = 'Stage 3/4: Sponsorships, set pieces & training';
         reply({
           type: 'stage',
           stage: 'parse',
-          step: 'Stage 4/4',
+          step: 'Stage 3/4',
           elapsedSec: elapsedSec(),
-          label: `Stage 4/4: Sponsorships, set pieces & training (${elapsedSec()}s)...`,
+          label: `Stage 3/4: Sponsorships, set pieces & training (${elapsedSec()}s)...`,
         });
         await yieldTick();
         mapperModule.step_3_3_secondary_ops(false);
 
-        activeStep = 'Stage 4/4: Free-agent & expiring market scan';
+        activeStep = 'Stage 3/4: player_match_stats (Last-5 form)';
         reply({
           type: 'stage',
           stage: 'parse',
-          step: 'Stage 4/4',
+          step: 'Stage 3/4',
           elapsedSec: elapsedSec(),
-          label: `Stage 4/4: Free-agent & expiring market scan (${elapsedSec()}s)...`,
+          label: `Stage 3/4: player_match_stats (Last-5 form) (${elapsedSec()}s)...`,
+        });
+        await yieldTick();
+        mapperModule.step_4_2_player_match_stats(false);
+
+        activeStep = 'Stage 3/4: Contracts & bans backfill';
+        reply({
+          type: 'stage',
+          stage: 'parse',
+          step: 'Stage 3/4',
+          elapsedSec: elapsedSec(),
+          label: `Stage 3/4: Contracts & bans backfill (${elapsedSec()}s)...`,
+        });
+        await yieldTick();
+        mapperModule.step_4_4_contracts_and_suspensions(false);
+
+        activeStep = 'Stage 3/4: Free-agent & expiring market scan';
+        reply({
+          type: 'stage',
+          stage: 'parse',
+          step: 'Stage 3/4',
+          elapsedSec: elapsedSec(),
+          label: `Stage 3/4: Free-agent & expiring market scan (${elapsedSec()}s)...`,
         });
         await yieldTick();
         mapperModule.step_3_4_market_scan_and_release_gamedb(false);
+        emitCheckpoint('stage_3_club_ops');
+      }
 
+      // ── STAGE 4 (Phase B — game_db is freed; zero RAM overlap with span/season_stats/archive)
+      activeStep = 'Stage 4/4: Fixtures & match results';
+      reply({
+        type: 'stage',
+        stage: 'parse',
+        step: 'Stage 4/4',
+        elapsedSec: elapsedSec(),
+        label: `Stage 4/4: Fixtures & match results (${elapsedSec()}s)...`,
+      });
+      await yieldTick();
+      const fixSummary = JSON.parse(mapperModule.step_fixtures(true));
+
+      activeStep = 'Stage 4/4: Domestic league table';
+      reply({
+        type: 'stage',
+        stage: 'parse',
+        step: 'Stage 4/4',
+        elapsedSec: elapsedSec(),
+        label: `Stage 4/4: Domestic league table — ${fixSummary.playedCount} results & ${fixSummary.upcomingCount} fixtures (${elapsedSec()}s)...`,
+      });
+      await yieldTick();
+      mapperModule.step_league_table();
+      emitCheckpoint('stage_4_fixtures_league');
+
+      if (!useFastSync) {
         activeStep = 'Stage 4/4: Team match stats (xG, shots & possession)';
         reply({
           type: 'stage',
@@ -325,7 +351,6 @@ self.onmessage = async (event) => {
         });
         await yieldTick();
         mapperModule.step_team_match_stats(false);
-        emitCheckpoint('stage_4_club_ops');
 
         activeStep = 'Stage 4/4: player_season_stats';
         reply({
@@ -337,17 +362,6 @@ self.onmessage = async (event) => {
         });
         await yieldTick();
         mapperModule.step_4_1_season_stats(false);
-
-        activeStep = 'Stage 4/4: player_match_stats (Last-5 form)';
-        reply({
-          type: 'stage',
-          stage: 'parse',
-          step: 'Stage 4/4',
-          elapsedSec: elapsedSec(),
-          label: `Stage 4/4: player_match_stats (Last-5 form) (${elapsedSec()}s)...`,
-        });
-        await yieldTick();
-        mapperModule.step_4_2_player_match_stats(false);
         emitCheckpoint('stage_4_player_stats');
 
         activeStep = 'Stage 4/4: player_season_history (Career history)';
@@ -360,17 +374,6 @@ self.onmessage = async (event) => {
         });
         await yieldTick();
         mapperModule.step_4_3_season_history(false);
-
-        activeStep = 'Stage 4/4: Contracts & bans backfill';
-        reply({
-          type: 'stage',
-          stage: 'parse',
-          step: 'Stage 4/4',
-          elapsedSec: elapsedSec(),
-          label: `Stage 4/4: Contracts & bans backfill (${elapsedSec()}s)...`,
-        });
-        await yieldTick();
-        mapperModule.step_4_4_contracts_and_suspensions(false);
       }
 
       const parsed = attachRuntimeMeta(JSON.parse(mapperModule.step_finalize()));

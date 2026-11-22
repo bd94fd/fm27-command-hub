@@ -6,6 +6,7 @@ export interface ServerConfig {
   fallbackModel: string;
   preferredModels: readonly string[];
   aiTimeoutMs: number;
+  deepAiTimeoutMs: number;
   hubAccessToken: string | null;
   maxImageBytes: number;
   maxContextChars: number;
@@ -18,7 +19,8 @@ export const PREFERRED_GEMINI_MODELS = [
   'gemini-3.5-flash-lite',
   'gemini-3.5-flash',
 ] as const;
-export const DEFAULT_AI_TIMEOUT_MS = 25_000;
+export const DEFAULT_AI_TIMEOUT_MS = 45_000;
+export const DEEP_AI_TIMEOUT_MS = 60_000;
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
 export const MAX_CONTEXT_CHARS = 10_000; // 10k-char cap
 export const DEFAULT_RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
@@ -45,6 +47,7 @@ export function loadServerConfig(
     fallbackModel: FALLBACK_GEMINI_MODEL,
     preferredModels: PREFERRED_GEMINI_MODELS,
     aiTimeoutMs: DEFAULT_AI_TIMEOUT_MS,
+    deepAiTimeoutMs: DEEP_AI_TIMEOUT_MS,
     hubAccessToken: rawHubToken || null,
     maxImageBytes: MAX_IMAGE_BYTES,
     maxContextChars: MAX_CONTEXT_CHARS,

@@ -316,7 +316,13 @@ export class GeminiService {
     }
   ) {
     const client = this.getClient();
-    const timeoutMs = options?.timeoutMs ?? this.config.aiTimeoutMs;
+    const isDeepMode =
+      options?.reasoningMode === 'deep_high' ||
+      options?.reasoningMode === 'max_xhigh';
+    const defaultModeTimeout = isDeepMode
+      ? this.config.deepAiTimeoutMs ?? this.config.aiTimeoutMs
+      : this.config.aiTimeoutMs;
+    const timeoutMs = options?.timeoutMs ?? defaultModeTimeout;
     const primaryModel = await this.resolveModel({
       reasoningMode: options?.reasoningMode,
       requestedModel: options?.requestedModel,
@@ -324,8 +330,8 @@ export class GeminiService {
     const fallbackModel = this.config.fallbackModel || FALLBACK_GEMINI_MODEL;
     const deadline = this.now() + timeoutMs;
 
-    const invoke = async (model: string) => {
-      const remainingMs = deadline - this.now();
+    const invoke = async (model: string, capDeadline = deadline) => {
+      const remainingMs = Math.min(deadline, capDeadline) - this.now();
       if (remainingMs <= 500) {
         throw new AnalystTimeoutError(timeoutMs);
       }
@@ -366,11 +372,11 @@ export class GeminiService {
       return model !== fallbackModel ? fallbackModel : DEEP_MODEL_ID;
     };
 
-    const invokeWithOverloadRetry = async (model: string) => {
+    const invokeWithOverloadRetry = async (model: string, capDeadline = deadline) => {
       let lastErr: unknown;
       for (let attempt = 0; attempt <= OVERLOAD_RETRY_DELAYS_MS.length; attempt++) {
         try {
-          return await invoke(model);
+          return await invoke(model, capDeadline);
         } catch (err: unknown) {
           lastErr = err;
           if (!isTransientOverloadError(err)) {
@@ -378,7 +384,7 @@ export class GeminiService {
           }
           if (attempt < OVERLOAD_RETRY_DELAYS_MS.length) {
             const delayMs = OVERLOAD_RETRY_DELAYS_MS[attempt];
-            const remainingMs = deadline - this.now();
+            const remainingMs = Math.min(deadline, capDeadline) - this.now();
             if (remainingMs <= delayMs + 500) {
               break;
             }
@@ -389,11 +395,25 @@ export class GeminiService {
       throw lastErr;
     };
 
+    // Reserve ~33% of the total budget for automatic Fast-model failover when Deep Analyst runs slow
+    const canTimeoutFailoverToFast =
+      primaryModel !== FAST_MODEL_ID && timeoutMs >= 30_000;
+    const primaryDeadline = canTimeoutFailoverToFast
+      ? this.now() + Math.round(timeoutMs * 0.67)
+      : deadline;
+
     try {
-      return await invokeWithOverloadRetry(primaryModel);
+      return await invokeWithOverloadRetry(primaryModel, primaryDeadline);
     } catch (err: unknown) {
       if (isNotFoundError(err) && primaryModel !== fallbackModel) {
         return await invokeWithOverloadRetry(fallbackModel);
+      }
+      if (
+        err instanceof AnalystTimeoutError &&
+        canTimeoutFailoverToFast &&
+        deadline - this.now() > 2_000
+      ) {
+        return await invokeWithOverloadRetry(FAST_MODEL_ID, deadline);
       }
       if (isTransientOverloadError(err)) {
         const failoverModel = resolveFailoverModel(primaryModel);

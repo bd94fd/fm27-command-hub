@@ -408,8 +408,8 @@ test('hydrateAppFromDecodedFmSave handles non-contract players with null expires
   assert.equal(trialist.expires.slice(-4), 'N/A');
 });
 
-test('Worker cache-buster is bumped to ?v=16 and FmImportScope supports club_and_division with clamping', () => {
-  assert.equal(WORKER_CACHE_BUSTER, '?v=16');
+test('Worker cache-buster is bumped to ?v=17 and FmImportScope supports club_and_division with clamping', () => {
+  assert.equal(WORKER_CACHE_BUSTER, '?v=17');
 
   const scope: FmImportScope = 'club_and_division';
   assert.equal(scope, 'club_and_division');
@@ -1154,10 +1154,10 @@ test('Pass 1 Tier-1: hydrates contracts, structured suspensions, full league tab
   assert.doesNotMatch(liveCtx, /\bCA\s*\d+|\bPA\s*\d+/i);
 });
 
-test('Step 4/6 & Step 3/6 Watchdogs: 90s inactivity + 300s hard ceiling, detailed timeout message formatting & Fast Sync + extractionWarnings hydration', () => {
-  // 1. Verify mobile-safe dual watchdog limits: 90s inactivity + 300s hard ceiling
-  assert.equal(WORKER_INACTIVITY_TIMEOUT_MS, 90_000);
-  assert.equal(WORKER_HARD_CEILING_MS, 300_000);
+test('Step 4/6 & Step 3/6 Watchdogs: 150s inactivity + 480s hard ceiling, detailed timeout message formatting & Fast Sync + extractionWarnings hydration', () => {
+  // 1. Verify bigger-save dual watchdog limits: 150s inactivity + 480s hard ceiling
+  assert.equal(WORKER_INACTIVITY_TIMEOUT_MS, 150_000);
+  assert.equal(WORKER_HARD_CEILING_MS, 480_000);
 
   const inactivityMsg = formatWorkerTimeoutMessage(
     'inactivity',
@@ -1270,7 +1270,7 @@ test('Step 4/6 & Step 3/6 Watchdogs: 90s inactivity + 300s hard ceiling, detaile
   assert.doesNotMatch(hydrated.analystPromptContext, /\bCA\s*\d+|\bPA\s*\d+/i);
 });
 
-test('Reordered 4-Stage Pipeline & ?v=16 Static Guardrails: Club Core + Fixtures/League before Global Ops & Player Stats, Fast Sync skips player_season_stats, and Checkpoints emitted', () => {
+test('Single-Pass game_db 4-Stage Pipeline & ?v=17 Static Guardrails: all game_db reads finish before releasing game_db for Fixtures/League/SeasonStats/CareerHistory, and Checkpoints emitted', () => {
   const workerSrc = fs.readFileSync(
     path.resolve(process.cwd(), 'public/fm-save-worker.js'),
     'utf8'
@@ -1288,42 +1288,47 @@ test('Reordered 4-Stage Pipeline & ?v=16 Static Guardrails: Club Core + Fixtures
     'utf8'
   );
 
-  // Worker, mapper, and client cache-buster synced to ?v=16
-  assert.equal(WORKER_CACHE_BUSTER, '?v=16');
-  assert.match(workerSrc, /\/fm-save-mapper\.py\?v=16/);
-  assert.match(mapperSrc, /MAPPER_CACHE_BUSTER\s*=\s*"\?v=16"/);
+  // Worker, mapper, and client cache-buster synced to ?v=17
+  assert.equal(WORKER_CACHE_BUSTER, '?v=17');
+  assert.match(workerSrc, /\/fm-save-mapper\.py\?v=17/);
+  assert.match(mapperSrc, /MAPPER_CACHE_BUSTER\s*=\s*"\?v=17"/);
   assert.match(clientSrc, /WORKER_CACHE_BUSTER/);
-  assert.match(clientSrc, /WORKER_INACTIVITY_TIMEOUT_MS\s*=\s*90_000/);
-  assert.match(clientSrc, /WORKER_HARD_CEILING_MS\s*=\s*300_000/);
+  assert.match(clientSrc, /WORKER_INACTIVITY_TIMEOUT_MS\s*=\s*150_000/);
+  assert.match(clientSrc, /WORKER_HARD_CEILING_MS\s*=\s*480_000/);
   assert.match(readerSrc, /type === 'checkpoint'/);
 
-  // Progressive checkpoints emitted after Stage 1, Stage 2, Stage 3, and Stage 4 Club Ops
+  // Progressive checkpoints emitted after every major phase
   assert.match(workerSrc, /type:\s*'checkpoint'/);
   assert.match(workerSrc, /emitCheckpoint\('stage_1_squad'\)/);
   assert.match(workerSrc, /emitCheckpoint\('stage_2_club_core'\)/);
-  assert.match(workerSrc, /emitCheckpoint\('stage_3_fixtures_league'\)/);
-  assert.match(workerSrc, /emitCheckpoint\('stage_4_club_ops'\)/);
+  assert.match(workerSrc, /emitCheckpoint\('stage_3_club_ops'\)/);
+  assert.match(workerSrc, /emitCheckpoint\('stage_4_fixtures_league'\)/);
+  assert.match(workerSrc, /emitCheckpoint\('stage_4_player_stats'\)/);
   assert.match(mapperSrc, /def step_snapshot_payload/);
   assert.match(mapperSrc, /def step_league_table\(/);
   assert.match(mapperSrc, /def step_finalize\(/);
 
-  // Verify exact reordered execution order in worker:
-  // Stage 1 (Squad) -> Stage 2 (Finances/Staff/Tactics) -> Stage 3 (Fixtures & League Table) -> Stage 4 (if !useFastSync: Global Ops, Market Scan, Player Stats)
+  // Verify exact single-pass game_db execution order in worker:
+  // Stage 1 (Squad) -> Stage 2 (Finances/Staff/Tactics) -> Stage 3 (Full Sync game_db ops + Last-5 + Contracts + Market Scan & release game_db)
+  // -> Stage 4 (Fixtures & League Table -> Team xG -> Season Stats -> checkpoint -> Career History LAST)
   const idxPlayers = workerSrc.indexOf('mapperModule.step_players()');
   const idxCp1 = workerSrc.indexOf("emitCheckpoint('stage_1_squad')");
   const idxFinances = workerSrc.indexOf('mapperModule.step_3_1_finances()');
   const idxStaff = workerSrc.indexOf('mapperModule.step_3_2_staff()');
   const idxTactics = workerSrc.indexOf('mapperModule.step_3_3_tactics_and_mentoring()');
   const idxCp2 = workerSrc.indexOf("emitCheckpoint('stage_2_club_core')");
-  const idxFixtures = workerSrc.indexOf('mapperModule.step_fixtures(true)');
-  const idxLeagueTable = workerSrc.indexOf('mapperModule.step_league_table()');
-  const idxCp3 = workerSrc.indexOf("emitCheckpoint('stage_3_fixtures_league')");
   const idxFullSyncGuard = workerSrc.indexOf('if (!useFastSync)');
   const idxFacilities = workerSrc.indexOf('mapperModule.step_3_3_facilities(false)');
   const idxCompRules = workerSrc.indexOf('mapperModule.step_3_3_competition_rules(false)');
-  const idxMarketScan = workerSrc.indexOf('mapperModule.step_3_4_market_scan_and_release_gamedb(false)');
-  const idxSeasonStats = workerSrc.indexOf('mapperModule.step_4_1_season_stats(false)');
   const idxMatchStats = workerSrc.indexOf('mapperModule.step_4_2_player_match_stats(false)');
+  const idxContracts = workerSrc.indexOf('mapperModule.step_4_4_contracts_and_suspensions(false)');
+  const idxMarketScan = workerSrc.indexOf('mapperModule.step_3_4_market_scan_and_release_gamedb(false)');
+  const idxCp3 = workerSrc.indexOf("emitCheckpoint('stage_3_club_ops')");
+  const idxFixtures = workerSrc.indexOf('mapperModule.step_fixtures(true)');
+  const idxLeagueTable = workerSrc.indexOf('mapperModule.step_league_table()');
+  const idxCp4 = workerSrc.indexOf("emitCheckpoint('stage_4_fixtures_league')");
+  const idxSeasonStats = workerSrc.indexOf('mapperModule.step_4_1_season_stats(false)');
+  const idxCp5 = workerSrc.indexOf("emitCheckpoint('stage_4_player_stats')");
   const idxCareerHistory = workerSrc.indexOf('mapperModule.step_4_3_season_history(false)');
   const idxFinalize = workerSrc.indexOf('mapperModule.step_finalize()');
 
@@ -1334,15 +1339,18 @@ test('Reordered 4-Stage Pipeline & ?v=16 Static Guardrails: Club Core + Fixtures
     idxStaff,
     idxTactics,
     idxCp2,
-    idxFixtures,
-    idxLeagueTable,
-    idxCp3,
     idxFullSyncGuard,
     idxFacilities,
     idxCompRules,
-    idxMarketScan,
-    idxSeasonStats,
     idxMatchStats,
+    idxContracts,
+    idxMarketScan,
+    idxCp3,
+    idxFixtures,
+    idxLeagueTable,
+    idxCp4,
+    idxSeasonStats,
+    idxCp5,
     idxCareerHistory,
     idxFinalize,
   ];
@@ -1356,9 +1364,9 @@ test('Reordered 4-Stage Pipeline & ?v=16 Static Guardrails: Club Core + Fixtures
     }
   }
 
-  // Stage 3 yields separately between Fixtures & match results and Domestic league table
-  assert.match(workerSrc, /Stage 3\/4 \(1\/2\): Fixtures & match results/);
-  assert.match(workerSrc, /Stage 3\/4 \(2\/2\): Domestic league table/);
+  // Stage 4 yields separately between Fixtures & match results and Domestic league table
+  assert.match(workerSrc, /Stage 4\/4: Fixtures & match results/);
+  assert.match(workerSrc, /Stage 4\/4: Domestic league table/);
   assert.match(workerSrc, /await yieldTick\(\)/);
 
   // Fast Sync skips player_season_stats in mapper and mentions it in concise warning
@@ -1417,7 +1425,7 @@ test('Progressive Checkpoint Recovery: resolves with latest valid squad checkpoi
     'stage_3_fixtures_league',
     90
   );
-  assert.match(sampleWarning, /Stage 3 \(Fixtures & Full Domestic League Table\)/);
+  assert.match(sampleWarning, /Stage 4 \(Fixtures & Full Domestic League Table\)/);
   assert.match(sampleWarning, /player_season_stats/);
   assert.match(sampleWarning, /108\.4s/);
 
@@ -1565,7 +1573,7 @@ test('Progressive Checkpoint Recovery: resolves with latest valid squad checkpoi
     new ArrayBuffer(8)
   )) as DecodedFmSavePayload;
 
-  assert.equal(capturedWorkerUrl, '/fm-save-worker.js?v=16');
+  assert.equal(capturedWorkerUrl, '/fm-save-worker.js?v=17');
   assert.equal(terminatedAfterStage3, true);
   assert.equal(recovered.players.length, 1);
   assert.equal(recovered.players[0].name, 'Quinten Boudry');
@@ -1573,7 +1581,7 @@ test('Progressive Checkpoint Recovery: resolves with latest valid squad checkpoi
   assert.ok((recovered.extractionWarnings?.length ?? 0) >= 1);
   assert.match(recovered.extractionWarnings![0], /Checkpoint recovery/);
   assert.match(recovered.extractionWarnings![0], /player_season_stats/);
-  assert.match(recovered.extractionWarnings![0], /Stage 3 \(Fixtures & Full Domestic League Table\)/);
+  assert.match(recovered.extractionWarnings![0], /Stage 4 \(Fixtures & Full Domestic League Table\)/);
   assert.equal('ca' in (recovered.players[0] as unknown as Record<string, unknown>), false);
   assert.equal('pa' in (recovered.players[0] as unknown as Record<string, unknown>), false);
 
@@ -1670,11 +1678,11 @@ test('Progressive Checkpoint Recovery: resolves with latest valid squad checkpoi
   assert.equal(terminatedPreStage1, true);
 });
 
-test('Fast Sync Defaults & Reordered Timing Labels: shouldDefaultFastSync auto-defaults ON below 768px and hydrates granular stepTimingsMs + warnings safely', () => {
-  // Mobile viewports (< 768px) default Fast Sync ON; desktop/tablet (>= 768px) default OFF
-  assert.equal(shouldDefaultFastSync(320), true);
-  assert.equal(shouldDefaultFastSync(390), true);
-  assert.equal(shouldDefaultFastSync(767), true);
+test('Full Sync Default on Mobile & Desktop + Timing Labels: shouldDefaultFastSync defaults OFF everywhere and hydrates granular stepTimingsMs + warnings safely', () => {
+  // Always default to Full Sync (fastSync=false) on both mobile and desktop so 100% of data is captured
+  assert.equal(shouldDefaultFastSync(320), false);
+  assert.equal(shouldDefaultFastSync(390), false);
+  assert.equal(shouldDefaultFastSync(767), false);
   assert.equal(shouldDefaultFastSync(768), false);
   assert.equal(shouldDefaultFastSync(1024), false);
   assert.equal(shouldDefaultFastSync(1440), false);
@@ -2040,7 +2048,7 @@ test('Server-First Automatic Fallback: falls back seamlessly to browser Pyodide 
   assert.equal(res503.meta.saveName, 'fallback_save.fm');
   assert.equal(fallbackReceivedOptsList.length, 1, 'Expected browser fallback to run after 503');
   assert.equal(fallbackReceivedOptsList[0].scope, 'club_and_division');
-  assert.equal(fallbackReceivedOptsList[0].fastSync, true, 'Mobile browser fallback should auto-enable Fast Sync');
+  assert.equal(fallbackReceivedOptsList[0].fastSync, false, 'Mobile browser fallback should keep Full Sync by default so all data is captured');
   assert.ok(
     stages503.some((s) => /unavailable.*switching automatically to local browser decoder/i.test(s.label)),
     'Expected browser fallback progress update'
@@ -2155,7 +2163,7 @@ test('Server Chunked Decode Guardrails: Express server/routes/fmDecodeRoutes.ts 
   assert.match(decodeRouterSrc, /\/fm27\/decode-save\/finish/);
   assert.match(decodeRouterSrc, /\/fm27\/decode-save\/job\/:jobId/);
   assert.match(decodeRouterSrc, /MAX_TOTAL_UPLOAD_BYTES\s*=\s*1024\s*\*\s*1024\s*\*\s*1024/);
-  assert.match(decodeRouterSrc, /SERVER_DECODE_TIMEOUT_MS\s*=\s*300_000/);
+  assert.match(decodeRouterSrc, /SERVER_DECODE_TIMEOUT_MS\s*=\s*480_000/);
   assert.match(decodeRouterSrc, /lastActivityAt/);
   assert.match(decodeRouterSrc, /stdoutChunks\.push/);
   assert.match(decodeRouterSrc, /express\.raw\(\{\s*type:\s*['"]application\/octet-stream['"]\s*,\s*limit:\s*['"]8mb['"]/);

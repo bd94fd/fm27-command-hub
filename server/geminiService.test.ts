@@ -22,7 +22,8 @@ describe('server/config', () => {
       'gemini-3.5-flash-lite',
       'gemini-3.5-flash',
     ]);
-    assert.equal(cfg.aiTimeoutMs, 25_000);
+    assert.equal(cfg.aiTimeoutMs, 45_000);
+    assert.equal(cfg.deepAiTimeoutMs, 60_000);
   });
 
   it('respects GEMINI_API_KEY and optional GEMINI_MODEL override', () => {
@@ -212,5 +213,45 @@ describe('server/geminiService', () => {
       'gemini-3.5-flash-lite',
     ]);
     assert.deepEqual(sleepDelays, [1500, 3000]);
+  });
+
+  it('automatically fails over to gemini-3.5-flash-lite when Deep Analyst times out with remaining budget', async () => {
+    const calledModels: string[] = [];
+    let fakeNow = 10_000;
+
+    const service = new GeminiService({
+      config: loadServerConfig({ GEMINI_API_KEY: 'test-key' } as NodeJS.ProcessEnv),
+      now: () => fakeNow,
+      clientFactory: () => ({
+        models: {
+          list: async () => ({
+            models: [
+              { name: 'models/gemini-3.5-flash' },
+              { name: 'models/gemini-3.5-flash-lite' },
+            ],
+          }),
+          generateContent: (async (params: { model: string }) => {
+            calledModels.push(params.model);
+            if (params.model === 'gemini-3.5-flash') {
+              fakeNow += 40_000;
+              const err = new Error('The operation was aborted due to timeout');
+              err.name = 'TimeoutError';
+              throw err;
+            }
+            return { text: '{"ok":true,"timeoutFailover":true}' };
+          }) as never,
+        },
+      }),
+    });
+
+    const res = await service.generateContent(
+      { contents: 'Squad & Wage Audit' },
+      { reasoningMode: 'deep_high' }
+    );
+    assert.equal(res.text, '{"ok":true,"timeoutFailover":true}');
+    assert.deepEqual(calledModels, [
+      'gemini-3.5-flash',
+      'gemini-3.5-flash-lite',
+    ]);
   });
 });

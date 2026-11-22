@@ -1,9 +1,9 @@
 import { FmImportScope, Pass0ExtractionPayload } from '../types/fmSave';
 import { DecodedFmSavePayload, WORKER_CACHE_BUSTER } from '../utils/fmSaveHydrator';
 
-// Worker bundle uses WORKER_CACHE_BUSTER ('?v=16') from fmSaveHydrator.ts
-export const WORKER_INACTIVITY_TIMEOUT_MS = 90_000;
-export const WORKER_HARD_CEILING_MS = 300_000;
+// Worker bundle uses WORKER_CACHE_BUSTER ('?v=17') from fmSaveHydrator.ts
+export const WORKER_INACTIVITY_TIMEOUT_MS = 150_000;
+export const WORKER_HARD_CEILING_MS = 480_000;
 
 export type FmSavePayloadUnion = Pass0ExtractionPayload | DecodedFmSavePayload;
 
@@ -30,12 +30,15 @@ export function formatCheckpointStageLabel(stage: string): string {
       return 'Stage 1 (Club & Squad)';
     case 'stage_2_club_core':
       return 'Stage 2 (Finances, Staff, Tactics & Mentoring)';
+    case 'stage_3_club_ops':
+      return 'Stage 3 (Club Ops, Last-5 Form, Contracts & Market Scan)';
     case 'stage_3_fixtures_league':
-      return 'Stage 3 (Fixtures & Full Domestic League Table)';
+    case 'stage_4_fixtures_league':
+      return 'Stage 4 (Fixtures & Full Domestic League Table)';
     case 'stage_4_club_ops':
       return 'Stage 4 (Club Ops, Market Scan & Match xG)';
     case 'stage_4_player_stats':
-      return 'Stage 4 (Player Season Stats & Last-5 Form)';
+      return 'Stage 4 (Match xG, Player Season Stats & Last-5 Form)';
     default:
       return stage || 'Squad Checkpoint';
   }

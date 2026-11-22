@@ -345,7 +345,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         applyToAnalystOnly,
       });
 
-      const historyForApi = buildConversationTranscript(turns, 14);
+      const historyForApi = buildConversationTranscript(turns, 6);
 
       const res = await fetch('/api/fm27/tactical-chat', {
         method: 'POST',

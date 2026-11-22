@@ -46,26 +46,27 @@ try:
 except Exception:
     _layout_patcher = None  # type: ignore[assignment]
 
-MAPPER_CACHE_BUSTER = "?v=16"
+MAPPER_CACHE_BUSTER = "?v=17"
 
 # Detect native server Python vs browser Pyodide (emscripten) for realistic budgets
 _IS_PYODIDE = sys.platform == "emscripten"
 
 # Step 3/6 strict per-table wall-clock budgets (seconds)
-FINANCES_BUDGET_SEC = 8.0
-STAFF_BUDGET_SEC = 14.0 if not _IS_PYODIDE else 10.0
-CLUB_OPS_TABLE_BUDGET_SEC = 8.0
-SCOUT_BUDGET_SEC = 35.0 if not _IS_PYODIDE else 16.0
+FINANCES_BUDGET_SEC = 10.0
+STAFF_BUDGET_SEC = 16.0 if not _IS_PYODIDE else 14.0
+CLUB_OPS_TABLE_BUDGET_SEC = 10.0
+SCOUT_BUDGET_SEC = 35.0 if not _IS_PYODIDE else 18.0
 SCOUT_MAX_CANDIDATES = 500
 SCOUT_PER_POSITION_CAP = 50
-DIVISION_BENCHMARK_BUDGET_SEC = 6.0
+DIVISION_BENCHMARK_BUDGET_SEC = 8.0
+FIXTURES_SCAN_BUDGET_SEC = 45.0
 
 # Step 4/6 strict per-table wall-clock budgets (seconds)
-SEASON_STATS_BUDGET_SEC = 50.0 if not _IS_PYODIDE else 25.0
-PLAYER_MATCH_STATS_BUDGET_SEC = 35.0 if not _IS_PYODIDE else 18.0
-SEASON_HISTORY_BUDGET_SEC = 18.0 if not _IS_PYODIDE else 12.0
-NATIVE_SEASON_HISTORY_BUDGET_SEC = 35.0
-CONTRACTS_SUSPENSIONS_BUDGET_SEC = 12.0
+SEASON_STATS_BUDGET_SEC = 60.0 if not _IS_PYODIDE else 40.0
+PLAYER_MATCH_STATS_BUDGET_SEC = 45.0 if not _IS_PYODIDE else 30.0
+SEASON_HISTORY_BUDGET_SEC = 45.0 if not _IS_PYODIDE else 25.0
+NATIVE_SEASON_HISTORY_BUDGET_SEC = 45.0
+CONTRACTS_SUSPENSIONS_BUDGET_SEC = 15.0
 
 _STATE: dict[str, Any] = {
     "save": None,
@@ -4555,14 +4556,14 @@ def step_fixtures(fast_sync: bool | None = None) -> str:
         gc.collect()
         try:
             fix_table = save.fixtures()
-            # Start the 20s iteration cap AFTER save.fixtures() finishes decompressing/building
-            # the table; otherwise a slow mobile table build (>20s) aborts before away fixtures.
+            # Start the iteration cap AFTER save.fixtures() finishes decompressing/building
+            # the table; 45s cap ensures multi-season saves capture all home & away fixtures.
             t_scan = time.monotonic()
             seen = 0
             for f in fix_table:
                 seen += 1
-                if (seen & 511) == 0 and (time.monotonic() - t_scan) > 20.0:
-                    _STATE["warnings"].append("fixtures: 20s time cap reached")
+                if (seen & 511) == 0 and (time.monotonic() - t_scan) > FIXTURES_SCAN_BUDGET_SEC:
+                    _STATE["warnings"].append(f"fixtures: {FIXTURES_SCAN_BUDGET_SEC:.0f}s time cap reached")
                     break
                 is_home = (
                     getattr(f, "home_club_uid", None) == club_uid
@@ -5264,14 +5265,14 @@ def extract_fm_save_payload(
             except Exception:
                 pass
 
-    # Stage 1: Open save + Club & Squad
+    # Stage 1: Open save + Club & Squad (game_db borrowed ONCE for entire Phase A)
     _emit("Stage 1/4", "Opening .fm save...")
     step_open(path, preferred_club_hint, import_scope, fast_sync)
 
     _emit("Stage 1/4", "Extracting squad & 52 attributes...")
     step_players()
 
-    # Stage 2: Finances, Club Staff, Tactics & Mentoring
+    # Stage 2: Finances, Club Staff, Tactics & Mentoring (reuses borrowed game_db)
     _emit("Stage 2/4", "Reading finances, staff & tactics...")
     step_3_1_finances()
     _emit("Stage 2/4", "Reading club staff...")
@@ -5279,34 +5280,36 @@ def extract_fm_save_payload(
     _emit("Stage 2/4", "Reading tactics & mentoring...")
     step_3_3_tactics_and_mentoring()
 
-    # Stage 3: Fixtures & Full Domestic League Table (two separate steps)
-    _emit("Stage 3/4", "Reading fixtures, league table & match stats...")
-    step_fixtures(True)
-    _emit("Stage 3/4", "Reading domestic league table...")
-    step_league_table()
-
-    # Stage 4: Full Sync ONLY — Global club ops, Group 4 market scan, and heavy Player Stats
+    # Stage 3 (Full Sync ONLY — reuses borrowed game_db BEFORE releasing it once)
     if not fast_sync:
-        _emit("Stage 4/4", "Reading injuries, facilities & competition rules...")
+        _emit("Stage 3/4", "Reading injuries, facilities & competition rules...")
         step_3_3_injuries(False)
         step_3_3_facilities(False)
         step_3_3_competition_rules(False)
         step_3_3_transfer_windows(False)
         step_3_3_secondary_ops(False)
-        _emit("Stage 4/4", "Scanning free-agent & expiring contract targets...")
+        _emit("Stage 3/4", "Reading Last-5 match ratings...")
+        step_4_2_player_match_stats(False)
+        _emit("Stage 3/4", "Reading detailed contracts & suspensions...")
+        step_4_4_contracts_and_suspensions(False)
+        _emit("Stage 3/4", "Scanning free-agent & expiring contract targets...")
         step_3_4_market_scan_and_release_gamedb(False)
+    else:
+        _record_fast_sync_skip_note()
+
+    # Stage 4 (Phase B — game_db is freed; reads span, match_stats, season_stats, archive)
+    _emit("Stage 4/4", "Reading fixtures & match results...")
+    step_fixtures(True)
+    _emit("Stage 4/4", "Reading domestic league table...")
+    step_league_table()
+
+    if not fast_sync:
         _emit("Stage 4/4", "Reading team match stats (xG, shots & possession)...")
         step_team_match_stats(False)
         _emit("Stage 4/4", "Reading player season stats...")
         step_4_1_season_stats(False)
-        _emit("Stage 4/4", "Reading Last-5 match ratings...")
-        step_4_2_player_match_stats(False)
         _emit("Stage 4/4", "Reading player career history...")
         step_4_3_season_history(False)
-        _emit("Stage 4/4", "Reading detailed contracts & suspensions...")
-        step_4_4_contracts_and_suspensions(False)
-    else:
-        _record_fast_sync_skip_note()
 
     _emit("Finalizing", "Finalizing decoded club payload...")
     payload_json = step_finalize()

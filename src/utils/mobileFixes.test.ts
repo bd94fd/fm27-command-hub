@@ -171,7 +171,8 @@ test('Issue 1: server.ts + server/ modules enforce gemini-3.5-flash-lite/gemini-
   assert.match(combinedServerSrc, /'gemini-3\.5-flash'/);
   assert.doesNotMatch(combinedServerSrc, /'gemini-2\.5-flash'/);
   assert.doesNotMatch(combinedServerSrc, /'gemini-2\.5-flash-lite'/);
-  assert.match(combinedServerSrc, /DEFAULT_AI_TIMEOUT_MS\s*=\s*25_000/);
+  assert.match(combinedServerSrc, /DEFAULT_AI_TIMEOUT_MS\s*=\s*45_000/);
+  assert.match(combinedServerSrc, /DEEP_AI_TIMEOUT_MS\s*=\s*60_000/);
   assert.match(combinedServerSrc, /AbortSignal\.timeout/);
   assert.match(combinedServerSrc, /res\.status\(504\)\.json/);
   assert.match(combinedServerSrc, /response\.text/);
@@ -627,7 +628,7 @@ print(json.dumps({
   assert.equal(res.fm27Skip, true);
   assert.equal(res.fm26Skip, false);
   assert.ok(res.browserHistoryBudget >= 10);
-  assert.equal(res.nativeHistoryBudget, 35);
+  assert.equal(res.nativeHistoryBudget, 45);
 });
 
 test('Fixes 3 & 5 (TypeScript): promisedPlayingTime single source of truth for Squad Status and Recent-Match Production Fallback', () => {
@@ -729,7 +730,7 @@ test('Autonomous fmsave Runtime Patcher & Mapper: CodedValue tactic bitmasks, 4-
   );
   assert.match(decodeRoutesSrc, /router\.delete\('\/fm27\/decode-save\/upload\/:uploadId'/);
   assert.match(saveReaderSrc, /\/api\/fm27\/decode-save\/upload\//);
-  assert.match(workerSrc, /\/fm_layout_patcher\.py\?v=16/);
+  assert.match(workerSrc, /\/fm_layout_patcher\.py\?v=17/);
 
   const pythonBin = fs.existsSync('/opt/fmsave-venv/bin/python3')
     ? '/opt/fmsave-venv/bin/python3'

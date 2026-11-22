@@ -179,7 +179,7 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
       }> = [];
 
       if (Array.isArray(history) && history.length > 0) {
-        for (const h of history.slice(-14)) {
+        for (const h of history.slice(-6)) {
           if (!h.text || !h.text.trim()) continue;
           contents.push({
             role: h.role === 'user' ? 'user' : 'model',

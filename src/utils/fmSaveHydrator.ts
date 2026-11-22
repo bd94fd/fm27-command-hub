@@ -29,7 +29,7 @@ import { normalizePlayerName } from './fmFileImporter';
 import { inferFm27Roles } from './fm27RoleMatcher';
 import { isSuspensionActiveForCompetition } from './bestXiSolver';
 
-export const WORKER_CACHE_BUSTER = '?v=16';
+export const WORKER_CACHE_BUSTER = '?v=17';
 
 export function resolveSquadUnit(
   teamSlot?: number | null
@@ -41,8 +41,11 @@ export function resolveSquadUnit(
   return 'U18';
 }
 
-export function shouldDefaultFastSync(viewportWidth: number): boolean {
-  return Number.isFinite(viewportWidth) && viewportWidth > 0 && viewportWidth < 768;
+export function shouldDefaultFastSync(_viewportWidth: number): boolean {
+  // Always default to Full Sync on mobile and desktop so 100% of save data
+  // (season stats, Last-5 form, match xG, market scan, career history) is captured.
+  // Fast Sync remains available as an explicit manual toggle.
+  return false;
 }
 
 const STEP_TIMING_LABELS: Record<string, string> = {

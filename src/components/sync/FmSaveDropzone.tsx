@@ -76,8 +76,8 @@ export const FmSaveDropzone: React.FC<FmSaveDropzoneProps> = ({
             </div>
             <div className="text-xs text-slate-400">
               {serverDecodeAvailable
-                ? 'Server-First 4 MB Chunked Decode (fmsave 0.14.3 · up to 1 GB) • Pyodide ?v=16 fallback'
-                : 'Local Browser Pyodide 3.14 (fmsave 0.14.3 ?v=16) WORKERFS Decode'}
+                ? 'Server-First 4 MB Chunked Decode (fmsave 0.14.3 · up to 1 GB) • Pyodide ?v=17 fallback'
+                : 'Local Browser Pyodide 3.14 (fmsave 0.14.3 ?v=17) WORKERFS Decode'}
             </div>
           </div>
         </div>

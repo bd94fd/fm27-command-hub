@@ -17,7 +17,7 @@ interface ServerPythonRuntime {
 }
 
 const PYTHON_PROBE_TTL_MS = 60_000;
-const SERVER_DECODE_TIMEOUT_MS = 300_000; // 300s (5 min) for large multi-season saves
+const SERVER_DECODE_TIMEOUT_MS = 480_000; // 480s (8 min) for large multi-season saves
 const SERVER_DECODE_MAX_STDOUT_BYTES = 100 * 1024 * 1024;
 const MAX_TOTAL_UPLOAD_BYTES = 1024 * 1024 * 1024; // 1024 MB (1 GB) total chunked save limit
 const PENDING_UPLOAD_TTL_MS = 15 * 60 * 1000; // 15 minutes of inactivity
