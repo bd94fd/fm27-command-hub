@@ -80,7 +80,7 @@ export async function checkServerDecodeStatus(
     typeof AbortController !== 'undefined' ? new AbortController() : null;
   const onCallerAbort = () => controller?.abort();
   signal?.addEventListener('abort', onCallerAbort, { once: true });
-  const timeout = controller ? setTimeout(() => controller.abort(), 4_000) : null;
+  const timeout = controller ? setTimeout(() => controller.abort(), 8_000) : null;
   try {
     const res = await fetchImpl('/api/fm27/decode-status', {
       method: 'GET',
@@ -108,16 +108,78 @@ export async function checkServerDecodeStatus(
 }
 
 export const SERVER_UPLOAD_CHUNK_BYTES = 2 * 1024 * 1024; // 2 MB per chunk (faster over mobile/Cloudflare & safer against HTTP 520/524 drops)
-export const SERVER_UPLOAD_CONCURRENCY = 4; // 4 parallel chunk streams when server supports parallel writes
+export const SERVER_UPLOAD_CONCURRENCY = 4; // 4 parallel chunk streams on desktop when server supports parallel writes
+export const SERVER_MOBILE_UPLOAD_CONCURRENCY = 1; // Sequential 2 MB reads on mobile so Google Drive / iOS Files cloud providers never deadlock
 export const SERVER_MAX_SAVE_BYTES = 1024 * 1024 * 1024; // 1024 MB (1 GB) max total .fm save size
 export const SERVER_JOB_POLL_INTERVAL_MS = 1_200; // 1.2s polling cadence
 export const SERVER_CHUNK_MAX_RETRIES = 3;
 export const SERVER_POLL_MAX_RETRIES = 5;
+export const SERVER_INIT_TIMEOUT_MS = 15_000;
+export const SERVER_CHUNK_READ_TIMEOUT_MS = 25_000;
+export const SERVER_CHUNK_UPLOAD_TIMEOUT_MS = 35_000;
 
 const TRANSIENT_SERVER_STATUSES = new Set([408, 429, 502, 503, 504, 520, 522, 524]);
 
 function isTransientServerStatus(status: number): boolean {
   return TRANSIENT_SERVER_STATUSES.has(status);
+}
+
+function isMobileBrowser(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+}
+
+async function readBlobChunkWithTimeout(
+  blob: Blob,
+  timeoutMs: number,
+  signal?: AbortSignal
+): Promise<ArrayBuffer> {
+  if (signal?.aborted) {
+    throw new Error('CANCELLED_BY_USER');
+  }
+  return new Promise<ArrayBuffer>((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      if (timer) clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+    };
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error('CANCELLED_BY_USER'));
+    };
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(
+        new Error(
+          'Could not read this .fm file from cloud storage (such as Google Drive) — the file read timed out. Please download the .fm file to your device storage (Downloads folder) first, then import it from there.'
+        )
+      );
+    }, timeoutMs);
+    signal?.addEventListener('abort', onAbort, { once: true });
+
+    blob
+      .arrayBuffer()
+      .then((buf) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(buf);
+      })
+      .catch((err) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(
+          new Error(
+            `Could not read this .fm file from your device or cloud storage (${err instanceof Error ? err.message : 'file unreadable'}). If importing from Google Drive on mobile, download the .fm file to your phone first and import it from Downloads.`
+          )
+        );
+      });
+  });
 }
 
 function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
@@ -285,7 +347,16 @@ export async function decodeFmSaveViaServer(
     chunk: { offset: number; end: number },
     effectiveSignal?: AbortSignal
   ): Promise<void> => {
+    const activeSignal = effectiveSignal ?? signal;
     const slice = file.slice(chunk.offset, chunk.end);
+    // Materialize the 2 MB slice into an ArrayBuffer with a timeout before fetch().
+    // On mobile (Android Chrome / iOS Safari), passing a raw Google Drive content:// Blob
+    // directly to fetch() can hang indefinitely or fail with ERR_UPLOAD_FILE_CHANGED.
+    const chunkBuffer = await readBlobChunkWithTimeout(
+      slice,
+      SERVER_CHUNK_READ_TIMEOUT_MS,
+      activeSignal
+    );
     let chunkUploaded = false;
 
     for (let attempt = 0; attempt <= SERVER_CHUNK_MAX_RETRIES; attempt++) {
@@ -295,6 +366,17 @@ export async function decodeFmSaveViaServer(
 
       let chunkRes: Response | null = null;
       let networkError = false;
+      const attemptController =
+        typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const onAttemptAbort = () => attemptController?.abort();
+      activeSignal?.addEventListener('abort', onAttemptAbort, { once: true });
+      let timedOut = false;
+      const chunkTimer = attemptController
+        ? setTimeout(() => {
+            timedOut = true;
+            attemptController.abort();
+          }, SERVER_CHUNK_UPLOAD_TIMEOUT_MS)
+        : null;
       try {
         chunkRes = await fetchImpl('/api/fm27/decode-save/chunk', {
           method: 'POST',
@@ -303,14 +385,17 @@ export async function decodeFmSaveViaServer(
             'x-fm-upload-id': uploadId,
             'x-fm-chunk-offset': String(chunk.offset),
           },
-          body: slice,
-          signal: effectiveSignal ?? signal,
+          body: new Blob([chunkBuffer], { type: 'application/octet-stream' }),
+          signal: attemptController?.signal ?? activeSignal,
         });
       } catch (err: unknown) {
-        if (err instanceof Error && err.name === 'AbortError') {
+        if (!timedOut && (activeSignal?.aborted || (err instanceof Error && err.name === 'AbortError'))) {
           throw new Error('CANCELLED_BY_USER');
         }
         networkError = true;
+      } finally {
+        if (chunkTimer) clearTimeout(chunkTimer);
+        activeSignal?.removeEventListener('abort', onAttemptAbort);
       }
 
       if (chunkRes && chunkRes.ok) {
@@ -371,12 +456,16 @@ export async function decodeFmSaveViaServer(
     }
   };
 
-  // 2. Upload chunks — 4-way parallel when server advertises supportsParallelChunks, sequential otherwise
+  // 2. Upload chunks — 4-way parallel on desktop when server advertises supportsParallelChunks,
+  // sequential (1-way) on mobile so Google Drive / iOS Files cloud providers never deadlock
+  const defaultConcurrency = isMobileBrowser()
+    ? SERVER_MOBILE_UPLOAD_CONCURRENCY
+    : SERVER_UPLOAD_CONCURRENCY;
   const requestedConcurrency = Math.max(
     1,
     Math.min(
       8,
-      options.uploadConcurrency ?? SERVER_UPLOAD_CONCURRENCY
+      options.uploadConcurrency ?? defaultConcurrency
     )
   );
   const useParallelUpload =
