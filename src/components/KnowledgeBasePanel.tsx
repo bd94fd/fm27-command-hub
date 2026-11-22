@@ -420,7 +420,7 @@ export const KnowledgeBasePanel: React.FC<KnowledgeBasePanelProps> = ({
                         <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
                           <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                             <Users className="h-3 w-3 text-emerald-400" />
-                            Top Suited Squad Fits (Live fm27RoleMatcher)
+                            Best-Suited Players in Your Squad
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
                             {topMatches.map((m) => (

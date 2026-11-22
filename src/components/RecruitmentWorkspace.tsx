@@ -715,7 +715,11 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
               },
               {
                 id: 'contracts',
-                label: `Expiring (${expiringAdvice.length})`,
+                label: `Expiring (${
+                  contractHorizonSummary.critical6m.length +
+                  contractHorizonSummary.warning12m.length +
+                  contractHorizonSummary.watch18m.length
+                })`,
                 icon: CalendarClock,
               },
               {
@@ -1444,19 +1448,30 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                     </button>
                   </div>
 
-                  <span className="text-[11px] text-slate-400">
-                    Virtualised pool: {filteredScoutedTargets.length} matching ({scoutedTargets.length} in save pool) · Zero raw CA/PA
-                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {search.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => setSearch('')}
+                        className="inline-flex items-center gap-1 rounded-lg bg-amber-500/15 border border-amber-500/40 px-2 py-0.5 text-[11px] font-semibold text-amber-200 hover:bg-amber-500/25 cursor-pointer"
+                      >
+                        Filter: &ldquo;{search.trim()}&rdquo; ×
+                      </button>
+                    )}
+                    <span className="text-[11px] text-slate-400">
+                      Scout pool: {filteredScoutedTargets.length} matching ({scoutedTargets.length} in save)
+                    </span>
+                  </div>
                 </div>
               </div>
 
               {scoutedTargets.length === 0 ? (
                 <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 text-center text-xs text-slate-400">
-                  No Free Agent or Expiring ≤12m targets decoded in this save yet. Drop a `.fm` save in the Analyst tab to run the full-database recruitment scan.
+                  No Free Agent or Expiring ≤6m targets decoded in this save yet. Drop a `.fm` save in the Hub tab to run the full recruitment scan.
                 </div>
               ) : filteredScoutedTargets.length === 0 ? (
                 <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 text-center text-xs text-slate-400">
-                  No scouted targets match the active filters. Try clearing &ldquo;Genuine Gaps Only&rdquo; or broadening the position/age band.
+                  No scouted targets match the active filters. Try clearing &ldquo;Genuine Gaps Only&rdquo;{search.trim() ? ', clearing the search filter,' : ''} or broadening the position/age band.
                 </div>
               ) : (
                 <VList

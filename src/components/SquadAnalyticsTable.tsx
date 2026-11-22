@@ -1614,6 +1614,7 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
                         return (
                           <th
                             key={colId}
+                            title={meta.label}
                             className={`py-2.5 px-3 whitespace-nowrap ${
                               meta.align === 'right' ? 'text-right' : 'text-left'
                             }`}

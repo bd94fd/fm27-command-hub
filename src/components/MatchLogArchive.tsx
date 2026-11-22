@@ -352,7 +352,7 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                       : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
                   }`}
                 >
-                  {c === 'ALL' ? 'All Comps' : c}
+                  {c === 'ALL' ? 'All Comps' : c === 'Cup / Friendly' ? 'Cup / Other' : c}
                 </button>
               ))}
             </div>

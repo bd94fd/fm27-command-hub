@@ -518,14 +518,17 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
             </button>
           )}
 
-          <label className="hidden sm:inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 ml-1 cursor-pointer">
+          <label
+            title="Test role or player changes with the AI Analyst without changing your saved club roles"
+            className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 ml-1 cursor-pointer"
+          >
             <input
               type="checkbox"
               checked={applyToAnalystOnly}
               onChange={(e) => onChangeApplyToAnalystOnly(e.target.checked)}
               className="rounded border-slate-400 text-emerald-600 focus:ring-emerald-500"
             />
-            <span>Apply to Analyst Only</span>
+            <span>Analyst Sandbox Only</span>
           </label>
         </div>
       </div>

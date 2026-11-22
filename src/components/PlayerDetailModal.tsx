@@ -137,6 +137,13 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
   const [shortlistFeedback, setShortlistFeedback] = useState<string | null>(null);
   const [exportFeedback, setExportFeedback] = useState<string | null>(null);
 
+  React.useEffect(() => {
+    setActiveTab('overview');
+    setSelectedIpRole('');
+    setSelectedOopRole('');
+    setComparePlayerId('__AUTO__');
+  }, [player?.id]);
+
   const analysis = useMemo(
     () => (player ? analyzePlayerCard(player, squadPlayers, divisionBenchmarks) : null),
     [player, squadPlayers, divisionBenchmarks]
@@ -1514,9 +1521,11 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                       <h4 className="font-bold uppercase tracking-wider text-slate-400">
                         Contract Clauses &amp; Match Bonuses
                       </h4>
-                      <span className="rounded bg-indigo-500/15 border border-indigo-500/30 px-2 py-0.5 text-[11px] font-semibold text-indigo-300">
-                        Promised: {player.contractDetails?.promisedPlayingTime || player.status}
-                      </span>
+                      {player.contractDetails?.promisedPlayingTime && (
+                        <span className="rounded bg-indigo-500/15 border border-indigo-500/30 px-2 py-0.5 text-[11px] font-semibold text-indigo-300">
+                          Promised: {player.contractDetails.promisedPlayingTime}
+                        </span>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

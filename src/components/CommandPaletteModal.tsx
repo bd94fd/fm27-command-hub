@@ -112,7 +112,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
         id: 'nav-tactics',
         category: 'Navigation',
         title: 'Tactical War Room & Matchday Companion',
-        subtitle: 'Dual-Phase IP/OOP Best XI, Rest-Defense Matrix, and Touchline Companion',
+        subtitle: 'Dual-Phase IP/OOP Best XI, Rest Defence Matrix, and Touchline Companion',
         badge: 'Tab',
         onSelect: () => {
           onSelectTab('tactics');
@@ -122,7 +122,10 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
       {
         id: 'nav-recruitment',
         category: 'Navigation',
-        title: `Transfers, Contracts & 500-Target Scout Pool (${scoutTargets.length})`,
+        title:
+          scoutTargets.length > 0
+            ? `Transfers, Contracts & Scout Pool (${scoutTargets.length})`
+            : 'Transfers, Contracts & Scout Pool',
         subtitle: 'Club DNA scouting, contract horizon monitor, and squad depth audit',
         badge: 'Tab',
         onSelect: () => {
@@ -226,7 +229,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
       });
     });
 
-    scoutTargets.slice(0, 150).forEach((t, idx) => {
+    scoutTargets.forEach((t, idx) => {
       items.push({
         id: `target-${t.uid || idx}-${t.name}`,
         category: 'Scout Target',

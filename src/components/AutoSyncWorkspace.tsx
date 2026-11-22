@@ -15,6 +15,9 @@ import {
   Shield,
   Briefcase,
   MessageSquare,
+  Copy,
+  Check,
+  ClipboardPaste,
 } from 'lucide-react';
 import {
   MatchLogEntry,
@@ -162,6 +165,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const feedEndRef = useRef<HTMLDivElement | null>(null);
 
   const hasLoadedSave = players.length > 0 || Boolean(hydratedFmSave);
@@ -700,6 +704,118 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     setAttachedFmFiles((prev) => prev.filter((f) => f.id !== id));
   };
 
+  const handleCopyText = async (id: string, text: string) => {
+    if (!text.trim()) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCopiedId(id);
+      window.setTimeout(() => {
+        setCopiedId((curr) => (curr === id ? null : curr));
+      }, 1800);
+    } catch {
+      setChatError('Could not copy to clipboard in this browser.');
+    }
+  };
+
+  const formatTurnForCopy = (turn: ChatTurnPayload): string => {
+    if (turn.role === 'user') {
+      return turn.userText || '';
+    }
+    const parts: string[] = [];
+    if (turn.analysisMarkdown) parts.push(turn.analysisMarkdown.trim());
+    if (turn.immediateClicks && turn.immediateClicks.length > 0) {
+      parts.push(
+        `Immediate In-Game Clicks:\n${turn.immediateClicks
+          .map((c: string, i: number) => `${i + 1}. ${c}`)
+          .join('\n')}`
+      );
+    }
+    return parts.join('\n\n').trim();
+  };
+
+  const handleCopyFullChat = () => {
+    if (turns.length === 0) return;
+    const transcript = turns
+      .map((t) => {
+        const speaker = t.role === 'user' ? displayManagerLabel : 'Tactical Analyst';
+        return `[${speaker}]\n${formatTurnForCopy(t)}`;
+      })
+      .join('\n\n---\n\n');
+    handleCopyText('full-chat', transcript);
+  };
+
+  const handleTextareaPaste = async (
+    e: React.ClipboardEvent<HTMLTextAreaElement>
+  ) => {
+    const items = Array.from(e.clipboardData?.items || []);
+    const imageFiles: File[] = [];
+    for (const item of items) {
+      if (item.kind === 'file' && item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) imageFiles.push(file);
+      }
+    }
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      await processIncomingFiles(imageFiles);
+    }
+  };
+
+  const handlePasteButtonClick = async () => {
+    try {
+      if (navigator.clipboard?.read) {
+        const clipboardItems = await navigator.clipboard.read();
+        const pastedFiles: File[] = [];
+        let pastedText = '';
+        for (const item of clipboardItems) {
+          const imageType = item.types.find((t) => t.startsWith('image/'));
+          if (imageType) {
+            const blob = await item.getType(imageType);
+            const ext = imageType.split('/')[1] || 'png';
+            pastedFiles.push(
+              new File([blob], `pasted-screenshot.${ext}`, { type: imageType })
+            );
+          } else if (item.types.includes('text/plain')) {
+            const blob = await item.getType('text/plain');
+            pastedText += await blob.text();
+          }
+        }
+        if (pastedFiles.length > 0) {
+          await processIncomingFiles(pastedFiles);
+        }
+        if (pastedText.trim()) {
+          setMessageInput((prev) =>
+            prev.trim() ? `${prev.trimEnd()}\n${pastedText}` : pastedText
+          );
+        }
+        return;
+      }
+      if (navigator.clipboard?.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text.trim()) {
+          setMessageInput((prev) =>
+            prev.trim() ? `${prev.trimEnd()}\n${text}` : text
+          );
+        }
+      }
+    } catch {
+      setChatError(
+        'Clipboard paste was blocked by the browser — tap inside the message box and paste directly (Ctrl+V / long-press Paste).'
+      );
+    }
+  };
+
   const handleSendToAnalyst = async (
     e?: React.FormEvent,
     quickPrompt?: string
@@ -811,7 +927,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                 className="accent-amber-500 w-3.5 h-3.5 cursor-pointer"
               />
               <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span>Fast Sync (Recommended on Mobile)</span>
+              <span>Fast Sync (Quick Preview)</span>
             </label>
           </div>
 
@@ -895,16 +1011,36 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             )}
 
             {turns.length > 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  setTurns([]);
-                  setChatError(null);
-                }}
-                className="px-2 py-1 text-[11px] font-medium text-slate-400 hover:text-white bg-slate-900 border border-slate-800 rounded-lg cursor-pointer"
-              >
-                Clear Chat
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={handleCopyFullChat}
+                  title="Copy the entire Analyst conversation to your clipboard"
+                  className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-emerald-300 hover:text-white bg-slate-900 border border-emerald-500/35 rounded-lg cursor-pointer transition"
+                >
+                  {copiedId === 'full-chat' ? (
+                    <>
+                      <Check className="w-3 h-3" />
+                      Copied Chat
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3" />
+                      Copy Chat
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTurns([]);
+                    setChatError(null);
+                  }}
+                  className="px-2 py-1 text-[11px] font-medium text-slate-400 hover:text-white bg-slate-900 border border-slate-800 rounded-lg cursor-pointer"
+                >
+                  Clear Chat
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -994,13 +1130,37 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                     key={turn.id}
                     className="ml-auto max-w-2xl p-3.5 rounded-xl bg-emerald-950/50 border border-emerald-500/30 text-slate-100"
                   >
-                    <div className="flex items-center justify-between text-[10px] font-mono text-emerald-400 mb-1">
+                    <div className="flex items-center justify-between gap-2 text-[10px] font-mono text-emerald-400 mb-1">
                       <span>{displayManagerLabel}</span>
-                      {turn.imageNames && turn.imageNames.length > 0 && (
-                        <span className="truncate ml-2">
-                          {turn.imageNames.join(', ')}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2 min-w-0">
+                        {turn.imageNames && turn.imageNames.length > 0 && (
+                          <span className="truncate">
+                            {turn.imageNames.join(', ')}
+                          </span>
+                        )}
+                        {turn.userText && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleCopyText(turn.id, formatTurnForCopy(turn))
+                            }
+                            title="Copy message"
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-900/60 hover:bg-emerald-800/70 text-emerald-200 transition cursor-pointer shrink-0"
+                          >
+                            {copiedId === turn.id ? (
+                              <>
+                                <Check className="w-3 h-3" />
+                                Copied
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3 h-3" />
+                                Copy
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <p className="text-xs leading-relaxed whitespace-pre-wrap">
                       {turn.userText}
@@ -1018,11 +1178,33 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                     <span className="text-xs font-mono font-semibold text-emerald-600 dark:text-emerald-400">
                       Tactical Analyst{turn.screenDetected ? ` · ${turn.screenDetected}` : ''}
                     </span>
-                    {turn.inGameDate && turn.inGameDate !== '--' && (
-                      <span className="text-[10px] font-mono text-slate-500">
-                        {turn.inGameDate}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {turn.inGameDate && turn.inGameDate !== '--' && (
+                        <span className="text-[10px] font-mono text-slate-500">
+                          {turn.inGameDate}
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleCopyText(turn.id, formatTurnForCopy(turn))
+                        }
+                        title="Copy this Analyst reply"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-200/80 dark:bg-slate-800 hover:bg-emerald-500/20 text-slate-700 dark:text-slate-200 hover:text-emerald-300 border border-slate-300 dark:border-slate-700 transition cursor-pointer"
+                      >
+                        {copiedId === turn.id ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-400" />
+                            Copied
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            Copy
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
 
                   {turn.playerUpdatesApplied &&
@@ -1030,7 +1212,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                       <div className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-300 flex items-center gap-1.5">
                         <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                         <span>
-                          Updated Squad DB:{' '}
+                          Updated Squad:{' '}
                           <strong>
                             {turn.playerUpdatesApplied.slice(0, 8).join(', ')}
                             {turn.playerUpdatesApplied.length > 8
@@ -1250,12 +1432,23 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               />
             </label>
 
+            <button
+              type="button"
+              onClick={handlePasteButtonClick}
+              title="Paste text or a screenshot from your clipboard"
+              className="inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl cursor-pointer transition shrink-0"
+            >
+              <ClipboardPaste className="w-4 h-4 text-sky-400" />
+              <span className="hidden md:inline">Paste</span>
+            </button>
+
             <textarea
               rows={2}
               aria-label="Message your FM27 Tactical Analyst"
-              placeholder="Ask tactics, drop a .fm save, or attach a screenshot..."
+              placeholder="Ask tactics, drop a .fm save, or paste text/screenshots..."
               value={messageInput}
               onChange={(e) => setMessageInput(e.target.value)}
+              onPaste={handleTextareaPaste}
               className="flex-1 min-w-0 px-3 py-2 text-xs leading-relaxed bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
             />
 

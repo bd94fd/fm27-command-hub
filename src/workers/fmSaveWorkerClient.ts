@@ -108,9 +108,9 @@ export function formatWorkerTimeoutMessage(
 ): string {
   const safeElapsed = Math.max(0, Math.round(elapsedSec));
   if (kind === 'inactivity') {
-    return `Save decoding stalled for ${limitSec}s with no progress during "${lastStageLabel}" (total elapsed: ${safeElapsed}s). Enable "Fast Sync (Club Core — Recommended on Mobile)" next to the .fm file picker for very large saves or mobile devices.`;
+    return `Save decoding stalled for ${limitSec}s with no progress during "${lastStageLabel}" (total elapsed: ${safeElapsed}s). You can enable "Fast Sync (Quick Preview)" next to the .fm file picker for very large saves.`;
   }
-  return `Save decoding exceeded the ${limitSec}s hard ceiling during "${lastStageLabel}" (total elapsed: ${safeElapsed}s). Enable "Fast Sync (Club Core — Recommended on Mobile)" next to the .fm file picker to decode squad, attributes, league table, fixtures, finances, and staff in seconds.`;
+  return `Save decoding exceeded the ${limitSec}s hard ceiling during "${lastStageLabel}" (total elapsed: ${safeElapsed}s). You can enable "Fast Sync (Quick Preview)" next to the .fm file picker to decode squad, attributes, league table, fixtures, finances, and staff in seconds.`;
 }
 
 export interface WorkerProgressEvent {

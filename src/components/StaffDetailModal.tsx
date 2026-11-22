@@ -53,6 +53,15 @@ export const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
   staff,
   onClose,
 }) => {
+  React.useEffect(() => {
+    if (!staff) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [staff, onClose]);
+
   if (!staff) return null;
 
   const allRatings = calculateAllStaffRoleRatings(staff.attributes);
