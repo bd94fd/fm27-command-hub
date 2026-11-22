@@ -354,6 +354,8 @@ export class GeminiService {
             abortSignal,
           },
         });
+        // Prevent Node unhandledRejection if timeoutPromise settles first and callPromise rejects later
+        callPromise.catch(() => {});
 
         return await Promise.race([callPromise, timeoutPromise]);
       } catch (err: unknown) {

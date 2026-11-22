@@ -50,6 +50,7 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
       fastModel: FAST_MODEL_ID,
       fallbackModel: config.fallbackModel,
       analystTimeoutMs: config.aiTimeoutMs,
+      deepAnalystTimeoutMs: config.deepAiTimeoutMs,
     });
   });
 
@@ -90,7 +91,7 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
       }
 
       parts.push({
-        text: `Analyze this FM27 screen / match update for ${targetClub} (Event #${eventNum}). User notes: "${notes || 'Extract match statistics, xG, ratings, tactical audit, and generate ready-to-paste Google Docs & Google Sheets sync blocks.'}"`,
+        text: `Analyze this FM27 screen / match update for ${targetClub} (Event #${eventNum}). User notes: "${notes || 'Extract match statistics, xG, ratings, and a plain-English tactical audit.'}"`,
       });
 
       const response = await gemini.generateContent(
@@ -121,9 +122,18 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
       if (error instanceof AnalystTimeoutError) {
         return res.status(504).json({ error: error.message });
       }
-      const errMessage =
-        error instanceof Error ? error.message : 'Failed to analyze FM27 screen';
-      return res.status(500).json({ error: errMessage });
+      if (
+        error instanceof AnalystOverloadError ||
+        isTransientOverloadError(error)
+      ) {
+        return res.status(503).json({
+          error:
+            error instanceof AnalystOverloadError
+              ? error.message
+              : formatFriendlyGeminiError(error),
+        });
+      }
+      return res.status(500).json({ error: formatFriendlyGeminiError(error) });
     }
   });
 
@@ -156,7 +166,7 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
       if (!gemini.hasApiKey()) {
         return res.status(500).json({
           error:
-            'GEMINI_API_KEY is missing. Please verify your API key in Settings > Secrets.',
+            'GEMINI_API_KEY is missing. Set GEMINI_API_KEY in your .env file or cloud environment variables.',
         });
       }
 

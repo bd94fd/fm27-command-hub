@@ -21,7 +21,7 @@ import {
   UserCheck,
   Users,
 } from 'lucide-react';
-import { KVV_ZELZATE_META, SQUAD_PLAYERS } from './data/squadData';
+import { EMPTY_CLUB_META, SQUAD_PLAYERS } from './data/squadData';
 import { COMPETITIVE_MATCH_LOGS } from './data/matchAndTacticsData';
 import {
   MatchLogEntry,
@@ -146,13 +146,13 @@ export default function App() {
   const [pendingAnalystPrompt, setPendingAnalystPrompt] = useState<string | null>(
     null
   );
-  const [saveDate, setSaveDate] = useState<string>(KVV_ZELZATE_META.saveDate);
+  const [saveDate, setSaveDate] = useState<string>(EMPTY_CLUB_META.saveDate);
   const [nextFixture, setNextFixture] = useState<string>(
-    KVV_ZELZATE_META.nextFixture
+    EMPTY_CLUB_META.nextFixture
   );
   const [leagueStandingSub, setLeagueStandingSub] = useState<string>('--');
-  const [wageSpend, setWageSpend] = useState<string>(KVV_ZELZATE_META.wageSpend);
-  const [balance, setBalance] = useState<string>(KVV_ZELZATE_META.balance);
+  const [wageSpend, setWageSpend] = useState<string>(EMPTY_CLUB_META.wageSpend);
+  const [balance, setBalance] = useState<string>(EMPTY_CLUB_META.balance);
   const [hydratedFmSave, setHydratedFmSave] = useState<HydratedSaveState | null>(
     null
   );
@@ -367,11 +367,11 @@ export default function App() {
     setStaff([]);
     setRecruitmentCases([]);
     setShortlists([]);
-    setSaveDate(KVV_ZELZATE_META.saveDate);
-    setNextFixture(KVV_ZELZATE_META.nextFixture);
+    setSaveDate(EMPTY_CLUB_META.saveDate);
+    setNextFixture(EMPTY_CLUB_META.nextFixture);
     setLeagueStandingSub('--');
-    setWageSpend(KVV_ZELZATE_META.wageSpend);
-    setBalance(KVV_ZELZATE_META.balance);
+    setWageSpend(EMPTY_CLUB_META.wageSpend);
+    setBalance(EMPTY_CLUB_META.balance);
     setHydratedFmSave(null);
     setIsRestoredFromMemory(false);
     setSelectedPlayer(null);

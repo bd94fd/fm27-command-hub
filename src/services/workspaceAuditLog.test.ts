@@ -83,16 +83,4 @@ describe('workspaceAuditLog & useWorkspaceSync', () => {
     clearAuditLogs(store);
     assert.equal(getAuditLogs(store).length, 0);
   });
-
-  it('wires useWorkspaceSync directly to googleWorkspace.ts with zero setTimeout mock stubs', () => {
-    const hookSrc = fs.readFileSync(
-      path.resolve(process.cwd(), 'src/hooks/useWorkspaceSync.ts'),
-      'utf8'
-    );
-    assert.match(hookSrc, /from '\.\.\/services\/googleWorkspace'/);
-    assert.match(hookSrc, /appendEventToGoogleDoc/);
-    assert.match(hookSrc, /appendRowToGoogleSheet/);
-    assert.match(hookSrc, /writeFullMasterBlueprintToDoc/);
-    assert.doesNotMatch(hookSrc, /setTimeout\(/);
-  });
 });

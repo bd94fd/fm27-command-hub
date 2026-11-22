@@ -12,6 +12,7 @@ import {
   cleanupAllPendingUploadsAndJobs,
   createFmDecodeRouter,
 } from './server/routes/fmDecodeRoutes.ts';
+import { createSecurityGuard } from './server/middleware/securityGuard.ts';
 
 dotenv.config();
 
@@ -53,6 +54,13 @@ export async function createApp(
 
   // Mount modular API routers under /api
   app.use('/api', createFm27Router({ geminiService }));
+  const decodeGuard = createSecurityGuard({
+    hubAccessToken: config.hubAccessToken,
+    rateLimitWindowMs: config.rateLimitWindowMs,
+    // Allow up to 600 chunked upload/poll requests per window for large saves up to 1 GB
+    rateLimitMaxRequests: Math.max(config.rateLimitMaxRequests, 600),
+  });
+  app.use('/api/fm27/decode-save', decodeGuard);
   app.use('/api', createFmDecodeRouter());
 
   // Strict JSON 404 handler for any unmatched /api/* route BEFORE Vite/SPA HTML fallback

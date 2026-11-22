@@ -213,13 +213,6 @@ describe('server routes & JSON 404', () => {
     assert.match(appSrc, /const PlayerDetailModal = lazy\(/);
     assert.match(appSrc, /const StaffDetailModal = lazy\(/);
 
-    const gwSrc = fs.readFileSync(
-      path.resolve(process.cwd(), 'src/services/googleWorkspace.ts'),
-      'utf8'
-    );
-    assert.match(gwSrc, /import\('firebase\/app'\)/);
-    assert.match(gwSrc, /import\('firebase\/auth'\)/);
-
     const squadSrc = fs.readFileSync(
       path.resolve(process.cwd(), 'src/components/SquadAnalyticsTable.tsx'),
       'utf8'

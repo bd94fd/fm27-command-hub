@@ -428,6 +428,13 @@ export function parseFmStructuredExport(
       if (exact !== -1) return exact;
     }
     for (const c of candidates) {
+      const escaped = c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const boundaryRe = new RegExp(`(^|[^a-z0-9])${escaped}($|[^a-z0-9/])`);
+      const bounded = lowerHeaders.findIndex((h) => boundaryRe.test(h));
+      if (bounded !== -1) return bounded;
+    }
+    for (const c of candidates) {
+      if (c.length < 4) continue;
       const partial = lowerHeaders.findIndex((h) => h.includes(c));
       if (partial !== -1) return partial;
     }

@@ -5,7 +5,7 @@ export { inferFm27Roles } from '../utils/fm27RoleMatcher';
  * Clean baseline metadata before a .fm save or CSV export is imported.
  * Conforms to zero-fake-data architecture rules with '--' placeholders.
  */
-export const KVV_ZELZATE_META = {
+export const EMPTY_CLUB_META = {
   clubName: 'Awaiting .fm Save',
   nickname: '--',
   matricule: 0,
