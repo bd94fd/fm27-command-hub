@@ -348,14 +348,14 @@ export function getRolePositionFamiliarity(
     else val = maxOf(['DL', 'DR', 'WBL', 'WBR']);
   } else if (grp === 'DM' || grp.includes('DEFENSIVE MIDFIELDER')) {
     val = maxOf(['DM']);
-  } else if (grp === 'MC' || grp.includes('CENTRAL MIDFIELDER')) {
-    val = maxOf(['MC']);
+  } else if (grp === 'MC' || grp === 'CM' || grp.includes('CENTRAL MIDFIELDER')) {
+    val = maxOf(['MC', 'CM']);
   } else if (grp === 'ML/MR' || (grp.includes('WIDE MIDFIELDER') && !grp.includes('WINGER'))) {
     if (flank === 'L') val = maxOf(['ML', 'AML']);
     else if (flank === 'R') val = maxOf(['MR', 'AMR']);
     else val = maxOf(['ML', 'MR']);
-  } else if (grp === 'AMC' || grp.includes('ATTACKING MIDFIELDER')) {
-    val = maxOf(['AMC']);
+  } else if (grp === 'AMC' || grp === 'AM' || grp.includes('ATTACKING MIDFIELDER')) {
+    val = maxOf(['AMC', 'AM']);
   } else if (grp === 'AML/AMR' || grp.includes('WINGER')) {
     if (flank === 'L') val = maxOf(['AML', 'ML']);
     else if (flank === 'R') val = maxOf(['AMR', 'MR']);
@@ -447,6 +447,9 @@ export function rankSquadForFm27Role(
   role: Fm27RoleItem,
   limit = 5
 ): RankedRoleCandidate[] {
+  const isSurplus = (p: PlayerRecord) =>
+    p.status === 'Surplus' ||
+    /surplus/i.test(p.contractDetails?.promisedPlayingTime || '');
   return players
     .map((player) => {
       const familiarity = getRolePositionFamiliarity(player, role.positionGroup);
@@ -466,6 +469,9 @@ export function rankSquadForFm27Role(
     })
     .filter((candidate) => candidate.matchedPosition)
     .sort((a, b) => {
+      const aSurplus = isSurplus(a.player);
+      const bSurplus = isSurplus(b.player);
+      if (aSurplus !== bSurplus) return aSurplus ? 1 : -1;
       if (b.fitPct !== a.fitPct) return b.fitPct - a.fitPct;
       return b.player.ability - a.player.ability;
     })

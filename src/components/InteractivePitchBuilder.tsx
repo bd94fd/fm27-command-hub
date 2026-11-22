@@ -245,9 +245,18 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
   onSolvedLineupChange,
 }) => {
   const [sharpnessFilter, setSharpnessFilter] = useState(false);
+  const hasSavedTactic =
+    savedTactics.length > 0 && (savedTactics[0].slots?.length || 0) >= 5;
   const [lineupMode, setLineupMode] = useState<'save' | 'best' | 'bteam'>(
-    () => (savedTactics.length > 0 && (savedTactics[0].slots?.length || 0) >= 5 ? 'save' : 'best')
+    () => (hasSavedTactic ? 'save' : 'best')
   );
+  const prevHasSavedTacticRef = React.useRef<boolean>(hasSavedTactic);
+  useEffect(() => {
+    if (hasSavedTactic && !prevHasSavedTacticRef.current) {
+      setLineupMode('save');
+    }
+    prevHasSavedTacticRef.current = hasSavedTactic;
+  }, [hasSavedTactic]);
   const [selectedSlotId, setSelectedSlotId] = useState<string>('ST');
   const [pitchPhaseMode, setPitchPhaseMode] =
     useState<PitchPhaseMode>('rest-defense');

@@ -404,8 +404,23 @@ export function buildLiveTacticalAnalystContext(
 
   const fullFitSolved = solveBestXi(solverPool, {
     shape: activeShape,
+    customSlots,
     excludeInjured: false,
     excludeSuspended: false,
+  });
+
+  // Apply manual Pitch Builder playerId swaps on top of warRoomSolved.startingXI
+  const effectiveWarRoomXi = warRoomSolved.startingXI.map((slot) => {
+    const override = customSlots?.find((c) => c.slotId === slot.slotId);
+    if (!override?.playerId) return slot;
+    const manualPlayer = players.find((p) => p.id === override.playerId);
+    if (!manualPlayer) return slot;
+    return {
+      ...slot,
+      player: manualPlayer,
+      ipRole: override.ipRole || slot.ipRole,
+      oopRole: override.oopRole || slot.oopRole,
+    };
   });
 
   if (
@@ -422,12 +437,12 @@ export function buildLiveTacticalAnalystContext(
     sections.push(
       `=== ACTIVE PITCH BUILDER LINEUP OVERRIDE (${ov.shape}${ov.applyToAnalystOnly ? ' · Analyst-Only' : ''}) ===\n${ovCompact}`
     );
-  } else if (warRoomSolved.startingXI.length > 0) {
-    const cbNames = warRoomSolved.startingXI
+  } else if (effectiveWarRoomXi.length > 0) {
+    const cbNames = effectiveWarRoomXi
       .filter((s) => s.positionGroup === 'Centre-Back' && s.player)
       .map((s) => s.player!.name)
       .join(' + ');
-    const xiCompact = warRoomSolved.startingXI
+    const xiCompact = effectiveWarRoomXi
       .filter((s) => s.player)
       .map(
         (s) =>
@@ -460,9 +475,14 @@ export function buildLiveTacticalAnalystContext(
     );
   }
 
-  // 5. Transfers & Squad Advice Positional Depth Chart (exact match with Transfers tab)
+  // 5. Transfers & Squad Advice Positional Depth Chart (exact match with Transfers tab default first-team scope)
+  const firstTeamForAudit = players.filter(
+    (p) => p.teamSlot === undefined || p.teamSlot === 0
+  );
+  const transferAuditPlayers =
+    firstTeamForAudit.length > 0 ? firstTeamForAudit : players;
   const transferAudit = buildSquadTransferAudit(
-    players,
+    transferAuditPlayers,
     saveDate,
     {
       balanceNum: decoded?.finances?.balance ?? null,

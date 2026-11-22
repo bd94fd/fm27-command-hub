@@ -143,3 +143,37 @@ test('Rest Defence keeps LW and LCM separated on pitch and explains every role i
     );
   }
 });
+
+test('Phase 2: Inside Forward moves forward, Advanced Wing-Back & Inside Full-Back classify accurately, and 3-4-2-1 uses canonical FM27 roles', () => {
+  const solved = solveBestXi(TEST_SQUAD, {
+    shape: '4-3-3 DM Wide',
+    customSlots: [
+      { slotId: 'AML', ipRole: 'Inside Forward', oopRole: 'Tracking Winger' },
+      { slotId: 'DR', ipRole: 'Advanced Wing-Back', oopRole: 'Pressing Wing-Back' },
+      { slotId: 'DL', ipRole: 'Inside Full-Back', oopRole: 'Holding Full-Back' },
+    ],
+  });
+  const matrix = analyzeRestDefenseMatrix(solved.startingXI, '4-3-3 DM Wide');
+
+  const lwSlot = solved.startingXI.find((s) => s.slotId === 'AML');
+  const lw = matrix.nodes.find((n) => n.slotId === 'AML');
+  const rb = matrix.nodes.find((n) => n.slotId === 'DR');
+  const lb = matrix.nodes.find((n) => n.slotId === 'DL');
+
+  assert.ok(lwSlot && lw && rb && lb);
+  assert.ok(
+    lw.ipY < lwSlot.y,
+    `Expected Inside Forward to move forward (ipY ${lw.ipY} < slot.y ${lwSlot.y})`
+  );
+  assert.equal(rb.categoryLabel, 'High Flank Overlapper');
+  assert.equal(rb.category, 'ATTACKING_OUTLET');
+  assert.equal(lb.categoryLabel, 'Auxiliary 3rd CB');
+  assert.equal(lb.category, 'BASE_ANCHOR');
+
+  const solved3421 = solveBestXi(TEST_SQUAD, { shape: '3-4-2-1' });
+  const rcb = solved3421.startingXI.find((s) => s.slotId === 'DCR');
+  const ram = solved3421.startingXI.find((s) => s.slotId === 'AMCR');
+  assert.equal(rcb?.oopRole, 'Covering Wide Centre-Back');
+  assert.equal(ram?.ipRole, 'Second Striker');
+});
+

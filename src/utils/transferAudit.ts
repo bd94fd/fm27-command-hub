@@ -446,16 +446,26 @@ export function buildSquadTransferAudit(
     },
   ];
 
+  const isSurplusForAudit = (p: PlayerRecord) =>
+    p.status === 'Surplus' ||
+    /surplus/i.test(p.contractDetails?.promisedPlayingTime || '');
+
   const positionalNeeds: PositionalSigningNeed[] = bucketDefs.map((d) => {
     const matched = players
       .filter((p) => matchesPositionBucket(p, d.code))
-      .sort((a, b) => playerStrengthScore(b) - playerStrengthScore(a));
-    const firstTeamMatched = matched.filter(
+      .sort((a, b) => {
+        const aSurplus = isSurplusForAudit(a);
+        const bSurplus = isSurplusForAudit(b);
+        if (aSurplus !== bSurplus) return aSurplus ? 1 : -1;
+        return playerStrengthScore(b) - playerStrengthScore(a);
+      });
+    const activeNonSurplus = matched.filter((p) => !isSurplusForAudit(p));
+    const firstTeamMatched = activeNonSurplus.filter(
       (p) => p.teamSlot === undefined || p.teamSlot === 0
     );
     const activeFirstTeamOptions =
-      firstTeamMatched.length > 0 ? firstTeamMatched : matched;
-    const hasU23Cover = matched.some((p) => p.age <= 23);
+      firstTeamMatched.length > 0 ? firstTeamMatched : activeNonSurplus;
+    const hasU23Cover = activeNonSurplus.some((p) => p.age <= 23);
     const hasSuccessionGap =
       activeFirstTeamOptions.length > 0 &&
       activeFirstTeamOptions.every((p) => p.age >= 28) &&
@@ -464,15 +474,15 @@ export function buildSquadTransferAudit(
     const status: PositionalSigningNeed['status'] =
       players.length === 0
         ? 'Balanced'
-        : matched.length < d.idealMin
+        : activeNonSurplus.length < d.idealMin
           ? 'Need Signing'
-          : matched.length > d.idealMax
+          : activeNonSurplus.length > d.idealMax
             ? 'Overstocked'
             : 'Balanced';
     return {
       code: d.code,
       label: d.label,
-      currentCount: matched.length,
+      currentCount: activeNonSurplus.length,
       idealMin: d.idealMin,
       idealMax: d.idealMax,
       status,
@@ -745,7 +755,7 @@ export function buildSquadTransferAudit(
   // to both "promote youth X for departing senior Y" AND "Loan Out youth X".
   const promotedYouthForSale = new Map<string, string[]>();
   for (const item of playerAdvice) {
-    if (item.verdict !== 'Sell / Transfer List') continue;
+    if (item.verdict !== 'Sell / Transfer List' && item.verdict !== 'Let Expire') continue;
     const succ = youthSuccessorByPlayerId.get(item.player.id);
     if (!succ) continue;
     const list = promotedYouthForSale.get(succ.id) || [];
@@ -766,7 +776,7 @@ export function buildSquadTransferAudit(
       item.verdict = 'Hold';
       item.priority = 'Medium';
       item.headline = `Promote to first-team backup (replacing ${departingNames.join(', ')}) — do NOT loan out`;
-      item.rationale = `Age ${item.player.age} (${item.player.ability.toFixed(1)}★/${item.player.potential.toFixed(1)}★, £${item.player.wagePw}/wk). Designated to step up into the backup minutes freed by selling ${departingNames.join(', ')}, cutting wages while developing in the first team.`;
+      item.rationale = `Age ${item.player.age} (${item.player.ability.toFixed(1)}★/${item.player.potential.toFixed(1)}★, £${item.player.wagePw}/wk). Designated to step up into the backup minutes freed by moving on from ${departingNames.join(', ')}, cutting wages while developing in the first team.`;
       item.recommendedMove = `Keep in the first-team squad as backup (do NOT loan out) and give them the rotation/sub minutes vacated by ${departingNames.join(', ')}.`;
     }
   }

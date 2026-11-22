@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   BookOpen,
@@ -14,7 +14,7 @@ import {
   CompetitionRegistrationRules,
 } from '../types/fmSave';
 import { HydratedSaveState } from '../utils/fmSaveHydrator';
-import { FormationPresetKey, SolvedSlot } from '../utils/bestXiSolver';
+import { FormationPresetKey, SolvedSlot, solveBestXi } from '../utils/bestXiSolver';
 import { PersistedCustomSlot } from '../services/fmStorage';
 import { InteractivePitchBuilder } from './InteractivePitchBuilder';
 import { MatchPrepCard } from './MatchPrepCard';
@@ -59,6 +59,9 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
   onSolvedLineupChange,
 }) => {
   const [subTab, setSubTab] = useState<TacticsSubTab>(initialSubTab);
+  useEffect(() => {
+    setSubTab(initialSubTab);
+  }, [initialSubTab]);
   const [localShape, setLocalShape] = useState<FormationPresetKey>('4-3-3 DM Wide');
   const [localCustomSlots, setLocalCustomSlots] = useState<PersistedCustomSlot[]>([]);
   const [localApplyOnly, setLocalApplyOnly] = useState<boolean>(false);
@@ -106,6 +109,29 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
     activeSuspensions.length > 0
       ? activeSuspensions
       : scopedPlayers.flatMap((p) => p.activeSuspensions || []);
+
+  const effectiveSolvedSlots = useMemo(() => {
+    if (solvedSlots.length > 0) return solvedSlots;
+    if (!hasSquad) return [];
+    const nextComp =
+      hydratedFmSave?.decodedPayload?.upcomingFixtures?.[0]?.competition ?? null;
+    return solveBestXi(scopedPlayers, {
+      shape: activeShape,
+      customSlots,
+      excludeInjured: true,
+      excludeSuspended: true,
+      activeSuspensions: combinedSuspensions,
+      nextCompetitionName: nextComp,
+    }).startingXI;
+  }, [
+    solvedSlots,
+    hasSquad,
+    hydratedFmSave,
+    scopedPlayers,
+    activeShape,
+    customSlots,
+    combinedSuspensions,
+  ]);
 
   return (
     <div className="space-y-4">
@@ -269,18 +295,18 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
       {/* SUB-TAB 2: MATCH PREP & TOUCHLINE COMPANION */}
       {subTab === 'prep' && (
         <div className="space-y-4">
-          {hasSquad && companionMode && solvedSlots.length > 0 && (
+          {hasSquad && companionMode && effectiveSolvedSlots.length > 0 && (
             <MatchdayCompanionView
               clubName={displayClub}
               nextFixture={nextFixture}
               activeShape={activeShape}
-              slots={solvedSlots}
+              slots={effectiveSolvedSlots}
               allPlayers={scopedPlayers}
             />
           )}
           <MatchPrepCard
             players={scopedPlayers}
-            activeSlots={solvedSlots}
+            activeSlots={effectiveSolvedSlots}
             hydratedFmSave={hydratedFmSave}
             activeSuspensions={combinedSuspensions}
             clubName={clubName}

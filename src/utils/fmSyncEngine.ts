@@ -613,8 +613,8 @@ export function buildDynamicTacticalPlan(
     },
     {
       code: 'ST',
-      ipRole: 'Poacher (P) / Channel Forward (CF)',
-      oopRole: 'Outlet Centre Forward (OCF)',
+      ipRole: 'Channel Forward',
+      oopRole: 'Central Outlet Centre Forward',
     },
   ];
 
@@ -883,10 +883,30 @@ export function buildDynamicSetPieceRoutines(
     };
   }
 
-  const outfield = players.filter(
+  const isSurplusPlayer = (p: PlayerRecord) =>
+    p.status === 'Surplus' ||
+    /surplus/i.test(p.contractDetails?.promisedPlayingTime || '');
+
+  const nonSurplusOutfield = players.filter(
+    (p) =>
+      getSlotSuitability(p, 'GK') < 15 &&
+      p.status !== 'Injured' &&
+      !isSurplusPlayer(p)
+  );
+  const firstTeamActiveOutfield = nonSurplusOutfield.filter(
+    (p) => p.teamSlot === undefined || p.teamSlot === 0
+  );
+  const allOutfield = players.filter(
     (p) => getSlotSuitability(p, 'GK') < 15 && p.status !== 'Injured'
   );
-  const pool = outfield.length >= 6 ? outfield : players;
+  const pool =
+    firstTeamActiveOutfield.length >= 6
+      ? firstTeamActiveOutfield
+      : nonSurplusOutfield.length >= 6
+        ? nonSurplusOutfield
+        : allOutfield.length >= 6
+          ? allOutfield
+          : players;
 
   // 1. Aerial Threats ranked by Jumping Reach + Heading
   const sortedAerial = [...pool].sort((a, b) => {

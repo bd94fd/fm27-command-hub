@@ -408,7 +408,13 @@ export function evaluateTargetSquadDepth(
 ): TargetDepthEvaluation {
   const exactSlot = classifyExactPositionSlot(targetPosition);
   const count = squadPlayers.filter((p) => {
-    if (p.status === 'Youth') return false;
+    if (
+      p.status === 'Youth' ||
+      p.status === 'Surplus' ||
+      /surplus/i.test(p.contractDetails?.promisedPlayingTime || '')
+    ) {
+      return false;
+    }
 
     const hasRatings =
       p.positionRatings &&
@@ -654,7 +660,12 @@ export function findTopSeniorStarterForPosition(
   targetPosition: string,
   squadPlayers: PlayerRecord[]
 ): PlayerRecord | null {
-  const seniors = squadPlayers.filter((p) => p.status !== 'Youth');
+  const seniors = squadPlayers.filter(
+    (p) =>
+      p.status !== 'Youth' &&
+      p.status !== 'Surplus' &&
+      !/surplus/i.test(p.contractDetails?.promisedPlayingTime || '')
+  );
   if (seniors.length === 0) return null;
 
   const exactSlot = classifyExactPositionSlot(targetPosition);

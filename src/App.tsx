@@ -902,7 +902,6 @@ export default function App() {
           <AppErrorBoundary scopeLabel="Tactical War Room">
             <Suspense fallback={<LazyTabFallback label="Tactical War Room" />}>
               <TacticalWarRoom
-                key={tacticsSubTab}
                 players={players}
                 saveDate={saveDate}
                 nextFixture={nextFixture}

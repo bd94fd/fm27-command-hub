@@ -135,14 +135,14 @@ export const FORMATION_PRESETS: Record<FormationPresetKey, FormationSlotTemplate
   ],
   '3-4-2-1': [
     { slotId: 'GK', label: 'GK', positionGroup: 'Goalkeeper', defaultIpRole: 'Ball-Playing Goalkeeper', defaultOopRole: 'Sweeper Keeper', flank: 'C', x: 50, y: 90 },
-    { slotId: 'DCR', label: 'RCB', positionGroup: 'Centre-Back', defaultIpRole: 'Wide Centre-Back', defaultOopRole: 'Wide Covering Centre-Back', flank: 'R', x: 77, y: 76 },
+    { slotId: 'DCR', label: 'RCB', positionGroup: 'Centre-Back', defaultIpRole: 'Wide Centre-Back', defaultOopRole: 'Covering Wide Centre-Back', flank: 'R', x: 77, y: 76 },
     { slotId: 'DC', label: 'CCB', positionGroup: 'Centre-Back', defaultIpRole: 'Ball-Playing Centre-Back', defaultOopRole: 'Stopping Centre-Back', flank: 'C', x: 50, y: 79 },
-    { slotId: 'DCL', label: 'LCB', positionGroup: 'Centre-Back', defaultIpRole: 'Wide Centre-Back', defaultOopRole: 'Wide Covering Centre-Back', flank: 'L', x: 23, y: 76 },
+    { slotId: 'DCL', label: 'LCB', positionGroup: 'Centre-Back', defaultIpRole: 'Wide Centre-Back', defaultOopRole: 'Covering Wide Centre-Back', flank: 'L', x: 23, y: 76 },
     { slotId: 'WBR', label: 'RWB', positionGroup: 'Full-Back / Wing-Back', defaultIpRole: 'Wing-Back', defaultOopRole: 'Holding Wing-Back', flank: 'R', x: 87, y: 52 },
     { slotId: 'MCR', label: 'RCM', positionGroup: 'Central Midfielder', defaultIpRole: 'Deep-Lying Playmaker', defaultOopRole: 'Screening Central Midfielder', flank: 'C', x: 63, y: 55 },
     { slotId: 'MCL', label: 'LCM', positionGroup: 'Central Midfielder', defaultIpRole: 'Box-to-Box Midfielder', defaultOopRole: 'Pressing Central Midfielder', flank: 'C', x: 37, y: 55 },
     { slotId: 'WBL', label: 'LWB', positionGroup: 'Full-Back / Wing-Back', defaultIpRole: 'Wing-Back', defaultOopRole: 'Holding Wing-Back', flank: 'L', x: 13, y: 52 },
-    { slotId: 'AMCR', label: 'RAM', positionGroup: 'Attacking Midfielder', defaultIpRole: 'Channel Attacking Midfielder', defaultOopRole: 'Tracking Attacking Midfielder', flank: 'R', x: 67, y: 31 },
+    { slotId: 'AMCR', label: 'RAM', positionGroup: 'Attacking Midfielder', defaultIpRole: 'Second Striker', defaultOopRole: 'Tracking Attacking Midfielder', flank: 'R', x: 67, y: 31 },
     { slotId: 'AMCL', label: 'LAM', positionGroup: 'Attacking Midfielder', defaultIpRole: 'Attacking Midfielder', defaultOopRole: 'Tracking Attacking Midfielder', flank: 'L', x: 33, y: 31 },
     { slotId: 'ST', label: 'ST', positionGroup: 'Striker', defaultIpRole: 'Channel Forward', defaultOopRole: 'Central Outlet Centre Forward', flank: 'C', x: 50, y: 13 },
   ],
@@ -252,16 +252,32 @@ function getFlankAwareFamiliarity(
         upper.set(k.toUpperCase(), v);
       }
     }
-    const maxOf = (keys: string[]) =>
-      Math.max(0, ...keys.map((k) => upper.get(k) ?? 0));
+    const maxOf = (keys: string[]): number | null => {
+      const vals = keys
+        .map((k) => upper.get(k))
+        .filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+      return vals.length > 0 ? Math.max(...vals) : null;
+    };
 
     if (grp.includes('FULL-BACK') || grp.includes('WING-BACK')) {
-      if (flank === 'L') return maxOf(['DL', 'WBL']);
-      if (flank === 'R') return maxOf(['DR', 'WBR']);
+      if (flank === 'L') {
+        const res = maxOf(['DL', 'WBL']);
+        if (res !== null) return res;
+      }
+      if (flank === 'R') {
+        const res = maxOf(['DR', 'WBR']);
+        if (res !== null) return res;
+      }
     }
     if (grp.includes('WIDE MIDFIELDER') || grp.includes('WINGER')) {
-      if (flank === 'L') return maxOf(['AML', 'ML']);
-      if (flank === 'R') return maxOf(['AMR', 'MR']);
+      if (flank === 'L') {
+        const res = maxOf(['AML', 'ML']);
+        if (res !== null) return res;
+      }
+      if (flank === 'R') {
+        const res = maxOf(['AMR', 'MR']);
+        if (res !== null) return res;
+      }
     }
   }
 
@@ -554,7 +570,12 @@ function solveSingleLineup(
       continue;
     }
 
-    const ranked = candidates
+    // Surplus & Promoted Youth Law: never start/pick a Surplus player when active cover exists in the same tier
+    const nonSurplusCandidates = candidates.filter((p) => !isSurplusPlayer(p));
+    const effectiveCandidates =
+      nonSurplusCandidates.length > 0 ? nonSurplusCandidates : candidates;
+
+    const ranked = effectiveCandidates
       .map((player) => ({
         player,
         score: evaluatePlayerForSlot(
@@ -589,8 +610,16 @@ function solveSingleLineup(
     assigned.set(slot.slotId, winner);
   }
 
-  // Pairwise swap improvement pass for outfield slots (never degrading natural-position count)
+  // Pairwise swap improvement pass for outfield slots (never degrading natural or competent position count)
   const outfieldTemplates = templates.filter((t) => t.positionGroup !== 'Goalkeeper');
+  const isCompetentForSlot = (
+    p: PlayerRecord,
+    slot: FormationSlotTemplate
+  ): boolean => {
+    if (isNaturalForPositionGroup(p, slot.positionGroup, slot.flank)) return true;
+    const fam = getRolePositionFamiliarity(p, slot.positionGroup);
+    return fam !== null && fam >= 10;
+  };
   let improved = true;
   let guard = 0;
   while (improved && guard < 20) {
@@ -618,11 +647,25 @@ function solveSingleLineup(
           continue;
         }
 
+        const currentCompetentCount =
+          (isCompetentForSlot(pA, sA) ? 1 : 0) + (isCompetentForSlot(pB, sB) ? 1 : 0);
+        const swappedCompetentCount =
+          (isCompetentForSlot(pB, sA) ? 1 : 0) + (isCompetentForSlot(pA, sB) ? 1 : 0);
+
+        if (
+          swappedNaturalCount === currentNaturalCount &&
+          swappedCompetentCount < currentCompetentCount
+        ) {
+          continue;
+        }
+
         const currentSum = curA.selectionScore + curB.selectionScore;
         const swappedSum = swpA.selectionScore + swpB.selectionScore;
 
         if (
           swappedNaturalCount > currentNaturalCount ||
+          (swappedNaturalCount === currentNaturalCount &&
+            swappedCompetentCount > currentCompetentCount) ||
           swappedSum > currentSum
         ) {
           assigned.set(sA.slotId, pB);
@@ -976,6 +1019,12 @@ export function buildLineupFromSavedTactic(
     }
     if (player.status === 'Injured') {
       warnings.push('Player is currently injured');
+    }
+    if (isSurplusPlayer(player)) {
+      warnings.push('Surplus To Requirements (transfer-listed — prefer active cover)');
+    }
+    if (player.scoutBadges?.includes('Injury-Prone')) {
+      warnings.push('Injury-Prone (manage workload & sub early)');
     }
     const ban = getPlayerSuspension(player, suspensionLookup);
     if (ban) {

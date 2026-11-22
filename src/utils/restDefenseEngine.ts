@@ -59,6 +59,7 @@ export interface RestDefenseAnalysis {
 
 const HIGH_ATTACKING_FB_ROLES = new Set([
   'wing-back',
+  'advanced wing-back',
   'attacking wing-back',
   'overlapping full-back',
   'playmaking wing-back',
@@ -66,6 +67,7 @@ const HIGH_ATTACKING_FB_ROLES = new Set([
 
 const INVERTED_OR_HOLDING_FB_ROLES = new Set([
   'inverted full-back',
+  'inside full-back',
   'inverted wing-back',
   'inside wing-back',
   'holding full-back',
@@ -172,8 +174,10 @@ export function classifySlotRestDefenseCategory(
   }
 
   if (grp.includes('full-back') || grp.includes('wing-back')) {
-    if (ip.includes('inverted full-back') || oop.includes('holding full-back') && !HIGH_ATTACKING_FB_ROLES.has(ip)) {
-      if (ip.includes('inverted full-back')) {
+    const isAuxiliaryThirdCb =
+      ip.includes('inverted full-back') || ip.includes('inside full-back');
+    if (isAuxiliaryThirdCb || (oop.includes('holding full-back') && !HIGH_ATTACKING_FB_ROLES.has(ip))) {
+      if (isAuxiliaryThirdCb) {
         return {
           category: 'BASE_ANCHOR',
           categoryLabel: 'Auxiliary 3rd CB',
@@ -316,12 +320,12 @@ export function analyzeRestDefenseMatrix(
     let ipY = slot.y;
     if (HIGH_ATTACKING_FB_ROLES.has(ipLower)) {
       ipY = clampCoord(slot.y - 18, 24, 88);
+    } else if (ipLower.includes('inside forward') || ipLower.includes('inside winger')) {
+      ipX = slot.flank === 'L' ? clampCoord(slot.x + 11) : slot.flank === 'R' ? clampCoord(slot.x - 11) : slot.x;
+      ipY = clampCoord(slot.y - 6, 14, 88);
     } else if (ipLower.includes('inverted') || ipLower.includes('inside')) {
       ipX = slot.flank === 'L' ? clampCoord(slot.x + 14) : slot.flank === 'R' ? clampCoord(slot.x - 14) : slot.x;
       ipY = clampCoord(slot.y - 10, 30, 88);
-    } else if (ipLower.includes('inside forward')) {
-      ipX = slot.flank === 'L' ? clampCoord(slot.x + 11) : slot.flank === 'R' ? clampCoord(slot.x - 11) : slot.x;
-      ipY = clampCoord(slot.y - 6, 14, 88);
     }
 
     // OOP coordinates: compact defensive mid/low block
