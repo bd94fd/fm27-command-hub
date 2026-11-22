@@ -26,6 +26,7 @@ import inspect
 import json
 import os
 import re
+import struct
 import sys
 import time
 import warnings
@@ -78,7 +79,15 @@ _STATE: dict[str, Any] = {
     "club_division_id": None,
     "manager_staff_uid": None,
     "first_team_id": None,
+    "club_team_ids": set(),
     "club_name_by_team_id": {},
+    "prefetched_sponsorships": None,
+    "prefetched_match_summaries": None,
+    "prefetched_stage_index": None,
+    "prefetched_competition_index": None,
+    "prefetched_stadium_index": None,
+    "span_kept_fixtures": None,
+    "defer_competition_rules": False,
     "tactics_man_note_recorded": False,
     "import_scope": "managed_club_only",
     "fast_sync": False,
@@ -768,7 +777,10 @@ def _evict_finished_player_phase_cache(save: Any) -> None:
     if ctx is not None:
         cache = getattr(ctx, "_cache", None)
         if isinstance(cache, dict):
-            keep_tokens = ("club", "team", "comp", "stage", "stadium", "managed", "gate")
+            keep_tokens = (
+                "club", "team", "comp", "stage", "stadium", "managed", "gate",
+                "span", "fixture", "league", "rules",
+            )
             for k in list(cache.keys()):
                 k_str = str(k).lower()
                 if not any(tok in k_str for tok in keep_tokens):
@@ -792,7 +804,15 @@ def step_close() -> None:
     _STATE["club_division_id"] = None
     _STATE["manager_staff_uid"] = None
     _STATE["first_team_id"] = None
+    _STATE["club_team_ids"] = set()
     _STATE["club_name_by_team_id"] = {}
+    _STATE["prefetched_sponsorships"] = None
+    _STATE["prefetched_match_summaries"] = None
+    _STATE["prefetched_stage_index"] = None
+    _STATE["prefetched_competition_index"] = None
+    _STATE["prefetched_stadium_index"] = None
+    _STATE["span_kept_fixtures"] = None
+    _STATE["defer_competition_rules"] = False
     _STATE["tactics_man_note_recorded"] = False
     _STATE["import_scope"] = "managed_club_only"
     _STATE["fast_sync"] = False
@@ -1449,8 +1469,68 @@ def _compute_division_benchmarks(
     sample_counts: dict[str, int] = {"GK": 0, "DEF": 0, "MID": 0, "FWD": 0}
     clubs_seen: set[int] = set()
 
+    def _iter_division_players() -> Any:
+        ctx = getattr(save, "_context", None)
+        if ctx is not None:
+            try:
+                from fmsave._layouts import ContractLayout, PersonBlockLayout, find_layout
+                from fmsave._save import GAME_DB_SECTION
+                from fmsave.readers.player_scan import window_end
+                from fmsave.readers.players import build_player_decoder
+
+                save_info = ctx.info
+                clock = save_info.game_date
+                if clock is not None:
+                    game_db_schema = save_info.section_schemas.get(GAME_DB_SECTION)
+                    with ctx.section(GAME_DB_SECTION) as game_db:
+                        ci = ctx.club_index()
+                        div_team_ids: set[int] = set()
+                        for tid, entry in ci.team_to_club.items():
+                            if entry and entry[0] in target_clubs:
+                                div_team_ids.add(tid)
+                        if div_team_ids:
+                            pr = ctx.player_records()
+                            np = ctx.name_pools()
+                            layout = pr.layout
+                            team_off = layout.team_id_offset
+                            u32_unpack = struct.Struct("<I").unpack_from
+                            person_layout = find_layout(
+                                PersonBlockLayout, GAME_DB_SECTION, game_db_schema, save_info.build
+                            ).layout
+                            contract_layout = find_layout(
+                                ContractLayout, GAME_DB_SECTION, game_db_schema, save_info.build
+                            ).layout
+                            decoder = build_player_decoder(
+                                layout, ci, np, clock, person_layout, contract_layout, save_info.file_name
+                            )
+                            offsets = pr.record_offsets
+                            ambiguous = pr.ambiguous_positions
+                            db_len = len(game_db)
+                            last_pos = len(offsets) - 1
+                            matched: list[Any] = []
+                            for pos, off in enumerate(offsets):
+                                if pos in ambiguous:
+                                    continue
+                                if u32_unpack(game_db, off + team_off)[0] not in div_team_ids:
+                                    continue
+                                if (len(matched) & 127) == 0 and (time.monotonic() - t0) >= DIVISION_BENCHMARK_BUDGET_SEC:
+                                    break
+                                p_obj, _ = decoder.decode(
+                                    game_db,
+                                    off,
+                                    window_end(pr, pos, db_len),
+                                    is_last_record=(pos == last_pos),
+                                    next_record_ambiguous=(pos + 1) in ambiguous,
+                                    suspension_entries=(),
+                                )
+                                matched.append(p_obj)
+                            return matched
+            except Exception:
+                pass
+        return save.players()
+
     try:
-        p_table = save.players()
+        p_table = _iter_division_players()
         seen = 0
         for p in p_table:
             seen += 1
@@ -1608,6 +1688,351 @@ def _extract_typed_competition_rules(
     return out
 
 
+def _resolve_club_team_ids(club_index: Any, club_uid: int | None) -> set[int]:
+    """Return every team_id belonging to club_uid (first team, reserves, youth, affiliates)."""
+    team_ids: set[int] = set()
+    if club_index is None or club_uid is None:
+        return team_ids
+    club_obj = getattr(club_index, "club_by_uid", {}).get(club_uid)
+    if club_obj is not None:
+        for tm in getattr(club_obj, "teams", None) or ():
+            tid = _int(getattr(tm, "team_id", None), None)
+            if tid is not None:
+                team_ids.add(tid)
+    for mapping_attr in ("team_to_club", "affiliate_team_to_club"):
+        mapping = getattr(club_index, mapping_attr, None)
+        if isinstance(mapping, dict):
+            for tid, entry in mapping.items():
+                if entry and entry[0] == club_uid:
+                    team_ids.add(int(tid))
+    return team_ids
+
+
+def _locate_club_suspensions_fast(
+    game_db: bytes,
+    player_records: Any,
+    matching_positions: list[int],
+    layout: Any,
+) -> dict[int, tuple[Any, ...]]:
+    """Scan suspensions ONLY inside our club's ~47 player byte windows instead of all 342 MB."""
+    from fmsave._scan import decode_date
+    from fmsave.models.suspensions import SuspensionScope
+    from fmsave.readers.suspensions import (
+        SuspensionEntry,
+        _european_pattern,
+        _parent_search,
+        _suspension_search,
+    )
+
+    if not matching_positions:
+        return {}
+
+    search = _suspension_search(layout)
+    offsets = player_records.record_offsets
+    n_offsets = len(offsets)
+    db_len = len(game_db)
+    scope_for_code = search.scope_by_code.get
+    unknown_scope = SuspensionScope.UNKNOWN
+    owner_back = search.owner_back_offset
+    entries_by_pos: dict[int, list[tuple[int, SuspensionEntry]]] = {}
+
+    parent_pattern, core_signature = _parent_search(layout)
+    prefix_bytes = len(layout.parent_prefix)
+    header_bytes = prefix_bytes + 1
+    euro_pattern = _european_pattern(layout) if layout.european_signature else None
+    euro_prefix_len = len(layout.parent_prefix) + 1
+    euro_entry_len = layout.entry_core_bytes + len(layout.null_suffix)
+
+    for pos in matching_positions:
+        win_start = max(0, offsets[pos] - owner_back)
+        win_end = (
+            offsets[pos + 1] - owner_back
+            if pos + 1 < n_offsets
+            else db_len
+        )
+        if win_end <= win_start:
+            continue
+
+        found: list[tuple[int, SuspensionEntry]] = []
+
+        # 1. Standalone null-suffix entries inside this player's window
+        cur = win_start + search.pattern_offset
+        while cur < win_end:
+            m = search.pattern.search(game_db, cur, win_end)
+            if m is None:
+                break
+            entry_offset = m.start() - search.pattern_offset
+            cur = m.start() + 1
+            if entry_offset < win_start or entry_offset + search.fields_struct.size > win_end:
+                continue
+            field_values = search.fields_struct.unpack_from(game_db, entry_offset)
+            scope_id = field_values[search.scope_id_index]
+            if not search.scope_id_lower_bound < scope_id < search.scope_id_upper_bound:
+                continue
+            issued = decode_date(game_db, entry_offset + search.issued_date_offset)
+            if issued is None:
+                continue
+            scope_code = field_values[search.scope_code_index]
+            found.append((
+                entry_offset,
+                SuspensionEntry(
+                    scope_for_code(scope_code, unknown_scope),
+                    scope_code,
+                    scope_id,
+                    issued,
+                    field_values[search.e7_index],
+                ),
+            ))
+
+        # 2. Counted attached entries inside this player's window
+        attached_offsets: set[int] = set()
+        m_par = parent_pattern.search(game_db, win_start, win_end)
+        while m_par is not None:
+            parent_at = m_par.start()
+            m_par = parent_pattern.search(game_db, parent_at + 1, win_end)
+            cursor = parent_at + header_bytes
+            count = game_db[parent_at + prefix_bytes]
+            if not count:
+                continue
+            pending: list[tuple[int, SuspensionEntry]] = []
+            ok = True
+            for _ in range(count):
+                if cursor + max(layout.entry_core_bytes, search.fields_struct.size) > win_end:
+                    ok = False
+                    break
+                if any(game_db[cursor + off] != val for off, val in core_signature):
+                    ok = False
+                    break
+                values = search.fields_struct.unpack_from(game_db, cursor)
+                scope_id = values[search.scope_id_index]
+                issued = decode_date(game_db, cursor + search.issued_date_offset)
+                if issued is None or not search.scope_id_lower_bound < scope_id < search.scope_id_upper_bound:
+                    ok = False
+                    break
+                suffix_at = cursor + layout.entry_core_bytes
+                null_end = suffix_at + len(layout.null_suffix)
+                linked = False
+                if null_end <= win_end and game_db[suffix_at:null_end] == layout.null_suffix:
+                    next_cursor = null_end
+                elif (
+                    cursor + layout.linked_entry_bytes <= win_end
+                    and all(game_db[cursor + off] == val for off, val in layout.linked_signature)
+                    and game_db[cursor + layout.linked_flag_offset] in layout.linked_flag_values
+                    and decode_date(game_db, cursor + layout.linked_date_offset) is not None
+                ):
+                    next_cursor = cursor + layout.linked_entry_bytes
+                    linked = True
+                else:
+                    ok = False
+                    break
+                if linked:
+                    scope_code = values[search.scope_code_index]
+                    pending.append((
+                        cursor,
+                        SuspensionEntry(
+                            scope_for_code(scope_code, unknown_scope),
+                            scope_code,
+                            scope_id,
+                            issued,
+                            values[search.e7_index],
+                        ),
+                    ))
+                cursor = next_cursor
+            if ok and pending:
+                for entry_off, entry in pending:
+                    if entry_off not in attached_offsets:
+                        attached_offsets.add(entry_off)
+                        found.append((entry_off, entry))
+
+        # 3. Singleton European entries inside this player's window
+        if euro_pattern is not None:
+            for m_eu in euro_pattern.finditer(game_db, win_start, win_end):
+                entry_offset = m_eu.start() + euro_prefix_len
+                if entry_offset + euro_entry_len > win_end:
+                    continue
+                issued = decode_date(game_db, entry_offset + search.issued_date_offset)
+                if issued is None:
+                    continue
+                fields = search.fields_struct.unpack_from(game_db, entry_offset)
+                found.append((
+                    entry_offset,
+                    SuspensionEntry(
+                        SuspensionScope.EUROPE,
+                        fields[search.scope_code_index],
+                        None,
+                        issued,
+                        fields[search.e7_index],
+                    ),
+                ))
+
+        if found:
+            found.sort(key=lambda item: item[0])
+            entries_by_pos[pos] = found
+
+    return {
+        pos: tuple(entry for _, entry in items)
+        for pos, items in entries_by_pos.items()
+    }
+
+
+def _extract_club_players_fast(save: Any, club_uid: int | None) -> list[Any] | None:
+    """Club-scoped direct player decoder: prefilters player_records by 4-byte stored team_id
+    and decodes ONLY our ~47 managed club players (+ their suspensions & history selectors)
+    instead of decoding 160,000+ global players. Caches the club-scoped Table in context so
+    tactics/selections/mentoring resolve squad names in 0ms without triggering global players()."""
+    ctx = getattr(save, "_context", None)
+    if ctx is None or club_uid is None:
+        return None
+    try:
+        from fmsave._layouts import (
+            ContractLayout,
+            PersonBlockLayout,
+            SuspensionLayout,
+            find_layout,
+        )
+        from fmsave._save import (
+            GAME_DB_SECTION,
+            HISTORY_SELECTORS_CACHE_KEY,
+            OMITTED_HISTORY_SELECTORS_CACHE_KEY,
+            PLAYERS_TABLE_CACHE_KEY,
+        )
+        from fmsave.models.players import Player
+        from fmsave.readers.player_scan import window_end
+        from fmsave.readers.players import build_player_decoder
+        from fmsave.readers.season_history import find_history_layout, history_selector
+        from fmsave.readers.suspensions import named_entries
+        from fmsave.table import Table
+
+        save_info = ctx.info
+        clock = save_info.game_date
+        if clock is None:
+            return None
+        game_db_schema = save_info.section_schemas.get(GAME_DB_SECTION)
+
+        with ctx.section(GAME_DB_SECTION) as game_db:
+            club_index = ctx.club_index()
+            club_team_ids = _resolve_club_team_ids(club_index, club_uid)
+            _STATE["club_team_ids"] = club_team_ids
+            if not club_team_ids:
+                return None
+
+            player_records = ctx.player_records()
+            name_pools = ctx.name_pools()
+            layout = player_records.layout
+            record_offsets = player_records.record_offsets
+            ambiguous_positions = player_records.ambiguous_positions
+            team_off = layout.team_id_offset
+            u32_unpack = struct.Struct("<I").unpack_from
+
+            matching_positions: list[int] = []
+            for pos, off in enumerate(record_offsets):
+                if pos in ambiguous_positions:
+                    continue
+                if u32_unpack(game_db, off + team_off)[0] in club_team_ids:
+                    matching_positions.append(pos)
+
+            if not matching_positions:
+                return None
+
+            person_layout = find_layout(
+                PersonBlockLayout, GAME_DB_SECTION, game_db_schema, save_info.build
+            ).layout
+            contract_layout = find_layout(
+                ContractLayout, GAME_DB_SECTION, game_db_schema, save_info.build
+            ).layout
+            decoder = build_player_decoder(
+                layout,
+                club_index,
+                name_pools,
+                clock,
+                person_layout,
+                contract_layout,
+                save_info.file_name,
+            )
+
+            susp_layout = find_layout(
+                SuspensionLayout, GAME_DB_SECTION, game_db_schema, save_info.build
+            ).layout
+            susp_by_pos = _locate_club_suspensions_fast(
+                game_db, player_records, matching_positions, susp_layout
+            )
+            if susp_by_pos and getattr(ctx, "competition_names", None):
+                try:
+                    save.competitions()
+                    susp_by_pos = dict(
+                        named_entries(susp_by_pos, ctx.competition_index().name_for)
+                    )
+                except Exception:
+                    pass
+
+            history_layout = find_history_layout(save_info.build)
+            history_selectors: dict[int, int] = {}
+            omitted_history_selectors: set[int] = set()
+            game_db_length = len(game_db)
+            last_position = len(record_offsets) - 1
+
+            # Capture omitted selectors from the small ambiguous_positions set
+            for amb_pos in ambiguous_positions:
+                rec_off = record_offsets[amb_pos]
+                rec_end = window_end(player_records, amb_pos, game_db_length)
+                closing = decoder.closing_header(
+                    game_db,
+                    rec_off,
+                    rec_end,
+                    player_records.pindexes[amb_pos],
+                    player_records.uids[amb_pos],
+                    is_last_record=amb_pos == last_position,
+                    next_record_ambiguous=(amb_pos + 1) in ambiguous_positions,
+                )
+                try:
+                    decoder.decode_person(game_db, rec_off, rec_end, closing)
+                except Exception:
+                    continue
+                omitted_history_selectors.add(
+                    history_selector(
+                        game_db,
+                        decoder.person_decoder.last_block_start,
+                        rec_off,
+                        rec_end,
+                        history_layout,
+                    )
+                )
+
+            decoded_club_players: list[Player] = []
+            for pos in matching_positions:
+                rec_off = record_offsets[pos]
+                rec_end = window_end(player_records, pos, game_db_length)
+                susp_entries = susp_by_pos.get(pos, ())
+                player, _contract = decoder.decode(
+                    game_db,
+                    rec_off,
+                    rec_end,
+                    is_last_record=pos == last_position,
+                    next_record_ambiguous=(pos + 1) in ambiguous_positions,
+                    suspension_entries=susp_entries,
+                )
+                history_selectors[player.uid] = history_selector(
+                    game_db,
+                    decoder.person_decoder.last_block_start,
+                    rec_off,
+                    rec_end,
+                    history_layout,
+                )
+                decoded_club_players.append(player)
+
+            # Seed context caches so tactics(), selections(), mentoring(), and season_history
+            # resolve our squad immediately without triggering a 160k global players() decode.
+            cache = getattr(ctx, "_cache", None)
+            if isinstance(cache, dict):
+                cache[PLAYERS_TABLE_CACHE_KEY] = Table(tuple(decoded_club_players), Player)
+                cache[HISTORY_SELECTORS_CACHE_KEY] = history_selectors
+                cache[OMITTED_HISTORY_SELECTORS_CACHE_KEY] = frozenset(omitted_history_selectors)
+
+            return decoded_club_players
+    except Exception:
+        return None
+
+
 def step_players() -> str:
     """Group 1: Club-scoped players with all 52 attributes, readable traits,
     qualitative Scout Report Badges, and relative star ratings (ZERO raw CA/PA)."""
@@ -1621,33 +2046,35 @@ def step_players() -> str:
     players_out: list[dict[str, Any]] = []
     squad_uids: set[int] = set()
 
-    p_table = save.players()
-    raw_players = []
-    if club_uid is not None:
-        try:
-            raw_players = list(p_table.where(club_uid=club_uid))
-        except Exception:
-            raw_players = []
+    raw_players = _extract_club_players_fast(save, club_uid)
+    if raw_players is None:
+        p_table = save.players()
+        raw_players = []
+        if club_uid is not None:
+            try:
+                raw_players = list(p_table.where(club_uid=club_uid))
+            except Exception:
+                raw_players = []
 
-    if not raw_players:
-        try:
-            for p in p_table:
-                matches_club = False
-                if club_uid is not None and (
-                    getattr(p, "club_uid", None) == club_uid
-                    or getattr(p, "team_club_uid", None) == club_uid
-                ):
-                    matches_club = True
-                elif (
-                    club_name_lower
-                    and getattr(p, "club_name", None)
-                    and p.club_name.lower() == club_name_lower
-                ):
-                    matches_club = True
-                if matches_club:
-                    raw_players.append(p)
-        except Exception as exc:
-            _STATE["warnings"].append(f"players_scan: {type(exc).__name__}: {exc}")
+        if not raw_players:
+            try:
+                for p in p_table:
+                    matches_club = False
+                    if club_uid is not None and (
+                        getattr(p, "club_uid", None) == club_uid
+                        or getattr(p, "team_club_uid", None) == club_uid
+                    ):
+                        matches_club = True
+                    elif (
+                        club_name_lower
+                        and getattr(p, "club_name", None)
+                        and p.club_name.lower() == club_name_lower
+                    ):
+                        matches_club = True
+                    if matches_club:
+                        raw_players.append(p)
+            except Exception as exc:
+                _STATE["warnings"].append(f"players_scan: {type(exc).__name__}: {exc}")
 
     # Compute internal squad median solely for relative 1.0–5.0 star scaling (never emitted raw)
     internal_ca_values: list[int] = []
@@ -2132,8 +2559,193 @@ def _scan_recruitment_targets_group4(
     tie_counter = 0
     evaluated_count = 0
 
+    def _iter_market_candidates() -> Any:
+        ctx = getattr(save, "_context", None)
+        if ctx is None:
+            yield from save.players()
+            return
+        try:
+            from dataclasses import fields as dc_fields
+            from fmsave._layouts import ContractLayout, PersonBlockLayout, find_layout
+            from fmsave._save import GAME_DB_SECTION
+            from fmsave.models.players import Attributes
+            from fmsave.readers._common import MISSING_REFERENCE
+            from fmsave.readers.player_scan import window_end
+            from fmsave.readers.players import _derived_positions, build_player_decoder
+
+            save_info = ctx.info
+            clock = save_info.game_date
+            if clock is None:
+                yield from save.players()
+                return
+            game_db_schema = save_info.section_schemas.get(GAME_DB_SECTION)
+            with ctx.section(GAME_DB_SECTION) as game_db:
+                ci = ctx.club_index()
+                pr = ctx.player_records()
+                np = ctx.name_pools()
+                layout = pr.layout
+                person_layout = find_layout(
+                    PersonBlockLayout, GAME_DB_SECTION, game_db_schema, save_info.build
+                ).layout
+                contract_layout = find_layout(
+                    ContractLayout, GAME_DB_SECTION, game_db_schema, save_info.build
+                ).layout
+                decoder = build_player_decoder(
+                    layout, ci, np, clock, person_layout, contract_layout, save_info.file_name
+                )
+
+                # Build exact raw_attribute_bytes offset table dynamically from Attributes fields
+                foot_indices = {layout.left_foot_index, layout.right_foot_index}
+                attr_byte_idx: dict[str, int] = {}
+                byte_pos = 0
+                for f in dc_fields(Attributes):
+                    while byte_pos in foot_indices:
+                        byte_pos += 1
+                    attr_byte_idx[f.name] = byte_pos
+                    byte_pos += 1
+
+                # Precompute the 6 byte offsets per position group for ultra-fast visible quality check
+                slot_key_offsets: dict[str, tuple[int, ...]] = {
+                    "GK": tuple(attr_byte_idx[k] for k in ("reflexes", "handling", "aerial_reach", "positioning", "one_on_ones", "command_of_area")),
+                    "ST": tuple(attr_byte_idx[k] for k in ("finishing", "off_the_ball", "pace", "composure", "acceleration", "first_touch")),
+                    "DC": tuple(attr_byte_idx[k] for k in ("tackling", "marking", "positioning", "jumping_reach", "concentration", "strength")),
+                    "FB": tuple(attr_byte_idx[k] for k in ("pace", "stamina", "tackling", "crossing", "positioning", "acceleration")),
+                    "AM": tuple(attr_byte_idx[k] for k in ("pace", "dribbling", "off_the_ball", "passing", "first_touch", "technique")),
+                    "MC": tuple(attr_byte_idx[k] for k in ("passing", "decisions", "work_rate", "stamina", "first_touch", "vision")),
+                }
+                pos_codes = layout.position_codes
+                pos_code_info: list[tuple[str, str, str, tuple[int, ...]]] = []
+                for code in pos_codes:
+                    p_up = code.upper()
+                    grp = _classify_pos_group_py(code)
+                    slot = _classify_exact_pos_slot_py(code)
+                    if "GK" in p_up:
+                        k_offs = slot_key_offsets["GK"]
+                    elif any(k in p_up for k in ("ST", "CF")):
+                        k_offs = slot_key_offsets["ST"]
+                    elif any(k in p_up for k in ("DC", "CB", "D (C")):
+                        k_offs = slot_key_offsets["DC"]
+                    elif any(k in p_up for k in ("DL", "DR", "WB", "D (L", "D (R")):
+                        k_offs = slot_key_offsets["FB"]
+                    elif any(k in p_up for k in ("AML", "AMR", "AMC", "AM (", "ML", "MR")):
+                        k_offs = slot_key_offsets["AM"]
+                    else:
+                        k_offs = slot_key_offsets["MC"]
+                    pos_code_info.append((code, grp, slot, k_offs))
+
+                club_team_ids = _STATE.get("club_team_ids") or _resolve_club_team_ids(ci, club_uid)
+                team_fields_get = decoder.team_fields.get
+                hdr_unpack = decoder.header_layout.struct_object.unpack_from
+                hdr_start = decoder.header_layout.start_offset
+                team_idx = decoder.header_layout.team_id_index
+                cur_rep_idx = decoder.header_layout.current_reputation_index
+                home_rep_idx = decoder.header_layout.home_reputation_index
+                uid_idx = decoder.header_layout.uid_index
+                pindex_idx = decoder.header_layout.pindex_index
+                ratings_off = layout.ratings_offset
+                ratings_cnt = layout.ratings_count
+                attrs_off = layout.attributes_offset
+                scale_table = decoder.scale_table
+                contract_dec = decoder.contract_decoder
+                offsets = pr.record_offsets
+                ambiguous = pr.ambiguous_positions
+                db_len = len(game_db)
+                last_pos = len(offsets) - 1
+
+                for pos, off in enumerate(offsets):
+                    if (pos & 2047) == 0 and (time.monotonic() - start_ts) >= SCOUT_BUDGET_SEC:
+                        _record_warning(
+                            f"recruitment_scan: {SCOUT_BUDGET_SEC:.0f}s budget reached ({pos} players scanned, {evaluated_count} realistic targets evaluated)"
+                        )
+                        break
+                    if pos in ambiguous:
+                        continue
+
+                    hv = hdr_unpack(game_db, off + hdr_start)
+                    stored_tid = hv[team_idx]
+                    if stored_tid in club_team_ids:
+                        continue
+
+                    if rep_max is not None:
+                        p_rep = hv[cur_rep_idx] or hv[home_rep_idx]
+                        if p_rep > rep_max or (rep_min is not None and p_rep < rep_min):
+                            continue
+
+                    # Fast raw-byte primary position + visible quality pre-score
+                    r_start = off + ratings_off
+                    best_r = -1
+                    best_i = 0
+                    for ri in range(ratings_cnt):
+                        rv = game_db[r_start + ri]
+                        if rv > best_r:
+                            best_r = rv
+                            best_i = ri
+                    _code, pos_grp, exact_slot, k_offs = pos_code_info[best_i]
+
+                    a_start = off + attrs_off
+                    vis_sum = 0
+                    for ko in k_offs:
+                        v = scale_table[game_db[a_start + ko]]
+                        vis_sum += 20 if v > 20 else (1 if v < 1 else v)
+                    vis_q = vis_sum / 6.0
+                    squad_med = squad_medians.get(pos_grp, 10.5)
+                    if vis_q < max(7.5, squad_med - 2.5):
+                        continue
+
+                    # Optimistic heap bound check before decoding contract or person block!
+                    # Max possible bonuses: age(2.0) + region(2.4) + contract(0.6) = 5.0
+                    bucket = pos_heaps[exact_slot]
+                    if len(bucket) >= per_pos_cap:
+                        max_possible = (vis_q - squad_med) * 2.0 + vis_q + 5.05
+                        if max_possible <= bucket[0][0]:
+                            continue
+
+                    rec_end = window_end(pr, pos, db_len)
+                    is_free_by_team = stored_tid == MISSING_REFERENCE
+                    tf = None if is_free_by_team else team_fields_get(stored_tid)
+                    p_club_uid = None if tf is None else tf[0]
+                    if club_uid is not None and p_club_uid == club_uid:
+                        continue
+
+                    # Check contract expiry BEFORE decoding person/name block
+                    if not is_free_by_team and p_club_uid is not None:
+                        contract_obj, _on_loan, *_ = contract_dec.decode(
+                            game_db,
+                            off,
+                            rec_end,
+                            pos == last_pos,
+                            hv[pindex_idx],
+                            hv[uid_idx],
+                            None,
+                            p_club_uid,
+                            registration_missing=False,
+                            object_end=None,
+                        )
+                        if contract_obj is not None:
+                            c_end = getattr(contract_obj, "end", None)
+                            c_months = _months_until(c_end, game_date) if c_end else 999
+                            if c_months > 12:
+                                continue
+                            c_wage = _int(getattr(contract_obj, "wage", None), 0) or 0
+                            if c_months > 0 and c_wage > wage_ceiling:
+                                continue
+
+                    # Candidate survived all fast filters — decode full Player cleanly
+                    p_obj, _ = decoder.decode(
+                        game_db,
+                        off,
+                        rec_end,
+                        is_last_record=(pos == last_pos),
+                        next_record_ambiguous=(pos + 1) in ambiguous,
+                        suspension_entries=(),
+                    )
+                    yield p_obj
+                return
+        except Exception:
+            yield from save.players()
+
     try:
-        p_table = save.players()
+        p_table = _iter_market_candidates()
         seen = 0
         for p in p_table:
             seen += 1
@@ -2304,9 +2916,331 @@ def _scan_recruitment_targets_group4(
     return combined[:max_total]
 
 
+def _extract_club_finances_fast(save: Any, club_uid: int | None) -> list[Any] | None:
+    """Club-span direct finances + sponsorships reader (~0.002s instead of scanning 38k clubs)."""
+    ctx = getattr(save, "_context", None)
+    if ctx is None or club_uid is None:
+        return None
+    try:
+        from fmsave._save import GAME_DB_SECTION
+        from fmsave.readers.finances import find_finance_layouts, read_club_finances
+
+        save_info = ctx.info
+        clock = save_info.game_date
+        if clock is None:
+            return None
+        game_db_schema = save_info.section_schemas.get(GAME_DB_SECTION)
+        with ctx.section(GAME_DB_SECTION) as game_db:
+            ci = ctx.club_index()
+            spans = ctx.own_club_record_spans()
+            our_span = next((sp for sp in spans if sp.club_uid == club_uid), None)
+            if our_span is None:
+                return None
+            layouts = find_finance_layouts(game_db_schema, save_info.build).for_clubs(ci)
+            months, sponsorships, _stats = read_club_finances(
+                game_db, ci, (our_span,), clock, layouts, True
+            )
+            _STATE["prefetched_sponsorships"] = list(sponsorships)
+            return list(months)
+    except Exception:
+        return None
+
+
+def _extract_club_staff_fast(save: Any, club_uid: int | None) -> list[Any] | None:
+    """Club-scoped direct staff reader: reads ONLY our club's staff_lists + team_id-targeted
+    contracts & no-contract roles + human manager, decoding ~40 staff instead of 80,000+."""
+    ctx = getattr(save, "_context", None)
+    if ctx is None or club_uid is None:
+        return None
+    try:
+        from fmsave._save import GAME_DB_SECTION, HUMANS_SECTION
+        from fmsave.readers.contracts import CHAIN_RECORD_CLUB_UID, CHAIN_RECORD_HAS_TERMS, build_contract_decoder
+        from fmsave.readers.managed import first_human_selector
+        from fmsave.readers.persons import build_person_block_decoder
+        from fmsave.readers.staff import (
+            _AMBIGUOUS,
+            _ID_OFFSET,
+            _PersonObject,
+            _SELECTOR_TEAM,
+            _UINT32,
+            _build_rows,
+            _closing_header,
+            _contract_header_with_kind,
+            _header_reader,
+            _header_values,
+            _human_records,
+            _job_code,
+            _latest_started,
+            _merge_membership,
+            _next_header_after,
+            _person_block_window,
+            _read_ability_block,
+            _row_roles,
+            find_staff_layouts,
+            locate_contracted_header,
+            locate_human_header,
+            locate_listed_header,
+            read_staff_lists,
+        )
+
+        save_info = ctx.info
+        clock = save_info.game_date
+        if clock is None:
+            return None
+        layouts = find_staff_layouts(save_info.section_schemas, save_info.build)
+        staff_layout = layouts.staff
+
+        with ctx.section(GAME_DB_SECTION) as game_db:
+            ci = ctx.club_index()
+            pr = ctx.player_records()
+            np = ctx.name_pools()
+            club_team_ids = _STATE.get("club_team_ids") or _resolve_club_team_ids(ci, club_uid)
+            if not club_team_ids:
+                return None
+
+            # Include affiliate clubs whose parent is our club
+            relevant_club_uids = {club_uid}
+            for c in ci.clubs:
+                if getattr(c, "parent_club_uid", None) == club_uid:
+                    relevant_club_uids.add(c.uid)
+
+            # 1. Read staff lists ONLY for our club (+ its affiliate sides)
+            class _MiniClubIndex:
+                __slots__ = ("record_spans",)
+                def __init__(self, spans: tuple[Any, ...]) -> None:
+                    self.record_spans = spans
+
+            our_spans = tuple(sp for sp in ci.record_spans if sp.club_uid in relevant_club_uids)
+            listed_pairs, _lists_by_club, _list_counts = read_staff_lists(
+                game_db, _MiniClubIndex(our_spans), pr, staff_layout  # type: ignore[arg-type]
+            )
+
+            contract_decoder = build_contract_decoder(layouts.contracts, ci, clock, save_info.file_name)
+            person_decoder = build_person_block_decoder(layouts.person_blocks, np, ci, clock, save_info.file_name)
+            with ctx.section(HUMANS_SECTION) as humans:
+                human_selector = first_human_selector(humans, layouts.humans, save_info.file_name)
+
+            # 2. Targeted contract & no-contract role scan ONLY for our club's ~5 team_ids!
+            tag = layouts.contracts.tag
+            sel_off = layouts.contracts.selector_offset
+            gap = sel_off - len(tag)
+            tid_alt = b"|".join(re.escape(struct.pack("<I", tid)) for tid in sorted(club_team_ids))
+            pindex_positions = pr.position_by_pindex
+            ambiguous_pindexes = pr.ambiguous_pindexes
+            closed_clubs = ci.record_spans[:-1]
+
+            def _in_closed_club(offset: int) -> bool:
+                lo, hi = 0, len(closed_clubs)
+                while lo < hi:
+                    mid = (lo + hi) // 2
+                    if closed_clubs[mid].record_end <= offset:
+                        lo = mid + 1
+                    else:
+                        hi = mid
+                return lo < len(closed_clubs) and closed_clubs[lo].record_start <= offset
+
+            records_by_person: dict[int, list[tuple[int, Any]]] = {}
+            header_by_person: dict[int, int] = {}
+            offer_marker_offset = staff_layout.offer_marker_offset
+
+            if gap >= 0:
+                contract_pat = re.compile(
+                    re.escape(tag) + (b".{%d}" % gap if gap else b"") + b"....(?:" + tid_alt + b")",
+                    re.DOTALL,
+                )
+                for m in contract_pat.finditer(game_db):
+                    tag_offset = m.start()
+                    if _in_closed_club(tag_offset):
+                        continue
+                    selector = _UINT32.unpack_from(game_db, tag_offset + sel_off)[0]
+                    if selector == 0 or selector == human_selector:
+                        continue
+                    person_id = selector - _ID_OFFSET
+                    if person_id in pindex_positions or person_id in ambiguous_pindexes:
+                        continue
+                    record = contract_decoder.decode_chain_record(game_db, tag_offset)
+                    if not record[CHAIN_RECORD_HAS_TERMS]:
+                        continue
+                    if offer_marker_offset is not None and game_db.startswith(
+                        tag, tag_offset + sel_off + offer_marker_offset
+                    ):
+                        continue
+                    own_records = records_by_person.get(person_id)
+                    if own_records is None:
+                        header = locate_contracted_header(game_db, person_id, tag_offset, staff_layout)
+                        if header is None:
+                            continue
+                        header_by_person[person_id] = header
+                        own_records = records_by_person[person_id] = []
+                    own_records.append((tag_offset, record))
+
+            no_contract_roles: dict[tuple[int, int], tuple[int, int, int | None]] = {}
+            nc_sel_off = staff_layout.no_contract_selector_offset
+            if nc_sel_off is not None:
+                lead = staff_layout.no_contract_lead
+                nc_gap = nc_sel_off - len(tag) - len(lead)
+                if nc_gap >= 0:
+                    nc_pat = re.compile(
+                        re.escape(tag)
+                        + (b".{%d}" % nc_gap if nc_gap else b"")
+                        + re.escape(lead)
+                        + b"....(?:" + tid_alt + b")",
+                        re.DOTALL,
+                    )
+                    club_by_tid = contract_decoder.club_by_team_id
+                    for m in nc_pat.finditer(game_db):
+                        tag_offset = m.start()
+                        if _in_closed_club(tag_offset):
+                            continue
+                        selector_at = tag_offset + nc_sel_off
+                        selector, team_id = _SELECTOR_TEAM.unpack_from(game_db, selector_at)
+                        if selector == 0 or selector == human_selector:
+                            continue
+                        person_id = selector - _ID_OFFSET
+                        if person_id in pindex_positions or person_id in ambiguous_pindexes:
+                            continue
+                        r_club_uid = club_by_tid.get(team_id, (None, None))[0]
+                        if r_club_uid != club_uid or (r_club_uid, person_id) in no_contract_roles:
+                            continue
+                        header = header_by_person.get(person_id)
+                        if header is None:
+                            header = locate_contracted_header(game_db, person_id, tag_offset, staff_layout)
+                            if header is None:
+                                continue
+                            header_by_person[person_id] = header
+                        no_contract_roles[(r_club_uid, person_id)] = (
+                            tag_offset,
+                            team_id,
+                            _job_code(game_db, selector_at, staff_layout),
+                        )
+
+            for _c_uid, person_id in listed_pairs:
+                if person_id in header_by_person:
+                    continue
+                located = locate_listed_header(game_db, person_id, pr, staff_layout)
+                if located is not _AMBIGUOUS and located is not None:
+                    header_by_person[person_id] = int(located)
+
+            human_person_id: int | None = None
+            if human_selector is not None:
+                human_header = locate_human_header(game_db, human_selector, staff_layout)
+                if human_header is not None:
+                    human_person_id = human_selector - _ID_OFFSET
+                    header_by_person[human_person_id] = human_header
+
+            player_header_offset = pr.layout.pindex_offset
+            ambiguous_player_headers = frozenset(
+                pr.record_offsets[p_pos] + player_header_offset
+                for p_pos in pr.ambiguous_positions
+            )
+            boundaries = sorted(
+                {rec_off + player_header_offset for rec_off in pr.record_offsets}
+                | set(header_by_person.values())
+            )
+
+            if human_person_id is not None:
+                human_header = header_by_person[human_person_id]
+                next_header = _next_header_after(boundaries, human_header)
+                object_end = next_header or len(game_db)
+                if (
+                    layouts.person_blocks.require_unique_candidate
+                    or staff_layout.human_personality_floor is not None
+                ):
+                    human_values = _header_values(
+                        game_db, human_header, _header_reader(staff_layout), staff_layout
+                    )
+                    if human_values is not None:
+                        closing = _closing_header(
+                            game_db,
+                            human_person_id,
+                            human_header,
+                            human_values[0],
+                            next_header,
+                            staff_layout,
+                            ambiguous_player_headers,
+                        )
+                        if closing is not None and closing.offset is not None:
+                            object_end = min(object_end, closing.offset)
+                found_records = _human_records(
+                    game_db, human_header, object_end, human_selector, contract_decoder, layouts
+                )
+                if found_records:
+                    records_by_person[human_person_id] = found_records
+                else:
+                    del header_by_person[human_person_id]
+                    human_person_id = None
+
+            rows_by_club_and_person, _membership = _merge_membership(
+                listed_pairs, records_by_person, header_by_person, ci, no_contract_roles
+            )
+            if human_person_id is not None:
+                human_record = _latest_started(records_by_person[human_person_id])
+                human_club_uid = human_record[1][CHAIN_RECORD_CLUB_UID]
+                if human_club_uid == club_uid:
+                    rows_by_club_and_person[(human_club_uid, human_person_id)] = (human_record, (), None)
+
+            # Restrict strictly to our managed club before decoding person & ability blocks
+            rows_by_club_and_person = {
+                k: v for k, v in rows_by_club_and_person.items() if k[0] == club_uid
+            }
+            if not rows_by_club_and_person:
+                return None
+
+            row_persons = {person_id for _c_uid, person_id in rows_by_club_and_person}
+            objects: dict[int, Any] = {}
+            hdr_reader = _header_reader(staff_layout)
+            for person_id in sorted(row_persons):
+                header = header_by_person[person_id]
+                header_values = _header_values(game_db, header, hdr_reader, staff_layout)
+                if header_values is None:
+                    continue
+                uid, kind = header_values
+                is_human_manager = kind == staff_layout.human_kind
+                block = None
+                if not is_human_manager:
+                    block, *_ = _read_ability_block(game_db, header, staff_layout)
+                next_header = _next_header_after(boundaries, header)
+                closing = _closing_header(
+                    game_db, person_id, header, uid, next_header, staff_layout, ambiguous_player_headers
+                )
+                unique_id = None if closing is None else closing.uid
+                closing_offset = None if closing is None else closing.offset
+                human_floor = staff_layout.human_personality_floor
+                person_boundary = next_header
+                if closing_offset is not None and (
+                    layouts.person_blocks.require_unique_candidate
+                    or (is_human_manager and human_floor is not None)
+                ):
+                    person_boundary = closing_offset
+                own_records = records_by_person.get(person_id)
+                tag_offset = None if own_records is None else _latest_started(own_records)[0]
+                window_start, window_end = _person_block_window(
+                    game_db, header, tag_offset, person_boundary, staff_layout
+                )
+                person = person_decoder.decode(game_db, window_start, window_end)
+                if person is None and is_human_manager and human_floor is not None:
+                    person = person_decoder.decode(game_db, window_start, window_end, human_floor)
+                objects[person_id] = _PersonObject(
+                    header=header,
+                    uid=uid,
+                    unique_id=unique_id,
+                    is_human_manager=is_human_manager,
+                    person=person,
+                    block=block,
+                )
+
+            rows_by_club_and_person = {
+                k: v for k, v in rows_by_club_and_person.items() if k[1] in objects
+            }
+            roles = _row_roles(game_db, rows_by_club_and_person, no_contract_roles, layouts)
+            return list(_build_rows(rows_by_club_and_person, objects, ci, roles))
+    except Exception:
+        return None
+
+
 def step_3_1_finances() -> str:
-    """Step 3/6 (1/4): Finances & 12-month cash runway — 6s cap, native club_uid filter,
-    lazy stream (NEVER global list()), non-fatal fallback, and GC cleanup."""
+    """Step 3/6 (1/4): Finances & 12-month cash runway — uses club-span direct read (~2ms)
+    with lazy stream fallback (NEVER global list())."""
     t0 = time.monotonic()
     save = _STATE["save"]
     club_uid = _STATE["club_uid"]
@@ -2332,27 +3266,31 @@ def step_3_1_finances() -> str:
                 club_finances.append(fn)
 
         try:
-            primary_iter, fallback_table, used_scoped = _open_table_stream(
-                save,
-                "finances",
-                club_uid=club_uid,
-                try_where_club=True,
-            )
-            if primary_iter is not None:
-                try:
-                    _scan_finances(primary_iter)
-                except Exception:
-                    if fallback_table is not None and not timed_out:
-                        _scan_finances(fallback_table)
-                else:
-                    if (
-                        used_scoped
-                        and not club_finances
-                        and fallback_table is not None
-                        and not timed_out
-                        and (time.monotonic() - t0) < FINANCES_BUDGET_SEC
-                    ):
-                        _scan_finances(fallback_table)
+            fast_finances = _extract_club_finances_fast(save, club_uid)
+            if fast_finances is not None:
+                club_finances = fast_finances
+            else:
+                primary_iter, fallback_table, used_scoped = _open_table_stream(
+                    save,
+                    "finances",
+                    club_uid=club_uid,
+                    try_where_club=True,
+                )
+                if primary_iter is not None:
+                    try:
+                        _scan_finances(primary_iter)
+                    except Exception:
+                        if fallback_table is not None and not timed_out:
+                            _scan_finances(fallback_table)
+                    else:
+                        if (
+                            used_scoped
+                            and not club_finances
+                            and fallback_table is not None
+                            and not timed_out
+                            and (time.monotonic() - t0) < FINANCES_BUDGET_SEC
+                        ):
+                            _scan_finances(fallback_table)
 
             if timed_out:
                 warning_msg = f"finances: {FINANCES_BUDGET_SEC:.0f}s budget reached ({len(club_finances)} snapshots; continuing)"
@@ -2397,7 +3335,6 @@ def step_3_1_finances() -> str:
     _STATE["finances"] = latest_finance
     _STATE["monthly_finances"] = monthly_finances
     _STATE["wage_budget_weekly"] = wage_budget_weekly
-    gc.collect()
     elapsed_ms = _record_step_timing("step_3_1_finances", t0)
     return json.dumps({
         "monthlyFinances": len(monthly_finances),
@@ -2408,8 +3345,8 @@ def step_3_1_finances() -> str:
 
 
 def step_3_2_staff() -> str:
-    """Step 3/6 (2/4): Club staff — 8s cap, native club_uid filter / lazy stream with
-    immediate club_uid != target_club_uid skip (zero global list materialization)."""
+    """Step 3/6 (2/4): Club staff — uses club-scoped direct reader (~0.4s) with lazy stream
+    fallback and immediate club_uid != target_club_uid skip (zero global list materialization)."""
     t0 = time.monotonic()
     save = _STATE["save"]
     club_uid = _STATE["club_uid"]
@@ -2500,27 +3437,31 @@ def step_3_2_staff() -> str:
                         break
 
             try:
-                primary_iter, fallback_table, used_scoped = _open_table_stream(
-                    save,
-                    staff_method,
-                    club_uid=club_uid,
-                    try_where_club=True,
-                )
-                if primary_iter is not None:
-                    try:
-                        _scan_staff(primary_iter)
-                    except Exception:
-                        if fallback_table is not None and not timed_out:
-                            _scan_staff(fallback_table)
-                    else:
-                        if (
-                            used_scoped
-                            and not staff_out
-                            and fallback_table is not None
-                            and not timed_out
-                            and (time.monotonic() - t0) < STAFF_BUDGET_SEC
-                        ):
-                            _scan_staff(fallback_table)
+                fast_staff = _extract_club_staff_fast(save, club_uid)
+                if fast_staff is not None:
+                    _scan_staff(fast_staff)
+                else:
+                    primary_iter, fallback_table, used_scoped = _open_table_stream(
+                        save,
+                        staff_method,
+                        club_uid=club_uid,
+                        try_where_club=True,
+                    )
+                    if primary_iter is not None:
+                        try:
+                            _scan_staff(primary_iter)
+                        except Exception:
+                            if fallback_table is not None and not timed_out:
+                                _scan_staff(fallback_table)
+                        else:
+                            if (
+                                used_scoped
+                                and not staff_out
+                                and fallback_table is not None
+                                and not timed_out
+                                and (time.monotonic() - t0) < STAFF_BUDGET_SEC
+                            ):
+                                _scan_staff(fallback_table)
                 if timed_out:
                     warning_msg = f"staff: {STAFF_BUDGET_SEC:.0f}s budget reached ({len(staff_out)} club staff captured; continuing)"
                     _STATE["warnings"].append(warning_msg)
@@ -2529,7 +3470,6 @@ def step_3_2_staff() -> str:
                 _STATE["warnings"].append(warning_msg)
 
     _STATE["staff_out"] = staff_out
-    gc.collect()
     elapsed_ms = _record_step_timing("step_3_2_staff", t0)
     return json.dumps({
         "staff": len(staff_out),
@@ -2960,7 +3900,6 @@ def step_3_3_tactics_and_mentoring() -> str:
     _STATE["tactics"] = tactics_out[:3]
     _STATE["mentoring"] = mentoring_out[:5]
     del player_name_lookup
-    gc.collect()
     elapsed_ms = _record_step_timing("step_3_3_tactics_mentoring", t0)
     return json.dumps({
         "tactics": len(_STATE["tactics"]),
@@ -2969,16 +3908,143 @@ def step_3_3_tactics_and_mentoring() -> str:
     })
 
 
+def _extract_club_injuries_fast(
+    save: Any,
+    club_uid: int | None,
+    squad_uids: set[int],
+    game_date: Any,
+) -> list[dict[str, Any]] | None:
+    """Club-scoped direct injury_manager reader: checks squad pindex / club team_id BEFORE
+    decoding dates or building 100k global InjuryRecord objects (~0.04s instead of 3.7s)."""
+    ctx = getattr(save, "_context", None)
+    pindex_map = _STATE.get("squad_pindex_map")
+    if ctx is None or not pindex_map:
+        return None
+    try:
+        from fmsave._save import INJURY_MANAGER_SECTION
+        from fmsave._scan import decode_date
+        from fmsave.readers.injuries import (
+            _NO_TEAM,
+            _typed_row_fields,
+            find_injury_manager_layout,
+            walk_injury_manager,
+        )
+
+        save_info = ctx.info
+        if INJURY_MANAGER_SECTION not in save_info.section_schemas:
+            return []
+        layout = find_injury_manager_layout(
+            save_info.section_schemas.get(INJURY_MANAGER_SECTION), save_info.build
+        )
+        typed_fields = _typed_row_fields(layout)
+        typed_stride = layout.array_strides[layout.typed_array_index]
+        unpack_typed = typed_fields.fields_struct.unpack_from
+        sel_idx = typed_fields.selector_index
+        subj_idx = typed_fields.subject_index
+
+        name_by_type_id: dict[int, str] = {}
+        try:
+            for it in save.injury_types():
+                name_by_type_id[it.id] = it.name
+        except Exception:
+            pass
+
+        results: list[dict[str, Any]] = []
+        seen_keys: set[tuple[Any, str]] = set()
+        with ctx.section(INJURY_MANAGER_SECTION) as section:
+            walk = walk_injury_manager(section, layout, save_info.file_name)
+            for row_idx in range(walk.typed_rows):
+                row_off = walk.typed_offset + row_idx * typed_stride
+                fv = unpack_typed(section, row_off)
+                pidx = fv[sel_idx] - 1
+                sp = pindex_map.get(pidx)
+                if sp is None:
+                    continue
+                inj_date = decode_date(section, row_off + layout.date_offset)
+                # Typed rows store expected return date; active if return date >= game_date (or within 30d)
+                is_active = (
+                    (game_date is not None and inj_date is not None and inj_date >= game_date)
+                )
+                if not is_active:
+                    continue
+                type_id = fv[subj_idx]
+                type_name = name_by_type_id.get(type_id) or "Injury"
+                k = (sp.uid, type_name.lower())
+                if k in seen_keys:
+                    continue
+                seen_keys.add(k)
+                results.append({
+                    "playerUid": sp.uid,
+                    "playerName": sp.name,
+                    "typeName": type_name,
+                    "date": _dmy(inj_date),
+                    "severity": None,
+                    "cause": None,
+                    "kind": "typed",
+                })
+                if len(results) >= 25:
+                    break
+        return results
+    except Exception:
+        return None
+
+
+def _extract_club_facilities_fast(save: Any, club_uid: int | None) -> dict[str, Any] | None:
+    """Club-span direct facilities reader (~0.002s instead of scanning 38k clubs)."""
+    ctx = getattr(save, "_context", None)
+    if ctx is None or club_uid is None:
+        return None
+    try:
+        from fmsave._save import GAME_DB_SECTION
+        from fmsave.readers.facilities import find_facility_layout, read_club_facilities
+        from fmsave.readers.finances import find_finance_layouts
+
+        save_info = ctx.info
+        game_db_schema = save_info.section_schemas.get(GAME_DB_SECTION)
+        with ctx.section(GAME_DB_SECTION) as game_db:
+            ci = ctx.club_index()
+            spans = ctx.own_club_record_spans()
+            our_span = next((sp for sp in spans if sp.club_uid == club_uid), None)
+            our_club = ci.club_by_uid.get(club_uid)
+            if our_span is None or our_club is None:
+                return None
+
+            class _MiniClubs:
+                __slots__ = ("clubs",)
+                def __init__(self, c: Any) -> None:
+                    self.clubs = (c,)
+
+            fin_layouts = find_finance_layouts(game_db_schema, save_info.build).for_clubs(ci)
+            fac_layout = find_facility_layout(game_db_schema, save_info.build)
+            rows, _stats = read_club_facilities(
+                game_db, _MiniClubs(our_club), (our_span,), fin_layouts, fac_layout, True  # type: ignore[arg-type]
+            )
+            facilities: dict[str, Any] = {}
+            if rows:
+                f0 = rows[0]
+                corp = _label(getattr(f0, "corporate_facilities", None))
+                trn = _label(getattr(f0, "training_facilities", None) or getattr(f0, "training", None))
+                yth = _label(getattr(f0, "youth_facilities", None) or getattr(f0, "youth", None))
+                if corp:
+                    facilities["corporate"] = corp
+                if trn:
+                    facilities["training"] = trn
+                if yth:
+                    facilities["youth"] = yth
+            return facilities
+    except Exception:
+        return None
+
+
 def step_3_3_injuries(fast_sync: bool | None = None) -> str:
     """Step 3/6: Injuries — uses direct p.injuries / p.injury read in Step 2/6 first;
-    only queries global save.injuries() in Full Sync."""
+    then club-scoped injury_manager fast-path in Full Sync."""
     t0 = time.monotonic()
     use_fast = _STATE.get("fast_sync", False) if fast_sync is None else bool(fast_sync)
     direct_injuries = list(_STATE.get("direct_injuries") or [])
     if use_fast:
         _STATE["active_injuries"] = direct_injuries[:15]
         _record_fast_sync_skip_note()
-        gc.collect()
         elapsed_ms = _record_step_timing("step_3_3_injuries", t0)
         return json.dumps({
             "injuries": len(_STATE["active_injuries"]),
@@ -3031,31 +4097,38 @@ def step_3_3_injuries(fast_sync: bool | None = None) -> str:
 
     if save is not None:
         try:
-            inj_iter, inj_fb, inj_scoped = _open_table_stream(
-                save, "injuries", club_uid=club_uid, squad_uids=squad_uids, try_where_club=True
-            )
-            if inj_iter is not None:
-                try:
-                    _scan_injuries(inj_iter)
-                except Exception:
-                    if inj_fb is not None and not inj_timed_out:
-                        _scan_injuries(inj_fb)
-                else:
-                    if (
-                        inj_scoped
-                        and len(active_injuries) == len(direct_injuries)
-                        and inj_fb is not None
-                        and not inj_timed_out
-                        and (time.monotonic() - t0) < CLUB_OPS_TABLE_BUDGET_SEC
-                    ):
-                        _scan_injuries(inj_fb)
+            fast_inj = _extract_club_injuries_fast(save, club_uid, squad_uids, game_date)
+            if fast_inj is not None:
+                for item in fast_inj:
+                    k = (item.get("playerUid"), str(item.get("typeName") or "").lower())
+                    if k not in seen_keys:
+                        seen_keys.add(k)
+                        active_injuries.append(item)
+            else:
+                inj_iter, inj_fb, inj_scoped = _open_table_stream(
+                    save, "injuries", club_uid=club_uid, squad_uids=squad_uids, try_where_club=True
+                )
+                if inj_iter is not None:
+                    try:
+                        _scan_injuries(inj_iter)
+                    except Exception:
+                        if inj_fb is not None and not inj_timed_out:
+                            _scan_injuries(inj_fb)
+                    else:
+                        if (
+                            inj_scoped
+                            and len(active_injuries) == len(direct_injuries)
+                            and inj_fb is not None
+                            and not inj_timed_out
+                            and (time.monotonic() - t0) < CLUB_OPS_TABLE_BUDGET_SEC
+                        ):
+                            _scan_injuries(inj_fb)
             if inj_timed_out:
                 _STATE["warnings"].append(f"injuries: {CLUB_OPS_TABLE_BUDGET_SEC:.0f}s budget reached")
         except Exception as exc:
             _STATE["warnings"].append(f"injuries: {type(exc).__name__}")
 
     _STATE["active_injuries"] = active_injuries[:15]
-    gc.collect()
     elapsed_ms = _record_step_timing("step_3_3_injuries", t0)
     return json.dumps({
         "injuries": len(_STATE["active_injuries"]),
@@ -3065,13 +4138,12 @@ def step_3_3_injuries(fast_sync: bool | None = None) -> str:
 
 
 def step_3_3_facilities(fast_sync: bool | None = None) -> str:
-    """Step 3/6: Facilities — Full Sync only; skipped cleanly when fast_sync=True."""
+    """Step 3/6: Facilities — Full Sync only; uses club-span direct read (~2ms)."""
     t0 = time.monotonic()
     use_fast = _STATE.get("fast_sync", False) if fast_sync is None else bool(fast_sync)
     if use_fast:
         _STATE["facilities"] = {}
         _record_fast_sync_skip_note()
-        gc.collect()
         elapsed_ms = _record_step_timing("step_3_3_facilities", t0)
         return json.dumps({"skipped": True, "elapsedMs": elapsed_ms})
 
@@ -3080,42 +4152,46 @@ def step_3_3_facilities(fast_sync: bool | None = None) -> str:
     facilities: dict[str, Any] = {}
     if save is not None and club_uid is not None:
         try:
-            fac_fn = getattr(save, "facilities", None)
-            if callable(fac_fn):
-                raw_fac = _safe_call(fac_fn, "facilities", default=[])
-                rows = []
-                if hasattr(raw_fac, "where"):
-                    try:
-                        rows = list(raw_fac.where(club_uid=club_uid))
-                    except Exception:
-                        rows = []
-                if not rows and raw_fac is not None:
-                    for item in raw_fac:
-                        if getattr(item, "club_uid", None) == club_uid:
-                            rows.append(item)
-                            break
-                if rows:
-                    f0 = rows[0]
-                    corp = _label(getattr(f0, "corporate_facilities", None))
-                    trn = _label(getattr(f0, "training_facilities", None) or getattr(f0, "training", None))
-                    yth = _label(getattr(f0, "youth_facilities", None) or getattr(f0, "youth", None))
-                    if corp:
-                        facilities["corporate"] = corp
-                    if trn:
-                        facilities["training"] = trn
-                    if yth:
-                        facilities["youth"] = yth
+            fast_fac = _extract_club_facilities_fast(save, club_uid)
+            if fast_fac is not None:
+                facilities = fast_fac
+            else:
+                fac_fn = getattr(save, "facilities", None)
+                if callable(fac_fn):
+                    raw_fac = _safe_call(fac_fn, "facilities", default=[])
+                    rows = []
+                    if hasattr(raw_fac, "where"):
+                        try:
+                            rows = list(raw_fac.where(club_uid=club_uid))
+                        except Exception:
+                            rows = []
+                    if not rows and raw_fac is not None:
+                        for item in raw_fac:
+                            if getattr(item, "club_uid", None) == club_uid:
+                                rows.append(item)
+                                break
+                    if rows:
+                        f0 = rows[0]
+                        corp = _label(getattr(f0, "corporate_facilities", None))
+                        trn = _label(getattr(f0, "training_facilities", None) or getattr(f0, "training", None))
+                        yth = _label(getattr(f0, "youth_facilities", None) or getattr(f0, "youth", None))
+                        if corp:
+                            facilities["corporate"] = corp
+                        if trn:
+                            facilities["training"] = trn
+                        if yth:
+                            facilities["youth"] = yth
         except Exception as exc:
             _STATE["warnings"].append(f"facilities: {type(exc).__name__}")
 
     _STATE["facilities"] = facilities
-    gc.collect()
     elapsed_ms = _record_step_timing("step_3_3_facilities", t0)
     return json.dumps({"skipped": False, "elapsedMs": elapsed_ms})
 
 
 def step_3_3_competition_rules(fast_sync: bool | None = None) -> str:
-    """Stage 4 (Full Sync): Competition rules — can trigger heavy fixture-calendar decoding in fmsave."""
+    """Stage 3/4 (Full Sync): Competition rules — deferred to Stage 4 step_league_table() on
+    real fmsave saves so the 400MB span section is NEVER scanned while game_db is open or scanned twice."""
     t0 = time.monotonic()
     use_fast = _STATE.get("fast_sync", False) if fast_sync is None else bool(fast_sync)
     comp_map = _STATE.get("comp_name_by_id", {})
@@ -3134,13 +4210,23 @@ def step_3_3_competition_rules(fast_sync: bool | None = None) -> str:
     }
     if use_fast:
         _STATE["competition_rules"] = empty_rules
+        _STATE["defer_competition_rules"] = False
         _record_fast_sync_skip_note()
-        gc.collect()
         elapsed_ms = _record_step_timing("step_3_3_competition_rules", t0)
         return json.dumps({"skipped": True, "elapsedMs": elapsed_ms})
 
     save = _STATE["save"]
     club_uid = _STATE["club_uid"]
+
+    # On real fmsave saves, competition_rules() lives inside the span section alongside
+    # fixtures() and league_tables(). Deferring resolution to step_league_table() avoids
+    # overlapping game_db + span in RAM AND eliminates a duplicate 26s full-span scan.
+    if save is not None and getattr(save, "_context", None) is not None and ls is None:
+        _STATE["competition_rules"] = empty_rules
+        _STATE["defer_competition_rules"] = True
+        elapsed_ms = _record_step_timing("step_3_3_competition_rules", t0)
+        return json.dumps({"skipped": False, "deferred": True, "elapsedMs": elapsed_ms})
+
     competition_rules = empty_rules
     if save is not None:
         try:
@@ -3151,7 +4237,7 @@ def step_3_3_competition_rules(fast_sync: bool | None = None) -> str:
             _STATE["warnings"].append(f"competition_rules: {type(exc).__name__}")
 
     _STATE["competition_rules"] = competition_rules
-    gc.collect()
+    _STATE["defer_competition_rules"] = False
     elapsed_ms = _record_step_timing("step_3_3_competition_rules", t0)
     return json.dumps({"skipped": False, "elapsedMs": elapsed_ms})
 
@@ -3391,7 +4477,11 @@ def step_3_3_secondary_ops(fast_sync: bool | None = None) -> str:
     division_benchmarks = None
 
     if save is not None:
-        sponsorships = _extract_club_scoped_capped(save, club_uid, "sponsorships", [], filter_by_club=True)
+        prefetched_sp = _STATE.get("prefetched_sponsorships")
+        if prefetched_sp is not None:
+            sponsorships = [_to_json_safe(item) for item in prefetched_sp[:25]]
+        else:
+            sponsorships = _extract_club_scoped_capped(save, club_uid, "sponsorships", [], filter_by_club=True)
         if not selections:
             selections = _extract_club_scoped_capped(save, club_uid, "selections", {}, filter_by_club=True)
         if not set_pieces:
@@ -3441,7 +4531,6 @@ def step_3_3_secondary_ops(fast_sync: bool | None = None) -> str:
     _STATE["division_benchmarks"] = division_benchmarks
     del player_name_lookup
 
-    gc.collect()
     elapsed_ms = _record_step_timing("step_3_3_secondary_ops", t0)
     return json.dumps({
         "skipped": False,
@@ -3468,10 +4557,46 @@ def step_3_3_club_ops(fast_sync: bool | None = None) -> str:
     })
 
 
+def _prefetch_fixture_gamedb_indexes(save: Any) -> None:
+    """Capture lightweight stage_index, competition_index, stadium_index, and match_summary_scores
+    while game_db is STILL warm in RAM so Stage 4 step_fixtures NEVER re-decompresses game_db."""
+    ctx = getattr(save, "_context", None)
+    if ctx is None:
+        return
+    try:
+        from fmsave._save import GAME_DB_SECTION
+        from fmsave.readers.match_summaries import (
+            find_match_summary_layout,
+            locate_match_summary_scores,
+        )
+
+        save_info = ctx.info
+        with ctx.section(GAME_DB_SECTION) as game_db:
+            if getattr(ctx, "competition_names", None):
+                try:
+                    save.competitions()
+                except Exception:
+                    pass
+            _STATE["prefetched_stage_index"] = ctx.stage_index()
+            _STATE["prefetched_competition_index"] = ctx.competition_index()
+            _STATE["prefetched_stadium_index"] = None
+            try:
+                _STATE["prefetched_match_summaries"] = locate_match_summary_scores(
+                    game_db,
+                    find_match_summary_layout(
+                        save_info.section_schemas.get(GAME_DB_SECTION), save_info.build
+                    ),
+                )
+            except Exception:
+                _STATE["prefetched_match_summaries"] = None
+    except Exception:
+        pass
+
+
 def step_3_4_market_scan_and_release_gamedb(fast_sync: bool | None = None) -> str:
     """Step 3/6: Group 4 Free-Agent & Expiring-Contract Market Scan —
     strict 6s cap on desktop, SKIPPED completely when fast_sync=True.
-    Always releases game_db borrow and evicts heavy player caches."""
+    Always pre-warms lightweight fixture indexes, then releases game_db borrow & heavy caches."""
     t0 = time.monotonic()
     use_fast = _STATE.get("fast_sync", False) if fast_sync is None else bool(fast_sync)
     save = _STATE["save"]
@@ -3488,6 +4613,10 @@ def step_3_4_market_scan_and_release_gamedb(fast_sync: bool | None = None) -> st
         )
 
     _STATE["recruitment_targets"] = recruitment_targets
+
+    # Capture stage/stadium/summary indexes while game_db is STILL warm in RAM
+    if save is not None:
+        _prefetch_fixture_gamedb_indexes(save)
 
     # Release game_db section borrow & heavy player caches to free RAM
     _exit_game_db_borrow()
@@ -4799,33 +5928,36 @@ def step_fixtures(fast_sync: bool | None = None) -> str:
 
     club_fixtures = []
     if club_uid is not None:
-        # Release game_db borrow before save.fixtures() streams the large span section so
-        # game_db (~800MB) and span (~400MB) are never held in memory simultaneously.
+        # Release game_db borrow before span streaming so game_db and span never overlap in RAM.
         _exit_game_db_borrow()
-        gc.collect()
-        try:
-            fix_table = save.fixtures()
-            # Start the iteration cap AFTER save.fixtures() finishes decompressing/building
-            # the table; 45s cap ensures multi-season saves capture all home & away fixtures.
-            t_scan = time.monotonic()
-            seen = 0
-            for f in fix_table:
-                seen += 1
-                if (seen & 511) == 0 and (time.monotonic() - t_scan) > FIXTURES_SCAN_BUDGET_SEC:
-                    _STATE["warnings"].append(f"fixtures: {FIXTURES_SCAN_BUDGET_SEC:.0f}s time cap reached")
-                    break
-                is_home = (
-                    getattr(f, "home_club_uid", None) == club_uid
-                    and getattr(f, "home_team_slot", None) in (None, 0)
-                )
-                is_away = (
-                    getattr(f, "away_club_uid", None) == club_uid
-                    and getattr(f, "away_team_slot", None) in (None, 0)
-                )
-                if is_home or is_away:
-                    club_fixtures.append(f)
-        except Exception as exc:
-            _STATE["warnings"].append(f"fixtures: {type(exc).__name__}")
+        fast_fixtures = _extract_club_fixtures_fast(save, club_uid)
+        if fast_fixtures is not None:
+            club_fixtures = fast_fixtures
+        else:
+            gc.collect()
+            try:
+                fix_table = save.fixtures()
+                # Start the iteration cap AFTER save.fixtures() finishes decompressing/building
+                # the table; 45s cap ensures multi-season saves capture all home & away fixtures.
+                t_scan = time.monotonic()
+                seen = 0
+                for f in fix_table:
+                    seen += 1
+                    if (seen & 511) == 0 and (time.monotonic() - t_scan) > FIXTURES_SCAN_BUDGET_SEC:
+                        _STATE["warnings"].append(f"fixtures: {FIXTURES_SCAN_BUDGET_SEC:.0f}s time cap reached")
+                        break
+                    is_home = (
+                        getattr(f, "home_club_uid", None) == club_uid
+                        and getattr(f, "home_team_slot", None) in (None, 0)
+                    )
+                    is_away = (
+                        getattr(f, "away_club_uid", None) == club_uid
+                        and getattr(f, "away_team_slot", None) in (None, 0)
+                    )
+                    if is_home or is_away:
+                        club_fixtures.append(f)
+            except Exception as exc:
+                _STATE["warnings"].append(f"fixtures: {type(exc).__name__}")
 
     club_fixtures.sort(key=lambda f: f.date or date(1900, 1, 1))
 
@@ -4888,7 +6020,6 @@ def step_fixtures(fast_sync: bool | None = None) -> str:
     played_matches.reverse()
     _STATE["played_matches"] = played_matches[:15]
     _STATE["upcoming_fixtures"] = upcoming_fixtures[:8]
-    gc.collect()
     elapsed_ms = _record_step_timing("step_5_fixtures", step_t0)
 
     return json.dumps({
@@ -4899,6 +6030,294 @@ def step_fixtures(fast_sync: bool | None = None) -> str:
     })
 
 
+def _extract_club_fixtures_fast(save: Any, club_uid: int | None) -> list[Any] | None:
+    """Club-scoped direct fixture extractor: streams span ONCE, filters 123k raw fixtures down
+    to ONLY our managed club's ~40 first-team matches BEFORE constructing Fixture objects, and
+    attaches exact scores via save._scored_fixtures() using pre-warmed match_summary_scores
+    (zero second game_db decompression)."""
+    ctx = getattr(save, "_context", None)
+    if ctx is None or club_uid is None:
+        return None
+    try:
+        from fmsave._frozen import FrozenMapping
+        from fmsave._layouts import FixtureCalendarLayout, find_layout
+        from fmsave._save import SPAN_REGION
+        from fmsave._scan import decode_date
+        from fmsave.models.fixtures import Fixture
+        from fmsave.readers.fixtures import (
+            _DATE_WORDS,
+            _club_fields,
+            _split_span,
+            kick_off_time_of,
+        )
+        from fmsave.readers.results import find_result_layout
+
+        save_info = ctx.info
+        club_index = ctx.club_index()
+        stage_index = _STATE.get("prefetched_stage_index") or ctx.stage_index()
+        competition_index = _STATE.get("prefetched_competition_index") or ctx.competition_index()
+        stadium_index = _STATE.get("prefetched_stadium_index")
+        summaries = _STATE.get("prefetched_match_summaries")
+        calendar = find_layout(FixtureCalendarLayout, SPAN_REGION, None, save_info.build)
+        layout = calendar.layout
+
+        span_records = ctx.span_records()
+        cache_offsets = frozenset(span_records.fixture_cache_offsets)
+        split_span = _split_span(span_records.fixtures, layout.cluster_gap_bytes, cache_offsets)
+        kept_records = split_span.kept
+        if kept_records:
+            anchor_offsets = {record.span_offset for record in kept_records}
+            recovered: dict[int, Any] = {}
+            for continuation in span_records.fixture_continuations:
+                if (
+                    continuation.left_offset in anchor_offsets
+                    and continuation.right_offset in anchor_offsets
+                ):
+                    for record in continuation.fixtures:
+                        if (
+                            continuation.left_offset < record.span_offset < continuation.right_offset
+                            and record.span_offset not in cache_offsets
+                        ):
+                            recovered.setdefault(record.span_offset, record)
+            for anchor in kept_records:
+                recovered.pop(anchor.span_offset, None)
+            if recovered:
+                kept_records = tuple(
+                    sorted((*kept_records, *recovered.values()), key=lambda r: r.span_offset)
+                )
+
+        # Save kept_records for step_league_table() competition voting (cleared after step_league_table)
+        _STATE["span_kept_fixtures"] = kept_records
+
+        team_to_club = club_index.team_to_club
+        club_by_uid = club_index.club_by_uid
+        stage_by_id = stage_index.stage_by_id
+        name_for = competition_index.name_for
+        uid_by_ordinal = stadium_index.uid_by_ordinal if stadium_index is not None else {}
+        name_by_ordinal = (
+            {row.ordinal: row.name for row in stadium_index.rows if row.name is not None}
+            if stadium_index is not None
+            else {}
+        )
+        round_index_none_value = layout.round_index_none_value
+
+        # Build set of first-team (slot 0 / None) team IDs for our club
+        first_team_ids: set[int] = set()
+        first_tid = _STATE.get("first_team_id")
+        if first_tid is not None:
+            first_team_ids.add(int(first_tid))
+        for tid, entry in team_to_club.items():
+            if entry and entry[0] == club_uid and entry[1] in (None, 0):
+                first_team_ids.add(int(tid))
+        if not first_team_ids:
+            first_team_ids = set(_STATE.get("club_team_ids") or _resolve_club_team_ids(club_index, club_uid))
+        if not first_team_ids:
+            return None
+
+        # Filter to ONLY our club's fixtures before constructing Fixture dataclasses
+        club_raw = [
+            rec for rec in kept_records
+            if rec.home_team_id in first_team_ids or rec.away_team_id in first_team_ids
+        ]
+
+        played_by_offset: dict[int, bool | None] = {}
+        club_raw_offsets = {rec.span_offset for rec in club_raw}
+        for presence in span_records.fixture_presence:
+            if presence.span_offset not in club_raw_offsets:
+                continue
+            if (
+                presence.span_offset in played_by_offset
+                and played_by_offset[presence.span_offset] != presence.played
+            ):
+                played_by_offset[presence.span_offset] = None
+            else:
+                played_by_offset[presence.span_offset] = presence.played
+
+        built_pairs: list[tuple[Any, int]] = []
+        for raw_fixture in club_raw:
+            kick_off_date = decode_date(
+                _DATE_WORDS.pack(raw_fixture.packed_kick_off, raw_fixture.kick_off_year), 0
+            )
+            kick_off_time = kick_off_time_of(raw_fixture.packed_kick_off, layout)
+            home_club = team_to_club.get(raw_fixture.home_team_id)
+            away_club = team_to_club.get(raw_fixture.away_team_id)
+            home_uid, home_name, home_short_name, home_slot = _club_fields(home_club, club_by_uid)
+            away_uid, away_name, away_short_name, away_slot = _club_fields(away_club, club_by_uid)
+            is_home = home_uid == club_uid and home_slot in (None, 0)
+            is_away = away_uid == club_uid and away_slot in (None, 0)
+            if not (is_home or is_away):
+                continue
+            stage_id = raw_fixture.stage_id
+            stage = None if stage_id is None else stage_by_id.get(stage_id)
+            competition_id = None if stage is None else stage.competition_id
+            owned_played = played_by_offset.get(raw_fixture.span_offset)
+            played = raw_fixture.played if owned_played is None else owned_played
+            stored_round_index = raw_fixture.round_index
+            stadium_ordinal = raw_fixture.stadium_ordinal
+            fx = Fixture(
+                stage_id=stage_id,
+                competition_id=competition_id,
+                competition_name=name_for(competition_id),
+                round=None if stage is None else stage.round,
+                round_index=(
+                    None if stored_round_index == round_index_none_value else stored_round_index
+                ),
+                date=kick_off_date,
+                kick_off_time=kick_off_time,
+                season_start_year=raw_fixture.season_start_year,
+                home_team_id=raw_fixture.home_team_id,
+                home_club_uid=home_uid,
+                home_club_name=home_name,
+                home_club_short_name=home_short_name,
+                home_team_slot=home_slot,
+                away_team_id=raw_fixture.away_team_id,
+                away_club_uid=away_uid,
+                away_club_name=away_name,
+                away_club_short_name=away_short_name,
+                away_team_slot=away_slot,
+                home_goals=None,
+                away_goals=None,
+                played=played,
+                is_neutral_venue=None,
+                stadium_uid=(
+                    None if stadium_ordinal is None else uid_by_ordinal.get(stadium_ordinal)
+                ),
+                stadium_name=(
+                    None if stadium_ordinal is None else name_by_ordinal.get(stadium_ordinal)
+                ),
+                referee_id=raw_fixture.referee_id if played and calendar.exact else None,
+                match_rules_template=raw_fixture.match_rules_template,
+                unknown=FrozenMapping({
+                    "date2": raw_fixture.date2,
+                    "phase": raw_fixture.phase,
+                    "leg": raw_fixture.leg,
+                    "r39_42": raw_fixture.r39_42,
+                    "r47_54": raw_fixture.r47_54,
+                }),
+            )
+            built_pairs.append((fx, raw_fixture.span_offset))
+
+        built_pairs.sort(
+            key=lambda pair: (
+                pair[0].date or date(1900, 1, 1),
+                pair[0].kick_off_time or dt_time(0, 0),
+                pair[1],
+            )
+        )
+        if not built_pairs:
+            return []
+
+        fixtures_tuple = tuple(p[0] for p in built_pairs)
+        offsets_tuple = tuple(p[1] for p in built_pairs)
+        scored, _res_stats = save._scored_fixtures(
+            fixtures_tuple,
+            span_records,
+            stage_index,
+            find_result_layout(save_info.build),
+            summaries=summaries,
+            fixture_offsets=offsets_tuple,
+        )
+        return list(scored)
+    except Exception:
+        return None
+
+
+def _extract_club_team_match_stats_fast(save: Any, first_team_id: int | None) -> list[Any] | None:
+    """Club-scoped direct team_match_stats reader: checks header.home_team_id/away_team_id
+    immediately before running regex squad framing & stat decoding (~0.8s instead of 14.1s)."""
+    ctx = getattr(save, "_context", None)
+    if ctx is None or first_team_id is None:
+        return None
+    try:
+        from collections import Counter
+        from fmsave._layouts import MatchReportLayout, find_layout
+        from fmsave._save import MATCH_REPORTS_SECTION
+        from fmsave.models.team_match_stats import TeamMatchStats
+        from fmsave.readers.team_match_stats import (
+            _decompress,
+            _header,
+            _possession,
+            _shares_half_up,
+            _squads,
+            _team_values,
+            index_entries,
+        )
+
+        info = ctx.info
+        schema = info.section_schemas.get(MATCH_REPORTS_SECTION)
+        if schema is None:
+            return []
+        match = find_layout(MatchReportLayout, MATCH_REPORTS_SECTION, schema, info.build)
+        layout = match.layout
+        seed_pattern = re.compile(b"(?=" + re.escape(layout.anchor_run) + b")")
+        check_borrowed = not match.exact or not info.known_build
+
+        with ctx.section(MATCH_REPORTS_SECTION) as section:
+            entries = index_entries(section, layout, info.file_name, check_borrowed=check_borrowed)
+            view = memoryview(section)
+            framed: list[tuple[Any, bool, dict[str, Any], dict[str, Any]]] = []
+            key_counts: Counter[Any] = Counter()
+
+            for start, size in entries:
+                report = _decompress(view[start : start + size], layout)
+                if report is None:
+                    continue
+                header = _header(report, layout)
+                if header is None:
+                    continue
+                # Skip all non-club matches BEFORE expensive regex squad framing & stat decoding!
+                if header.home_team_id != first_team_id and header.away_team_id != first_team_id:
+                    continue
+                record_layout = next(
+                    (cand for prefix, cand in layout.record_variants if report.startswith(prefix)),
+                    layout,
+                )
+                squads = _squads(report, record_layout, seed_pattern)
+                if squads is None:
+                    continue
+                try:
+                    home = _team_values(report, squads.home, squads.detailed, record_layout)
+                    away = _team_values(report, squads.away, squads.detailed, record_layout)
+                except struct.error:
+                    continue
+                key_counts[header] += 1
+                framed.append((header, squads.detailed, home, away))
+
+        rows: list[Any] = []
+        for header, is_detailed, home, away in framed:
+            if key_counts[header] > 1:
+                continue
+            home_poss, away_poss = _possession(
+                int(home["passes_completed"] or 0), int(away["passes_completed"] or 0)
+            )
+            home_ball, away_ball = _shares_half_up(
+                int(home.pop("ball_distribution_units") or 0),
+                int(away.pop("ball_distribution_units") or 0),
+            )
+            for tid, is_home, values, poss, ball in (
+                (header.home_team_id, True, home, home_poss, home_ball),
+                (header.away_team_id, False, away, away_poss, away_ball),
+            ):
+                rows.append(
+                    TeamMatchStats(
+                        competition_id=header.competition_id,
+                        home_team_id=header.home_team_id,
+                        away_team_id=header.away_team_id,
+                        date=header.kick_off.date(),
+                        kick_off_time=header.kick_off.time(),
+                        team_id=tid,
+                        is_home=is_home,
+                        detailed_report=is_detailed,
+                        possession_percent=poss,
+                        ball_distribution_percent=ball,
+                        **values,
+                    )
+                )
+        return rows
+    except Exception:
+        return None
+
+
 def step_team_match_stats(fast_sync: bool | None = None) -> str:
     """Stage 4 (Full Sync): Club-scoped team_match_stats (xG, shots, possession, pass %, CCCs)
     paired by (date, home_team_id, away_team_id) enriching played_matches in place."""
@@ -4907,7 +6326,6 @@ def step_team_match_stats(fast_sync: bool | None = None) -> str:
     if use_fast:
         _record_fast_sync_skip_note()
         _STATE["step_timings_ms"]["step_4_team_match_stats"] = 0
-        gc.collect()
         return json.dumps({"skipped": True, "teamMatchStatsCount": 0, "elapsedMs": 0})
 
     save = _STATE["save"]
@@ -4927,7 +6345,9 @@ def step_team_match_stats(fast_sync: bool | None = None) -> str:
         grouped_matches: dict[tuple[str, int, int], dict[str, Any]] = {}
 
         try:
-            tms_table = _safe_call(save.team_match_stats, "team_match_stats", default=None)
+            tms_table = _extract_club_team_match_stats_fast(save, first_team_id)
+            if tms_table is None:
+                tms_table = _safe_call(save.team_match_stats, "team_match_stats", default=None)
             if tms_table is not None:
                 seen = 0
                 for row in tms_table:
@@ -5179,9 +6599,179 @@ def step_snapshot_payload(stage: str = "") -> str:
     return json.dumps(payload)
 
 
+def _extract_club_league_table_and_rules_fast(
+    save: Any, club_uid: int | None
+) -> tuple[Any | None, Any | None, dict[str, Any] | None]:
+    """Club-scoped direct league table + deferred competition_rules extractor:
+    deduplicates & groups span_records.table_blocks ONCE, builds rows ONLY for the group(s)
+    containing our managed club's first team, votes competition from span_kept_fixtures ONLY
+    for those ~16 clubs, and resolves our club's exact CompetitionRules preamble in ~0.08s."""
+    ctx = getattr(save, "_context", None)
+    if ctx is None or club_uid is None:
+        return None, None, None
+    try:
+        from collections import Counter
+        from fmsave._layouts import LeagueTableLayout, find_layout
+        from fmsave._save import SPAN_REGION
+        from fmsave.models.league_tables import LeagueTable
+        from fmsave.readers.league_tables import (
+            _rows_for,
+            distinct_blocks,
+            drop_superseded_groups,
+            group_blocks,
+        )
+        from fmsave.readers.rules import _table_run_after_each_block
+
+        save_info = ctx.info
+        club_index = ctx.club_index()
+        stage_index = _STATE.get("prefetched_stage_index") or ctx.stage_index()
+        competition_index = _STATE.get("prefetched_competition_index") or ctx.competition_index()
+        layout = find_layout(LeagueTableLayout, SPAN_REGION, None, save_info.build).layout
+        span_records = ctx.span_records()
+
+        first_team_ids: set[int] = set()
+        first_tid = _STATE.get("first_team_id")
+        if first_tid is not None:
+            first_team_ids.add(int(first_tid))
+        for tid, entry in club_index.team_to_club.items():
+            if entry and entry[0] == club_uid and entry[1] in (None, 0):
+                first_team_ids.add(int(tid))
+        if not first_team_ids:
+            first_team_ids = set(_STATE.get("club_team_ids") or _resolve_club_team_ids(club_index, club_uid))
+        if not first_team_ids:
+            return None, None, None
+
+        kept_blocks, _dups = distinct_blocks(span_records.table_blocks)
+        groups, _sup = drop_superseded_groups(group_blocks(kept_blocks, layout), layout)
+
+        # Keep ONLY groups containing our first team
+        candidate_groups = [
+            g for g in groups if any(block.team_id in first_team_ids for block in g)
+        ]
+        if not candidate_groups:
+            return None, None, None
+
+        # Vote competition ID from kept span fixtures ONLY for teams inside our candidate groups
+        relevant_team_ids = {block.team_id for g in candidate_groups for block in g}
+        kept_fixtures = _STATE.get("span_kept_fixtures")
+        if kept_fixtures is None:
+            kept_fixtures = span_records.fixtures
+        stage_by_id = stage_index.stage_by_id
+        team_comp_counts: dict[int, Counter[int]] = {}
+        pair_comp_counts: dict[tuple[int, int], Counter[int]] = {}
+        for rf in kept_fixtures:
+            ht = rf.home_team_id
+            at = rf.away_team_id
+            if ht not in relevant_team_ids and at not in relevant_team_ids:
+                continue
+            st = None if rf.stage_id is None else stage_by_id.get(rf.stage_id)
+            cid = None if st is None else st.competition_id
+            if cid is None:
+                continue
+            if ht in relevant_team_ids:
+                team_comp_counts.setdefault(ht, Counter())[cid] += 1
+            if at in relevant_team_ids:
+                team_comp_counts.setdefault(at, Counter())[cid] += 1
+            if ht in relevant_team_ids and at in relevant_team_ids:
+                pk = (ht, at) if ht <= at else (at, ht)
+                pair_comp_counts.setdefault(pk, Counter())[cid] += 1
+
+        def _vote_group_comp(group: tuple[Any, ...]) -> int | None:
+            members = {b.team_id for b in group}
+            member_coverage: Counter[int] = Counter()
+            for tid in members:
+                for cid in team_comp_counts.get(tid, ()):
+                    member_coverage[cid] += 1
+            min_cov = (len(members) + 1) // 2
+            eligible = [cid for cid, cov in member_coverage.items() if cov >= min_cov]
+            if not eligible:
+                return None
+            meeting_counts: Counter[int] = Counter()
+            member_list = sorted(members)
+            for i in range(len(member_list)):
+                ti = member_list[i]
+                for j in range(i + 1, len(member_list)):
+                    tj = member_list[j]
+                    pc = pair_comp_counts.get((ti, tj))
+                    if pc:
+                        for cid in eligible:
+                            if cid in pc:
+                                meeting_counts[cid] += pc[cid]
+            return max(
+                eligible,
+                key=lambda cid: (member_coverage[cid], meeting_counts[cid], -cid),
+            )
+
+        name_for = competition_index.name_for
+        best_lt = None
+        best_row = None
+        for group in candidate_groups:
+            rows, _counts = _rows_for(group, club_index, layout)
+            my_row = next(
+                (r for r in rows if r.club_uid == club_uid and r.team_slot in (None, 0)),
+                None,
+            )
+            if my_row is None:
+                continue
+            comp_id = _vote_group_comp(group)
+            lt = LeagueTable(
+                competition_id=comp_id,
+                competition_name=name_for(comp_id),
+                club_count=len(rows),
+                rows=rows,
+            )
+            lt_size = len(rows)
+            best_size = len(best_lt.rows) if best_lt is not None else -1
+            if lt_size > best_size or (
+                lt_size == best_size
+                and int(getattr(my_row, "played", 0)) > int(getattr(best_row, "played", 0))
+            ):
+                best_lt = lt
+                best_row = my_row
+
+        # Resolve deferred competition_rules from span_records.rules_blocks in ~5ms!
+        resolved_rules: dict[str, Any] | None = None
+        if best_lt is not None and _STATE.get("defer_competition_rules"):
+            comp_map = _STATE.get("comp_name_by_id", {})
+            lt_comp_id = _int(getattr(best_lt, "competition_id", None), None)
+            lt_comp_name = (
+                getattr(best_lt, "competition_name", None)
+                or (comp_map.get(lt_comp_id) if lt_comp_id else None)
+                or "Domestic League"
+            )
+            target_team_set = frozenset(r.team_id for r in best_lt.rows)
+            matched_block = None
+            if span_records.rules_blocks:
+                runs = _table_run_after_each_block(
+                    span_records.rules_blocks, span_records.table_blocks
+                )
+                for block, run in zip(span_records.rules_blocks, runs):
+                    if run == target_team_set:
+                        matched_block = block
+                        break
+            resolved_rules = {
+                "competitionName": lt_comp_name,
+                "maxSquadSize": None,
+                "minHomegrownClub": None,
+                "minHomegrownNation": None,
+                "maxForeignPlayers": None,
+                "u21Exempt": None,
+                "matchdaySubsLimit": None,
+                "fixturesPerClub": (len(matched_block.rounds) or None) if matched_block is not None else None,
+                "promotionPlaces": matched_block.promotion_places if matched_block is not None else None,
+                "playoffPlaces": matched_block.playoff_places if matched_block is not None else None,
+                "relegationPlaces": matched_block.relegation_places if matched_block is not None else None,
+            }
+            _STATE["defer_competition_rules"] = False
+
+        return best_lt, best_row, resolved_rules
+    except Exception:
+        return None, None, None
+
+
 def step_league_table() -> str:
-    """Stage 3 (2/2): Full domestic league table (all teams) without closing _STATE,
-    so Full Sync Stage 4 can run after Stage 3 and a Stage 3 checkpoint can be emitted."""
+    """Stage 4 (2/2): Full domestic league table (all teams) + deferred competition rules
+    without closing _STATE, using club-scoped span decoding (~0.08s)."""
     t0 = time.monotonic()
     save = _STATE["save"]
     club_uid = _STATE["club_uid"]
@@ -5191,18 +6781,27 @@ def step_league_table() -> str:
     league_standing = None
     best_lt = None
     best_row = None
+    deferred_rules = None
     if club_uid is not None and save is not None:
-        try:
-            for lt in save.league_tables():
-                my_row = next((r for r in lt.rows if r.club_uid == club_uid and r.team_slot in (None, 0)), None)
-                if my_row:
-                    lt_size = int(getattr(lt, "club_count", None) or len(lt.rows))
-                    best_size = int(getattr(best_lt, "club_count", None) or len(best_lt.rows)) if best_lt else -1
-                    if lt_size > best_size or (lt_size == best_size and int(getattr(my_row, "played", 0)) > int(getattr(best_row, "played", 0))):
-                        best_lt = lt
-                        best_row = my_row
-        except Exception as exc:
-            _STATE["warnings"].append(f"league_tables: {type(exc).__name__}")
+        fast_lt, fast_row, deferred_rules = _extract_club_league_table_and_rules_fast(save, club_uid)
+        if fast_lt is not None and fast_row is not None:
+            best_lt = fast_lt
+            best_row = fast_row
+        else:
+            try:
+                for lt in save.league_tables():
+                    my_row = next((r for r in lt.rows if r.club_uid == club_uid and r.team_slot in (None, 0)), None)
+                    if my_row:
+                        lt_size = int(getattr(lt, "club_count", None) or len(lt.rows))
+                        best_size = int(getattr(best_lt, "club_count", None) or len(best_lt.rows)) if best_lt else -1
+                        if lt_size > best_size or (lt_size == best_size and int(getattr(my_row, "played", 0)) > int(getattr(best_row, "played", 0))):
+                            best_lt = lt
+                            best_row = my_row
+            except Exception as exc:
+                _STATE["warnings"].append(f"league_tables: {type(exc).__name__}")
+
+    if deferred_rules is not None:
+        _STATE["competition_rules"] = deferred_rules
 
     if best_lt is not None and best_row is not None:
         lt = best_lt
@@ -5294,6 +6893,9 @@ def step_league_table() -> str:
                 if uf.get("competition") == "League / Cup":
                     uf["competition"] = league_comp_name if uf.get("competitionId") == league_comp_id else "Cup / Friendly"
 
+    # Free heavy span fixtures reference now that fixtures, league table, and rules are complete
+    _STATE["span_kept_fixtures"] = None
+    _STATE["prefetched_match_summaries"] = None
     _STATE["league_standing"] = league_standing
     gc.collect()
     elapsed_ms = _record_step_timing("step_5_2_league_table", t0)
@@ -5574,17 +7176,25 @@ def extract_fm_save_payload(
     progress_cb: Any = None,
     import_scope: str = "managed_club_only",
     fast_sync: bool = False,
+    checkpoint_cb: Any = None,
 ) -> dict[str, Any]:
     """Single-call extractor executing the reordered 4-stage Pass 0/1 pipeline:
     Stage 1: Open save + Club & Squad (52 attributes, traits, badges, direct contract/bans/injuries)
     Stage 2: Finances/12-month cash runway, Club Staff, Tactics & Mentoring
-    Stage 3: Fixtures & Full Domestic League Table
-    Stage 4 (Full Sync ONLY): Global club ops, Group 4 market scan, team match stats, & Player Stats
+    Stage 3: Full Sync game_db ops + Market Scan (then releases game_db once)
+    Stage 4: Fixtures, League Table, Team xG, Player Season Stats & Career History
     """
     def _emit(step: str, label: str):
         if progress_cb:
             try:
                 progress_cb(step, label)
+            except Exception:
+                pass
+
+    def _emit_checkpoint(stage_name: str):
+        if checkpoint_cb:
+            try:
+                checkpoint_cb(stage_name, step_snapshot_payload(stage_name))
             except Exception:
                 pass
 
@@ -5602,10 +7212,11 @@ def extract_fm_save_payload(
     step_3_2_staff()
     _emit("Stage 2/4", "Reading tactics & mentoring...")
     step_3_3_tactics_and_mentoring()
+    _emit_checkpoint("stage_2_club_core")
 
     # Stage 3 (Full Sync ONLY — reuses borrowed game_db BEFORE releasing it once)
     if not fast_sync:
-        _emit("Stage 3/4", "Reading injuries, facilities & competition rules...")
+        _emit("Stage 3/4", "Reading injuries, facilities & club ops...")
         step_3_3_injuries(False)
         step_3_3_facilities(False)
         step_3_3_competition_rules(False)
@@ -5673,6 +7284,11 @@ def _run_cli(argv: list[str] | None = None) -> int:
         )
         parser.add_argument("--club-hint", default="", help="Optional club name hint")
         parser.add_argument("--filename", default="", help="Original display filename")
+        parser.add_argument(
+            "--checkpoint-file",
+            default="",
+            help="Optional temp path to write progressive Stage 2 checkpoint JSON",
+        )
         parsed_args = parser.parse_args(args_list)
 
         t_start = time.monotonic()
@@ -5680,6 +7296,37 @@ def _run_cli(argv: list[str] | None = None) -> int:
         use_fast = _parse_cli_bool(parsed_args.fast_sync)
         save_file = parsed_args.file
         display_name = parsed_args.filename or os.path.basename(save_file)
+        checkpoint_file = (parsed_args.checkpoint_file or "").strip()
+
+        try:
+            file_size_mb = round(os.path.getsize(save_file) / (1024 * 1024), 2)
+        except OSError:
+            file_size_mb = 0.0
+
+        def _attach_cli_meta(obj: dict[str, Any]) -> None:
+            if isinstance(obj.get("meta"), dict):
+                obj["meta"]["fileName"] = display_name
+                obj["meta"]["fileSizeMb"] = file_size_mb
+                obj["meta"]["decodedAtIso"] = datetime.now(timezone.utc).isoformat()
+                obj["meta"]["importScope"] = norm_scope
+                obj["meta"]["fastSync"] = use_fast
+                obj["meta"]["mountMode"] = "NATIVE_SERVER"
+            timings = obj.get("stepTimingsMs")
+            if not isinstance(timings, dict):
+                timings = {}
+            timings["totalDecodeMs"] = max(0, int(round((time.monotonic() - t_start) * 1000)))
+            obj["stepTimingsMs"] = timings
+            for p in obj.get("players") or []:
+                if isinstance(p, dict):
+                    p.pop("ca", None)
+                    p.pop("pa", None)
+                    p.pop("internalReliability", None)
+                    p.pop("hiddenPersonality", None)
+            for t in obj.get("recruitmentTargets") or []:
+                if isinstance(t, dict):
+                    t.pop("ca", None)
+                    t.pop("pa", None)
+                    t.pop("internalReliability", None)
 
         def _stderr_progress(step: str, label: str) -> None:
             try:
@@ -5687,6 +7334,21 @@ def _run_cli(argv: list[str] | None = None) -> int:
                 if clean_label:
                     sys.stderr.write(f"PROGRESS: {clean_label}\n")
                     sys.stderr.flush()
+            except Exception:
+                pass
+
+        def _write_checkpoint(stage_name: str, snapshot_json: str) -> None:
+            if not checkpoint_file or not snapshot_json:
+                return
+            try:
+                snap = json.loads(snapshot_json)
+                _attach_cli_meta(snap)
+                tmp_cp = f"{checkpoint_file}.tmp"
+                with open(tmp_cp, "w", encoding="utf-8") as fh:
+                    json.dump(snap, fh)
+                os.replace(tmp_cp, checkpoint_file)
+                sys.stderr.write(f"CHECKPOINT: {stage_name}\n")
+                sys.stderr.flush()
             except Exception:
                 pass
 
@@ -5699,38 +7361,10 @@ def _run_cli(argv: list[str] | None = None) -> int:
             progress_cb=_stderr_progress,
             import_scope=norm_scope,
             fast_sync=use_fast,
+            checkpoint_cb=_write_checkpoint if checkpoint_file else None,
         )
 
-        # Attach native server runtime metadata
-        try:
-            file_size_mb = round(os.path.getsize(save_file) / (1024 * 1024), 2)
-        except OSError:
-            file_size_mb = 0.0
-        if isinstance(payload.get("meta"), dict):
-            payload["meta"]["fileName"] = display_name
-            payload["meta"]["fileSizeMb"] = file_size_mb
-            payload["meta"]["decodedAtIso"] = datetime.now(timezone.utc).isoformat()
-            payload["meta"]["importScope"] = norm_scope
-            payload["meta"]["fastSync"] = use_fast
-            payload["meta"]["mountMode"] = "NATIVE_SERVER"
-        timings = payload.get("stepTimingsMs")
-        if not isinstance(timings, dict):
-            timings = {}
-        timings["totalDecodeMs"] = max(0, int(round((time.monotonic() - t_start) * 1000)))
-        payload["stepTimingsMs"] = timings
-
-        # Defensive guardrail: ensure zero raw CA/PA or raw hidden reliability keys ever leak
-        for p in payload.get("players") or []:
-            if isinstance(p, dict):
-                p.pop("ca", None)
-                p.pop("pa", None)
-                p.pop("internalReliability", None)
-                p.pop("hiddenPersonality", None)
-        for t in payload.get("recruitmentTargets") or []:
-            if isinstance(t, dict):
-                t.pop("ca", None)
-                t.pop("pa", None)
-                t.pop("internalReliability", None)
+        _attach_cli_meta(payload)
 
         sys.stdout.write(json.dumps(payload))
         sys.stdout.flush()

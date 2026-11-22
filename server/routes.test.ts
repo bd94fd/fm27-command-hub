@@ -386,5 +386,122 @@ describe('server routes & JSON 404', () => {
     assert.equal(healthRes.headers.get('x-content-type-options'), 'nosniff');
     assert.equal(healthRes.headers.get('x-powered-by'), null);
   });
+
+  it('supports parallel out-of-order chunk uploads on /api/fm27/decode-save when totalBytes is provided and preserves legacy sequential 409 enforcement', async () => {
+    const expressMod = await import('express');
+    const { createFmDecodeRouter } = await import('./routes/fmDecodeRoutes.ts');
+    const app = expressMod.default();
+    app.use(expressMod.default.json());
+    app.use(
+      '/api',
+      createFmDecodeRouter({
+        detectRuntime: async () => ({
+          available: true,
+          pythonBin: 'python3',
+          pythonVersion: '3.14.0',
+          fmsaveVersion: '0.14.3',
+          checkedAtMs: Date.now(),
+        }),
+      })
+    );
+    const srv = await startTestServer(app as Awaited<ReturnType<typeof createApp>>);
+    activeClose = srv.close;
+
+    // 1. Parallel session: init with totalBytes -> accepts out-of-order concurrent chunks & duplicate retry
+    const initParallel = await fetch(`${srv.baseUrl}/api/fm27/decode-save/init`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ totalBytes: 12 }),
+    });
+    assert.equal(initParallel.status, 200);
+    const parallelBody = (await initParallel.json()) as {
+      uploadId: string;
+      supportsParallelChunks: boolean;
+    };
+    assert.ok(parallelBody.uploadId);
+    assert.equal(parallelBody.supportsParallelChunks, true);
+
+    // Send chunk 2 (offset 8) BEFORE chunk 0 (offset 0) and chunk 1 (offset 4) concurrently
+    const [r2, r0, r1] = await Promise.all([
+      fetch(`${srv.baseUrl}/api/fm27/decode-save/chunk`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'x-fm-upload-id': parallelBody.uploadId,
+          'x-fm-chunk-offset': '8',
+        },
+        body: Buffer.from('IJKL'),
+      }),
+      fetch(`${srv.baseUrl}/api/fm27/decode-save/chunk`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'x-fm-upload-id': parallelBody.uploadId,
+          'x-fm-chunk-offset': '0',
+        },
+        body: Buffer.from('ABCD'),
+      }),
+      fetch(`${srv.baseUrl}/api/fm27/decode-save/chunk`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'x-fm-upload-id': parallelBody.uploadId,
+          'x-fm-chunk-offset': '4',
+        },
+        body: Buffer.from('EFGH'),
+      }),
+    ]);
+    assert.equal(r0.status, 200);
+    assert.equal(r1.status, 200);
+    assert.equal(r2.status, 200);
+
+    // Duplicate idempotent retry at offset 4 must keep bytesReceived === 12
+    const rDup = await fetch(`${srv.baseUrl}/api/fm27/decode-save/chunk`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'x-fm-upload-id': parallelBody.uploadId,
+        'x-fm-chunk-offset': '4',
+      },
+      body: Buffer.from('EFGH'),
+    });
+    assert.equal(rDup.status, 200);
+    const dupBody = (await rDup.json()) as { bytesReceived: number };
+    assert.equal(dupBody.bytesReceived, 12);
+
+    // Clean up parallel upload temp file
+    const delParallel = await fetch(
+      `${srv.baseUrl}/api/fm27/decode-save/upload/${parallelBody.uploadId}`,
+      { method: 'DELETE' }
+    );
+    assert.equal(delParallel.status, 200);
+
+    // 2. Legacy sequential session: init without totalBytes -> enforces 409 on out-of-order chunk
+    const initSeq = await fetch(`${srv.baseUrl}/api/fm27/decode-save/init`, {
+      method: 'POST',
+    });
+    assert.equal(initSeq.status, 200);
+    const seqBody = (await initSeq.json()) as {
+      uploadId: string;
+      supportsParallelChunks: boolean;
+    };
+    assert.equal(seqBody.supportsParallelChunks, false);
+
+    const outOfOrderRes = await fetch(`${srv.baseUrl}/api/fm27/decode-save/chunk`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'x-fm-upload-id': seqBody.uploadId,
+        'x-fm-chunk-offset': '4',
+      },
+      body: Buffer.from('EFGH'),
+    });
+    assert.equal(outOfOrderRes.status, 409);
+
+    await fetch(`${srv.baseUrl}/api/fm27/decode-save/upload/${seqBody.uploadId}`, {
+      method: 'DELETE',
+    });
+  });
 });
+
 

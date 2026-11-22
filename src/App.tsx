@@ -13,6 +13,7 @@ import {
   Database,
   Download,
   MessageSquare,
+  RefreshCw,
   Search,
   Shield,
   Trash2,
@@ -167,8 +168,18 @@ export default function App() {
   const [showKnowledgeBase, setShowKnowledgeBase] = useState<boolean>(false);
   const [showCommandPalette, setShowCommandPalette] = useState<boolean>(false);
   const [appToast, setAppToast] = useState<string | null>(null);
+  const [backgroundSyncStatus, setBackgroundSyncStatus] = useState<{
+    label: string;
+    clubCoreReady: boolean;
+  } | null>(null);
   const [showMobileDetails, setShowMobileDetails] = useState<boolean>(false);
   const backupFileInputRef = useRef<HTMLInputElement | null>(null);
+  const preSyncBaselineRef = useRef<{
+    saveDate: string;
+    clubName: string;
+    players: PlayerRecord[];
+    matches: MatchLogEntry[];
+  } | null>(null);
 
   const showGlobalToast = useCallback((msg: string) => {
     setAppToast(msg);
@@ -432,33 +443,81 @@ export default function App() {
     }
   };
 
+  const handleBackgroundSyncStatusChange = useCallback(
+    (status: { label: string; clubCoreReady: boolean } | null) => {
+      setBackgroundSyncStatus(status);
+      if (status === null) {
+        preSyncBaselineRef.current = null;
+      }
+    },
+    []
+  );
+
   const handleApplyDecodedFmSave = (
-    decoded: DecodedFmSavePayload
+    decoded: DecodedFmSavePayload,
+    options?: { isInterimCheckpoint?: boolean }
   ): HydratedSaveState => {
-    recordPreviousSnapshot(saveDate, players, matches);
-    if (players.length > 0 && saveDate && saveDate !== '--') {
-      captureProgressionSnapshot(
+    const isInterim = Boolean(options?.isInterimCheckpoint);
+
+    if (isInterim && !preSyncBaselineRef.current) {
+      preSyncBaselineRef.current = {
         saveDate,
-        hydratedFmSave?.decodedPayload.meta.clubName || 'Managed Club',
-        players
+        clubName: hydratedFmSave?.decodedPayload.meta.clubName || 'Managed Club',
+        players,
+        matches,
+      };
+    }
+
+    const baseline = preSyncBaselineRef.current ?? {
+      saveDate,
+      clubName: hydratedFmSave?.decodedPayload.meta.clubName || 'Managed Club',
+      players,
+      matches,
+    };
+
+    if (!isInterim) {
+      preSyncBaselineRef.current = null;
+      recordPreviousSnapshot(baseline.saveDate, baseline.players, baseline.matches);
+      if (baseline.players.length > 0 && baseline.saveDate && baseline.saveDate !== '--') {
+        captureProgressionSnapshot(
+          baseline.saveDate,
+          baseline.clubName,
+          baseline.players
+        );
+      }
+    }
+
+    const hydrated = hydrateAppFromDecodedFmSave(
+      decoded,
+      baseline.players,
+      baseline.matches
+    );
+
+    if (!isInterim) {
+      captureProgressionSnapshot(
+        hydrated.saveDateLabel,
+        decoded.meta.clubName || 'Managed Club',
+        hydrated.updatedSquad
       );
     }
 
-    const hydrated = hydrateAppFromDecodedFmSave(decoded, players, matches);
-    captureProgressionSnapshot(
-      hydrated.saveDateLabel,
-      decoded.meta.clubName || 'Managed Club',
-      hydrated.updatedSquad
-    );
     setHydratedFmSave(hydrated);
     setPlayers(hydrated.updatedSquad);
     setStaff(hydrated.updatedStaff || []);
-    setMatches(hydrated.updatedMatches);
+    if (!isInterim || hydrated.updatedMatches.length > 0) {
+      setMatches(hydrated.updatedMatches);
+    }
     setSaveDate(hydrated.saveDateLabel);
-    if (hydrated.nextFixtureLabel) {
+    if (
+      hydrated.nextFixtureLabel &&
+      (!isInterim || hydrated.nextFixtureLabel !== '--')
+    ) {
       setNextFixture(hydrated.nextFixtureLabel);
     }
-    if (hydrated.leagueStandingLabel) {
+    if (
+      hydrated.leagueStandingLabel &&
+      (!isInterim || hydrated.leagueStandingLabel !== '--')
+    ) {
       setLeagueStandingSub(hydrated.leagueStandingLabel);
     }
     if (hydrated.wageComplianceLabel) {
@@ -467,9 +526,16 @@ export default function App() {
     if (hydrated.balanceLabel) {
       setBalance(hydrated.balanceLabel);
     }
-    showGlobalToast(
-      `Synced ${decoded.meta.clubName || 'Club'} (${hydrated.updatedSquad.length} players · ${hydrated.saveDateLabel})`
-    );
+    if (isInterim) {
+      showGlobalToast(
+        `${decoded.meta.clubName || 'Club'} squad, staff & tactics ready — finishing fixtures & stats in background...`
+      );
+    } else {
+      setBackgroundSyncStatus(null);
+      showGlobalToast(
+        `Synced ${decoded.meta.clubName || 'Club'} (${hydrated.updatedSquad.length} players · ${hydrated.saveDateLabel})`
+      );
+    }
     return hydrated;
   };
 
@@ -707,6 +773,27 @@ export default function App() {
 
       {/* Main Content Container (extra bottom padding on mobile for fixed bottom nav) */}
       <main className="flex-1 max-w-[1400px] w-full mx-auto px-3 sm:px-6 pt-3 sm:pt-5 pb-24 md:pb-8 space-y-4 sm:space-y-5">
+        {/* Live Background Sync Pill when user is already exploring Squad/Tactics/Staff/Transfers */}
+        {backgroundSyncStatus && activeTab !== 'sync' && (
+          <div className="rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-3.5 py-2 flex items-center justify-between gap-2 text-xs text-emerald-200">
+            <div className="flex items-center gap-2 min-w-0">
+              <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin shrink-0" />
+              <span className="truncate">
+                {backgroundSyncStatus.clubCoreReady
+                  ? `Club core live — finishing in background: ${backgroundSyncStatus.label}`
+                  : backgroundSyncStatus.label}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleSelectTab('sync')}
+              className="shrink-0 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-100 border border-emerald-500/40 cursor-pointer"
+            >
+              View Sync
+            </button>
+          </div>
+        )}
+
         {/* Compact Status Bar (shown once a save is loaded so first-entry welcome hero stays clean) */}
         {(hydratedFmSave || players.length > 0) && (
           <div className="md:hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3.5 py-2.5 flex items-center justify-between gap-2">
@@ -896,6 +983,7 @@ export default function App() {
               onApplyPlayerUpdates={handleApplyPlayerUpdates}
               onBulkMergePlayers={handleBulkMergePlayers}
               onApplyDecodedFmSave={handleApplyDecodedFmSave}
+              onBackgroundSyncStatusChange={handleBackgroundSyncStatusChange}
               pendingPrompt={pendingAnalystPrompt}
               onClearPendingPrompt={() => setPendingAnalystPrompt(null)}
             />

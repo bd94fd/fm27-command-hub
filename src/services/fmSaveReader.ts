@@ -30,6 +30,11 @@ export interface DecodeFmSaveOptions {
   fastSync?: boolean;
   /** Internal/testing override: skip server probe and go straight to browser Pyodide */
   forceBrowserWorker?: boolean;
+  /** Optional progressive hydration callback fired as soon as Stage 2 club core is ready */
+  onCheckpoint?: (checkpoint: {
+    stage: string;
+    payload: DecodedFmSavePayload;
+  }) => void;
 }
 
 export interface ServerDecodeStatus {
@@ -103,6 +108,7 @@ export async function checkServerDecodeStatus(
 }
 
 export const SERVER_UPLOAD_CHUNK_BYTES = 2 * 1024 * 1024; // 2 MB per chunk (faster over mobile/Cloudflare & safer against HTTP 520/524 drops)
+export const SERVER_UPLOAD_CONCURRENCY = 4; // 4 parallel chunk streams when server supports parallel writes
 export const SERVER_MAX_SAVE_BYTES = 1024 * 1024 * 1024; // 1024 MB (1 GB) max total .fm save size
 export const SERVER_JOB_POLL_INTERVAL_MS = 1_200; // 1.2s polling cadence
 export const SERVER_CHUNK_MAX_RETRIES = 3;
@@ -146,11 +152,12 @@ async function readErrorMessageFromResponse(
 }
 
 /**
- * Uploads the .fm save file in 3 MB sequential chunks via:
+ * Uploads the .fm save file in 2 MB chunks (4-way parallel when supported by server,
+ * sequential fallback otherwise) via:
  *   POST /api/fm27/decode-save/init
- *   POST /api/fm27/decode-save/chunk (3 MB slices)
+ *   POST /api/fm27/decode-save/chunk (2 MB slices)
  *   POST /api/fm27/decode-save/finish -> { jobId }
- *   GET  /api/fm27/decode-save/job/:jobId (polled every 1.2s until done/error)
+ *   GET  /api/fm27/decode-save/job/:jobId (polled every 1.2s until done/error; emits progressive checkpoint)
  * Throws ServerDecodeUnavailableError on 503/502/504/404 or network failure during init so callers fall back cleanly.
  */
 export async function decodeFmSaveViaServer(
@@ -163,6 +170,11 @@ export async function decodeFmSaveViaServer(
     chunkSizeBytes?: number;
     pollIntervalMs?: number;
     retryBaseDelayMs?: number;
+    uploadConcurrency?: number;
+    onCheckpoint?: (checkpoint: {
+      stage: string;
+      payload: DecodedFmSavePayload;
+    }) => void;
   } = {},
   onProgress?: (progress: FmSaveProgressStage) => void,
   fetchImpl: typeof fetch = fetch,
@@ -239,7 +251,11 @@ export async function decodeFmSaveViaServer(
 
   const initRes = await fetchOrThrowUnavailable(
     '/api/fm27/decode-save/init',
-    { method: 'POST' },
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ totalBytes }),
+    },
     true
   );
   if (!initRes.ok) {
@@ -250,111 +266,190 @@ export async function decodeFmSaveViaServer(
       )
     );
   }
-  const initBody = (await initRes.json()) as { uploadId?: string };
+  const initBody = (await initRes.json()) as {
+    uploadId?: string;
+    supportsParallelChunks?: boolean;
+  };
   const uploadId = initBody?.uploadId;
   if (!uploadId) {
     throw new Error('Server did not return an uploadId.');
   }
 
-  // 2. Upload chunks sequentially with idempotent offset header & automatic retry on transient proxy errors (e.g. HTTP 520/502/504)
-  let offset = 0;
+  // Build ordered chunk descriptors
+  const chunks: Array<{ offset: number; end: number }> = [];
+  for (let off = 0; off < totalBytes; off += chunkSizeBytes) {
+    chunks.push({ offset: off, end: Math.min(off + chunkSizeBytes, totalBytes) });
+  }
+
+  const uploadSingleChunk = async (
+    chunk: { offset: number; end: number },
+    effectiveSignal?: AbortSignal
+  ): Promise<void> => {
+    const slice = file.slice(chunk.offset, chunk.end);
+    let chunkUploaded = false;
+
+    for (let attempt = 0; attempt <= SERVER_CHUNK_MAX_RETRIES; attempt++) {
+      if (effectiveSignal?.aborted || signal?.aborted) {
+        throw new Error('CANCELLED_BY_USER');
+      }
+
+      let chunkRes: Response | null = null;
+      let networkError = false;
+      try {
+        chunkRes = await fetchImpl('/api/fm27/decode-save/chunk', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/octet-stream',
+            'x-fm-upload-id': uploadId,
+            'x-fm-chunk-offset': String(chunk.offset),
+          },
+          body: slice,
+          signal: effectiveSignal ?? signal,
+        });
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          throw new Error('CANCELLED_BY_USER');
+        }
+        networkError = true;
+      }
+
+      if (chunkRes && chunkRes.ok) {
+        chunkUploaded = true;
+        break;
+      }
+
+      const status = chunkRes?.status ?? 0;
+
+      // 404 means server restarted and lost the in-memory upload session -> fall back cleanly
+      if (status === 404) {
+        throw new ServerDecodeUnavailableError(
+          'Server restarted during upload; switching to local browser decoder.',
+          404
+        );
+      }
+
+      const canRetry = networkError || isTransientServerStatus(status);
+      if (canRetry && attempt < SERVER_CHUNK_MAX_RETRIES) {
+        const nextAttempt = attempt + 2;
+        const maxAttempts = SERVER_CHUNK_MAX_RETRIES + 1;
+        onProgress?.({
+          stage: 'read',
+          step: 'Server Upload',
+          elapsedSec: elapsedSec(),
+          label: `Connection blip${status ? ` (HTTP ${status})` : ''} — retrying chunk (attempt ${nextAttempt}/${maxAttempts})...`,
+        });
+        await sleepWithAbort(
+          retryBaseDelayMs * Math.pow(2, attempt),
+          effectiveSignal ?? signal
+        );
+        continue;
+      }
+
+      if (canRetry) {
+        throw new ServerDecodeUnavailableError(
+          status
+            ? `Server upload interrupted (HTTP ${status}); switching to local browser decoder.`
+            : 'Server upload unreachable; switching to local browser decoder.',
+          status || undefined
+        );
+      }
+
+      throw new Error(
+        chunkRes
+          ? await readErrorMessageFromResponse(
+              chunkRes,
+              `Chunk upload failed (HTTP ${chunkRes.status}).`
+            )
+          : 'Chunk upload failed.'
+      );
+    }
+
+    if (!chunkUploaded) {
+      throw new ServerDecodeUnavailableError(
+        'Server chunk upload did not complete; switching to local browser decoder.'
+      );
+    }
+  };
+
+  // 2. Upload chunks — 4-way parallel when server advertises supportsParallelChunks, sequential otherwise
+  const requestedConcurrency = Math.max(
+    1,
+    Math.min(
+      8,
+      options.uploadConcurrency ?? SERVER_UPLOAD_CONCURRENCY
+    )
+  );
+  const useParallelUpload =
+    initBody.supportsParallelChunks === true &&
+    chunks.length > 1 &&
+    requestedConcurrency > 1;
+
+  let uploadedBytes = 0;
+  const emitUploadProgress = (bytesNow: number) => {
+    const uploadedMbLabel = (bytesNow / (1024 * 1024)).toFixed(1);
+    const pct =
+      totalBytes > 0
+        ? Math.min(100, Math.round((bytesNow / totalBytes) * 100))
+        : 100;
+    onProgress?.({
+      stage: 'read',
+      step: 'Server Upload',
+      elapsedSec: elapsedSec(),
+      label: `Uploading save to server (${uploadedMbLabel} / ${totalMbLabel} MB — ${pct}%)...`,
+    });
+  };
+
   try {
-    while (offset < totalBytes) {
+    if (useParallelUpload) {
+      const poolController =
+        typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const onCallerAbort = () => poolController?.abort();
+      signal?.addEventListener('abort', onCallerAbort, { once: true });
+
+      let nextIndex = 0;
+      let firstError: unknown = null;
+
+      const worker = async () => {
+        while (true) {
+          if (firstError || signal?.aborted || poolController?.signal.aborted) {
+            return;
+          }
+          const idx = nextIndex++;
+          if (idx >= chunks.length) return;
+          const chunk = chunks[idx];
+          try {
+            await uploadSingleChunk(chunk, poolController?.signal ?? signal);
+            uploadedBytes += chunk.end - chunk.offset;
+            emitUploadProgress(uploadedBytes);
+          } catch (err) {
+            if (!firstError) {
+              firstError = err;
+              poolController?.abort();
+            }
+            return;
+          }
+        }
+      };
+
+      try {
+        const workerCount = Math.min(requestedConcurrency, chunks.length);
+        await Promise.all(Array.from({ length: workerCount }, () => worker()));
+      } finally {
+        signal?.removeEventListener('abort', onCallerAbort);
+      }
+
       if (signal?.aborted) {
         throw new Error('CANCELLED_BY_USER');
       }
-      const end = Math.min(offset + chunkSizeBytes, totalBytes);
-      const slice = file.slice(offset, end);
-
-      let chunkUploaded = false;
-      for (let attempt = 0; attempt <= SERVER_CHUNK_MAX_RETRIES; attempt++) {
-        if (signal?.aborted) {
-          throw new Error('CANCELLED_BY_USER');
-        }
-
-        let chunkRes: Response | null = null;
-        let networkError = false;
-        try {
-          chunkRes = await fetchImpl('/api/fm27/decode-save/chunk', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/octet-stream',
-              'x-fm-upload-id': uploadId,
-              'x-fm-chunk-offset': String(offset),
-            },
-            body: slice,
-            signal,
-          });
-        } catch (err: unknown) {
-          if (err instanceof Error && err.name === 'AbortError') {
-            throw new Error('CANCELLED_BY_USER');
-          }
-          networkError = true;
-        }
-
-        if (chunkRes && chunkRes.ok) {
-          chunkUploaded = true;
-          break;
-        }
-
-        const status = chunkRes?.status ?? 0;
-
-        // 404 means server restarted and lost the in-memory upload session -> fall back cleanly
-        if (status === 404) {
-          throw new ServerDecodeUnavailableError(
-            'Server restarted during upload; switching to local browser decoder.',
-            404
-          );
-        }
-
-        const canRetry = networkError || isTransientServerStatus(status);
-        if (canRetry && attempt < SERVER_CHUNK_MAX_RETRIES) {
-          const nextAttempt = attempt + 2;
-          const maxAttempts = SERVER_CHUNK_MAX_RETRIES + 1;
-          onProgress?.({
-            stage: 'read',
-            step: 'Server Upload',
-            elapsedSec: elapsedSec(),
-            label: `Connection blip${status ? ` (HTTP ${status})` : ''} — retrying chunk (attempt ${nextAttempt}/${maxAttempts})...`,
-          });
-          await sleepWithAbort(retryBaseDelayMs * Math.pow(2, attempt), signal);
-          continue;
-        }
-
-        if (canRetry) {
-          throw new ServerDecodeUnavailableError(
-            status
-              ? `Server upload interrupted (HTTP ${status}); switching to local browser decoder.`
-              : 'Server upload unreachable; switching to local browser decoder.',
-            status || undefined
-          );
-        }
-
-        throw new Error(
-          chunkRes
-            ? await readErrorMessageFromResponse(
-                chunkRes,
-                `Chunk upload failed (HTTP ${chunkRes.status}).`
-              )
-            : 'Chunk upload failed.'
-        );
+      if (firstError) {
+        throw firstError;
       }
-
-      if (!chunkUploaded) {
-        throw new ServerDecodeUnavailableError(
-          'Server chunk upload did not complete; switching to local browser decoder.'
-        );
+    } else {
+      for (const chunk of chunks) {
+        await uploadSingleChunk(chunk, signal);
+        uploadedBytes += chunk.end - chunk.offset;
+        emitUploadProgress(uploadedBytes);
       }
-
-      offset = end;
-      const uploadedMbLabel = (offset / (1024 * 1024)).toFixed(1);
-      const pct = totalBytes > 0 ? Math.min(100, Math.round((offset / totalBytes) * 100)) : 100;
-      onProgress?.({
-        stage: 'read',
-        step: 'Server Upload',
-        elapsedSec: elapsedSec(),
-        label: `Uploading save to server (${uploadedMbLabel} / ${totalMbLabel} MB — ${pct}%)...`,
-      });
     }
   } catch (uploadErr) {
     void Promise.resolve(
@@ -412,6 +507,7 @@ export async function decodeFmSaveViaServer(
   // 4. Poll async decode job every 1.2 seconds until done or error
   let lastProgress = 'Opening .fm save...';
   let consecutivePollErrors = 0;
+  let emittedCheckpointStage: string | null = null;
   while (true) {
     if (signal?.aborted) {
       throw new Error('CANCELLED_BY_USER');
@@ -490,11 +586,32 @@ export async function decodeFmSaveViaServer(
       status?: 'running' | 'done' | 'error';
       progress?: string;
       payload?: DecodedFmSavePayload;
+      checkpointStage?: string;
+      checkpointPayload?: DecodedFmSavePayload;
       error?: string;
     };
 
     if (jobData.progress && jobData.progress.trim()) {
       lastProgress = jobData.progress.trim();
+    }
+
+    if (
+      jobData.status === 'running' &&
+      jobData.checkpointPayload &&
+      isValidSquadCheckpoint(jobData.checkpointPayload)
+    ) {
+      const cpStage = jobData.checkpointStage || 'stage_2_club_core';
+      if (emittedCheckpointStage !== cpStage) {
+        emittedCheckpointStage = cpStage;
+        try {
+          options.onCheckpoint?.({
+            stage: cpStage,
+            payload: jobData.checkpointPayload,
+          });
+        } catch {
+          // Never let a UI checkpoint listener abort the background decode
+        }
+      }
     }
 
     if (jobData.status === 'done' && jobData.payload) {
@@ -547,7 +664,15 @@ export function cancelFmSaveDecode(reason: string = 'CANCELLED_BY_USER'): void {
 export function decodeFmSaveInBrowserWorker(
   file: File,
   onProgress?: (progress: FmSaveProgressStage) => void,
-  options: { clubHint?: string; scope?: FmImportScope; fastSync?: boolean } = {}
+  options: {
+    clubHint?: string;
+    scope?: FmImportScope;
+    fastSync?: boolean;
+    onCheckpoint?: (checkpoint: {
+      stage: string;
+      payload: DecodedFmSavePayload;
+    }) => void;
+  } = {}
 ): Promise<DecodedFmSavePayload> {
   const clubHint = options.clubHint || '';
   const scope: FmImportScope = options.scope || 'managed_club_only';
@@ -684,6 +809,11 @@ export function decodeFmSaveInBrowserWorker(
             stage: String(msg.stage || 'stage_1_squad'),
             payload: cpPayload as DecodedFmSavePayload,
           };
+          try {
+            options.onCheckpoint?.(latestCheckpoint);
+          } catch {
+            // Never let a UI checkpoint listener abort the worker decode
+          }
         }
       } else if (msg.type === 'result' && (msg.data || msg.payload)) {
         if (settled) return;
@@ -759,13 +889,22 @@ export async function decodeFmSaveWithServerFirst(
     chunkSizeBytes?: number;
     pollIntervalMs?: number;
     retryBaseDelayMs?: number;
+    uploadConcurrency?: number;
   } = {},
   deps: {
     fetchImpl?: typeof fetch;
     browserFallback?: (
       file: File | Blob,
       onProgress: ((progress: FmSaveProgressStage) => void) | undefined,
-      opts: { clubHint?: string; scope?: FmImportScope; fastSync?: boolean }
+      opts: {
+        clubHint?: string;
+        scope?: FmImportScope;
+        fastSync?: boolean;
+        onCheckpoint?: (checkpoint: {
+          stage: string;
+          payload: DecodedFmSavePayload;
+        }) => void;
+      }
     ) => Promise<DecodedFmSavePayload>;
     signal?: AbortSignal;
   } = {}
@@ -804,6 +943,8 @@ export async function decodeFmSaveWithServerFirst(
             chunkSizeBytes: options.chunkSizeBytes,
             pollIntervalMs: options.pollIntervalMs,
             retryBaseDelayMs: options.retryBaseDelayMs,
+            uploadConcurrency: options.uploadConcurrency,
+            onCheckpoint: options.onCheckpoint,
           },
           onProgress,
           fetchImpl,
@@ -834,6 +975,7 @@ export async function decodeFmSaveWithServerFirst(
     clubHint,
     scope,
     fastSync: fallbackFastSync,
+    onCheckpoint: options.onCheckpoint,
   });
 }
 

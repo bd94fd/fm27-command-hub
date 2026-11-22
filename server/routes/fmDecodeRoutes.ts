@@ -30,6 +30,8 @@ const STRICT_UUID_RE =
 interface PendingUploadEntry {
   filePath: string;
   bytesReceived: number;
+  expectedTotalBytes?: number;
+  receivedChunks?: Map<number, number>;
   createdAt: number;
   lastActivityAt: number;
 }
@@ -38,6 +40,9 @@ interface DecodeJobEntry {
   status: 'running' | 'done' | 'error';
   progress: string;
   payload?: unknown;
+  checkpointStage?: string;
+  checkpointPayload?: unknown;
+  checkpointDelivered?: boolean;
   error?: string;
   createdAt: number;
   updatedAt: number;
@@ -233,6 +238,10 @@ function startAsyncNativeFmDecodeJob(
   };
   decodeJobs.set(jobId, job);
 
+  const tmpCheckpointPath = path.resolve(
+    os.tmpdir(),
+    `fm27-cp-${jobId}.json`
+  );
   const cliArgs = [
     mapperPath,
     '--file',
@@ -243,6 +252,8 @@ function startAsyncNativeFmDecodeJob(
     args.fastSync,
     '--filename',
     args.displayFilename,
+    '--checkpoint-file',
+    tmpCheckpointPath,
   ];
   if (args.clubHint) {
     cliArgs.push('--club-hint', args.clubHint);
@@ -253,6 +264,12 @@ function startAsyncNativeFmDecodeJob(
     if (cleanedUp) return;
     cleanedUp = true;
     void fs.promises.unlink(tmpSavePath).catch(() => {
+      // ignore if already removed
+    });
+    void fs.promises.unlink(tmpCheckpointPath).catch(() => {
+      // ignore if already removed
+    });
+    void fs.promises.unlink(`${tmpCheckpointPath}.tmp`).catch(() => {
       // ignore if already removed
     });
   };
@@ -341,6 +358,24 @@ function startAsyncNativeFmDecodeJob(
           job.progress = displayProgress.slice(0, 220);
           job.updatedAt = Date.now();
         }
+      } else if (/^CHECKPOINT:\s*/i.test(line)) {
+        const stageName = line.replace(/^CHECKPOINT:\s*/i, '').trim() || 'stage_2_club_core';
+        void fs.promises
+          .readFile(tmpCheckpointPath, 'utf8')
+          .then((rawCp) => {
+            if (settled || job.status !== 'running') return;
+            const parsedCp = JSON.parse(rawCp) as unknown;
+            job.checkpointStage = stageName;
+            job.checkpointPayload = parsedCp;
+            job.checkpointDelivered = false;
+            job.updatedAt = Date.now();
+          })
+          .catch(() => {
+            // Non-fatal: final payload will still arrive
+          })
+          .finally(() => {
+            void fs.promises.unlink(tmpCheckpointPath).catch(() => {});
+          });
       }
     }
   });
@@ -392,11 +427,14 @@ function startAsyncNativeFmDecodeJob(
   });
 }
 
-export function createFmDecodeRouter(): express.Router {
+export function createFmDecodeRouter(options?: {
+  detectRuntime?: () => Promise<ServerPythonRuntime>;
+}): express.Router {
   const router = express.Router();
+  const resolveRuntime = options?.detectRuntime ?? detectServerPythonFmsave;
 
   router.get('/fm27/decode-status', async (_req, res) => {
-    const runtime = await detectServerPythonFmsave();
+    const runtime = await resolveRuntime();
     return res.json({
       serverDecodeAvailable: runtime.available,
       pythonVersion: runtime.pythonVersion,
@@ -404,9 +442,9 @@ export function createFmDecodeRouter(): express.Router {
     });
   });
 
-  router.post('/fm27/decode-save/init', async (_req, res) => {
+  router.post('/fm27/decode-save/init', async (req, res) => {
     await pruneExpiredUploadsAndJobs();
-    const runtime = await detectServerPythonFmsave();
+    const runtime = await resolveRuntime();
     if (!runtime.available || !runtime.pythonBin) {
       return res.status(503).json({
         error:
@@ -421,6 +459,22 @@ export function createFmDecodeRouter(): express.Router {
       });
     }
 
+    const rawTotalBytes = (req.body as { totalBytes?: unknown } | undefined)?.totalBytes;
+    let expectedTotalBytes: number | undefined;
+    if (rawTotalBytes !== undefined && rawTotalBytes !== null) {
+      const parsedTotal = Number(rawTotalBytes);
+      if (!Number.isSafeInteger(parsedTotal) || parsedTotal <= 0) {
+        return res.status(400).json({ error: 'Invalid totalBytes value.' });
+      }
+      if (parsedTotal > MAX_TOTAL_UPLOAD_BYTES) {
+        const attemptedMb = (parsedTotal / (1024 * 1024)).toFixed(1);
+        return res.status(413).json({
+          error: `Total .fm save size (${attemptedMb} MB) exceeded the 1024 MB (1 GB) server upload limit.`,
+        });
+      }
+      expectedTotalBytes = parsedTotal;
+    }
+
     const uploadId = crypto.randomUUID();
     const tmpBaseDir = path.resolve(os.tmpdir());
     const filePath = path.resolve(tmpBaseDir, `fm27-save-${uploadId}.fm`);
@@ -431,13 +485,16 @@ export function createFmDecodeRouter(): express.Router {
     try {
       await fs.promises.writeFile(filePath, Buffer.alloc(0), { mode: 0o600 });
       const now = Date.now();
+      const supportsParallelChunks = expectedTotalBytes !== undefined;
       pendingUploads.set(uploadId, {
         filePath,
         bytesReceived: 0,
+        expectedTotalBytes,
+        receivedChunks: supportsParallelChunks ? new Map<number, number>() : undefined,
         createdAt: now,
         lastActivityAt: now,
       });
-      return res.json({ uploadId });
+      return res.json({ uploadId, supportsParallelChunks });
     } catch (err: unknown) {
       return res.status(500).json({
         error: `Failed to initialize save upload: ${
@@ -474,6 +531,8 @@ export function createFmDecodeRouter(): express.Router {
       entry.lastActivityAt = Date.now();
 
       const rawOffsetHeader = req.headers['x-fm-chunk-offset'];
+      const isParallelSession =
+        entry.expectedTotalBytes !== undefined && entry.receivedChunks !== undefined;
       let writeOffset = entry.bytesReceived;
       if (rawOffsetHeader !== undefined) {
         const offsetStr = Array.isArray(rawOffsetHeader)
@@ -490,7 +549,7 @@ export function createFmDecodeRouter(): express.Router {
             error: 'Invalid x-fm-chunk-offset header.',
           });
         }
-        if (parsedOffset > entry.bytesReceived) {
+        if (!isParallelSession && parsedOffset > entry.bytesReceived) {
           return res.status(409).json({
             error: `Out-of-order chunk offset (${parsedOffset} > ${entry.bytesReceived}).`,
           });
@@ -498,10 +557,14 @@ export function createFmDecodeRouter(): express.Router {
         writeOffset = parsedOffset;
       }
 
-      const nextTotalBytes = Math.max(
-        entry.bytesReceived,
-        writeOffset + req.body.length
-      );
+      const chunkEnd = writeOffset + req.body.length;
+      if (isParallelSession && chunkEnd > entry.expectedTotalBytes!) {
+        return res.status(413).json({
+          error: 'Chunk write exceeds declared totalBytes for upload session.',
+        });
+      }
+
+      const nextTotalBytes = Math.max(entry.bytesReceived, chunkEnd);
       if (nextTotalBytes > MAX_TOTAL_UPLOAD_BYTES) {
         const attemptedMb = (nextTotalBytes / (1024 * 1024)).toFixed(1);
         pendingUploads.delete(uploadId);
@@ -518,7 +581,16 @@ export function createFmDecodeRouter(): express.Router {
         } finally {
           await fh.close();
         }
-        entry.bytesReceived = nextTotalBytes;
+        if (isParallelSession && entry.receivedChunks) {
+          entry.receivedChunks.set(writeOffset, req.body.length);
+          let uniqueBytes = 0;
+          for (const len of entry.receivedChunks.values()) {
+            uniqueBytes += len;
+          }
+          entry.bytesReceived = uniqueBytes;
+        } else {
+          entry.bytesReceived = nextTotalBytes;
+        }
         entry.lastActivityAt = Date.now();
         return res.json({ ok: true, bytesReceived: entry.bytesReceived });
       } catch (err: unknown) {
@@ -549,7 +621,7 @@ export function createFmDecodeRouter(): express.Router {
 
   router.post('/fm27/decode-save/finish', async (req, res) => {
     await pruneExpiredUploadsAndJobs();
-    const runtime = await detectServerPythonFmsave();
+    const runtime = await resolveRuntime();
     if (!runtime.available || !runtime.pythonBin) {
       return res.status(503).json({
         error:
@@ -584,6 +656,15 @@ export function createFmDecodeRouter(): express.Router {
       await fs.promises.unlink(entry.filePath).catch(() => {});
       return res.status(400).json({
         error: 'Uploaded .fm save is empty (0 bytes received).',
+      });
+    }
+    if (
+      entry.expectedTotalBytes !== undefined &&
+      entry.bytesReceived < entry.expectedTotalBytes
+    ) {
+      await fs.promises.unlink(entry.filePath).catch(() => {});
+      return res.status(400).json({
+        error: `Uploaded .fm save is incomplete (${entry.bytesReceived} of ${entry.expectedTotalBytes} bytes received).`,
       });
     }
 
@@ -658,6 +739,19 @@ export function createFmDecodeRouter(): express.Router {
         status: 'error',
         progress: job.progress,
         error: job.error || 'Server .fm decode failed.',
+      });
+    }
+
+    if (job.checkpointPayload && !job.checkpointDelivered) {
+      const cpStage = job.checkpointStage || 'stage_2_club_core';
+      const cpPayload = job.checkpointPayload;
+      job.checkpointDelivered = true;
+      job.checkpointPayload = undefined;
+      return res.json({
+        status: 'running',
+        progress: job.progress,
+        checkpointStage: cpStage,
+        checkpointPayload: cpPayload,
       });
     }
 

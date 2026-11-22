@@ -106,7 +106,13 @@ interface AutoSyncWorkspaceProps {
   onAddMatch: (match: MatchLogEntry) => void;
   onApplyPlayerUpdates?: (updates: PlayerAutoUpdate[]) => void;
   onBulkMergePlayers?: (parsedPlayers: ParsedPlayerDelta[]) => SquadMergeResult;
-  onApplyDecodedFmSave?: (decoded: DecodedFmSavePayload) => HydratedSaveState;
+  onApplyDecodedFmSave?: (
+    decoded: DecodedFmSavePayload,
+    options?: { isInterimCheckpoint?: boolean }
+  ) => HydratedSaveState;
+  onBackgroundSyncStatusChange?: (
+    status: { label: string; clubCoreReady: boolean } | null
+  ) => void;
   pendingPrompt?: string | null;
   onClearPendingPrompt?: () => void;
 }
@@ -132,6 +138,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   onApplyPlayerUpdates,
   onBulkMergePlayers,
   onApplyDecodedFmSave,
+  onBackgroundSyncStatusChange,
   pendingPrompt = null,
   onClearPendingPrompt,
 }) => {
@@ -161,6 +168,8 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   const [attachedFmFiles, setAttachedFmFiles] = useState<AttachedFmFile[]>([]);
   const [fmDecodeStage, setFmDecodeStage] =
     useState<FmSaveProgressStage | null>(null);
+  const [clubCoreReadyDuringDecode, setClubCoreReadyDuringDecode] =
+    useState(false);
   const [decodeElapsedSec, setDecodeElapsedSec] = useState(0);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -567,18 +576,45 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         try {
           setExtractionWarnings([]);
           setLastStepTimingsMs({});
+          setClubCoreReadyDuringDecode(false);
+          let interimHydrated = false;
+          const initialLabel = `Reading ${file.name}${fastSync ? ' (Fast Sync)' : ''}...`;
           setFmDecodeStage({
             stage: 'read',
-            label: `Reading ${file.name}${fastSync ? ' (Fast Sync)' : ''}...`,
+            label: initialLabel,
+          });
+          onBackgroundSyncStatusChange?.({
+            label: initialLabel,
+            clubCoreReady: false,
           });
           const decoded = await decodeFmSaveFile(
             file,
             (stage) => {
               setFmDecodeStage(stage);
+              onBackgroundSyncStatusChange?.({
+                label: stage.label,
+                clubCoreReady: interimHydrated,
+              });
             },
-            { scope: importScope, fastSync }
+            {
+              scope: importScope,
+              fastSync,
+              onCheckpoint: (cp) => {
+                if (onApplyDecodedFmSave && cp.payload?.players?.length > 0) {
+                  interimHydrated = true;
+                  setClubCoreReadyDuringDecode(true);
+                  onApplyDecodedFmSave(cp.payload, { isInterimCheckpoint: true });
+                  onBackgroundSyncStatusChange?.({
+                    label:
+                      'Squad, staff & tactics ready — finishing fixtures, match xG & season stats...',
+                    clubCoreReady: true,
+                  });
+                }
+              },
+            }
           );
           setFmDecodeStage(null);
+          setClubCoreReadyDuringDecode(false);
 
           const nonFatalWarnings = Array.from(
             new Set([
@@ -596,8 +632,9 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           );
 
           const hydrated = onApplyDecodedFmSave
-            ? onApplyDecodedFmSave(decoded)
+            ? onApplyDecodedFmSave(decoded, { isInterimCheckpoint: false })
             : undefined;
+          onBackgroundSyncStatusChange?.(null);
 
           const decodedEntry: AttachedFmFile = {
             id: `fm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -620,6 +657,8 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           }
         } catch (err: unknown) {
           setFmDecodeStage(null);
+          setClubCoreReadyDuringDecode(false);
+          onBackgroundSyncStatusChange?.(null);
           if (err instanceof Error && err.message === 'CANCELLED_BY_USER') {
             return;
           }
@@ -1346,9 +1385,16 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-between gap-3 text-xs text-emerald-300">
             <div className="flex items-center gap-2.5 min-w-0">
               <RefreshCw className="w-4 h-4 shrink-0 animate-spin text-emerald-400" />
-              <span className="leading-snug break-words">
-                {fmDecodeStage.label}
-              </span>
+              <div className="min-w-0">
+                {clubCoreReadyDuringDecode && (
+                  <div className="text-[11px] font-semibold text-emerald-200">
+                    Squad, Staff &amp; Tactics ready — browse tabs now while stats finish in background
+                  </div>
+                )}
+                <span className="leading-snug break-words">
+                  {fmDecodeStage.label}
+                </span>
+              </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <span className="font-mono text-[11px] text-emerald-400/90 tabular-nums">
@@ -1359,6 +1405,8 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                 onClick={() => {
                   cancelFmSaveDecode();
                   setFmDecodeStage(null);
+                  setClubCoreReadyDuringDecode(false);
+                  onBackgroundSyncStatusChange?.(null);
                 }}
                 className="px-2.5 py-1 text-[11px] font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-md cursor-pointer"
               >

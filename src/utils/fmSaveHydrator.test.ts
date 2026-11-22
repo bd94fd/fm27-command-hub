@@ -2746,6 +2746,149 @@ test('Phase 1: strips leaked Last-5 form for 0-minute players, updates per-90 on
   assert.equal(friendlyOnlySummary.wins, 0);
 });
 
+test('Server Decode Parallel Upload & Progressive Checkpoint: uploads chunks concurrently and delivers Stage 2 checkpoint before final payload', async () => {
+  const mockUploadId = '77777777-7777-4777-8777-777777777777';
+  const mockJobId = '88888888-8888-4888-8888-888888888888';
+  const totalBytes = 60;
+  const sourceBytes = new Uint8Array(totalBytes);
+  for (let i = 0; i < totalBytes; i++) sourceBytes[i] = (i * 7) & 0xff;
+  const assembled = new Uint8Array(totalBytes);
+
+  let inFlightChunks = 0;
+  let maxConcurrentChunks = 0;
+  let initReceivedTotalBytes: number | null = null;
+  let pollCount = 0;
+
+  const checkpointPayload: DecodedFmSavePayload = {
+    meta: {
+      clubName: 'KVV Zelzate',
+      managerName: 'Bobby Dean',
+      gameDateDmy: '15/11/2026',
+      game: 'FM27',
+      build: '27.1.0',
+      fmsaveVersion: '0.14.3',
+    },
+    players: [
+      {
+        uid: 1001,
+        name: 'Joran Triest',
+        age: 28,
+        position: 'ST',
+        wagePw: 550,
+        expires: '2028',
+        conditionPct: 95,
+        sharpnessPct: 92,
+      },
+    ],
+    staff: [],
+    playedMatches: [],
+    upcomingFixtures: [],
+  } as unknown as DecodedFmSavePayload;
+
+  const finalPayload: DecodedFmSavePayload = {
+    ...checkpointPayload,
+    playedMatches: [
+      {
+        dateDmy: '10/11/2026',
+        competition: 'Eerste Nationale VV',
+        homeTeam: 'KVV Zelzate',
+        awayTeam: 'KVK Ninove',
+        homeGoals: 2,
+        awayGoals: 0,
+        isHome: true,
+        opponent: 'KVK Ninove',
+        result: 'W',
+        score: '2 - 0',
+      },
+    ],
+  } as unknown as DecodedFmSavePayload;
+
+  const mockFetch: typeof fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === '/api/fm27/decode-status') {
+      return new Response(JSON.stringify({ serverDecodeAvailable: true }), { status: 200 });
+    }
+    if (url === '/api/fm27/decode-save/init') {
+      const parsed = JSON.parse(String(init?.body || '{}')) as { totalBytes?: number };
+      initReceivedTotalBytes = parsed.totalBytes ?? null;
+      return new Response(
+        JSON.stringify({ uploadId: mockUploadId, supportsParallelChunks: true }),
+        { status: 200 }
+      );
+    }
+    if (url === '/api/fm27/decode-save/chunk') {
+      inFlightChunks += 1;
+      maxConcurrentChunks = Math.max(maxConcurrentChunks, inFlightChunks);
+      const headers = new Headers(init?.headers);
+      const offset = Number(headers.get('x-fm-chunk-offset') || '0');
+      const buf = new Uint8Array(await (init?.body as Blob).arrayBuffer());
+      await new Promise((r) => setTimeout(r, 15));
+      assembled.set(buf, offset);
+      inFlightChunks -= 1;
+      return new Response(JSON.stringify({ ok: true, bytesReceived: totalBytes }), {
+        status: 200,
+      });
+    }
+    if (url === '/api/fm27/decode-save/finish') {
+      return new Response(JSON.stringify({ jobId: mockJobId }), { status: 200 });
+    }
+    if (url === `/api/fm27/decode-save/job/${mockJobId}`) {
+      pollCount += 1;
+      if (pollCount === 1) {
+        return new Response(
+          JSON.stringify({
+            status: 'running',
+            progress: 'Reading fixtures & match results...',
+            checkpointStage: 'stage_2_club_core',
+            checkpointPayload,
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          status: 'done',
+          progress: 'Complete',
+          payload: finalPayload,
+        }),
+        { status: 200 }
+      );
+    }
+    return new Response('Not found', { status: 404 });
+  }) as typeof fetch;
+
+  const checkpointsReceived: Array<{ stage: string; playerCount: number }> = [];
+  const result = await decodeFmSaveWithServerFirst(
+    new Blob([sourceBytes]),
+    undefined,
+    {
+      fileName: 'auto save.fm',
+      chunkSizeBytes: 10,
+      uploadConcurrency: 4,
+      pollIntervalMs: 10,
+      onCheckpoint: (cp) => {
+        checkpointsReceived.push({
+          stage: cp.stage,
+          playerCount: cp.payload.players.length,
+        });
+      },
+    },
+    { fetchImpl: mockFetch }
+  );
+
+  assert.equal(initReceivedTotalBytes, totalBytes);
+  assert.ok(
+    maxConcurrentChunks >= 2,
+    `Expected parallel chunk uploads (observed max concurrency: ${maxConcurrentChunks})`
+  );
+  assert.deepEqual(Array.from(assembled), Array.from(sourceBytes));
+  assert.deepEqual(checkpointsReceived, [
+    { stage: 'stage_2_club_core', playerCount: 1 },
+  ]);
+  assert.equal(result.playedMatches?.length, 1);
+});
+
+
 
 
 
