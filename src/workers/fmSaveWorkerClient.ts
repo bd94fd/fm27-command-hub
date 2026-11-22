@@ -172,7 +172,7 @@ export class FmSaveWorkerClient {
     return this.isJobActive;
   }
 
-  public cancelActiveJob(reason: string = 'Superceded by new save drop') {
+  public cancelActiveJob(reason: string = 'Superseded by new save drop') {
     this.clearWatchdogs();
     if (this.worker && this.isJobActive) {
       this.worker.terminate();
@@ -198,6 +198,15 @@ export class FmSaveWorkerClient {
     }
   ): Promise<FmSavePayloadUnion> {
     this.cancelActiveJob('New parse job initiated');
+    // Terminate any previous completed worker so its Pyodide WASM heap is released before spawning a new one
+    if (this.worker) {
+      try {
+        this.worker.terminate();
+      } catch {
+        // ignore
+      }
+      this.worker = null;
+    }
 
     const requestId = ++this.activeRequestId;
     this.isJobActive = true;
@@ -208,7 +217,10 @@ export class FmSaveWorkerClient {
       let lastStageLabel = 'Initializing local .fm reader';
       let latestCheckpoint: CheckpointSnapshot | null = null;
 
+      let detachVisibilityListener = () => {};
+
       const terminateStuckWorker = () => {
+        detachVisibilityListener();
         this.clearWatchdogs();
         this.activeReject = null;
         if (this.worker) {
@@ -283,7 +295,7 @@ export class FmSaveWorkerClient {
           resetInactivityWatchdog();
         }
       };
-      const detachVisibilityListener = () => {
+      detachVisibilityListener = () => {
         if (typeof document !== 'undefined' && typeof document.removeEventListener === 'function') {
           document.removeEventListener('visibilitychange', handleVisibilityChange);
         }

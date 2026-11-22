@@ -2518,6 +2518,235 @@ test('hydrateAppFromDecodedFmSave hydrates marketValue on re-sync and keeps 0-ap
   assert.equal(boudry.rating, 7.1);
 });
 
+test('Phase 1: strips leaked Last-5 form for 0-minute players, updates per-90 on minutes change, starts at Event #1, preserves competitionRules, and excludes friendlies in summary', async () => {
+  const { computeCompetitiveSummary } = await import('./fmSyncEngine');
+  const fullAttrs = {
+    corners: 10, crossing: 10, dribbling: 10, finishing: 10, firstTouch: 10,
+    freeKicks: 10, heading: 10, longShots: 10, longThrows: 10, marking: 10,
+    passing: 10, penalties: 10, tackling: 10, technique: 10, aggression: 10,
+    anticipation: 10, bravery: 10, composure: 10, concentration: 10, decisions: 10,
+    determination: 10, flair: 10, leadership: 10, offTheBall: 10, positioning: 10,
+    teamwork: 10, vision: 10, workRate: 10, acceleration: 10, agility: 10,
+    balance: 10, jumpingReach: 10, naturalFitness: 10, pace: 10, stamina: 10,
+    strength: 10, aerialReach: 10, commandOfArea: 10, communication: 10,
+    eccentricity: 10, handling: 10, kicking: 10, oneOnOnes: 10, punching: 10,
+    reflexes: 10, rushingOut: 10, throwing: 10,
+  };
+
+  const existingSquad = [
+    {
+      id: 'fm-uid-101',
+      uid: 101,
+      number: 10,
+      name: 'Existing Starter',
+      position: 'MC',
+      apps: '2',
+      minutes: 180,
+      rating: 7.2,
+      goals: 1,
+      xG: 1.0,
+      xGPer90: 0.5,
+      assists: 0,
+      xA: 0.5,
+      xAPer90: 0.25,
+      drbPer90: 1.0,
+      prPassesPer90: 2.0,
+      hdrPct: 50,
+      intPer90: 1.0,
+      tckPct: 70,
+      personality: 'Balanced',
+      age: 23,
+      ability: 3.5,
+      potential: 4.0,
+      expires: '30/06/2028',
+      nation: 'ENG',
+      wagePw: 500,
+      status: 'Starter' as const,
+      attributes: fullAttrs,
+      ipRole: 'Central Midfielder',
+      oopRole: 'Central Midfielder',
+      notes: '',
+    },
+  ];
+
+  const decoded: DecodedFmSavePayload = {
+    meta: {
+      game: 'FM27',
+      build: '27.1.0+2505117',
+      knownBuild: true,
+      fmsaveVersion: '0.14.3',
+      saveName: 'phase1.fm',
+      clubUid: 999,
+      clubName: 'Test FC',
+      managerName: 'Bobby Dean',
+      gameDateIso: '2026-09-20',
+      gameDateDmy: '20/09/2026',
+      balance: 250000,
+      scoutingBudget: 5000,
+    },
+    clubUid: 999,
+    players: [
+      {
+        uid: 101,
+        name: 'Existing Starter',
+        position: 'MC',
+        age: 23,
+        nation: 'ENG',
+        abilityStars: 3.5,
+        potentialStars: 4.0,
+        condition: 90,
+        sharpness: 95,
+        wagePw: 500,
+        expires: '30/06/2028',
+        onLoan: false,
+        teamSlot: 0,
+        apps: '4',
+        minutes: 360,
+        rating: null,
+        goals: 1,
+        xG: 1.0,
+        xGPer90: 0.25,
+        assists: 0,
+        xA: 0.5,
+        xAPer90: 0.13,
+        drbPer90: 1.0,
+        prPassesPer90: 2.0,
+        hdrPct: 50,
+        intPer90: 1.0,
+        tckPct: 70,
+        distanceKm: 40,
+        yellowCards: 1,
+        redCards: 0,
+        suspensionsCount: 0,
+        attributes: fullAttrs,
+      },
+      {
+        uid: 202,
+        name: 'Zero Minute Backup',
+        position: 'ST',
+        age: 19,
+        nation: 'ENG',
+        abilityStars: 2.5,
+        potentialStars: 4.0,
+        condition: 92,
+        sharpness: 65,
+        wagePw: 200,
+        expires: '30/06/2028',
+        onLoan: false,
+        teamSlot: 0,
+        apps: '0',
+        minutes: 0,
+        rating: null,
+        goals: 0,
+        xG: 0,
+        xGPer90: 0,
+        assists: 0,
+        xA: 0,
+        xAPer90: 0,
+        drbPer90: 0,
+        prPassesPer90: 0,
+        hdrPct: 0,
+        intPer90: 0,
+        tckPct: 0,
+        distanceKm: 0,
+        yellowCards: 0,
+        redCards: 0,
+        suspensionsCount: 0,
+        attributes: fullAttrs,
+        last5Ratings: [{ date: '2026-07-10', rating: 7.4, goals: 1, assists: 0 }],
+      },
+    ],
+    playedMatches: [
+      {
+        dateIso: '2026-09-12',
+        dateDmy: '12/09/2026',
+        competition: 'League One',
+        opponent: 'Rival FC',
+        venue: 'H',
+        score: '2 - 1',
+        result: 'W',
+        xGFor: 1.8,
+        xGAgainst: 0.9,
+        possession: 54,
+        passCompletion: 84,
+        shotsFor: '14 (6)',
+        shotsAgainst: '7 (3)',
+        cccFor: 2,
+        cccAgainst: 1,
+        distanceKm: 112.4,
+      },
+    ],
+    upcomingFixtures: [],
+    leagueStanding: null,
+    finances: null,
+    staff: [],
+    activeInjuries: [],
+    activeSuspensions: [],
+    tactics: [],
+    mentoring: [],
+    competitionRules: {
+      competitionName: 'League One',
+      maxSquadSize: 25,
+      minHomegrownClub: 4,
+      minHomegrownNation: 8,
+      maxForeignPlayers: 5,
+      u21Exempt: true,
+      matchdaySubsLimit: 5,
+      fixturesPerClub: 38,
+      promotionPlaces: 2,
+      playoffPlaces: 4,
+      relegationPlaces: 3,
+    },
+  };
+
+  const hydrated = hydrateAppFromDecodedFmSave(decoded, existingSquad, []);
+  const starter = hydrated.updatedSquad.find((p) => p.uid === 101);
+  const backup = hydrated.updatedSquad.find((p) => p.uid === 202);
+
+  assert.ok(starter);
+  assert.equal(starter.xGPer90, 0.25);
+  assert.equal(starter.xAPer90, 0.13);
+  assert.equal(starter.rating, null);
+
+  assert.ok(backup);
+  assert.equal(backup.last5Ratings, undefined);
+  assert.equal(backup.last5Form, undefined);
+
+  assert.equal(hydrated.updatedMatches[0].eventNumber, 1);
+  assert.equal(hydrated.competitionRules?.fixturesPerClub, 38);
+  assert.equal(hydrated.competitionRules?.promotionPlaces, 2);
+  assert.equal(hydrated.competitionRules?.playoffPlaces, 4);
+  assert.equal(hydrated.competitionRules?.relegationPlaces, 3);
+
+  const friendlyOnlySummary = computeCompetitiveSummary([
+    {
+      id: 'f1',
+      eventNumber: 1,
+      date: '10/07/2026',
+      competition: 'Pre-Season Friendly',
+      opponent: 'Local XI',
+      venue: 'H',
+      result: 'W',
+      score: '5 - 0',
+      xGFor: 3.1,
+      xGAgainst: 0.2,
+      possession: 60,
+      shotsFor: '20 (10)',
+      shotsAgainst: '2 (0)',
+      cccFor: 4,
+      cccAgainst: 0,
+      passCompletion: 88,
+      goalTimeline: '',
+      potm: '',
+      defensiveWatchpoints: '',
+      tacticalAudit: '',
+    },
+  ]);
+  assert.equal(friendlyOnlySummary.played, 0);
+  assert.equal(friendlyOnlySummary.wins, 0);
+});
+
+
 
 
 

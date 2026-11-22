@@ -42,18 +42,36 @@ export function evaluateDoubleGwLoad(row: DoubleGwTrackerRow): {
  * Computes aggregate season metrics from competitive match logs.
  */
 export function computeCompetitiveSummary(matches: MatchLogEntry[]) {
-  const leagueMatches = matches.filter((m) => {
+  const competitiveMatches = matches.filter((m) => {
     const comp = (m.competition || '').toLowerCase();
     return (
       !comp.includes('friendly') &&
+      !comp.includes('non-comp') &&
+      !comp.includes('non_comp') &&
+      !comp.includes('reserve') &&
+      !comp.includes('u21') &&
+      !comp.includes('u19') &&
+      !comp.includes('u18') &&
+      !comp.includes('youth') &&
+      !comp.includes('international')
+    );
+  });
+  const leagueMatches = competitiveMatches.filter((m) => {
+    const comp = (m.competition || '').toLowerCase();
+    return (
       !comp.includes('cup') &&
+      !comp.includes('beker') &&
+      !comp.includes('coupe') &&
+      !comp.includes('pokal') &&
+      !comp.includes('copa') &&
       (comp.includes('national') ||
         comp.includes('league') ||
         comp.includes('division') ||
         comp.length > 0)
     );
   });
-  const targetMatches = leagueMatches.length > 0 ? leagueMatches : matches;
+  const targetMatches =
+    leagueMatches.length > 0 ? leagueMatches : competitiveMatches;
   const wins = targetMatches.filter((m) => m.result === 'W').length;
   const draws = targetMatches.filter((m) => m.result === 'D').length;
   const losses = targetMatches.filter((m) => m.result === 'L').length;

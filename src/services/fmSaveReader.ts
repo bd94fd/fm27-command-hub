@@ -65,10 +65,16 @@ function getFmSaveWorker(): Worker {
  * Checks whether the Express backend has native Python fmsave available for fast Full Sync decoding.
  */
 export async function checkServerDecodeStatus(
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
+  signal?: AbortSignal
 ): Promise<ServerDecodeStatus> {
+  if (signal?.aborted) {
+    throw new Error('CANCELLED_BY_USER');
+  }
   const controller =
     typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const onCallerAbort = () => controller?.abort();
+  signal?.addEventListener('abort', onCallerAbort, { once: true });
   const timeout = controller ? setTimeout(() => controller.abort(), 4_000) : null;
   try {
     const res = await fetchImpl('/api/fm27/decode-status', {
@@ -86,9 +92,13 @@ export async function checkServerDecodeStatus(
       fmsaveVersion: data?.fmsaveVersion ?? null,
     };
   } catch {
+    if (signal?.aborted) {
+      throw new Error('CANCELLED_BY_USER');
+    }
     return { serverDecodeAvailable: false };
   } finally {
     if (timeout) clearTimeout(timeout);
+    signal?.removeEventListener('abort', onCallerAbort);
   }
 }
 
@@ -161,7 +171,13 @@ export async function decodeFmSaveViaServer(
   const fileName =
     options.fileName || (file instanceof File ? file.name : 'save.fm');
   const scopeValue =
-    options.scope === 'club_and_division' ? 'club_and_division' : 'club_only';
+    options.scope === 'club_and_division' ||
+    options.scope === 'full_division' ||
+    options.scope === 'full_league'
+      ? 'club_and_division'
+      : options.scope === 'full_database' || options.scope === 'full_save'
+        ? 'full_database'
+        : 'club_only';
   const chunkSizeBytes = Math.max(
     1,
     options.chunkSizeBytes ?? SERVER_UPLOAD_CHUNK_BYTES
@@ -351,12 +367,13 @@ export async function decodeFmSaveViaServer(
     throw uploadErr;
   }
 
-  // 3. Finalize upload & start async Python Full Sync job
+  // 3. Finalize upload & start async Python decode job
+  const syncModeLabel = options.fastSync ? 'Fast Sync' : 'Full Sync';
   onProgress?.({
     stage: 'parse',
-    step: 'Server Full Sync',
+    step: `Server ${syncModeLabel}`,
     elapsedSec: elapsedSec(),
-    label: 'Starting native server Full Sync decode...',
+    label: `Starting native server ${syncModeLabel} decode...`,
   });
 
   const finishRes = await fetchOrThrowUnavailable(
@@ -771,7 +788,10 @@ export async function decodeFmSaveWithServerFirst(
           : false;
 
   if (!options.forceBrowserWorker) {
-    const status = await checkServerDecodeStatus(fetchImpl);
+    const status = await checkServerDecodeStatus(fetchImpl, deps.signal);
+    if (deps.signal?.aborted) {
+      throw new Error('CANCELLED_BY_USER');
+    }
     if (status.serverDecodeAvailable) {
       try {
         return await decodeFmSaveViaServer(
@@ -793,6 +813,9 @@ export async function decodeFmSaveWithServerFirst(
         if (!(err instanceof ServerDecodeUnavailableError)) {
           throw err;
         }
+        if (deps.signal?.aborted) {
+          throw new Error('CANCELLED_BY_USER');
+        }
         onProgress?.({
           stage: 'boot',
           step: 'Browser Fallback',
@@ -801,6 +824,10 @@ export async function decodeFmSaveWithServerFirst(
         });
       }
     }
+  }
+
+  if (deps.signal?.aborted) {
+    throw new Error('CANCELLED_BY_USER');
   }
 
   return browserFallback(file, onProgress, {
@@ -832,18 +859,21 @@ export function decodeFmSaveFile(
 
   const abortController =
     typeof AbortController !== 'undefined' ? new AbortController() : null;
-  isJobActive = true;
-  activeCancelFn = () => {
+  const cancelThisJob = () => {
     abortController?.abort();
-    isJobActive = false;
-    activeCancelFn = null;
+    if (activeCancelFn === cancelThisJob) {
+      isJobActive = false;
+      activeCancelFn = null;
+    }
   };
+  isJobActive = true;
+  activeCancelFn = cancelThisJob;
 
   return decodeFmSaveWithServerFirst(file, onProgress, parsedOptions, {
     signal: abortController?.signal,
   }).finally(() => {
-    isJobActive = false;
-    if (activeCancelFn) {
+    if (activeCancelFn === cancelThisJob) {
+      isJobActive = false;
       activeCancelFn = null;
     }
   });

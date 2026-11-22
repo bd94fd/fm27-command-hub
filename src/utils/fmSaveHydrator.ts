@@ -892,7 +892,7 @@ export function hydrateAppFromDecodedFmSave(
     if (dp.rating !== null && dp.rating !== existing.rating) {
       changes.push(`Rating ${existing.rating ?? '-'}→${dp.rating}`);
       next.rating = dp.rating;
-    } else if (dp.rating === null && squadHasSeasonStats && !hasPlayerSeasonStats && existing.rating !== null) {
+    } else if (dp.rating === null && squadHasSeasonStats && existing.rating !== null) {
       next.rating = null;
     }
     if (dp.goals !== existing.goals) {
@@ -903,11 +903,11 @@ export function hydrateAppFromDecodedFmSave(
       changes.push(`Assists ${existing.assists}→${dp.assists}`);
       next.assists = dp.assists;
     }
-    if (dp.xG !== existing.xG) {
+    if (dp.xG !== existing.xG || dp.xGPer90 !== existing.xGPer90 || dp.minutes !== existing.minutes) {
       next.xG = dp.xG;
       next.xGPer90 = dp.xGPer90;
     }
-    if (dp.xA !== existing.xA) {
+    if (dp.xA !== existing.xA || dp.xAPer90 !== existing.xAPer90 || dp.minutes !== existing.minutes) {
       next.xA = dp.xA;
       next.xAPer90 = dp.xAPer90;
     }
@@ -978,7 +978,11 @@ export function hydrateAppFromDecodedFmSave(
     // Pass 0 Group 2: Last-5 Form & Season History + Recent-Match Production Fallback
     const pRatings =
       dp.last5Ratings || lookupUidRecord(decoded.playerMatchStats, dp.uid);
-    if (pRatings && pRatings.length > 0) {
+    if (squadHasSeasonStats && !hasPlayerSeasonStats) {
+      next.last5Ratings = undefined;
+      next.last5Form = undefined;
+      next.statsSource = undefined;
+    } else if (pRatings && pRatings.length > 0) {
       next.last5Ratings = pRatings;
       next.last5Form = calculateLast5Form(pRatings);
       if (!hasPlayerSeasonStats && !squadHasSeasonStats) {
@@ -994,10 +998,6 @@ export function hydrateAppFromDecodedFmSave(
       } else {
         next.statsSource = undefined;
       }
-    } else if (squadHasSeasonStats && !hasPlayerSeasonStats) {
-      next.last5Ratings = undefined;
-      next.last5Form = undefined;
-      next.statsSource = undefined;
     } else if (hasPlayerSeasonStats) {
       next.statsSource = 'Season Stats';
     }
@@ -1152,8 +1152,14 @@ export function hydrateAppFromDecodedFmSave(
       attributes: clampedAttrs,
       traits: dp.traits || [],
       scoutBadges: resolveScoutBadges(dp),
-      last5Ratings: pRatings.length > 0 ? pRatings : undefined,
-      last5Form: pRatings.length > 0 ? calculateLast5Form(pRatings) : undefined,
+      last5Ratings:
+        !(squadHasSeasonStats && !hasSeasonStats) && pRatings.length > 0
+          ? pRatings
+          : undefined,
+      last5Form:
+        !(squadHasSeasonStats && !hasSeasonStats) && pRatings.length > 0
+          ? calculateLast5Form(pRatings)
+          : undefined,
       seasonHistory: pHistory.length > 0 ? pHistory : undefined,
       ipRole,
       oopRole,
@@ -1201,7 +1207,7 @@ export function hydrateAppFromDecodedFmSave(
 
   let maxEventNum = currentMatches.reduce(
     (max, m) => Math.max(max, m.eventNumber || 0),
-    33
+    0
   );
 
   const chronologicalPlayed = [...decoded.playedMatches].reverse();
@@ -1604,6 +1610,22 @@ export function hydrateAppFromDecodedFmSave(
           matchdaySubsLimit:
             typeof rawRules.matchdaySubsLimit === 'number'
               ? rawRules.matchdaySubsLimit
+              : null,
+          fixturesPerClub:
+            typeof rawRules.fixturesPerClub === 'number'
+              ? rawRules.fixturesPerClub
+              : null,
+          promotionPlaces:
+            typeof rawRules.promotionPlaces === 'number'
+              ? rawRules.promotionPlaces
+              : null,
+          playoffPlaces:
+            typeof rawRules.playoffPlaces === 'number'
+              ? rawRules.playoffPlaces
+              : null,
+          relegationPlaces:
+            typeof rawRules.relegationPlaces === 'number'
+              ? rawRules.relegationPlaces
               : null,
         }
       : null;

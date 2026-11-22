@@ -68,7 +68,11 @@ async function ensureBooted(reply, origin) {
       }
 
       const mapperUrl = new URL('/fm-save-mapper.py?v=17', origin || self.location.origin).href;
-      const mapperSource = await (await fetch(mapperUrl, { cache: 'no-cache' })).text();
+      const mapperResp = await fetch(mapperUrl, { cache: 'no-cache' });
+      if (!mapperResp.ok) {
+        throw new Error(`Failed to load save reader script (HTTP ${mapperResp.status}).`);
+      }
+      const mapperSource = await mapperResp.text();
       instance.FS.writeFile('/home/pyodide/fm_save_mapper.py', mapperSource);
       mapperModule = instance.pyimport('fm_save_mapper');
 
@@ -346,6 +350,8 @@ self.onmessage = async (event) => {
         await yieldTick();
         mapperModule.step_3_4_market_scan_and_release_gamedb(false);
         emitCheckpoint('stage_3_club_ops');
+      } else {
+        mapperModule.step_3_4_market_scan_and_release_gamedb(true);
       }
 
       // ── STAGE 4 (Phase B — game_db is freed; zero RAM overlap with span/season_stats/archive)
@@ -410,8 +416,6 @@ self.onmessage = async (event) => {
 
       const parsed = attachRuntimeMeta(JSON.parse(mapperModule.step_finalize()));
 
-      cleanupTempBuffer();
-      safeUnmount(instance);
       reply({ type: 'result', data: parsed });
     } catch (err) {
       if (mapperModule) {
@@ -421,8 +425,6 @@ self.onmessage = async (event) => {
           // ignore
         }
       }
-      cleanupTempBuffer();
-      if (instance) safeUnmount(instance);
 
       const rawMsg = err?.message || String(err);
       let friendly = `${activeStep} failed: ${rawMsg}`;
@@ -436,6 +438,9 @@ self.onmessage = async (event) => {
         friendly = `Browser ran out of WebAssembly memory during ${activeStep}. Close background tabs or try on desktop.`;
       }
       reply({ type: 'error', message: friendly });
+    } finally {
+      cleanupTempBuffer();
+      if (instance) safeUnmount(instance);
     }
   }
 };

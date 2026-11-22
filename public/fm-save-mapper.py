@@ -59,7 +59,7 @@ SCOUT_BUDGET_SEC = 35.0 if not _IS_PYODIDE else 18.0
 SCOUT_MAX_CANDIDATES = 500
 SCOUT_PER_POSITION_CAP = 50
 DIVISION_BENCHMARK_BUDGET_SEC = 8.0
-FIXTURES_SCAN_BUDGET_SEC = 45.0
+FIXTURES_SCAN_BUDGET_SEC = 20.0
 
 # Step 4/6 strict per-table wall-clock budgets (seconds)
 SEASON_STATS_BUDGET_SEC = 60.0 if not _IS_PYODIDE else 40.0
@@ -1665,6 +1665,7 @@ def step_players() -> str:
 
     # Sort tie-breaker kept locally without exposing raw CA/PA
     sort_keys: dict[int, float] = {}
+    nation_lookup = _build_nation_lookup(save)
 
     for p in raw_players:
         if not getattr(p, "name", None):
@@ -1770,7 +1771,6 @@ def step_players() -> str:
         else:
             market_value = None
 
-        nation_lookup = _build_nation_lookup(save)
         players_out.append({
             "uid": uid,
             "name": p.name,
@@ -2423,6 +2423,7 @@ def step_3_2_staff() -> str:
         )
         if staff_method is not None:
             club_name = (_STATE.get("meta") or {}).get("clubName", "")
+            staff_nation_lookup = _build_nation_lookup(save)
 
             def _append_staff_row(s: Any) -> None:
                 s_name = getattr(s, "name", None)
@@ -2447,7 +2448,7 @@ def step_3_2_staff() -> str:
                     "name": s_name,
                     "role": _label(getattr(s, "role", None) or getattr(s, "job", None)) or "Coach",
                     "age": _int(getattr(s, "age", None), 35),
-                    "nation": getattr(s, "nation_name", None) or getattr(s, "nationality", None) or "N/A",
+                    "nation": _resolve_player_nationality(s, staff_nation_lookup, default="N/A"),
                     "club": club_name,
                     "wagePw": _int(getattr(s_contract, "wage", None), 0) if s_contract else 0,
                     "expires": (_dmy(getattr(s_contract, "end", None)) or "N/A") if s_contract else "N/A",
@@ -3187,22 +3188,30 @@ def step_3_3_transfer_windows(fast_sync: bool | None = None) -> str:
                     if key in seen_keys:
                         continue
                     seen_keys.add(key)
+                    win_open = False
                     if isinstance(game_date, date):
                         g_md = (game_date.month, game_date.day)
                         s_md = (sm, sd)
                         e_md = (em, ed)
                         if s_md <= e_md:
                             if s_md <= g_md <= e_md:
+                                win_open = True
                                 is_open = True
                         else:
                             if g_md >= s_md or g_md <= e_md:
+                                win_open = True
                                 is_open = True
                     if len(parsed_windows) < 12:
+                        ref_year = game_date.year if isinstance(game_date, date) else 2026
+                        end_year = ref_year if (sm, sd) <= (em, ed) else ref_year + 1
                         parsed_windows.append({
                             "startDay": sd,
                             "startMonth": sm,
                             "endDay": ed,
                             "endMonth": em,
+                            "startDate": f"{ref_year:04d}-{sm:02d}-{sd:02d}",
+                            "endDate": f"{end_year:04d}-{em:02d}-{ed:02d}",
+                            "isOpen": win_open,
                         })
         except Exception as exc:
             _STATE["warnings"].append(f"transfer_windows: {type(exc).__name__}")
@@ -3699,7 +3708,7 @@ def _extract_club_match_stats_fast(save: Any) -> dict[str, list[dict[str, Any]]]
                         player_recs.extend(recs_batch)
 
                 season_start = (
-                    datetime.date(game_date.year if game_date.month >= 7 else game_date.year - 1, 7, 1)
+                    date(game_date.year if game_date.month >= 7 else game_date.year - 1, 7, 1)
                     if game_date is not None
                     else None
                 )
@@ -3714,7 +3723,7 @@ def _extract_club_match_stats_fast(save: Any) -> dict[str, list[dict[str, Any]]]
                     if comp_id == MISSING_REFERENCE:
                         continue
                     comp_name_lower = str(comp_name_map.get(comp_id, "") or "").lower()
-                    if any(tok in comp_name_lower for tok in ("friendly", "non-comp", "non_comp", "reserve", "u21", "u19", "u18", "youth")):
+                    if any(tok in comp_name_lower for tok in ("friendly", "non-comp", "non_comp", "reserve", "u21", "u19", "u18", "youth", "international")):
                         continue
                     raw_rating = getattr(rec, "rating_raw", None)
                     if raw_rating is None:
@@ -3766,14 +3775,24 @@ def _aggregate_competitive_season_history(
     raw_rows: list[tuple[int, str, str, int, int, int, int, float]]
 ) -> list[dict[str, Any]]:
     """Merge competitive history rows (league/cup/continental) per (year, club),
-    excluding friendlies/non-competitive and calendar-year rows."""
+    excluding friendlies/non-competitive, youth/reserve, international, and calendar-year rows."""
     by_key: dict[tuple[int, str], dict[str, Any]] = {}
     for year_num, club_name, kind_val, apps, rated_apps, goals, assists, avg_rat in raw_rows:
-        if (
-            "friendly" in kind_val
-            or "non_competitive" in kind_val
-            or "calendar_year" in kind_val
-            or "international" in kind_val
+        if any(
+            tok in kind_val
+            for tok in (
+                "friendly",
+                "non_competitive",
+                "non-comp",
+                "non_comp",
+                "calendar_year",
+                "international",
+                "reserve",
+                "u21",
+                "u19",
+                "u18",
+                "youth",
+            )
         ):
             continue
         if apps <= 0:
@@ -3985,17 +4004,29 @@ def step_4_1_season_stats(fast_sync: bool | None = None) -> str:
         p_uid = getattr(row, "player_uid", None)
         if p_uid not in squad_uids:
             return
-        if _STATE.get("first_team_id") is None and getattr(row, "team_slot", None) in (None, 0):
+        row_team_slot = getattr(row, "team_slot", None)
+        if row_team_slot not in (None, 0):
+            return
+        if _STATE.get("first_team_id") is None and row_team_slot in (None, 0):
             tid = _int(getattr(row, "team_id", None), None)
             if tid:
                 _STATE["first_team_id"] = tid
         kind_val = _normalize_stat_kind(getattr(row, "kind", ""))
-        if (
-            "friendly" in kind_val
-            or "non_competitive" in kind_val
-            or "youth" in kind_val
-            or "calendar_year" in kind_val
-            or "international" in kind_val
+        if any(
+            tok in kind_val
+            for tok in (
+                "friendly",
+                "non_competitive",
+                "non-comp",
+                "non_comp",
+                "reserve",
+                "u21",
+                "u19",
+                "u18",
+                "youth",
+                "calendar_year",
+                "international",
+            )
         ):
             return
         if kind_val in ("overall", "competitive"):
@@ -4147,6 +4178,7 @@ def step_4_1_season_stats(fast_sync: bool | None = None) -> str:
     players_out.sort(
         key=lambda x: (x["teamSlot"] or 0, -(x["minutes"] or 0), -(x.get("abilityStars") or 0))
     )
+    _reconcile_player_match_stats_with_season_stats()
     del best_by_uid, stats_by_uid, league_matched_uids
     gc.collect()
     elapsed_ms = _record_step_timing("step_4_1_season_stats", t0)
@@ -4159,6 +4191,55 @@ def step_4_1_season_stats(fast_sync: bool | None = None) -> str:
     })
 
 
+def _reconcile_player_match_stats_with_season_stats() -> dict[str, list[dict[str, Any]]]:
+    """Strip 0-minute players' Last-5 ratings and non-competitive competition IDs once
+    competitive season stats are available, without needing a second game_db pass."""
+    raw_stats = _STATE.get("player_match_stats_raw")
+    if not isinstance(raw_stats, dict):
+        return _STATE.get("player_match_stats") or {}
+
+    players_out = _STATE.get("players_out") or []
+    season_mins_by_uid = {str(p["uid"]): int(p.get("minutes") or 0) for p in players_out}
+    any_squad_season_stats = any(m > 0 for m in season_mins_by_uid.values())
+    non_comp_ids: set[int] = set()
+    if any_squad_season_stats:
+        club_div_id = _STATE.get("club_division_id")
+        comp_name_map = _STATE.get("comp_name_by_id") or {}
+        for uid_key, items in raw_stats.items():
+            if season_mins_by_uid.get(uid_key, 0) == 0:
+                for it in items:
+                    cid = it.get("_compId")
+                    if cid is not None and cid != club_div_id and cid not in comp_name_map:
+                        non_comp_ids.add(cid)
+
+    cleaned_match_stats: dict[str, list[dict[str, Any]]] = {}
+    for uid_key, items in raw_stats.items():
+        if any_squad_season_stats and season_mins_by_uid.get(uid_key, 0) == 0:
+            continue
+        filtered = []
+        for it in items:
+            cid = it.get("_compId")
+            if cid is not None and cid in non_comp_ids:
+                continue
+            clean_item = {k: v for k, v in it.items() if k != "_compId"}
+            filtered.append(clean_item)
+        if filtered:
+            filtered.sort(key=lambda x: x.get("date") or "")
+            cleaned_match_stats[uid_key] = filtered[-5:]
+
+    for p in players_out:
+        uid_key = str(p["uid"])
+        if uid_key in cleaned_match_stats:
+            p["last5Ratings"] = cleaned_match_stats[uid_key]
+        else:
+            p.pop("last5Ratings", None)
+
+    _STATE["player_match_stats"] = cleaned_match_stats
+    if any_squad_season_stats:
+        _STATE.pop("player_match_stats_raw", None)
+    return cleaned_match_stats
+
+
 def step_4_2_player_match_stats(fast_sync: bool | None = None) -> str:
     """Step 4/6 (2/4): Club-scoped player_match_stats (Last-5 Form ratings) —
     uses club-scoped byte-window direct decode (~47 players) with lazy-stream fallback.
@@ -4166,6 +4247,7 @@ def step_4_2_player_match_stats(fast_sync: bool | None = None) -> str:
     use_fast = _STATE.get("fast_sync", False) if fast_sync is None else bool(fast_sync)
     if use_fast:
         _STATE["player_match_stats"] = {}
+        _STATE.pop("player_match_stats_raw", None)
         _record_fast_sync_skip_note()
         _STATE["step_timings_ms"]["step_4_2_player_match_stats"] = 0
         gc.collect()
@@ -4174,7 +4256,6 @@ def step_4_2_player_match_stats(fast_sync: bool | None = None) -> str:
     save = _STATE["save"]
     club_uid = _STATE["club_uid"]
     squad_uids = _STATE["squad_uids"]
-    players_out = _STATE["players_out"]
     t0 = time.monotonic()
     if not squad_uids or save is None:
         return json.dumps({"skipped": False, "formPlayers": 0, "elapsedSec": 0.0, "timedOut": False})
@@ -4182,6 +4263,25 @@ def step_4_2_player_match_stats(fast_sync: bool | None = None) -> str:
     player_match_stats: dict[str, list[dict[str, Any]]] = {}
     timed_out = False
     warning_msg: str | None = None
+    game_date = _STATE.get("game_date")
+    season_start = (
+        date(game_date.year if game_date.month >= 7 else game_date.year - 1, 7, 1)
+        if isinstance(game_date, date)
+        else None
+    )
+    comp_name_map = _STATE.get("comp_name_by_id") or {}
+    _NON_COMP_TOKENS = (
+        "friendly",
+        "non-comp",
+        "non_comp",
+        "non_competitive",
+        "reserve",
+        "u21",
+        "u19",
+        "u18",
+        "youth",
+        "international",
+    )
 
     def _consume_pms(stat: Any) -> None:
         p_uid = _int(getattr(stat, "player_uid", None))
@@ -4189,9 +4289,22 @@ def step_4_2_player_match_stats(fast_sync: bool | None = None) -> str:
             return
         if not getattr(stat, "has_stats", True):
             return
+        stat_date = getattr(stat, "date", None)
+        if season_start is not None and isinstance(stat_date, date) and stat_date < season_start:
+            return
         is_comp = getattr(stat, "is_competitive", True)
         kind_str = str(getattr(stat, "kind", "")).lower()
-        if not is_comp or "friendly" in kind_str:
+        comp_id = getattr(stat, "competition_id", None)
+        comp_name_lower = str(
+            getattr(stat, "competition_name", None)
+            or comp_name_map.get(comp_id, "")
+            or ""
+        ).lower()
+        if (
+            not is_comp
+            or any(tok in kind_str for tok in _NON_COMP_TOKENS)
+            or any(tok in comp_name_lower for tok in _NON_COMP_TOKENS)
+        ):
             return
         rating_v = _float(getattr(stat, "rating", None) or getattr(stat, "match_rating", None), None)
         if rating_v is None or rating_v <= 0:
@@ -4204,12 +4317,13 @@ def step_4_2_player_match_stats(fast_sync: bool | None = None) -> str:
         )
         uid_key = str(p_uid)
         player_match_stats.setdefault(uid_key, []).append({
-            "date": _iso(getattr(stat, "date", None)) or "",
+            "date": _iso(stat_date) or "",
             "rating": round(rating_v, 2),
             "goals": _int(getattr(stat, "goals", None), 0) or 0,
             "assists": _int(getattr(stat, "assists", None), 0) or 0,
             "opponent": str(opp_name),
             "minutes": _int(getattr(stat, "minutes", None), 0) or 0,
+            "_compId": comp_id,
         })
 
     def _scan_pms(stream: Any) -> None:
@@ -4262,42 +4376,9 @@ def step_4_2_player_match_stats(fast_sync: bool | None = None) -> str:
         warning_msg = f"player_match_stats: {type(exc).__name__}"
         _STATE["warnings"].append(warning_msg)
 
-    season_mins_by_uid = {str(p["uid"]): int(p.get("minutes") or 0) for p in players_out}
-    any_squad_season_stats = any(m > 0 for m in season_mins_by_uid.values())
-    non_comp_ids: set[int] = set()
-    if any_squad_season_stats:
-        club_div_id = _STATE.get("club_division_id")
-        comp_name_map = _STATE.get("comp_name_by_id") or {}
-        for uid_key, items in player_match_stats.items():
-            if season_mins_by_uid.get(uid_key, 0) == 0:
-                for it in items:
-                    cid = it.get("_compId")
-                    if cid is not None and cid != club_div_id and cid not in comp_name_map:
-                        non_comp_ids.add(cid)
-
-    cleaned_match_stats: dict[str, list[dict[str, Any]]] = {}
-    for uid_key, items in player_match_stats.items():
-        if any_squad_season_stats and season_mins_by_uid.get(uid_key, 0) == 0:
-            continue
-        filtered = []
-        for it in items:
-            cid = it.pop("_compId", None)
-            if cid is not None and cid in non_comp_ids:
-                continue
-            filtered.append(it)
-        if filtered:
-            filtered.sort(key=lambda x: x.get("date") or "")
-            cleaned_match_stats[uid_key] = filtered[-5:]
-
-    player_match_stats = cleaned_match_stats
-
-    for p in players_out:
-        uid_key = str(p["uid"])
-        if uid_key in player_match_stats:
-            p["last5Ratings"] = player_match_stats[uid_key]
-
-    _STATE["player_match_stats"] = player_match_stats
-    form_count = len(player_match_stats)
+    _STATE["player_match_stats_raw"] = player_match_stats
+    cleaned = _reconcile_player_match_stats_with_season_stats()
+    form_count = len(cleaned)
     del player_match_stats
     gc.collect()
     elapsed_ms = _record_step_timing("step_4_2_player_match_stats", t0)
@@ -5026,7 +5107,8 @@ def _build_current_payload() -> dict[str, Any]:
     youth_reserve_count = 0
     for p in players_out:
         sq = str(p.get("squadTier") or p.get("squad") or "").lower()
-        if any(tok in sq for tok in ("u18", "u19", "u21", "u23", "youth", "reserve", "b team", "b-team", "jong")):
+        team_slot = _int(p.get("teamSlot"), 0) or 0
+        if team_slot > 0 or any(tok in sq for tok in ("u18", "u19", "u21", "u23", "youth", "reserve", "b team", "b-team", "jong")):
             youth_reserve_count += 1
         else:
             senior_count += 1
@@ -5279,6 +5361,26 @@ def extract_pass_0_data(save_instance: Any, target_club_uid: int | None = None) 
                 "contractExpiryMonths": _int(_get_attr(p, "contract_expiry_months", 12), 12) or 12,
             })
 
+    pass0_game_date = _get_attr(save_instance, "game_date", None)
+    pass0_season_start = (
+        date(pass0_game_date.year if pass0_game_date.month >= 7 else pass0_game_date.year - 1, 7, 1)
+        if isinstance(pass0_game_date, date)
+        else None
+    )
+    _PASS0_NON_COMP = (
+        "friendly",
+        "non-comp",
+        "non_comp",
+        "non_competitive",
+        "calendar_year",
+        "reserve",
+        "u21",
+        "u19",
+        "u18",
+        "youth",
+        "international",
+    )
+
     player_match_stats: dict[int, list[dict[str, Any]]] = {}
     pms_iter, _, _ = _open_table_stream(
         save_instance, "player_match_stats", club_uid=user_club_uid, squad_uids=squad_uids, try_where_club=True
@@ -5292,13 +5394,23 @@ def extract_pass_0_data(save_instance: Any, target_club_uid: int | None = None) 
             p_uid = _int(_get_attr(stat, "player_uid", 0), 0) or 0
             if p_uid not in squad_uids:
                 continue
-            if _get_attr(stat, "is_competitive", True):
-                player_match_stats.setdefault(p_uid, []).append({
-                    "date": _iso(_get_attr(stat, "date", "")) or "",
-                    "rating": _float(_get_attr(stat, "rating", 6.0), 6.0) or 6.0,
-                    "goals": _int(_get_attr(stat, "goals", 0), 0) or 0,
-                    "assists": _int(_get_attr(stat, "assists", 0), 0) or 0,
-                })
+            stat_date = _get_attr(stat, "date", None)
+            if pass0_season_start is not None and isinstance(stat_date, date) and stat_date < pass0_season_start:
+                continue
+            kind_str = str(_get_attr(stat, "kind", "") or "").lower()
+            comp_str = str(_get_attr(stat, "competition_name", "") or "").lower()
+            if (
+                not _get_attr(stat, "is_competitive", True)
+                or any(tok in kind_str for tok in _PASS0_NON_COMP)
+                or any(tok in comp_str for tok in _PASS0_NON_COMP)
+            ):
+                continue
+            player_match_stats.setdefault(p_uid, []).append({
+                "date": _iso(stat_date) or "",
+                "rating": _float(_get_attr(stat, "rating", 6.0), 6.0) or 6.0,
+                "goals": _int(_get_attr(stat, "goals", 0), 0) or 0,
+                "assists": _int(_get_attr(stat, "assists", 0), 0) or 0,
+            })
     for p_uid in player_match_stats:
         player_match_stats[p_uid] = player_match_stats[p_uid][-5:]
 
@@ -5336,6 +5448,9 @@ def extract_pass_0_data(save_instance: Any, target_club_uid: int | None = None) 
             p_uid = _int(_get_attr(h, "player_uid", 0), 0) or 0
             if p_uid not in squad_uids:
                 continue
+            h_kind = _normalize_stat_kind(_get_attr(h, "kind", ""))
+            if any(tok in h_kind for tok in _PASS0_NON_COMP):
+                continue
             season_history.setdefault(p_uid, []).append({
                 "season": str(_get_attr(h, "season", "2026/27")),
                 "club": str(_get_attr(h, "club_name", "Club")),
@@ -5353,19 +5468,27 @@ def extract_pass_0_data(save_instance: Any, target_club_uid: int | None = None) 
         for s in staff_iter:
             c_uid = _get_attr(s, "club_uid", None) or _get_attr(s, "team_id", None)
             if c_uid == user_club_uid:
+                s_attrs = getattr(s, "attributes", None)
+                if s_attrs is not None and callable(getattr(s_attrs, "to_display_scale", None)):
+                    try:
+                        scaled = s_attrs.to_display_scale()
+                        if scaled is not None:
+                            s_attrs = scaled
+                    except Exception:
+                        pass
                 club_staff.append({
                     "uid": _int(_get_attr(s, "uid", 0), 0) or 0,
                     "name": _get_attr(s, "name", "Staff Member"),
                     "role": _label(_get_attr(s, "role", "Coach")) or "Coach",
-                    "coachingDefending": _clamp_attr(_get_attr(s, "coaching_defending", 10), 10),
-                    "coachingAttacking": _clamp_attr(_get_attr(s, "coaching_attacking", 10), 10),
-                    "coachingTactical": _clamp_attr(_get_attr(s, "coaching_tactical", 10), 10),
-                    "judgingAbility": _clamp_attr(_get_attr(s, "judging_ability", 10), 10),
-                    "judgingPotential": _clamp_attr(_get_attr(s, "judging_potential", 10), 10),
+                    "coachingDefending": _clamp_attr(_first_attr(s_attrs, ("defending", "coaching_defending")) if s_attrs else _get_attr(s, "coaching_defending", 10), 10),
+                    "coachingAttacking": _clamp_attr(_first_attr(s_attrs, ("attacking", "coaching_attacking")) if s_attrs else _get_attr(s, "coaching_attacking", 10), 10),
+                    "coachingTactical": _clamp_attr(_first_attr(s_attrs, ("tactical", "coaching_tactical")) if s_attrs else _get_attr(s, "coaching_tactical", 10), 10),
+                    "judgingAbility": _clamp_attr(_first_attr(s_attrs, ("judging_player_ability", "judging_ability")) if s_attrs else _get_attr(s, "judging_ability", 10), 10),
+                    "judgingPotential": _clamp_attr(_first_attr(s_attrs, ("judging_player_potential", "judging_potential")) if s_attrs else _get_attr(s, "judging_potential", 10), 10),
                 })
 
-    fin_iter, _ = _open_table_stream(
-        save_instance, "finances", club_uid=user_club_uid, budget_sec=FINANCES_BUDGET_SEC
+    fin_iter, _, _ = _open_table_stream(
+        save_instance, "finances", club_uid=user_club_uid, try_where_club=True
     )
     finances_history = []
     if fin_iter is not None:
@@ -5495,7 +5618,7 @@ def extract_fm_save_payload(
         _emit("Stage 3/4", "Scanning free-agent & expiring contract targets...")
         step_3_4_market_scan_and_release_gamedb(False)
     else:
-        _record_fast_sync_skip_note()
+        step_3_4_market_scan_and_release_gamedb(True)
 
     # Stage 4 (Phase B — game_db is freed; reads span, match_stats, season_stats, archive)
     _emit("Stage 4/4", "Reading fixtures & match results...")
