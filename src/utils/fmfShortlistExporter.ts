@@ -151,7 +151,7 @@ export function buildAiResearchContextBlock(params: {
         params.includeDualPhase !== false
           ? ` | IP: ${item.roles.bestInPossession?.name ?? '--'} / OOP: ${item.roles.bestOutOfPossession?.name ?? '--'}`
           : '';
-      lines.push(`- ${item.player.name} (${item.player.position}, ${item.player.age}y): Meta ${m} (PA ${paM})${roleStr}`);
+      lines.push(`- ${item.player.name} (${item.player.position}, ${item.player.age}y): Meta ${m} (Pot ${paM})${roleStr}`);
     }
   }
 

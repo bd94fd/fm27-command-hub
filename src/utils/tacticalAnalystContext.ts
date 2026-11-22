@@ -20,6 +20,7 @@ import {
   isSuspensionActiveForCompetition,
   solveBestXi,
 } from './bestXiSolver';
+import { buildAiResearchContextBlock } from './fmfShortlistExporter';
 
 export function formatCompactPositionRatings(player: PlayerRecord): string {
   const ratings = player.positionRatings;
@@ -765,6 +766,14 @@ export function buildLiveTacticalAnalystContext(
   });
   sections.push(
     `=== SQUAD PROFILES & SEASON STATS (${topSquad.length} OF ${players.length}) ===\n${squadLines.join('\n')}`
+  );
+  sections.push(
+    buildAiResearchContextBlock({
+      clubName: clubName || 'Club',
+      players: topSquad,
+      includeMeta: true,
+      includeDualPhase: true,
+    })
   );
 
   let output = sections.join('\n\n');
