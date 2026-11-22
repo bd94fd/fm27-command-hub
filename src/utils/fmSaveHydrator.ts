@@ -1500,7 +1500,7 @@ export function hydrateAppFromDecodedFmSave(
               .map((b) =>
                 isSuspensionActiveForCompetition(b, nextFixtureCompetition)
                   ? `BANNED NEXT ${b.matchesRemaining}m ${b.scope}`
-                  : `CUP-BAN-ONLY ${b.matchesRemaining}m ${b.competitionName}`
+                  : `${b.scope === 'cup' ? 'CUP-BAN-ONLY' : 'OTHER-COMP-BAN-ONLY'} ${b.matchesRemaining}m ${b.competitionName}`
               )
               .join(', ')}]`
           : '';

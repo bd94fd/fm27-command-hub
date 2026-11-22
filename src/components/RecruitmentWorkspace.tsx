@@ -869,13 +869,33 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                           </div>
                         </button>
 
-                        <span
-                          className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold shrink-0 ${verdictBadgeClass(
-                            item.verdict
-                          )}`}
-                        >
-                          {item.verdict}
-                        </span>
+                        <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0">
+                          {(p.status === 'Surplus' ||
+                            /surplus/i.test(
+                              p.contractDetails?.promisedPlayingTime || ''
+                            )) && (
+                            <span
+                              title="Player is marked Surplus To Requirements in your FM27 save"
+                              className="rounded-full border border-rose-500/60 bg-rose-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rose-200"
+                            >
+                              In-Game: Surplus
+                            </span>
+                          )}
+                          <span
+                            title={
+                              item.verdict === 'Sell / Transfer List'
+                                ? 'App recommendation based on squad depth, wages, and age'
+                                : undefined
+                            }
+                            className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${verdictBadgeClass(
+                              item.verdict
+                            )}`}
+                          >
+                            {item.verdict === 'Sell / Transfer List'
+                              ? 'App Advice: Sell'
+                              : item.verdict}
+                          </span>
+                        </div>
                       </div>
 
                       {item.tags.length > 0 && (

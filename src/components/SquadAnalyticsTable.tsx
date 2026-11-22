@@ -52,6 +52,7 @@ import {
 interface SquadAnalyticsTableProps {
   players: PlayerRecord[];
   clubName?: string;
+  nextCompetitionName?: string | null;
   onSelectPlayer?: (player: PlayerRecord) => void;
 }
 
@@ -206,6 +207,16 @@ function renderColumnValue(row: EnrichedSquadRow, colId: SquadColumnId): React.R
             className="inline-flex rounded bg-rose-500/20 border border-rose-500/40 px-1.5 py-0.5 text-[10px] font-bold text-rose-300"
           >
             Banned ({row.activeBanMatches}m)
+          </span>
+        );
+      }
+      if (row.hasOtherCompBan) {
+        return (
+          <span
+            title={row.activeBanTooltip || 'Other-competition ban only — eligible for next match'}
+            className="inline-flex rounded bg-amber-500/15 border border-amber-500/40 px-1.5 py-0.5 text-[10px] font-bold text-amber-300 whitespace-nowrap"
+          >
+            {row.otherCompBanLabel || 'Cup Ban'} ({row.activeBanMatches}m)
           </span>
         );
       }
@@ -440,6 +451,7 @@ function renderColumnValue(row: EnrichedSquadRow, colId: SquadColumnId): React.R
 export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
   players,
   clubName,
+  nextCompetitionName = null,
   onSelectPlayer,
 }) => {
   const [viewMode, setViewMode] = useState<SquadViewMode>('table');
@@ -500,7 +512,10 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
     return activePreset.cardMetrics;
   }, [hasCustomColumnsForPreset, activeColumns, activePreset]);
 
-  const enrichedRows = useMemo(() => buildEnrichedSquadRows(players), [players]);
+  const enrichedRows = useMemo(
+    () => buildEnrichedSquadRows(players, undefined, nextCompetitionName),
+    [players, nextCompetitionName]
+  );
 
   const firstTeamCount = useMemo(
     () => players.filter((p) => p.teamSlot === undefined || p.teamSlot === 0).length,
@@ -1654,6 +1669,14 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
                                   className="rounded bg-rose-500/20 border border-rose-500/50 px-1 py-0.2 text-[9px] font-bold uppercase text-rose-300"
                                 >
                                   BAN {row.activeBanMatches}m
+                                </span>
+                              )}
+                              {!row.isBanned && row.hasOtherCompBan && (
+                                <span
+                                  title={row.activeBanTooltip || 'Other-competition ban only — eligible next match'}
+                                  className="rounded bg-amber-500/15 border border-amber-500/45 px-1 py-0.2 text-[9px] font-bold uppercase text-amber-300"
+                                >
+                                  CUP BAN {row.activeBanMatches}m
                                 </span>
                               )}
                               {row.isInjured && (

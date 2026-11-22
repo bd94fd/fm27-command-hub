@@ -31,6 +31,7 @@ import {
   getPrimaryPositionCode,
   getRealShirtNumber,
 } from '../utils/playerCardAnalysis';
+import { isSuspensionActiveForCompetition } from '../utils/bestXiSolver';
 import {
   AttributeRadarChart,
   RolePercentilePizzaChart,
@@ -41,6 +42,7 @@ interface PlayerDetailModalProps {
   player: PlayerRecord | null;
   squadPlayers?: PlayerRecord[];
   divisionBenchmarks?: DivisionBenchmarks | null;
+  nextCompetitionName?: string | null;
   shortlists: ShortlistRecord[];
   isManagedClubPlayer?: boolean;
   isTracked?: boolean;
@@ -118,6 +120,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
   player,
   squadPlayers = [],
   divisionBenchmarks = null,
+  nextCompetitionName = null,
   shortlists,
   isManagedClubPlayer = false,
   isTracked = false,
@@ -577,11 +580,21 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     Morale: {player.morale}
                   </span>
                 )}
-                {player.activeSuspensions && player.activeSuspensions.length > 0 && (
-                  <span className="rounded-md bg-rose-500/20 border border-rose-500/50 px-2 py-0.5 text-xs font-bold uppercase text-rose-300">
-                    BANNED ({player.activeSuspensions[0].matchesRemaining}m)
-                  </span>
-                )}
+                {player.activeSuspensions && player.activeSuspensions.length > 0 && (() => {
+                  const nextBan = player.activeSuspensions.find((b) =>
+                    isSuspensionActiveForCompetition(b, nextCompetitionName)
+                  );
+                  const firstBan = nextBan || player.activeSuspensions[0];
+                  return nextBan ? (
+                    <span className="rounded-md bg-rose-500/20 border border-rose-500/50 px-2 py-0.5 text-xs font-bold uppercase text-rose-300">
+                      BANNED ({nextBan.matchesRemaining}m)
+                    </span>
+                  ) : (
+                    <span className="rounded-md bg-amber-500/20 border border-amber-500/50 px-2 py-0.5 text-xs font-bold uppercase text-amber-200">
+                      {firstBan.scope === 'cup' ? 'CUP BAN ONLY' : 'OTHER-COMP BAN'} ({firstBan.matchesRemaining}m)
+                    </span>
+                  );
+                })()}
               </div>
               <p className="text-xs text-slate-400">
                 Age {player.age}
@@ -685,22 +698,39 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
 
         {/* Body */}
         <div className="p-4 sm:p-5 space-y-4">
-          {player.activeSuspensions && player.activeSuspensions.length > 0 && (
-            <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-xs text-rose-200 space-y-1">
-              <div className="font-bold uppercase tracking-wider text-rose-300">
-                Active Disciplinary Suspension — Do Not Select as Starter
-              </div>
-              {player.activeSuspensions.map((ban, idx) => (
-                <div key={`${ban.competitionName}-${idx}`}>
-                  Banned for{' '}
-                  <strong className="font-mono text-white">
-                    {ban.matchesRemaining} match{ban.matchesRemaining === 1 ? '' : 'es'}
-                  </strong>{' '}
-                  in <strong>{ban.competitionName}</strong> ({ban.scope}) — {ban.reason}.
+          {player.activeSuspensions && player.activeSuspensions.length > 0 && (() => {
+            const appliesNext = player.activeSuspensions.some((b) =>
+              isSuspensionActiveForCompetition(b, nextCompetitionName)
+            );
+            return (
+              <div
+                className={`rounded-xl border px-4 py-3 text-xs space-y-1 ${
+                  appliesNext
+                    ? 'border-rose-500/40 bg-rose-500/10 text-rose-200'
+                    : 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+                }`}
+              >
+                <div
+                  className={`font-bold uppercase tracking-wider ${
+                    appliesNext ? 'text-rose-300' : 'text-amber-300'
+                  }`}
+                >
+                  {appliesNext
+                    ? 'Active Disciplinary Suspension — Do Not Select for Next Match'
+                    : 'Other-Competition Suspension Only — Eligible for Next Match'}
                 </div>
-              ))}
-            </div>
-          )}
+                {player.activeSuspensions.map((ban, idx) => (
+                  <div key={`${ban.competitionName}-${idx}`}>
+                    Banned for{' '}
+                    <strong className="font-mono text-white">
+                      {ban.matchesRemaining} match{ban.matchesRemaining === 1 ? '' : 'es'}
+                    </strong>{' '}
+                    in <strong>{ban.competitionName}</strong> ({ban.scope}) — {ban.reason}.
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
 
           {/* TAB 1: OVERVIEW (Instant Manager's Briefing) */}
           {activeTab === 'overview' && (

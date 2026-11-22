@@ -306,7 +306,7 @@ export const MatchPrepCard: React.FC<MatchPrepCardProps> = ({
     const oppPos = opponentStanding?.position ?? null;
     const totalTeams = leagueStanding?.totalTeams ?? 16;
     const played = Math.max(1, opponentStanding?.played || 1);
-    const ppg = opponentStanding ? opponentStanding.points / played : 1.35;
+    const ppg = opponentStanding ? opponentStanding.points / played : null;
     const gdPerGame = opponentStanding ? opponentStanding.goalDiff / played : 0;
 
     // Resolve full row if present in leagueStanding.rows
@@ -337,14 +337,14 @@ export const MatchPrepCard: React.FC<MatchPrepCardProps> = ({
     const counterAdjustments: string[] = [];
     if (tierLabel === 'Title / Promotion Contender' || venue === 'A') {
       counterAdjustments.push(
-        'Rest-Defense Shape: Lock 2-3 Base (Screening DM + 2 Holding Full-Backs) and keep both wingers on Tracking Winger OOP.'
+        'Rest Defence Shape: Lock 2-3 Base (Screening DM + 2 Holding Full-Backs) and keep both wingers on Tracking Winger OOP.'
       );
       counterAdjustments.push(
         'Transition Counter: Exploit space behind opponent wing-backs with Channel Forward IP + Inside Forward IP diagonal runs.'
       );
     } else if (tierLabel === 'Relegation Low-Block Underdog') {
       counterAdjustments.push(
-        'Break Low Block: Use Positive Mentality + 3-2 Rest-Defense Base (allow 1 full-back to overlap while opposite full-back holds).'
+        'Break Low Block: Use Positive Mentality + 3-2 Rest Defence Base (allow 1 full-back to overlap while opposite full-back holds).'
       );
       counterAdjustments.push(
         'Half-Space Creation: Pair Channel Midfielder IP + Inside Forward IP with Work Ball Into Box if shot quality drops.'
@@ -354,7 +354,7 @@ export const MatchPrepCard: React.FC<MatchPrepCardProps> = ({
         'Zone 5 Control: Keep 3-man midfield triangle intact (1 Screening DM + 1 Box-to-Box + 1 Channel/Playmaker CM).'
       );
       counterAdjustments.push(
-        'Flank Security: Keep Tracking Winger OOP on both flanks and trigger 62m stamina refresh on lowest-condition wide runner.'
+        'Flank Security: Keep Tracking Winger OOP on both flanks and trigger 62m stamina refresh on lowest-stamina wide runner.'
       );
     }
 
@@ -363,7 +363,7 @@ export const MatchPrepCard: React.FC<MatchPrepCardProps> = ({
       venue,
       tierLabel,
       threatProfile,
-      ppg: ppg.toFixed(2),
+      ppg: ppg !== null ? ppg.toFixed(2) : null,
       gfPerGame: gfPerGame !== null ? gfPerGame.toFixed(2) : null,
       gaPerGame: gaPerGame !== null ? gaPerGame.toFixed(2) : null,
       counterAdjustments,
@@ -456,12 +456,14 @@ export const MatchPrepCard: React.FC<MatchPrepCardProps> = ({
               <span className="rounded bg-amber-500/15 border border-amber-500/35 px-2 py-0.5 text-amber-300">
                 {oppositionIntel.threatProfile}
               </span>
-              <span className="rounded bg-slate-900 border border-slate-700 px-2 py-0.5 text-slate-300">
-                {oppositionIntel.ppg} PPG
-                {oppositionIntel.gfPerGame
-                  ? ` · ${oppositionIntel.gfPerGame} GF/g · ${oppositionIntel.gaPerGame} GA/g`
-                  : ''}
-              </span>
+              {oppositionIntel.ppg && (
+                <span className="rounded bg-slate-900 border border-slate-700 px-2 py-0.5 text-slate-300">
+                  {oppositionIntel.ppg} PPG
+                  {oppositionIntel.gfPerGame
+                    ? ` · ${oppositionIntel.gfPerGame} GF/g · ${oppositionIntel.gaPerGame} GA/g`
+                    : ''}
+                </span>
+              )}
             </div>
           </div>
 
@@ -489,7 +491,7 @@ export const MatchPrepCard: React.FC<MatchPrepCardProps> = ({
           </div>
           {xiWarnings.length === 0 ? (
             <p className="text-xs text-emerald-700 dark:text-emerald-400">
-              All 11 starters are fit (≥85% Condition), uninjured, and eligible.
+              All 11 starters are uninjured, eligible for this match, and carry no durability or sharpness warnings.
             </p>
           ) : (
             <ul className="space-y-1.5 text-xs">
@@ -558,7 +560,7 @@ export const MatchPrepCard: React.FC<MatchPrepCardProps> = ({
             </div>
             <div className="grid grid-cols-1 gap-1 text-xs font-mono">
               <div>
-                <span className="text-slate-500">corners:</span>{' '}
+                <span className="text-slate-500">Corners:</span>{' '}
                 <strong className="text-slate-900 dark:text-slate-100">
                   {setPieceTakers.corners
                     ? `${setPieceTakers.corners.name} (${setPieceTakers.corners.attributes.corners ?? '--'})`
@@ -566,7 +568,7 @@ export const MatchPrepCard: React.FC<MatchPrepCardProps> = ({
                 </strong>
               </div>
               <div>
-                <span className="text-slate-500">penalties:</span>{' '}
+                <span className="text-slate-500">Penalties:</span>{' '}
                 <strong className="text-slate-900 dark:text-slate-100">
                   {setPieceTakers.penalties
                     ? `${setPieceTakers.penalties.name} (${setPieceTakers.penalties.attributes.penalties ?? '--'})`
@@ -574,7 +576,7 @@ export const MatchPrepCard: React.FC<MatchPrepCardProps> = ({
                 </strong>
               </div>
               <div>
-                <span className="text-slate-500">freeKicks:</span>{' '}
+                <span className="text-slate-500">Free Kicks:</span>{' '}
                 <strong className="text-slate-900 dark:text-slate-100">
                   {setPieceTakers.freeKicks
                     ? `${setPieceTakers.freeKicks.name} (${setPieceTakers.freeKicks.attributes.freeKicks ?? '--'})`

@@ -927,6 +927,10 @@ export default function App() {
               <SquadAnalyticsTable
                 players={players}
                 clubName={hydratedFmSave?.decodedPayload.meta.clubName}
+                nextCompetitionName={
+                  hydratedFmSave?.decodedPayload?.upcomingFixtures?.[0]?.competition ??
+                  null
+                }
                 onSelectPlayer={setSelectedPlayer}
               />
             </Suspense>
@@ -1100,6 +1104,10 @@ export default function App() {
             player={selectedPlayer}
             squadPlayers={players}
             divisionBenchmarks={hydratedFmSave?.divisionBenchmarks ?? null}
+            nextCompetitionName={
+              hydratedFmSave?.decodedPayload?.upcomingFixtures?.[0]?.competition ??
+              null
+            }
             shortlists={shortlists}
             isManagedClubPlayer={Boolean(
               selectedPlayer && players.some((p) => p.id === selectedPlayer.id)

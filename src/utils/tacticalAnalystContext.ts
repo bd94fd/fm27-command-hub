@@ -523,7 +523,7 @@ export function buildLiveTacticalAnalystContext(
   const surplusPlayers = players.filter((p) => isSurplusPlayer(p));
   if (surplusPlayers.length > 0) {
     actionPlanLines.push(
-      `SURPLUS TO REQUIREMENTS (Active Sale Targets — DO NOT PICK ON BENCH/XI IF COVER EXISTS): ${surplusPlayers
+      `IN-GAME SURPLUS TO REQUIREMENTS (Active Sale Targets — Listed in FM27, DO NOT PICK ON BENCH/XI IF COVER EXISTS): ${surplusPlayers
         .map(
           (p) =>
             `${p.name}(£${p.wagePw}/wk,${p.minutes}m,${p.goals}G/${p.xG.toFixed(2)}xG,${p.assists}A)`
@@ -535,16 +535,32 @@ export function buildLiveTacticalAnalystContext(
   const sellList = transferAudit.playerAdvice.filter(
     (a) => a.verdict === 'Sell / Transfer List'
   );
-  if (sellList.length > 0) {
+  const appRecommendedOnlySales = sellList.filter(
+    (a) => !isSurplusPlayer(a.player)
+  );
+  if (appRecommendedOnlySales.length > 0) {
     actionPlanLines.push(
-      `Sell / Transfer List: ${sellList
+      `APP ADVICE — Recommended to Sell (NOT Listed In-Game Yet): ${appRecommendedOnlySales
         .map((a) => {
           const youthTag = a.tags.find((t) => t.startsWith('Youth Ready: '));
           const succPart = youthTag
             ? `, promote ${youthTag.replace('Youth Ready: ', '')}`
             : '';
-          const surpPart = isSurplusPlayer(a.player) ? ', SURPLUS' : '';
-          return `${a.player.name}(£${a.player.wagePw}/wk${surpPart}${succPart})`;
+          return `${a.player.name}(£${a.player.wagePw}/wk,InGame:${a.player.status}${succPart})`;
+        })
+        .join(' | ')}`
+    );
+  }
+  const inGameListedWithYouth = sellList.filter((a) => isSurplusPlayer(a.player));
+  if (inGameListedWithYouth.length > 0) {
+    actionPlanLines.push(
+      `Sell / Transfer List (Already Surplus In-Game): ${inGameListedWithYouth
+        .map((a) => {
+          const youthTag = a.tags.find((t) => t.startsWith('Youth Ready: '));
+          const succPart = youthTag
+            ? `, promote ${youthTag.replace('Youth Ready: ', '')}`
+            : '';
+          return `${a.player.name}(£${a.player.wagePw}/wk,IN-GAME SURPLUS${succPart})`;
         })
         .join(' | ')}`
     );
@@ -727,8 +743,11 @@ export function buildLiveTacticalAnalystContext(
       ? '|Promote'
       : adv && adv.verdict !== 'Hold'
         ? `|${adv.verdict
-            .replace('Sell / Transfer List', 'Sell')
-            .replace('Replace Before Selling', 'Replace')
+            .replace(
+              'Sell / Transfer List',
+              isSurplusPlayer(p) ? 'InGameSurplus:Sell' : 'AppAdvice:Sell'
+            )
+            .replace('Replace Before Selling', 'AppAdvice:Replace')
             .replace('Protect Youth Asset', 'ProtectYth')
             .replace('Let Expire', 'LetExp')
             .replace('Renew Now', 'Renew')

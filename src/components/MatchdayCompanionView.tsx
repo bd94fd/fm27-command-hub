@@ -181,13 +181,17 @@ export const MatchdayCompanionView: React.FC<MatchdayCompanionViewProps> = ({
           s.positionGroup !== 'Goalkeeper' &&
           s.positionGroup !== 'Centre-Back'
       )
-      .sort(
-        (a, b) =>
-          (a.player!.attributes.stamina || 10) * 4 +
-          (a.player!.condition ?? 85) -
-          ((b.player!.attributes.stamina || 10) * 4 +
-            (b.player!.condition ?? 85))
-      )
+      .sort((a, b) => {
+        const aDur =
+          (a.player!.attributes.stamina || 10) * 3 +
+          (a.player!.attributes.naturalFitness ?? 10) * 2 +
+          (a.player!.scoutBadges?.includes('Injury-Prone') ? -15 : 0);
+        const bDur =
+          (b.player!.attributes.stamina || 10) * 3 +
+          (b.player!.attributes.naturalFitness ?? 10) * 2 +
+          (b.player!.scoutBadges?.includes('Injury-Prone') ? -15 : 0);
+        return aDur - bDur;
+      })
       .slice(0, 3);
   }, [slots]);
 
@@ -206,7 +210,7 @@ export const MatchdayCompanionView: React.FC<MatchdayCompanionViewProps> = ({
       {
         id: 'kickoff',
         minute: "00' Kickoff",
-        title: '85%+ Condition Floor & Tracking Wingers OOP Locked',
+        title: 'Durability Check & Tracking Wingers OOP Locked',
         detail: `Verify ${restMatrix.structureLabel} (${restMatrix.stabilityScore}/100 Stability) and Short/Mixed GK distribution.`,
       },
       {
@@ -214,7 +218,7 @@ export const MatchdayCompanionView: React.FC<MatchdayCompanionViewProps> = ({
         minute: "45' Half-Time",
         title: 'Free Stoppage Assessment (0/3 Second-Half Windows Used)',
         detail:
-          'Only sub at HT if a starter drops below 72% condition or carries a yellow card on an exposed flank.',
+          'Only sub at HT if a starter looks visibly fatigued, picks up a knock, or carries a yellow card on an exposed flank.',
       },
       {
         id: 'w62',
@@ -322,13 +326,14 @@ export const MatchdayCompanionView: React.FC<MatchdayCompanionViewProps> = ({
           {slots.map((slot) => {
             const p = slot.player;
             const restCat = classifySlotRestDefenseCategory(slot);
-            const cond = p?.condition ?? 95;
-            const condCls =
-              cond >= 88
+            const stamina = p?.attributes.stamina ?? 0;
+            const natFit = p?.attributes.naturalFitness ?? null;
+            const isInjuryProne = Boolean(p?.scoutBadges?.includes('Injury-Prone'));
+            const durCls = isInjuryProne || stamina < 10
+              ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+              : stamina >= 13 && (natFit === null || natFit >= 12)
                 ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                : cond >= 80
-                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                  : 'bg-rose-500/20 text-rose-300 border-rose-500/40';
+                : 'bg-amber-500/20 text-amber-300 border-amber-500/40';
 
             return (
               <div
@@ -346,9 +351,16 @@ export const MatchdayCompanionView: React.FC<MatchdayCompanionViewProps> = ({
                   </div>
                   {p && (
                     <span
-                      className={`rounded border px-1.5 py-0.5 font-mono text-[10px] font-bold shrink-0 ${condCls}`}
+                      title={
+                        isInjuryProne
+                          ? 'Injury-Prone — manage workload and sub early'
+                          : 'Stamina & Natural Fitness (Durability)'
+                      }
+                      className={`rounded border px-1.5 py-0.5 font-mono text-[10px] font-bold shrink-0 ${durCls}`}
                     >
-                      C{cond}% · Sta {p.attributes.stamina}
+                      Sta {stamina}
+                      {natFit !== null ? ` · NF ${natFit}` : ''}
+                      {isInjuryProne ? ' · Risk' : ''}
                     </span>
                   )}
                 </div>

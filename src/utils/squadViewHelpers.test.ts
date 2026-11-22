@@ -249,3 +249,51 @@ test('countActiveSecondaryFilters and currency formatters work cleanly', () => {
   assert.ok(durabilityPreset?.defaultColumns.includes('condSharp'));
   assert.ok(!durabilityPreset?.defaultColumns.includes('morale'));
 });
+
+test('Phase 3: cup-only ban stays Available for league fixtures with amber Cup Ban Only flag', () => {
+  const cupBannedPlayer = makePlayer({
+    id: 'cup-ban-1',
+    name: 'Cup Banned Winger',
+    position: 'AML',
+    activeSuspensions: [
+      {
+        playerUid: 501,
+        playerName: 'Cup Banned Winger',
+        matchesRemaining: 1,
+        competitionName: 'Croky Cup',
+        scope: 'cup',
+        reason: 'Red card',
+      },
+    ],
+  });
+
+  const leagueRows = buildEnrichedSquadRows(
+    [cupBannedPlayer],
+    undefined,
+    'Belgian National Division 1'
+  );
+  assert.equal(leagueRows[0].isBanned, false);
+  assert.equal(leagueRows[0].hasOtherCompBan, true);
+  assert.equal(leagueRows[0].otherCompBanLabel, 'Cup Ban Only');
+
+  const available = filterAndSortSquadRows(leagueRows, {
+    unit: 'ALL',
+    search: '',
+    posGroup: 'ALL',
+    status: 'ALL',
+    expiryYear: 'ALL',
+    availability: 'AVAILABLE',
+    sortKey: 'stars',
+    sortDir: 'desc',
+  });
+  assert.equal(available.length, 1);
+
+  const cupRows = buildEnrichedSquadRows(
+    [cupBannedPlayer],
+    undefined,
+    'Croky Cup'
+  );
+  assert.equal(cupRows[0].isBanned, true);
+  assert.equal(cupRows[0].hasOtherCompBan, false);
+});
+

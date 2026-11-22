@@ -14,7 +14,12 @@ import {
   CompetitionRegistrationRules,
 } from '../types/fmSave';
 import { HydratedSaveState } from '../utils/fmSaveHydrator';
-import { FormationPresetKey, SolvedSlot, solveBestXi } from '../utils/bestXiSolver';
+import {
+  FormationPresetKey,
+  SolvedSlot,
+  isSuspensionActiveForCompetition,
+  solveBestXi,
+} from '../utils/bestXiSolver';
 import { PersistedCustomSlot } from '../services/fmStorage';
 import { InteractivePitchBuilder } from './InteractivePitchBuilder';
 import { MatchPrepCard } from './MatchPrepCard';
@@ -237,28 +242,54 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
           </div>
         ) : (
           <>
-            {combinedSuspensions.length > 0 && (
-              <div className="p-3.5 rounded-xl border border-rose-500/40 bg-rose-950/25 space-y-2">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-rose-300">
-                  <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-                  <span>Active Suspensions ({combinedSuspensions.length})</span>
+            {combinedSuspensions.length > 0 && (() => {
+              const nextComp =
+                hydratedFmSave?.decodedPayload?.upcomingFixtures?.[0]?.competition ??
+                null;
+              return (
+                <div className="p-3.5 rounded-xl border border-amber-500/40 bg-slate-900/75 space-y-2">
+                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-300">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>Active Suspensions ({combinedSuspensions.length})</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {combinedSuspensions.map((ban, idx) => {
+                      const appliesNext = isSuspensionActiveForCompetition(
+                        ban,
+                        nextComp
+                      );
+                      return (
+                        <div
+                          key={`${ban.playerUid}-${ban.competitionName}-${idx}`}
+                          className={`rounded-lg border px-2.5 py-1 text-xs ${
+                            appliesNext
+                              ? 'border-rose-500/45 bg-rose-950/40 text-rose-200'
+                              : 'border-amber-500/40 bg-amber-950/30 text-amber-200'
+                          }`}
+                        >
+                          <strong className="text-white">{ban.playerName}</strong>{' '}
+                          <span
+                            className={`font-mono font-bold ${
+                              appliesNext ? 'text-rose-300' : 'text-amber-300'
+                            }`}
+                          >
+                            ({ban.matchesRemaining}m)
+                          </span>{' '}
+                          · {ban.competitionName}{' '}
+                          {!appliesNext && (
+                            <span className="ml-1 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-200">
+                              {ban.scope === 'cup'
+                                ? 'Cup Ban Only — Eligible Next Match'
+                                : 'Other-Comp Ban — Eligible Next Match'}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {combinedSuspensions.map((ban, idx) => (
-                    <div
-                      key={`${ban.playerUid}-${ban.competitionName}-${idx}`}
-                      className="rounded-lg border border-rose-500/40 bg-slate-950/70 px-2.5 py-1 text-xs text-rose-200"
-                    >
-                      <strong className="text-white">{ban.playerName}</strong>{' '}
-                      <span className="font-mono text-rose-300 font-bold">
-                        ({ban.matchesRemaining}m)
-                      </span>{' '}
-                      · {ban.competitionName}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
             <InteractivePitchBuilder
               players={scopedPlayers}

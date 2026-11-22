@@ -26,6 +26,7 @@ import {
   evaluatePlayerForSlot,
   FORMATION_PRESETS,
   FormationPresetKey,
+  isSuspensionActiveForCompetition,
   getPlayerSuspension,
   solveBestXi,
   SolvedSlot,
@@ -973,11 +974,21 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                       selectedSlot.flank
                     );
                     const dur = computeDurabilityProfile(p);
+                    const activeNextBan = (p.activeSuspensions || []).find((b) =>
+                      isSuspensionActiveForCompetition(b, nextCompetitionName)
+                    );
+                    const otherCompBan = !activeNextBan
+                      ? (p.activeSuspensions || [])[0]
+                      : undefined;
                     const tag =
                       p.status === 'Injured'
                         ? ' [INJ]'
-                        : p.activeSuspensions && p.activeSuspensions.length > 0
+                        : activeNextBan
                         ? ' [BAN]'
+                        : otherCompBan
+                        ? otherCompBan.scope === 'cup'
+                          ? ' [CUP-BAN]'
+                          : ' [OTHER-BAN]'
                         : '';
                     return (
                       <option key={p.id} value={p.id}>

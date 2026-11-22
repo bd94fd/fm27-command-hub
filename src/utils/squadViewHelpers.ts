@@ -1,4 +1,5 @@
 import { PlayerRecord } from '../types/fm27';
+import { isSuspensionActiveForCompetition } from './bestXiSolver';
 import {
   ClubDnaPillarWeights,
   DEFAULT_CLUB_DNA_WEIGHTS,
@@ -363,6 +364,8 @@ export interface EnrichedSquadRow {
   development: DevelopmentAdvice;
   hasPlayed: boolean;
   isBanned: boolean;
+  hasOtherCompBan: boolean;
+  otherCompBanLabel: string | null;
   activeBanMatches: number;
   activeBanTooltip: string | null;
   isInjured: boolean;
@@ -374,7 +377,8 @@ export interface EnrichedSquadRow {
 
 export function buildEnrichedSquadRows(
   players: PlayerRecord[],
-  dnaWeights?: ClubDnaPillarWeights
+  dnaWeights?: ClubDnaPillarWeights,
+  nextCompetitionName?: string | null
 ): EnrichedSquadRow[] {
   const weights = dnaWeights || loadPersistedClubDnaWeights() || DEFAULT_CLUB_DNA_WEIGHTS;
   return players.map((player) => {
@@ -384,10 +388,14 @@ export function buildEnrichedSquadRows(
     const dna = evaluatePlayerClubDna(player.position, player.attributes, weights);
     const contract = evaluateContractStanding(player);
     const development = evaluateDevelopmentAdvice(player, null);
-    const activeBan =
-      Array.isArray(player.activeSuspensions) && player.activeSuspensions.length > 0
-        ? player.activeSuspensions[0]
-        : null;
+    const bans = Array.isArray(player.activeSuspensions)
+      ? player.activeSuspensions
+      : [];
+    const activeNextBan =
+      bans.find((b) => isSuspensionActiveForCompetition(b, nextCompetitionName)) ||
+      null;
+    const otherCompBan = !activeNextBan && bans.length > 0 ? bans[0] : null;
+    const displayBan = activeNextBan || otherCompBan;
     const expiryYear = extractExpiryYear(player.expires);
     const isExpiringSoon = contract.renewalRisk === 'Expiring Soon';
 
@@ -405,11 +413,21 @@ export function buildEnrichedSquadRows(
       contract,
       development,
       hasPlayed: hasPlayerMatchStats(player),
-      isBanned: Boolean(activeBan),
-      activeBanMatches: activeBan?.matchesRemaining ?? 0,
-      activeBanTooltip: activeBan
-        ? `${activeBan.competitionName}: ${activeBan.reason}`
+      isBanned: Boolean(activeNextBan),
+      hasOtherCompBan: Boolean(otherCompBan),
+      otherCompBanLabel: otherCompBan
+        ? otherCompBan.scope === 'cup'
+          ? 'Cup Ban Only'
+          : otherCompBan.scope === 'league'
+            ? 'League Ban Only'
+            : 'Other-Comp Ban'
         : null,
+      activeBanMatches: displayBan?.matchesRemaining ?? 0,
+      activeBanTooltip: activeNextBan
+        ? `${activeNextBan.competitionName}: ${activeNextBan.reason}`
+        : otherCompBan
+          ? `${otherCompBan.competitionName} (${otherCompBan.reason}) — Eligible for next match`
+          : null,
       isInjured: player.status === 'Injured',
       isExpiringSoon,
       expiryYear,
