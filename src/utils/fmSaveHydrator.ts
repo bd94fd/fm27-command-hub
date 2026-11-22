@@ -1383,7 +1383,9 @@ export function hydrateAppFromDecodedFmSave(
           : `Current season across ${finalSquad.length} squad players`;
     } else {
       squadOutputLabel = '0 GP · Season Not Started';
-      squadOutputSubLabel = `Re-sync with Full Sync if matches have been played (${finalSquad.length} players)`;
+      squadOutputSubLabel = decoded.meta.fastSync
+        ? `Re-sync with Full Sync if matches have been played (${finalSquad.length} players)`
+        : `0 competitive matches played yet (${finalSquad.length} players)`;
     }
   }
 
@@ -1413,10 +1415,12 @@ export function hydrateAppFromDecodedFmSave(
           : `-£${Math.abs(diff).toLocaleString()} p/w`;
       wageComplianceLabel = `£${decoded.finances.wagePayrollWeekly.toLocaleString()} / £${decoded.finances.wageBudgetWeekly.toLocaleString()} p/w (${diffStr})`;
     }
-    if (decoded.finances.balance !== null) {
+    if (decoded.meta.balance !== null && decoded.meta.balance !== undefined) {
+      balanceLabel = formatMoney(decoded.meta.balance);
+    } else if (decoded.finances.balance !== null) {
       balanceLabel = formatMoney(decoded.finances.balance);
     }
-  } else if (decoded.meta.balance !== null) {
+  } else if (decoded.meta.balance !== null && decoded.meta.balance !== undefined) {
     balanceLabel = formatMoney(decoded.meta.balance);
   }
 

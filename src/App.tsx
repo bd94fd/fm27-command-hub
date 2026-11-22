@@ -914,11 +914,12 @@ export default function App() {
                       : '--')}
                 </div>
                 <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  {summary.played > 0
-                    ? leagueStandingSub
-                    : hydratedFmSave
-                      ? hydratedFmSave.leagueStandingLabel || '0 competitive matches played yet'
-                      : 'Awaiting .fm save'}
+                  {hydratedFmSave?.leagueStandingLabel ||
+                    (summary.played > 0
+                      ? leagueStandingSub
+                      : hydratedFmSave
+                        ? '0 competitive matches played yet'
+                        : 'Awaiting .fm save')}
                 </div>
               </div>
 
