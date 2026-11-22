@@ -26,6 +26,7 @@ import {
   StaffRecord,
 } from '../types/fm27';
 import { verifyFm27Accuracy } from '../data/fm27KnowledgeBase';
+import { buildOfflineTacticalBriefing } from '../utils/offlineBriefingEngine';
 import {
   parseFmStructuredExport,
   ParsedFmExportResult,
@@ -468,15 +469,47 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         err instanceof Error
           ? err.message
           : 'Error communicating with FM27 Tactical Analyst';
-      let friendlyMsg = rawMsg;
-      if (
-        /\b(503|429)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded/i.test(
+      const isOfflineOrKeyMissing =
+        /GEMINI_API_KEY|not configured|API key|Failed to fetch|NetworkError|503|429|UNAVAILABLE|RESOURCE_EXHAUSTED/i.test(
           rawMsg
-        )
-      ) {
-        friendlyMsg =
-          'The AI Tactical Analyst is temporarily busy due to high demand. Automatic retries were attempted — please wait a few seconds and try again.';
-      } else if (rawMsg.trim().includes('{"error"') || rawMsg.trim().startsWith('{')) {
+        );
+
+      if (isOfflineOrKeyMissing) {
+        const offlineData = buildOfflineTacticalBriefing({
+          clubName: clubName || '--',
+          saveDate: currentSaveDate,
+          nextFixture: hydratedFmSave?.nextFixtureLabel || nextFixture,
+          leagueStandingSub: hydratedFmSave?.leagueStandingLabel || leagueStandingSub,
+          wageSpend,
+          balance: hydratedFmSave?.balanceLabel || balance,
+          players,
+          matches,
+          userQuery: finalPrompt,
+          activeShape,
+          customSlots,
+          fallbackReason: /GEMINI_API_KEY|not configured|API key/i.test(rawMsg)
+            ? 'no external LLM API key configured'
+            : 'AI service unavailable / offline',
+        });
+        const offlineTurn: ChatTurnPayload = {
+          id: `assistant-offline-${Date.now()}`,
+          role: 'assistant',
+          screenDetected: offlineData.screenDetected,
+          inGameDate: offlineData.inGameDate,
+          analysisMarkdown: offlineData.analysisMarkdown,
+          immediateClicks: offlineData.immediateClicks,
+          followUpQuestions: offlineData.followUpQuestions,
+          chronicleTitle: offlineData.chronicleTitle,
+          chronicleOutcomeMetric: offlineData.chronicleOutcomeMetric,
+          eventNumber: nextEventNum,
+          playerUpdatesApplied: [],
+        };
+        setTurns((prev) => [...prev, offlineTurn]);
+        return;
+      }
+
+      let friendlyMsg = rawMsg;
+      if (rawMsg.trim().includes('{"error"') || rawMsg.trim().startsWith('{')) {
         try {
           const parsed = JSON.parse(rawMsg.slice(rawMsg.indexOf('{'))) as {
             error?: { message?: string };
