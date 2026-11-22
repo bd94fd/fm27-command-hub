@@ -1,15 +1,21 @@
-import React, { useState, useMemo, useDeferredValue } from 'react';
+import React, { useState, useMemo, useDeferredValue, useEffect } from 'react';
 import {
+  ArrowDown,
+  ArrowUp,
   BarChart3,
+  Columns3,
+  Filter,
   GitCompare,
+  LayoutList,
+  RotateCcw,
   Search,
   Sparkles,
   Table2,
   TrendingUp,
   Users,
+  X,
 } from 'lucide-react';
 import { PlayerRecord } from '../types/fm27';
-import { computeFm27EngineMetrics } from '../utils/fmSyncEngine';
 import {
   computeProgressionDiff,
   loadProgressionArchive,
@@ -18,6 +24,30 @@ import {
   AttributeRadarChart,
   SquadAgeValueScatterPlot,
 } from './FootballAnalyticsCharts';
+import {
+  ALL_CUSTOMISABLE_COLUMNS,
+  AvailabilityFilter,
+  EnrichedSquadRow,
+  PersistedColumnMap,
+  PositionGroupFilter,
+  SQUAD_COLUMNS,
+  SQUAD_VIEW_PRESETS,
+  SquadColumnId,
+  SquadSortKey,
+  SquadUnitFilter,
+  SquadViewPresetId,
+  buildEnrichedSquadRows,
+  computeSquadSummary,
+  countActiveSecondaryFilters,
+  extractExpiryYear,
+  filterAndSortSquadRows,
+  formatCompactCurrency,
+  formatWeeklyWage,
+  getDefaultSortDirForKey,
+  isSquadMissingMatchStats,
+  loadPersistedSquadColumns,
+  savePersistedSquadColumns,
+} from '../utils/squadViewHelpers';
 
 interface SquadAnalyticsTableProps {
   players: PlayerRecord[];
@@ -26,21 +56,7 @@ interface SquadAnalyticsTableProps {
 }
 
 type SquadViewMode = 'table' | 'analytics' | 'compare' | 'progression';
-type PositionGroupFilter = 'ALL' | 'GK' | 'DEF' | 'MID' | 'FWD';
-
-function getPositionGroup(pos: string): Exclude<PositionGroupFilter, 'ALL'> {
-  const p = (pos || '').toUpperCase();
-  if (p.includes('GK')) return 'GK';
-  if (p.includes('ST') || p.includes('CF')) return 'FWD';
-  if (/\b(DC|DL|DR|CB|WB)\b|D\s*\(/.test(p)) return 'DEF';
-  return 'MID';
-}
-
-function extractExpiryYear(expires?: string): string | null {
-  if (!expires || expires === 'N/A' || expires === '--') return null;
-  const m = expires.match(/\b(20\d{2})\b/);
-  return m ? m[1] : null;
-}
+type ListDisplayMode = 'cards' | 'table';
 
 const COMPARE_ROWS: Array<{
   label: string;
@@ -60,41 +76,519 @@ const COMPARE_ROWS: Array<{
   { label: 'Off The Ball', key: 'offTheBall' },
 ];
 
+const SORT_OPTIONS: Array<{ value: SquadSortKey; label: string }> = [
+  { value: 'position', label: 'Position (GK → FWD)' },
+  { value: 'stars', label: 'Ability Stars' },
+  { value: 'potential', label: 'Potential Stars' },
+  { value: 'age', label: 'Age' },
+  { value: 'dna', label: 'Club DNA Fit %' },
+  { value: 'durability', label: 'Durability' },
+  { value: 'engine', label: 'Physical Score' },
+  { value: 'rating', label: 'Match Rating' },
+  { value: 'apps', label: 'Minutes Played' },
+  { value: 'goals', label: 'Goals' },
+  { value: 'assists', label: 'Assists' },
+  { value: 'xGI', label: 'xG + xA' },
+  { value: 'wage', label: 'Weekly Wage' },
+  { value: 'value', label: 'Market Value' },
+  { value: 'expiry', label: 'Contract Expiry' },
+  { value: 'name', label: 'Name (A–Z)' },
+];
+
+const STATS_SORT_KEYS: ReadonlySet<SquadSortKey> = new Set([
+  'rating',
+  'apps',
+  'goals',
+  'assists',
+  'xGI',
+]);
+
+function durabilityBadgeClass(tier: EnrichedSquadRow['durability']['tier']): string {
+  switch (tier) {
+    case 'Ironman':
+      return 'bg-emerald-500/15 text-emerald-400 border-emerald-500/35';
+    case 'Reliable':
+      return 'bg-sky-500/15 text-sky-300 border-sky-500/35';
+    case 'Manage Load':
+      return 'bg-amber-500/15 text-amber-300 border-amber-500/35';
+    case 'Fragile':
+      return 'bg-rose-500/15 text-rose-300 border-rose-500/35';
+  }
+}
+
+function renewalBadgeClass(risk: EnrichedSquadRow['contract']['renewalRisk']): string {
+  switch (risk) {
+    case 'Expiring Soon':
+      return 'bg-rose-500/15 text-rose-300 border-rose-500/35';
+    case 'Monitor':
+      return 'bg-amber-500/15 text-amber-300 border-amber-500/35';
+    case 'Secure':
+      return 'bg-emerald-500/15 text-emerald-400 border-emerald-500/35';
+  }
+}
+
+function physicalTierClass(tier: EnrichedSquadRow['physical']['tier']): string {
+  switch (tier) {
+    case 'Elite':
+      return 'text-emerald-400';
+    case 'Strong':
+      return 'text-sky-400';
+    case 'Average':
+      return 'text-slate-300';
+    case 'Below Par':
+      return 'text-amber-400';
+  }
+}
+
+function renderColumnValue(row: EnrichedSquadRow, colId: SquadColumnId): React.ReactNode {
+  const p = row.player;
+  const attrs = p.attributes;
+
+  switch (colId) {
+    case 'pos':
+      return (
+        <span className="inline-block rounded bg-slate-200/80 dark:bg-slate-800 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-slate-800 dark:text-slate-200">
+          {p.position || '—'}
+        </span>
+      );
+    case 'age':
+      return (
+        <span className="font-mono tabular-nums text-slate-700 dark:text-slate-200">
+          {p.age > 0 ? p.age : '—'}
+        </span>
+      );
+    case 'stars':
+      return (
+        <span className="font-mono font-bold tabular-nums text-amber-500 whitespace-nowrap">
+          {(p.ability || 0).toFixed(1)}★{' '}
+          <span className="font-normal text-slate-400">/</span>{' '}
+          {(p.potential || 0).toFixed(1)}★
+        </span>
+      );
+    case 'roles':
+      return (
+        <span className="text-slate-600 dark:text-slate-300 truncate max-w-[200px] inline-block align-bottom">
+          {p.ipRole || '—'}
+          {p.oopRole ? ` / ${p.oopRole}` : ''}
+        </span>
+      );
+    case 'durability':
+      return (
+        <span
+          title={row.durability.headline}
+          className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${durabilityBadgeClass(
+            row.durability.tier
+          )}`}
+        >
+          {row.durability.tier}
+        </span>
+      );
+    case 'dna':
+      return (
+        <span
+          title={`Best DNA archetype: ${row.dnaArchetype}`}
+          className={`font-mono font-bold tabular-nums ${
+            row.dnaFitPct >= 75
+              ? 'text-emerald-400'
+              : row.dnaFitPct >= 60
+                ? 'text-sky-400'
+                : 'text-slate-400'
+          }`}
+        >
+          {row.dnaFitPct}%
+        </span>
+      );
+    case 'availability':
+      if (row.isBanned) {
+        return (
+          <span
+            title={row.activeBanTooltip || 'Suspended'}
+            className="inline-flex rounded bg-rose-500/20 border border-rose-500/40 px-1.5 py-0.5 text-[10px] font-bold text-rose-300"
+          >
+            Banned ({row.activeBanMatches}m)
+          </span>
+        );
+      }
+      if (row.isInjured) {
+        return (
+          <span className="inline-flex rounded bg-amber-500/20 border border-amber-500/40 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">
+            Injured
+          </span>
+        );
+      }
+      if (p.onLoan) {
+        return (
+          <span className="inline-flex rounded bg-indigo-500/20 border border-indigo-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-300">
+            On Loan
+          </span>
+        );
+      }
+      return <span className="text-emerald-400 font-medium">Available</span>;
+    case 'staminaFit':
+      return (
+        <span className="font-mono tabular-nums text-slate-700 dark:text-slate-200 whitespace-nowrap">
+          {row.durability.stamina} /{' '}
+          {row.durability.naturalFitness !== null ? row.durability.naturalFitness : '—'}
+        </span>
+      );
+    case 'badges': {
+      const badges = p.scoutBadges || [];
+      if (badges.length === 0) return <span className="text-slate-500">—</span>;
+      return (
+        <div className="flex flex-wrap gap-1 max-w-[190px]">
+          {badges.slice(0, 2).map((b) => (
+            <span
+              key={b}
+              className={`rounded px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap border ${
+                b === 'Injury-Prone'
+                  ? 'bg-rose-500/15 text-rose-300 border-rose-500/35'
+                  : 'bg-slate-800 text-slate-300 border-slate-700'
+              }`}
+            >
+              {b}
+            </span>
+          ))}
+        </div>
+      );
+    }
+    case 'foot':
+      return (
+        <span className="text-slate-600 dark:text-slate-300 whitespace-nowrap">
+          {p.preferredFoot || '—'}
+        </span>
+      );
+    case 'morale':
+      return (
+        <span className="text-slate-600 dark:text-slate-300 whitespace-nowrap">
+          {p.morale || '—'}
+        </span>
+      );
+    case 'apps':
+      return (
+        <span className="font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
+          {row.hasPlayed ? `${p.apps} (${p.minutes}m)` : '—'}
+        </span>
+      );
+    case 'rating':
+      return (
+        <span className="font-mono font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+          {typeof p.rating === 'number' && p.rating > 0 ? p.rating.toFixed(2) : '—'}
+        </span>
+      );
+    case 'goalsXg':
+      return (
+        <span className="font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
+          {row.hasPlayed ? `${p.goals ?? 0} (${(p.xG ?? 0).toFixed(2)})` : '—'}
+        </span>
+      );
+    case 'assistsXa':
+      return (
+        <span className="font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
+          {row.hasPlayed ? `${p.assists ?? 0} (${(p.xA ?? 0).toFixed(2)})` : '—'}
+        </span>
+      );
+    case 'prPasses':
+      return (
+        <span className="font-mono tabular-nums text-slate-700 dark:text-slate-300">
+          {row.hasPlayed && (p.prPassesPer90 ?? 0) > 0
+            ? (p.prPassesPer90 ?? 0).toFixed(2)
+            : '—'}
+        </span>
+      );
+    case 'duels':
+      return (
+        <span className="font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
+          {row.hasPlayed && ((p.hdrPct ?? 0) > 0 || (p.tckPct ?? 0) > 0)
+            ? `${p.hdrPct ?? 0}% / ${p.tckPct ?? 0}%`
+            : '—'}
+        </span>
+      );
+    case 'last5': {
+      const avg = p.last5Form?.averageRating;
+      if (!avg || avg <= 0) return <span className="text-slate-500">—</span>;
+      const arrow =
+        p.last5Form?.trend === 'improving'
+          ? '↗'
+          : p.last5Form?.trend === 'declining'
+            ? '↘'
+            : '→';
+      return (
+        <span className="font-mono tabular-nums text-slate-200 whitespace-nowrap">
+          {avg.toFixed(2)} {arrow}
+        </span>
+      );
+    }
+    case 'engine':
+      return (
+        <span
+          className={`font-mono font-bold tabular-nums whitespace-nowrap ${physicalTierClass(
+            row.physical.tier
+          )}`}
+        >
+          {row.physical.score}/100{' '}
+          <span className="text-[10px] font-sans font-semibold opacity-80">
+            {row.physical.tier}
+          </span>
+        </span>
+      );
+    case 'physCore':
+      return (
+        <span className="font-mono tabular-nums text-slate-800 dark:text-slate-100 whitespace-nowrap">
+          {attrs?.pace ?? 10}/{attrs?.acceleration ?? 10}/{attrs?.stamina ?? 10}/
+          {attrs?.jumpingReach ?? 10}
+        </span>
+      );
+    case 'speedJump':
+      return (
+        <span className="font-mono tabular-nums text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+          {row.physical.topSpeedKmh}km/h (+{row.physical.jumpHeightMeters}m)
+        </span>
+      );
+    case 'heightFoot':
+      return (
+        <span className="font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
+          {p.heightCm ? `${p.heightCm}cm` : '—'} ·{' '}
+          {p.preferredFoot ? p.preferredFoot.slice(0, 1) : '—'}
+        </span>
+      );
+    case 'mentalKey':
+      return (
+        <span className="font-mono tabular-nums text-slate-800 dark:text-slate-100 whitespace-nowrap">
+          {attrs?.determination ?? 10}/{attrs?.workRate ?? 10}/{attrs?.decisions ?? 10}/
+          {attrs?.offTheBall ?? 10}
+        </span>
+      );
+    case 'techKey':
+      if (row.isGoalkeeper) {
+        return (
+          <span
+            title="GK: Reflexes / Handling / Command / Aerial Reach"
+            className="font-mono tabular-nums text-sky-300 whitespace-nowrap"
+          >
+            GK {attrs?.reflexes ?? 10}/{attrs?.handling ?? 10}/{attrs?.commandOfArea ?? 10}/
+            {attrs?.aerialReach ?? 10}
+          </span>
+        );
+      }
+      return (
+        <span
+          title="Passing / First Touch / Finishing / Tackling"
+          className="font-mono tabular-nums text-slate-800 dark:text-slate-100 whitespace-nowrap"
+        >
+          {attrs?.passing ?? 10}/{attrs?.firstTouch ?? 10}/{attrs?.finishing ?? 10}/
+          {attrs?.tackling ?? 10}
+        </span>
+      );
+    case 'wage':
+      return (
+        <span className="font-mono tabular-nums text-slate-700 dark:text-slate-200 whitespace-nowrap">
+          {formatWeeklyWage(p.wagePw)}
+        </span>
+      );
+    case 'expiry':
+      return (
+        <span className="font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
+          {row.expiryYear || '—'}
+          {row.optYears > 0 ? (
+            <span className="ml-1 text-[10px] text-sky-400">+{row.optYears}y</span>
+          ) : null}
+        </span>
+      );
+    case 'renewalRisk':
+      return (
+        <span
+          className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${renewalBadgeClass(
+            row.contract.renewalRisk
+          )}`}
+        >
+          {row.contract.renewalRisk}
+        </span>
+      );
+    case 'value':
+      return (
+        <span className="font-mono tabular-nums text-slate-700 dark:text-slate-200 whitespace-nowrap">
+          {formatCompactCurrency(p.marketValue)}
+        </span>
+      );
+    case 'status':
+      return (
+        <span className="text-slate-600 dark:text-slate-300 whitespace-nowrap">
+          {p.status}
+        </span>
+      );
+    case 'devStage':
+      return (
+        <span className="text-slate-600 dark:text-slate-300 whitespace-nowrap">
+          {row.development.stage === 'High-Upside Prospect'
+            ? 'Prospect'
+            : row.development.stage}
+        </span>
+      );
+  }
+}
+
 export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
   players,
   clubName,
   onSelectPlayer,
 }) => {
   const [viewMode, setViewMode] = useState<SquadViewMode>('table');
+  const [activePresetId, setActivePresetId] = useState<SquadViewPresetId>('overview');
+  const [customColumnsMap, setCustomColumnsMap] = useState<PersistedColumnMap>(() =>
+    loadPersistedSquadColumns()
+  );
+  const [displayMode, setDisplayMode] = useState<ListDisplayMode>(() =>
+    typeof window !== 'undefined' && window.innerWidth < 768 ? 'cards' : 'table'
+  );
+  const [displayManuallySet, setDisplayManuallySet] = useState(false);
+
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
-  const [squadUnitFilter, setSquadUnitFilter] = useState<
-    'FIRST_TEAM' | 'YOUTH_RESERVES' | 'ALL'
-  >('FIRST_TEAM');
+  const [squadUnitFilter, setSquadUnitFilter] = useState<SquadUnitFilter>('FIRST_TEAM');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [posFilter, setPosFilter] = useState<PositionGroupFilter>('ALL');
   const [expiryYearFilter, setExpiryYearFilter] = useState<string>('ALL');
-  const [sortBy, setSortBy] = useState<
-    'rating' | 'stars' | 'xGI' | 'speed' | 'wage'
-  >('rating');
+  const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>('ALL');
+  const [sortBy, setSortBy] = useState<SquadSortKey>('position');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [columnsOpen, setColumnsOpen] = useState(false);
+
   const [radarPlayerId, setRadarPlayerId] = useState<string>('');
   const [compareAId, setCompareAId] = useState<string>('');
   const [compareBId, setCompareBId] = useState<string>('');
   const [baselineIdx, setBaselineIdx] = useState<number>(0);
+
+  useEffect(() => {
+    if (displayManuallySet || typeof window === 'undefined') return;
+    const handleResize = () => {
+      setDisplayMode(window.innerWidth < 768 ? 'cards' : 'table');
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [displayManuallySet]);
+
+  const activePreset = useMemo(
+    () => SQUAD_VIEW_PRESETS.find((p) => p.id === activePresetId) || SQUAD_VIEW_PRESETS[0],
+    [activePresetId]
+  );
+
+  const activeColumns = useMemo<SquadColumnId[]>(() => {
+    const custom = customColumnsMap[activePresetId];
+    return custom && custom.length > 0 ? custom : activePreset.defaultColumns;
+  }, [customColumnsMap, activePresetId, activePreset]);
+
+  const hasCustomColumnsForPreset = Boolean(
+    customColumnsMap[activePresetId] && customColumnsMap[activePresetId]!.length > 0
+  );
+
+  const cardMetricColumns = useMemo<SquadColumnId[]>(() => {
+    if (hasCustomColumnsForPreset) {
+      return activeColumns.filter((c) => c !== 'pos' && c !== 'age' && c !== 'stars').slice(0, 4);
+    }
+    return activePreset.cardMetrics;
+  }, [hasCustomColumnsForPreset, activeColumns, activePreset]);
+
+  const enrichedRows = useMemo(() => buildEnrichedSquadRows(players), [players]);
 
   const firstTeamCount = useMemo(
     () => players.filter((p) => p.teamSlot === undefined || p.teamSlot === 0).length,
     [players]
   );
   const youthReservesCount = players.length - firstTeamCount;
-  const effectiveUnitFilter =
+  const effectiveUnitFilter: SquadUnitFilter =
     youthReservesCount === 0 || firstTeamCount === 0 ? 'ALL' : squadUnitFilter;
 
-  const progressionArchive = useMemo(
-    () => loadProgressionArchive(),
-    // Re-read when players change (e.g. after a new .fm save sync)
-    [players]
+  const missingMatchStats = useMemo(() => isSquadMissingMatchStats(players), [players]);
+
+  const availableExpiryYears = useMemo(() => {
+    const years = new Set<string>();
+    for (const p of players) {
+      const y = extractExpiryYear(p.expires);
+      if (y) years.add(y);
+    }
+    return Array.from(years).sort();
+  }, [players]);
+
+  const filteredRows = useMemo(
+    () =>
+      filterAndSortSquadRows(enrichedRows, {
+        unit: effectiveUnitFilter,
+        search: deferredSearch,
+        posGroup: posFilter,
+        status: statusFilter,
+        expiryYear: expiryYearFilter,
+        availability: availabilityFilter,
+        sortKey: sortBy,
+        sortDir,
+      }),
+    [
+      enrichedRows,
+      effectiveUnitFilter,
+      deferredSearch,
+      posFilter,
+      statusFilter,
+      expiryYearFilter,
+      availabilityFilter,
+      sortBy,
+      sortDir,
+    ]
   );
+
+  const summary = useMemo(() => computeSquadSummary(filteredRows), [filteredRows]);
+
+  const activeSecondaryFilterCount = countActiveSecondaryFilters({
+    posGroup: posFilter,
+    status: statusFilter,
+    expiryYear: expiryYearFilter,
+    availability: availabilityFilter,
+  });
+
+  const handleSortSelect = (nextKey: SquadSortKey) => {
+    setSortBy(nextKey);
+    setSortDir(getDefaultSortDirForKey(nextKey));
+  };
+
+  const handleHeaderSortClick = (nextKey: SquadSortKey) => {
+    if (sortBy === nextKey) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(nextKey);
+      setSortDir(getDefaultSortDirForKey(nextKey));
+    }
+  };
+
+  const handleToggleColumn = (colId: SquadColumnId) => {
+    const current = activeColumns;
+    let next: SquadColumnId[];
+    if (current.includes(colId)) {
+      if (current.length <= 1) return; // keep at least 1 column
+      next = current.filter((c) => c !== colId);
+    } else {
+      next = [...current, colId];
+    }
+    const updatedMap: PersistedColumnMap = { ...customColumnsMap, [activePresetId]: next };
+    setCustomColumnsMap(updatedMap);
+    savePersistedSquadColumns(updatedMap);
+  };
+
+  const handleResetPresetColumns = () => {
+    const updatedMap: PersistedColumnMap = { ...customColumnsMap };
+    delete updatedMap[activePresetId];
+    setCustomColumnsMap(updatedMap);
+    savePersistedSquadColumns(updatedMap);
+  };
+
+  const handleResetFilters = () => {
+    setPosFilter('ALL');
+    setStatusFilter('ALL');
+    setExpiryYearFilter('ALL');
+    setAvailabilityFilter('ALL');
+    setSearch('');
+  };
+
+  const progressionArchive = useMemo(() => loadProgressionArchive(), [players]);
 
   const progressionDiff = useMemo(() => {
     if (progressionArchive.length < 2) return null;
@@ -106,57 +600,6 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
     const latest = progressionArchive[progressionArchive.length - 1];
     return computeProgressionDiff(baseline, latest);
   }, [progressionArchive, baselineIdx]);
-
-  const availableExpiryYears = useMemo(() => {
-    const years = new Set<string>();
-    for (const p of players) {
-      const y = extractExpiryYear(p.expires);
-      if (y) years.add(y);
-    }
-    return Array.from(years).sort();
-  }, [players]);
-
-  const filteredPlayers = useMemo(() => {
-    const query = deferredSearch.toLowerCase();
-    return players
-      .filter((p) => {
-        const isFirstTeam = p.teamSlot === undefined || p.teamSlot === 0;
-        const matchesUnit =
-          effectiveUnitFilter === 'ALL' ||
-          (effectiveUnitFilter === 'FIRST_TEAM' ? isFirstTeam : !isFirstTeam);
-        const matchesSearch =
-          (p.name || '').toLowerCase().includes(query) ||
-          (p.position || '').toLowerCase().includes(query) ||
-          (p.ipRole || '').toLowerCase().includes(query);
-        const matchesStatus =
-          statusFilter === 'ALL' || p.status === statusFilter;
-        const matchesPos =
-          posFilter === 'ALL' || getPositionGroup(p.position) === posFilter;
-        const matchesExpiry =
-          expiryYearFilter === 'ALL' ||
-          extractExpiryYear(p.expires) === expiryYearFilter;
-        return matchesUnit && matchesSearch && matchesStatus && matchesPos && matchesExpiry;
-      })
-      .sort((a, b) => {
-        if (sortBy === 'stars') {
-          return (b.ability || 0) - (a.ability || 0);
-        }
-        if (sortBy === 'rating') {
-          return (b.rating || 0) - (a.rating || 0);
-        }
-        if (sortBy === 'xGI') {
-          return (b.xG || 0) + (b.xA || 0) - ((a.xG || 0) + (a.xA || 0));
-        }
-        if (sortBy === 'speed') {
-          return (
-            (b.attributes?.pace || 0) +
-            (b.attributes?.acceleration || 0) -
-            ((a.attributes?.pace || 0) + (a.attributes?.acceleration || 0))
-          );
-        }
-        return (b.wagePw || 0) - (a.wagePw || 0);
-      });
-  }, [players, effectiveUnitFilter, deferredSearch, statusFilter, posFilter, expiryYearFilter, sortBy]);
 
   const activeRadarPlayer = useMemo(() => {
     if (players.length === 0) return null;
@@ -177,190 +620,47 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
     );
   }, [players, compareBId, comparePlayerA]);
 
-  return (
-    <div className="space-y-6">
-      <div className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
-        <div className="flex flex-col gap-4 pb-5 border-b border-slate-200 dark:border-slate-800">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                {clubName && clubName !== '--'
-                  ? `${clubName} · ${players.length}-Man Squad Database & FM27 Physical Engine Decoder`
-                  : `Squad Database (${players.length} Players) & FM27 Physical Engine Decoder`}
-              </h2>
-              <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-                Relative star ratings, custom FM27 Engine scores, live disciplinary bans,
-                season analytics, wages, contract expiries, and zero-dependency SVG analytics.
-              </p>
-            </div>
+  const showFastSyncNotice =
+    missingMatchStats && (activePresetId === 'stats' || STATS_SORT_KEYS.has(sortBy));
 
-            {/* View Switcher: Table / Analytics / Compare / Progression */}
-            <div className="grid grid-cols-2 sm:flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg w-full sm:w-auto">
-              <button
-                type="button"
-                onClick={() => setViewMode('table')}
-                className={`inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
-                  viewMode === 'table'
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <Table2 className="w-3.5 h-3.5 shrink-0" />
-                <span>Squad Table</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('analytics')}
-                className={`inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
-                  viewMode === 'analytics'
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <BarChart3 className="w-3.5 h-3.5 shrink-0" />
-                <span>Analytics</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('compare')}
-                className={`inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
-                  viewMode === 'compare'
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <GitCompare className="w-3.5 h-3.5 shrink-0" />
-                <span>Compare</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('progression')}
-                className={`inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
-                  viewMode === 'progression'
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <TrendingUp className="w-3.5 h-3.5 shrink-0" />
-                <span>Progression</span>
-              </button>
-            </div>
+  return (
+    <div className="space-y-4">
+      <div className="p-3.5 sm:p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
+        {/* Compact Header + 4-Tab Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 pb-3 border-b border-slate-200 dark:border-slate-800">
+          <div className="flex items-center gap-2 min-w-0">
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 truncate">
+              {clubName && clubName !== '--' ? `${clubName} Squad` : 'Squad Database'}
+            </h2>
+            <span className="shrink-0 rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-mono font-semibold text-slate-600 dark:text-slate-300">
+              {players.length}
+            </span>
           </div>
 
-          {viewMode === 'table' && players.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2.5">
-              {youthReservesCount > 0 && firstTeamCount > 0 && (
-                <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
-                  {(
-                    [
-                      { id: 'FIRST_TEAM', label: `First Team (${firstTeamCount})` },
-                      { id: 'YOUTH_RESERVES', label: `Youth / Res (${youthReservesCount})` },
-                      { id: 'ALL', label: `All (${players.length})` },
-                    ] as const
-                  ).map((opt) => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => setSquadUnitFilter(opt.id)}
-                      className={`px-2.5 py-1 text-xs font-semibold rounded-md transition cursor-pointer ${
-                        squadUnitFilter === opt.id
-                          ? 'bg-emerald-600 text-white'
-                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  aria-label="Search squad players"
-                  placeholder="Search player, pos, role..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-8 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
-                {(['ALL', 'GK', 'DEF', 'MID', 'FWD'] as const).map((grp) => (
-                  <button
-                    key={grp}
-                    type="button"
-                    onClick={() => setPosFilter(grp)}
-                    className={`px-2 py-1 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
-                      posFilter === grp
-                        ? 'bg-white dark:bg-slate-900 text-emerald-500 shadow-xs'
-                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
-                    }`}
-                  >
-                    {grp}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
-                {(['ALL', 'Starter', 'Rotation', 'Youth', 'Surplus'] as const).map(
-                  (st) => (
-                    <button
-                      key={st}
-                      type="button"
-                      onClick={() => setStatusFilter(st)}
-                      className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                        statusFilter === st
-                          ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs'
-                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
-                      }`}
-                    >
-                      {st}
-                    </button>
-                  )
-                )}
-              </div>
-
-              {availableExpiryYears.length > 0 && (
-                <select
-                  aria-label="Filter by contract expiry year"
-                  value={expiryYearFilter}
-                  onChange={(e) => setExpiryYearFilter(e.target.value)}
-                  className="px-2.5 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 rounded-lg"
-                >
-                  <option value="ALL">Expiry: All Years</option>
-                  {availableExpiryYears.map((yr) => (
-                    <option key={yr} value={yr}>
-                      Expires {yr}
-                    </option>
-                  ))}
-                </select>
-              )}
-
-              <select
-                aria-label="Sort squad players by metric"
-                value={sortBy}
-                onChange={(e) =>
-                  setSortBy(
-                    e.target.value as
-                      | 'rating'
-                      | 'stars'
-                      | 'xGI'
-                      | 'speed'
-                      | 'wage'
-                  )
-                }
-                className="px-3 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 rounded-lg"
+          <div className="grid grid-cols-4 sm:flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg w-full sm:w-auto">
+            {(
+              [
+                { id: 'table', label: 'Squad', icon: Table2 },
+                { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+                { id: 'compare', label: 'Compare', icon: GitCompare },
+                { id: 'progression', label: 'Progress', icon: TrendingUp },
+              ] as const
+            ).map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setViewMode(id)}
+                className={`inline-flex items-center justify-center gap-1 px-2 sm:px-3 py-1.5 text-[11px] sm:text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                  viewMode === id
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                }`}
               >
-                <option value="rating">Sort: Match Rating</option>
-                <option value="stars">Sort: Star Rating</option>
-                <option value="xGI">Sort: Total xG + xA</option>
-                <option value="speed">Sort: Pace + Acc</option>
-                <option value="wage">Sort: Weekly Wage</option>
-              </select>
-            </div>
-          )}
+                <Icon className="w-3.5 h-3.5 shrink-0 hidden xs:inline sm:inline" />
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         {players.length === 0 ? (
@@ -371,14 +671,13 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xl mx-auto">
               Zero pre-filled or fabricated players. Drop or select your{' '}
-              <span className="font-mono text-emerald-400">.fm</span> save file
-              in the <strong>Auto-Sync &amp; AI Analyst</strong> tab to decode your
-              managed squad&apos;s star ratings, attributes, contracts,
-              season stats, and Patch 27.1.0 physical metrics.
+              <span className="font-mono text-emerald-400">.fm</span> save file in the{' '}
+              <strong>Hub</strong> tab to decode your squad&apos;s star ratings,
+              attributes, durability, contracts, and season stats.
             </p>
           </div>
         ) : viewMode === 'analytics' ? (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-5">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 mt-4">
             <div className="lg:col-span-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 p-4 space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
@@ -414,7 +713,7 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
             </div>
           </div>
         ) : viewMode === 'compare' ? (
-          <div className="mt-5 space-y-5">
+          <div className="mt-4 space-y-5">
             {players.length < 2 ? (
               <div className="py-8 text-center text-xs text-slate-400">
                 Load at least 2 players to run a side-by-side radar comparison.
@@ -519,153 +818,8 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
               </>
             )}
           </div>
-        ) : (
-          <div className="space-y-3 mt-4">
-            {players.length > 0 &&
-              players.every((p) => (p.minutes || 0) === 0 && (p.goals || 0) === 0) && (
-                <div className="rounded-lg border border-amber-500/35 bg-amber-950/25 px-3.5 py-2.5 text-xs text-amber-200">
-                  <strong>Season match stats not in this snapshot:</strong> Player goals,
-                  assists, xG and match ratings weren&apos;t included (Fast Sync or partial
-                  checkpoint). Re-import your <span className="font-mono">.fm</span> save
-                  with <strong>Full Sync</strong> in the <strong>Hub</strong> tab to fill
-                  all player match stats.
-                </div>
-              )}
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  <th className="py-2.5 pr-3">Player, Role &amp; Live Note</th>
-                  <th className="py-2.5 px-2">Pos</th>
-                  <th className="py-2.5 px-2 text-right">Stars / Engine</th>
-                  <th className="py-2.5 px-2 text-right">Apps (Mins)</th>
-                  <th className="py-2.5 px-2 text-right">Rating</th>
-                  <th className="py-2.5 px-2 text-right">Gls (xG)</th>
-                  <th className="py-2.5 px-2 text-right">Ast (xA)</th>
-                  <th className="py-2.5 px-2 text-right">PrP/90</th>
-                  <th className="py-2.5 px-2 text-right">Hdr% / Tck%</th>
-                  <th className="py-2.5 px-2 text-right">Pac/Acc/Sta/JR</th>
-                  <th className="py-2.5 px-2 text-right">Speed / Jump</th>
-                  <th className="py-2.5 pl-2 text-right">Wage (Exp)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-xs">
-                {filteredPlayers.map((p) => {
-                  const engine = computeFm27EngineMetrics(p);
-                  const activeBan =
-                    Array.isArray(p.activeSuspensions) &&
-                    p.activeSuspensions.length > 0
-                      ? p.activeSuspensions[0]
-                      : null;
-                  const optYears = p.contractDetails?.optionalExtensionYears ?? 0;
-                  const hasPlayed =
-                    (p.minutes || 0) > 0 ||
-                    (Boolean(p.apps) && p.apps !== '0') ||
-                    (p.goals || 0) > 0 ||
-                    (p.assists || 0) > 0;
-
-                  return (
-                    <tr
-                      key={p.id}
-                      onClick={() => onSelectPlayer?.(p)}
-                      className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 transition ${
-                        onSelectPlayer ? 'cursor-pointer' : ''
-                      }`}
-                    >
-                      <td className="py-2.5 pr-3 max-w-[330px]">
-                        <div className="flex flex-wrap items-center gap-1.5 font-semibold text-slate-900 dark:text-slate-100">
-                          <span>
-                            {p.name}
-                          </span>
-                          {activeBan && (
-                            <span
-                              title={`${activeBan.competitionName}: ${activeBan.reason}`}
-                              className="rounded bg-rose-500/20 border border-rose-500/50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rose-300"
-                            >
-                              BANNED ({activeBan.matchesRemaining}m)
-                            </span>
-                          )}
-                          {p.status === 'Injured' && (
-                            <span className="rounded bg-amber-500/20 border border-amber-500/50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-300">
-                              INJURED
-                            </span>
-                          )}
-                          {optYears > 0 && (
-                            <span className="rounded bg-sky-500/15 border border-sky-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-sky-300">
-                              +{optYears}y Opt
-                            </span>
-                          )}
-                          <span className="font-normal text-slate-500 dark:text-slate-400">
-                            &middot; {p.ipRole} / {p.oopRole} ({p.status})
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                          {p.notes}
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-2 font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                        {p.position}
-                      </td>
-                      <td className="py-2.5 px-2 text-right font-mono tabular-nums whitespace-nowrap">
-                        <div className="font-bold text-amber-500">
-                          {(p.ability || 3.0).toFixed(1)}★ /{' '}
-                          {(p.potential || 3.5).toFixed(1)}★
-                        </div>
-                        <div className="text-[10px] text-emerald-500">
-                          Engine {engine.physicalEngineScore}/100
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-2 text-right font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                        {hasPlayed ? `${p.apps} (${p.minutes}m)` : '—'}
-                      </td>
-                      <td className="py-2.5 px-2 text-right font-mono font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
-                        {typeof p.rating === 'number' && p.rating > 0
-                          ? p.rating.toFixed(2)
-                          : '—'}
-                      </td>
-                      <td className="py-2.5 px-2 text-right font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                        {hasPlayed ? `${p.goals ?? 0} (${(p.xG ?? 0).toFixed(2)})` : '—'}
-                      </td>
-                      <td className="py-2.5 px-2 text-right font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                        {hasPlayed ? `${p.assists ?? 0} (${(p.xA ?? 0).toFixed(2)})` : '—'}
-                      </td>
-                      <td className="py-2.5 px-2 text-right font-mono tabular-nums text-slate-700 dark:text-slate-300">
-                        {hasPlayed && (p.prPassesPer90 ?? 0) > 0
-                          ? (p.prPassesPer90 ?? 0).toFixed(2)
-                          : '—'}
-                      </td>
-                      <td className="py-2.5 px-2 text-right font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                        {hasPlayed && ((p.hdrPct ?? 0) > 0 || (p.tckPct ?? 0) > 0)
-                          ? `${p.hdrPct ?? 0}% / ${p.tckPct ?? 0}%`
-                          : '—'}
-                      </td>
-                      <td className="py-2.5 px-2 text-right font-mono tabular-nums text-slate-900 dark:text-slate-100 whitespace-nowrap">
-                        {p.attributes?.pace ?? 10}/
-                        {p.attributes?.acceleration ?? 10}/
-                        {p.attributes?.stamina ?? 10}/
-                        {p.attributes?.jumpingReach ?? 10}
-                      </td>
-                      <td className="py-2.5 px-2 text-right font-mono tabular-nums text-emerald-700 dark:text-emerald-400 whitespace-nowrap">
-                        {engine.topSpeedMps}m/s (+{engine.jumpHeightMeters}m)
-                      </td>
-                      <td className="py-2.5 pl-2 text-right font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                        £{p.wagePw ?? 0}/wk (
-                        {p.expires && p.expires !== 'N/A'
-                          ? p.expires.slice(-4)
-                          : 'N/A'}
-                        )
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          </div>
-        )}
-
-        {viewMode === 'progression' && (
-          <div className="p-4 sm:p-5 space-y-5">
+        ) : viewMode === 'progression' ? (
+          <div className="pt-4 space-y-5">
             {progressionArchive.length < 2 || !progressionDiff ? (
               <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 p-6 text-center space-y-2">
                 <TrendingUp className="w-6 h-6 text-emerald-500 mx-auto" />
@@ -877,6 +1031,656 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
                   )}
                 </div>
               </>
+            )}
+          </div>
+        ) : (
+          /* ── MAIN SQUAD LIST VIEW ── */
+          <div className="mt-3 space-y-2.5">
+            {/* Row 1: Squad Unit + FM-Style View Presets */}
+            <div className="flex flex-col lg:flex-row lg:items-center gap-2">
+              {youthReservesCount > 0 && firstTeamCount > 0 && (
+                <div className="inline-flex items-center gap-1 p-0.5 bg-slate-100 dark:bg-slate-800 rounded-lg self-start shrink-0">
+                  {(
+                    [
+                      { id: 'FIRST_TEAM', label: `1st Team (${firstTeamCount})` },
+                      { id: 'YOUTH_RESERVES', label: `Youth (${youthReservesCount})` },
+                      { id: 'ALL', label: `All (${players.length})` },
+                    ] as const
+                  ).map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setSquadUnitFilter(opt.id)}
+                      className={`px-2 py-1 text-[11px] font-semibold rounded-md transition whitespace-nowrap cursor-pointer ${
+                        squadUnitFilter === opt.id
+                          ? 'bg-emerald-600 text-white'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* View Preset Pills (horizontally scrollable on mobile) */}
+              <div
+                role="tablist"
+                aria-label="Squad view presets"
+                className="flex items-center gap-1 overflow-x-auto pb-0.5 -mx-1 px-1"
+              >
+                {SQUAD_VIEW_PRESETS.map((preset) => {
+                  const isActive = preset.id === activePresetId;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      title={preset.description}
+                      onClick={() => setActivePresetId(preset.id)}
+                      className={`px-2.5 py-1 text-[11px] font-semibold rounded-full border transition whitespace-nowrap shrink-0 cursor-pointer ${
+                        isActive
+                          ? 'bg-emerald-600/20 border-emerald-500/60 text-emerald-300'
+                          : 'bg-slate-100 dark:bg-slate-800/70 border-slate-200 dark:border-slate-700/80 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      {preset.shortLabel}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Row 2: Search + Sort + Filters Toggle + Columns Picker + Cards/Table Toggle */}
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+              <div className="relative flex-1 min-w-[140px]">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  aria-label="Search squad players"
+                  placeholder="Search player, pos, role..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full pl-8 pr-7 py-1.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    aria-label="Clear search"
+                    onClick={() => setSearch('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <div className="inline-flex items-center">
+                <select
+                  aria-label="Sort squad players"
+                  value={sortBy}
+                  onChange={(e) => handleSortSelect(e.target.value as SquadSortKey)}
+                  className="px-2 py-1.5 text-[11px] sm:text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 rounded-l-lg"
+                >
+                  {SORT_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  aria-label={`Sort ${sortDir === 'asc' ? 'descending' : 'ascending'}`}
+                  title={sortDir === 'asc' ? 'Ascending (click to flip)' : 'Descending (click to flip)'}
+                  onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
+                  className="px-2 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-l-0 border-slate-300 dark:border-slate-700 rounded-r-lg hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+                >
+                  {sortDir === 'asc' ? (
+                    <ArrowUp className="w-3.5 h-3.5" />
+                  ) : (
+                    <ArrowDown className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setFiltersOpen((v) => !v);
+                  setColumnsOpen(false);
+                }}
+                aria-expanded={filtersOpen}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] sm:text-xs font-semibold rounded-lg border transition cursor-pointer ${
+                  filtersOpen || activeSecondaryFilterCount > 0
+                    ? 'bg-emerald-600/15 border-emerald-500/50 text-emerald-300'
+                    : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200'
+                }`}
+              >
+                <Filter className="w-3.5 h-3.5" />
+                <span>Filters</span>
+                {activeSecondaryFilterCount > 0 && (
+                  <span className="rounded-full bg-emerald-500 px-1.5 text-[10px] font-bold text-slate-950">
+                    {activeSecondaryFilterCount}
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setColumnsOpen((v) => !v);
+                  setFiltersOpen(false);
+                }}
+                aria-expanded={columnsOpen}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] sm:text-xs font-semibold rounded-lg border transition cursor-pointer ${
+                  columnsOpen || hasCustomColumnsForPreset
+                    ? 'bg-sky-500/15 border-sky-500/50 text-sky-300'
+                    : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200'
+                }`}
+              >
+                <Columns3 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Columns</span>
+                {hasCustomColumnsForPreset && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
+                )}
+              </button>
+
+              <div className="inline-flex items-center p-0.5 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg">
+                <button
+                  type="button"
+                  aria-label="Compact card view"
+                  title="Compact card view"
+                  onClick={() => {
+                    setDisplayMode('cards');
+                    setDisplayManuallySet(true);
+                  }}
+                  className={`p-1 rounded-md transition cursor-pointer ${
+                    displayMode === 'cards'
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <LayoutList className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Table view"
+                  title="Table view (frozen player column)"
+                  onClick={() => {
+                    setDisplayMode('table');
+                    setDisplayManuallySet(true);
+                  }}
+                  className={`p-1 rounded-md transition cursor-pointer ${
+                    displayMode === 'table'
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Table2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Collapsible Filter Drawer */}
+            {filtersOpen && (
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 p-3 space-y-2.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1 p-0.5 bg-slate-200/70 dark:bg-slate-800 rounded-lg">
+                    {(['ALL', 'GK', 'DEF', 'MID', 'FWD'] as const).map((grp) => (
+                      <button
+                        key={grp}
+                        type="button"
+                        onClick={() => setPosFilter(grp)}
+                        className={`px-2 py-1 text-[11px] font-semibold rounded-md transition cursor-pointer ${
+                          posFilter === grp
+                            ? 'bg-white dark:bg-slate-900 text-emerald-500 shadow-xs'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+                        }`}
+                      >
+                        {grp}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-1 p-0.5 bg-slate-200/70 dark:bg-slate-800 rounded-lg overflow-x-auto">
+                    {(['ALL', 'Starter', 'Rotation', 'Youth', 'Surplus'] as const).map((st) => (
+                      <button
+                        key={st}
+                        type="button"
+                        onClick={() => setStatusFilter(st)}
+                        className={`px-2 py-1 text-[11px] font-medium rounded-md transition whitespace-nowrap cursor-pointer ${
+                          statusFilter === st
+                            ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+                        }`}
+                      >
+                        {st}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1 p-0.5 bg-slate-200/70 dark:bg-slate-800 rounded-lg overflow-x-auto">
+                    {(
+                      [
+                        { id: 'ALL', label: 'All Avail.' },
+                        { id: 'AVAILABLE', label: 'Available' },
+                        { id: 'UNAVAILABLE', label: 'Banned / Inj' },
+                        { id: 'EXPIRING', label: 'Expiring ≤6m' },
+                      ] as const
+                    ).map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setAvailabilityFilter(opt.id)}
+                        className={`px-2 py-1 text-[11px] font-medium rounded-md transition whitespace-nowrap cursor-pointer ${
+                          availabilityFilter === opt.id
+                            ? 'bg-white dark:bg-slate-900 text-emerald-500 shadow-xs'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {availableExpiryYears.length > 0 && (
+                    <select
+                      aria-label="Filter by contract expiry year"
+                      value={expiryYearFilter}
+                      onChange={(e) => setExpiryYearFilter(e.target.value)}
+                      className="px-2.5 py-1 text-[11px] font-medium bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 rounded-lg"
+                    >
+                      <option value="ALL">Expiry: All Years</option>
+                      {availableExpiryYears.map((yr) => (
+                        <option key={yr} value={yr}>
+                          Expires {yr}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  {(activeSecondaryFilterCount > 0 || search) && (
+                    <button
+                      type="button"
+                      onClick={handleResetFilters}
+                      className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-rose-400 hover:text-rose-300 cursor-pointer ml-auto"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      Reset
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Collapsible Custom Columns Picker */}
+            {columnsOpen && (
+              <div className="rounded-xl border border-sky-500/30 bg-slate-50 dark:bg-slate-950/70 p-3 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                      Columns for {activePreset.label}
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {activePreset.description}
+                    </div>
+                  </div>
+                  {hasCustomColumnsForPreset && (
+                    <button
+                      type="button"
+                      onClick={handleResetPresetColumns}
+                      className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-sky-400 hover:text-sky-300 shrink-0 cursor-pointer"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      Reset Preset
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {ALL_CUSTOMISABLE_COLUMNS.map((colId) => {
+                    const meta = SQUAD_COLUMNS[colId];
+                    const checked = activeColumns.includes(colId);
+                    return (
+                      <button
+                        key={colId}
+                        type="button"
+                        onClick={() => handleToggleColumn(colId)}
+                        className={`px-2 py-1 rounded-md text-[11px] font-medium border transition cursor-pointer ${
+                          checked
+                            ? 'bg-sky-500/20 border-sky-500/50 text-sky-200'
+                            : 'bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        {checked ? '✓ ' : '+ '}
+                        {meta.shortLabel}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Compact Live Summary Strip */}
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400 px-0.5">
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 font-mono">
+                <span>
+                  <strong className="text-slate-800 dark:text-slate-200">{summary.count}</strong>{' '}
+                  {summary.count === 1 ? 'player' : 'players'}
+                </span>
+                {summary.avgAge !== null && (
+                  <span>
+                    Avg Age{' '}
+                    <strong className="text-slate-800 dark:text-slate-200">
+                      {summary.avgAge}
+                    </strong>
+                  </span>
+                )}
+                {summary.totalWagePw > 0 && (
+                  <span>
+                    Wages{' '}
+                    <strong className="text-slate-800 dark:text-slate-200">
+                      {formatWeeklyWage(summary.totalWagePw)}
+                    </strong>
+                  </span>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5">
+                {summary.bannedCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAvailabilityFilter((v) =>
+                        v === 'UNAVAILABLE' ? 'ALL' : 'UNAVAILABLE'
+                      )
+                    }
+                    className="rounded bg-rose-500/15 border border-rose-500/35 px-1.5 py-0.5 text-[10px] font-semibold text-rose-300 cursor-pointer"
+                  >
+                    {summary.bannedCount} Banned
+                  </button>
+                )}
+                {summary.injuredCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAvailabilityFilter((v) =>
+                        v === 'UNAVAILABLE' ? 'ALL' : 'UNAVAILABLE'
+                      )
+                    }
+                    className="rounded bg-amber-500/15 border border-amber-500/35 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300 cursor-pointer"
+                  >
+                    {summary.injuredCount} Injured
+                  </button>
+                )}
+                {summary.expiringSoonCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAvailabilityFilter((v) => (v === 'EXPIRING' ? 'ALL' : 'EXPIRING'))
+                    }
+                    className="rounded bg-amber-500/15 border border-amber-500/35 px-1.5 py-0.5 text-[10px] font-semibold text-amber-200 cursor-pointer"
+                  >
+                    {summary.expiringSoonCount} Expiring ≤6m
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Fast Sync Season Stats Notice (shown only when viewing/sorting by stats) */}
+            {showFastSyncNotice && (
+              <div className="rounded-lg border border-amber-500/35 bg-amber-950/25 px-3 py-2 text-xs text-amber-200">
+                <strong>Season match stats not in this snapshot:</strong> This save was
+                loaded with Fast Sync, which skips match-by-match stats to stay fast on
+                mobile. Re-import with <strong>Full Sync</strong> in the{' '}
+                <strong>Hub</strong> tab to populate appearances, ratings, goals, and xG.
+              </div>
+            )}
+
+            {/* Empty Filter Result */}
+            {filteredRows.length === 0 ? (
+              <div className="py-10 text-center space-y-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/40">
+                <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  No players match your current filters.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Clear Filters
+                </button>
+              </div>
+            ) : displayMode === 'cards' ? (
+              /* ── MOBILE-FIRST COMPACT CARD LIST ── */
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {filteredRows.map((row) => {
+                  const p = row.player;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => onSelectPlayer?.(p)}
+                      className="w-full text-left rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/60 hover:border-emerald-500/50 dark:hover:bg-slate-800/40 p-3 transition cursor-pointer"
+                    >
+                      {/* Top line: Shirt #, Name, Pos, Age, Stars */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex items-center gap-1.5 flex-wrap">
+                          {row.shirtNumber !== null && (
+                            <span className="font-mono text-[11px] font-bold text-slate-400">
+                              #{row.shirtNumber}
+                            </span>
+                          )}
+                          <span className="font-bold text-sm text-slate-900 dark:text-slate-100 truncate">
+                            {p.name}
+                          </span>
+                          <span className="rounded bg-slate-200/80 dark:bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-700 dark:text-slate-200">
+                            {p.position}
+                          </span>
+                          {p.age > 0 && (
+                            <span className="text-[11px] font-mono text-slate-400">
+                              {p.age}y
+                            </span>
+                          )}
+                        </div>
+                        <div className="shrink-0 font-mono text-xs font-bold text-amber-500 tabular-nums">
+                          {(p.ability || 0).toFixed(1)}★
+                          <span className="text-slate-500 font-normal">
+                            /{(p.potential || 0).toFixed(1)}★
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Second line: Roles + Status/Availability badges */}
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                        {(p.ipRole || p.oopRole) && (
+                          <span className="text-slate-500 dark:text-slate-400 truncate max-w-full">
+                            {p.ipRole}
+                            {p.oopRole ? ` / ${p.oopRole}` : ''}
+                          </span>
+                        )}
+                        {row.isBanned && (
+                          <span className="rounded bg-rose-500/20 border border-rose-500/45 px-1.5 py-0.5 text-[10px] font-bold text-rose-300">
+                            BANNED ({row.activeBanMatches}m)
+                          </span>
+                        )}
+                        {row.isInjured && (
+                          <span className="rounded bg-amber-500/20 border border-amber-500/45 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">
+                            INJURED
+                          </span>
+                        )}
+                        {p.onLoan && (
+                          <span className="rounded bg-indigo-500/20 border border-indigo-500/45 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-300">
+                            LOAN
+                          </span>
+                        )}
+                        {row.optYears > 0 && (
+                          <span className="rounded bg-sky-500/15 border border-sky-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-sky-300">
+                            +{row.optYears}y Opt
+                          </span>
+                        )}
+                      </div>
+
+                      {row.cleanNote && (
+                        <div className="mt-1 text-[11px] text-slate-400 truncate">
+                          {row.cleanNote}
+                        </div>
+                      )}
+
+                      {/* Preset Metric Chips */}
+                      <div
+                        className={`mt-2.5 pt-2 border-t border-slate-200/70 dark:border-slate-800/80 grid gap-2 ${
+                          cardMetricColumns.length >= 4
+                            ? 'grid-cols-2 sm:grid-cols-4'
+                            : 'grid-cols-3'
+                        }`}
+                      >
+                        {cardMetricColumns.map((colId) => {
+                          const meta = SQUAD_COLUMNS[colId];
+                          return (
+                            <div key={colId} className="min-w-0">
+                              <div className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">
+                                {meta.shortLabel}
+                              </div>
+                              <div className="mt-0.5 text-xs truncate">
+                                {renderColumnValue(row, colId)}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              /* ── FROZEN-COLUMN TABLE VIEW ── */
+              <div className="overflow-x-auto -mx-1 px-1 rounded-lg border border-slate-200 dark:border-slate-800">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                      <th className="sticky left-0 z-20 bg-slate-50 dark:bg-slate-950 py-2.5 pl-3 pr-3 border-r border-slate-200 dark:border-slate-800 min-w-[170px] max-w-[240px]">
+                        <button
+                          type="button"
+                          onClick={() => handleHeaderSortClick('name')}
+                          className="inline-flex items-center gap-1 hover:text-slate-900 dark:hover:text-white cursor-pointer"
+                        >
+                          <span>Player</span>
+                          {sortBy === 'name' && (
+                            <span className="text-emerald-400">
+                              {sortDir === 'asc' ? '↑' : '↓'}
+                            </span>
+                          )}
+                        </button>
+                      </th>
+                      {activeColumns.map((colId) => {
+                        const meta = SQUAD_COLUMNS[colId];
+                        const isSorted = meta.sortKey && sortBy === meta.sortKey;
+                        return (
+                          <th
+                            key={colId}
+                            className={`py-2.5 px-3 whitespace-nowrap ${
+                              meta.align === 'right' ? 'text-right' : 'text-left'
+                            }`}
+                          >
+                            {meta.sortKey ? (
+                              <button
+                                type="button"
+                                onClick={() => handleHeaderSortClick(meta.sortKey!)}
+                                className={`inline-flex items-center gap-1 hover:text-slate-900 dark:hover:text-white cursor-pointer ${
+                                  meta.align === 'right' ? 'justify-end' : ''
+                                }`}
+                              >
+                                <span>{meta.shortLabel}</span>
+                                {isSorted && (
+                                  <span className="text-emerald-400">
+                                    {sortDir === 'asc' ? '↑' : '↓'}
+                                  </span>
+                                )}
+                              </button>
+                            ) : (
+                              <span>{meta.shortLabel}</span>
+                            )}
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-xs">
+                    {filteredRows.map((row) => {
+                      const p = row.player;
+                      const showRolesSubline = !activeColumns.includes('roles');
+                      return (
+                        <tr
+                          key={p.id}
+                          onClick={() => onSelectPlayer?.(p)}
+                          className={`group hover:bg-slate-50 dark:hover:bg-slate-800/50 transition ${
+                            onSelectPlayer ? 'cursor-pointer' : ''
+                          }`}
+                        >
+                          <td className="sticky left-0 z-10 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800 py-2.5 pl-3 pr-3 border-r border-slate-200 dark:border-slate-800 min-w-[170px] max-w-[240px]">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {row.shirtNumber !== null && (
+                                <span className="font-mono text-[10px] text-slate-400">
+                                  #{row.shirtNumber}
+                                </span>
+                              )}
+                              <span className="font-semibold text-slate-900 dark:text-slate-100 truncate">
+                                {p.name}
+                              </span>
+                              {row.isBanned && (
+                                <span
+                                  title={row.activeBanTooltip || 'Suspended'}
+                                  className="rounded bg-rose-500/20 border border-rose-500/50 px-1 py-0.2 text-[9px] font-bold uppercase text-rose-300"
+                                >
+                                  BAN {row.activeBanMatches}m
+                                </span>
+                              )}
+                              {row.isInjured && (
+                                <span className="rounded bg-amber-500/20 border border-amber-500/50 px-1 py-0.2 text-[9px] font-bold uppercase text-amber-300">
+                                  INJ
+                                </span>
+                              )}
+                              {p.onLoan && (
+                                <span className="rounded bg-indigo-500/20 border border-indigo-500/45 px-1 py-0.2 text-[9px] font-bold uppercase text-indigo-300">
+                                  LOAN
+                                </span>
+                              )}
+                            </div>
+                            {showRolesSubline && (p.ipRole || p.oopRole) && (
+                              <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                                {p.ipRole}
+                                {p.oopRole ? ` / ${p.oopRole}` : ''}
+                              </div>
+                            )}
+                            {row.cleanNote && (
+                              <div className="text-[10px] text-slate-400 truncate">
+                                {row.cleanNote}
+                              </div>
+                            )}
+                          </td>
+                          {activeColumns.map((colId) => {
+                            const meta = SQUAD_COLUMNS[colId];
+                            return (
+                              <td
+                                key={colId}
+                                className={`py-2.5 px-3 whitespace-nowrap ${
+                                  meta.align === 'right' ? 'text-right' : 'text-left'
+                                }`}
+                              >
+                                {renderColumnValue(row, colId)}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         )}
