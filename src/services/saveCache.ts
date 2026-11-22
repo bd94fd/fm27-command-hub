@@ -23,6 +23,8 @@ export interface CompactPlayerSnapshot {
   potential: number;
   marketValue: number | null;
   wagePw: number;
+  expires?: string;
+  squadStatus?: string;
 }
 
 export interface SaveHistoryPoint {
@@ -47,6 +49,33 @@ export interface PlayerGrowthDelta {
   isNewgen: boolean;
 }
 
+export interface ContractChangeDelta {
+  uid: number;
+  name: string;
+  position: string;
+  previousExpires: string;
+  currentExpires: string;
+  previousWagePw: number;
+  currentWagePw: number;
+  wageDeltaPw: number;
+}
+
+export interface SnapshotKpiDeltas {
+  squadCountDelta: number;
+  fromSquadCount: number;
+  toSquadCount: number;
+  avgAbilityDelta: number;
+  fromAvgAbility: number;
+  toAvgAbility: number;
+  totalWageDeltaPw: number;
+  fromTotalWagePw: number;
+  toTotalWagePw: number;
+  fromBalance?: string;
+  toBalance?: string;
+  fromLeaguePosition?: number | null;
+  toLeaguePosition?: number | null;
+}
+
 export interface SnapshotDiffSummary {
   fromDate: string;
   toDate: string;
@@ -54,6 +83,9 @@ export interface SnapshotDiffSummary {
   risers: PlayerGrowthDelta[];
   fallers: PlayerGrowthDelta[];
   newgens: PlayerGrowthDelta[];
+  departed: CompactPlayerSnapshot[];
+  contractChanges: ContractChangeDelta[];
+  kpiDeltas: SnapshotKpiDeltas;
 }
 
 /**
@@ -88,6 +120,8 @@ export function createSaveHistoryPoint(params: {
       potential: p.potential,
       marketValue: p.marketValue ?? null,
       wagePw: p.wagePw,
+      expires: p.expires || '--',
+      squadStatus: p.status,
     }));
 
   return {
@@ -103,8 +137,8 @@ export function createSaveHistoryPoint(params: {
 }
 
 /**
- * Compares two save history points to compute player growth deltas and detect
- * newly appeared players (Youth Intake Radar).
+ * Compares two save history points to compute player growth deltas, contract/wage
+ * changes, departed players, KPI deltas, and newly appeared players (Youth Intake Radar).
  */
 export function diffSaveHistoryPoints(
   previous: SaveHistoryPoint,
@@ -114,10 +148,22 @@ export function diffSaveHistoryPoints(
   for (const p of previous.players) {
     prevByUid.set(p.uid, p);
   }
+  const currByUid = new Map<number, CompactPlayerSnapshot>();
+  for (const p of current.players) {
+    currByUid.set(p.uid, p);
+  }
 
   const risers: PlayerGrowthDelta[] = [];
   const fallers: PlayerGrowthDelta[] = [];
   const newgens: PlayerGrowthDelta[] = [];
+  const departed: CompactPlayerSnapshot[] = [];
+  const contractChanges: ContractChangeDelta[] = [];
+
+  for (const prev of previous.players) {
+    if (!currByUid.has(prev.uid)) {
+      departed.push(prev);
+    }
+  }
 
   for (const curr of current.players) {
     const prev = prevByUid.get(curr.uid);
@@ -165,11 +211,50 @@ export function diffSaveHistoryPoints(
         isNewgen: false,
       });
     }
+
+    const prevExpires = (prev.expires || '--').trim();
+    const currExpires = (curr.expires || '--').trim();
+    const wageDeltaPw = curr.wagePw - prev.wagePw;
+    if (prevExpires !== currExpires || wageDeltaPw !== 0) {
+      contractChanges.push({
+        uid: curr.uid,
+        name: curr.name,
+        position: curr.position,
+        previousExpires: prevExpires,
+        currentExpires: currExpires,
+        previousWagePw: prev.wagePw,
+        currentWagePw: curr.wagePw,
+        wageDeltaPw,
+      });
+    }
   }
 
   risers.sort((a, b) => b.abilityDelta - a.abilityDelta);
   fallers.sort((a, b) => a.abilityDelta - b.abilityDelta);
   newgens.sort((a, b) => a.age - b.age || b.uid - a.uid);
+  departed.sort((a, b) => b.ability - a.ability);
+  contractChanges.sort((a, b) => Math.abs(b.wageDeltaPw) - Math.abs(a.wageDeltaPw));
+
+  const fromAvgAbility =
+    previous.players.length > 0
+      ? Number(
+          (
+            previous.players.reduce((sum, p) => sum + p.ability, 0) /
+            previous.players.length
+          ).toFixed(2)
+        )
+      : 0;
+  const toAvgAbility =
+    current.players.length > 0
+      ? Number(
+          (
+            current.players.reduce((sum, p) => sum + p.ability, 0) /
+            current.players.length
+          ).toFixed(2)
+        )
+      : 0;
+  const fromTotalWagePw = previous.players.reduce((sum, p) => sum + (p.wagePw || 0), 0);
+  const toTotalWagePw = current.players.reduce((sum, p) => sum + (p.wagePw || 0), 0);
 
   return {
     fromDate: previous.inGameDate,
@@ -178,6 +263,23 @@ export function diffSaveHistoryPoints(
     risers,
     fallers,
     newgens,
+    departed,
+    contractChanges,
+    kpiDeltas: {
+      squadCountDelta: current.players.length - previous.players.length,
+      fromSquadCount: previous.players.length,
+      toSquadCount: current.players.length,
+      avgAbilityDelta: Number((toAvgAbility - fromAvgAbility).toFixed(2)),
+      fromAvgAbility,
+      toAvgAbility,
+      totalWageDeltaPw: toTotalWagePw - fromTotalWagePw,
+      fromTotalWagePw,
+      toTotalWagePw,
+      fromBalance: previous.balance,
+      toBalance: current.balance,
+      fromLeaguePosition: previous.leaguePosition ?? null,
+      toLeaguePosition: current.leaguePosition ?? null,
+    },
   };
 }
 
@@ -259,3 +361,99 @@ export async function getCachedSavePayload<T>(
     }
   });
 }
+
+/**
+ * Persists a compact SaveHistoryPoint in IndexedDB (pruning oldest beyond MAX_SNAPSHOT_POINTS).
+ */
+export async function putSaveHistoryPoint(
+  point: SaveHistoryPoint
+): Promise<boolean> {
+  const db = await openSaveCacheDb();
+  if (!db) return false;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(SNAPSHOT_HISTORY_STORE, 'readwrite');
+      const store = tx.objectStore(SNAPSHOT_HISTORY_STORE);
+      store.put(point, point.cacheKey);
+
+      const allReq = store.getAll();
+      allReq.onsuccess = () => {
+        const all = (allReq.result as SaveHistoryPoint[]) || [];
+        if (all.length > MAX_SNAPSHOT_POINTS) {
+          all.sort((a, b) => a.capturedAt.localeCompare(b.capturedAt));
+          const excess = all.slice(0, all.length - MAX_SNAPSHOT_POINTS);
+          for (const old of excess) {
+            store.delete(old.cacheKey);
+          }
+        }
+      };
+
+      tx.oncomplete = () => {
+        db.close();
+        resolve(true);
+      };
+      tx.onerror = () => {
+        db.close();
+        resolve(false);
+      };
+    } catch {
+      db.close();
+      resolve(false);
+    }
+  });
+}
+
+/**
+ * Lists all cached SaveHistoryPoint snapshots sorted newest-first.
+ */
+export async function listSaveHistoryPoints(): Promise<SaveHistoryPoint[]> {
+  const db = await openSaveCacheDb();
+  if (!db) return [];
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(SNAPSHOT_HISTORY_STORE, 'readonly');
+      const req = tx.objectStore(SNAPSHOT_HISTORY_STORE).getAll();
+      req.onsuccess = () => {
+        const items = ((req.result as SaveHistoryPoint[]) || []).filter(
+          (item) => item && typeof item.cacheKey === 'string' && Array.isArray(item.players)
+        );
+        items.sort((a, b) => b.capturedAt.localeCompare(a.capturedAt));
+        db.close();
+        resolve(items);
+      };
+      req.onerror = () => {
+        db.close();
+        resolve([]);
+      };
+    } catch {
+      db.close();
+      resolve([]);
+    }
+  });
+}
+
+/**
+ * Deletes a single cached SaveHistoryPoint snapshot by cacheKey.
+ */
+export async function deleteSaveHistoryPoint(cacheKey: string): Promise<boolean> {
+  const db = await openSaveCacheDb();
+  if (!db) return false;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(SNAPSHOT_HISTORY_STORE, 'readwrite');
+      tx.objectStore(SNAPSHOT_HISTORY_STORE).delete(cacheKey);
+      tx.oncomplete = () => {
+        db.close();
+        resolve(true);
+      };
+      tx.onerror = () => {
+        db.close();
+        resolve(false);
+      };
+    } catch {
+      db.close();
+      resolve(false);
+    }
+  });
+}
+

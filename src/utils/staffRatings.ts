@@ -252,3 +252,135 @@ export function evaluateBackroomDepartmentEfficiency(
   });
 }
 
+export type StaffDepartmentGroup = 'coaching' | 'scouting' | 'medical';
+
+export function classifyStaffDepartment(member: StaffRecord): StaffDepartmentGroup {
+  const roleLower = (member.role || '').toLowerCase();
+  if (
+    /physio|doctor|medic|sport.?scien|rehab|head of sports science|head physio/.test(
+      roleLower
+    )
+  ) {
+    return 'medical';
+  }
+  if (
+    /scout|recruit|director of football|technical director|analyst|data|loan manager|chief scout/.test(
+      roleLower
+    )
+  ) {
+    return 'scouting';
+  }
+  if (
+    /coach|manager|assistant|goalkeep|fitness|set piece|head of youth|u21|u19|u18/.test(
+      roleLower
+    )
+  ) {
+    return 'coaching';
+  }
+  const best = getBestStaffRoleRating(member);
+  if (best.category === 'Medical') return 'medical';
+  if (best.category === 'Scouting & Analysis') return 'scouting';
+  return 'coaching';
+}
+
+export interface CoachingCategoryMatrixRow {
+  key: string;
+  label: string;
+  leadCoachName: string;
+  leadCoachRole: string;
+  stars: number;
+  score: number;
+  qualifiedCount: number;
+  workload: 'Light' | 'Average' | 'Heavy / Overloaded';
+}
+
+const COACHING_MATRIX_KEYS: Array<{ key: string; label: string }> = [
+  { key: 'att_tech', label: 'Attacking — Technical' },
+  { key: 'att_tac', label: 'Attacking — Tactical' },
+  { key: 'def_tech', label: 'Defending — Technical' },
+  { key: 'def_tac', label: 'Defending — Tactical' },
+  { key: 'pos_tech', label: 'Possession — Technical' },
+  { key: 'pos_tac', label: 'Possession — Tactical' },
+  { key: 'set_pieces', label: 'Set Pieces' },
+  { key: 'fitness', label: 'Fitness (Strength / Quickness)' },
+  { key: 'goalkeeping', label: 'Goalkeeping' },
+];
+
+/**
+ * Deterministic 9-category FM27 Coaching Rating Matrix with workload/overload indicators.
+ * Uses FM27 star weighting (specialist attributes + Determination, Authority, Motivating 2x).
+ */
+export function buildCoachingCategoryMatrix(
+  staffList: StaffRecord[]
+): CoachingCategoryMatrixRow[] {
+  const coaches = staffList.filter((m) => classifyStaffDepartment(m) === 'coaching');
+  const pool = coaches.length > 0 ? coaches : staffList;
+
+  return COACHING_MATRIX_KEYS.map((cat) => {
+    let bestMember: StaffRecord | null = null;
+    let bestRating: StaffRoleRating | null = null;
+    let qualifiedCount = 0;
+
+    for (const member of pool) {
+      const rating = calculateAllStaffRoleRatings(member.attributes).find(
+        (r) => r.key === cat.key
+      );
+      if (!rating) continue;
+      if (rating.stars >= 2.5) {
+        qualifiedCount += 1;
+      }
+      if (!bestRating || rating.score > bestRating.score) {
+        bestRating = rating;
+        bestMember = member;
+      }
+    }
+
+    const stars = bestRating ? bestRating.stars : 0.5;
+    const score = bestRating ? bestRating.score : 15;
+    const workload: CoachingCategoryMatrixRow['workload'] =
+      pool.length <= 3 || qualifiedCount === 0
+        ? 'Heavy / Overloaded'
+        : qualifiedCount === 1
+          ? 'Average'
+          : 'Light';
+
+    return {
+      key: cat.key,
+      label: cat.label,
+      leadCoachName: bestMember ? bestMember.name : 'Unassigned',
+      leadCoachRole: bestMember ? bestMember.role : '--',
+      stars,
+      score,
+      qualifiedCount,
+      workload,
+    };
+  });
+}
+
+/**
+ * Flags staff contracts expiring within ~6 months of the save date (or in the current save year).
+ */
+export function isStaffContractExpiringSoon(
+  expires: string | undefined,
+  saveDate?: string
+): boolean {
+  if (!expires || expires === '--' || expires === 'Unknown') return false;
+  const expYearMatch = expires.match(/(20\d{2})/);
+  if (!expYearMatch) return false;
+  const expYear = Number(expYearMatch[1]);
+
+  const refDate =
+    saveDate && saveDate !== '--' && !Number.isNaN(Date.parse(saveDate))
+      ? new Date(saveDate)
+      : new Date();
+  const refYear = refDate.getFullYear();
+
+  const parsedExp = Date.parse(expires);
+  if (!Number.isNaN(parsedExp)) {
+    const diffDays = (parsedExp - refDate.getTime()) / (1000 * 60 * 60 * 24);
+    return diffDays <= 190;
+  }
+  return expYear <= refYear;
+}
+
+

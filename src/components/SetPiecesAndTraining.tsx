@@ -1,11 +1,72 @@
-import React, { useState } from 'react';
-import { Calendar, Crosshair } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import {
+  Activity,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  Crosshair,
+  RotateCcw,
+  Upload,
+} from 'lucide-react';
 import { PlayerRecord } from '../types/fm27';
 import { DecodedFmSavePayload } from '../utils/fmSaveHydrator';
 import {
   buildDynamicSetPieceRoutines,
   buildDynamicTrainingSchedule,
 } from '../utils/fmSyncEngine';
+import {
+  buildWeeklyPlannerFromDynamicSchedule,
+  parseFm27TrainerSchedule,
+  summarizeWeeklyTrainingLoad,
+  TrainingSlotCategory,
+  WeeklyTrainingDay,
+} from '../utils/trainingPlanner';
+
+const CATEGORY_STYLES: Record<
+  TrainingSlotCategory,
+  { badge: string; dot: string; label: string }
+> = {
+  match: {
+    badge: 'border-rose-500/40 bg-rose-500/15 text-rose-200',
+    dot: 'bg-rose-400',
+    label: 'Match',
+  },
+  tactics: {
+    badge: 'border-sky-500/40 bg-sky-500/15 text-sky-200',
+    dot: 'bg-sky-400',
+    label: 'Tactics',
+  },
+  attacking: {
+    badge: 'border-emerald-500/40 bg-emerald-500/15 text-emerald-200',
+    dot: 'bg-emerald-400',
+    label: 'Attacking',
+  },
+  defending: {
+    badge: 'border-amber-500/40 bg-amber-500/15 text-amber-200',
+    dot: 'bg-amber-400',
+    label: 'Defending',
+  },
+  physical: {
+    badge: 'border-orange-500/40 bg-orange-500/15 text-orange-200',
+    dot: 'bg-orange-400',
+    label: 'Physical',
+  },
+  set_pieces: {
+    badge: 'border-violet-500/40 bg-violet-500/15 text-violet-200',
+    dot: 'bg-violet-400',
+    label: 'Set Pieces',
+  },
+  recovery: {
+    badge: 'border-teal-500/40 bg-teal-500/15 text-teal-200',
+    dot: 'bg-teal-400',
+    label: 'Recovery',
+  },
+  rest: {
+    badge: 'border-slate-700 bg-slate-900/80 text-slate-400',
+    dot: 'bg-slate-500',
+    label: 'Rest',
+  },
+};
 
 interface SetPiecesAndTrainingProps {
   players: PlayerRecord[];
@@ -28,6 +89,47 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
 
   const [activeRoutineId, setActiveRoutineId] =
     useState<string>('routine-2-centre');
+  const [selectedMobileDay, setSelectedMobileDay] = useState<number>(0);
+  const [importedSchedule, setImportedSchedule] = useState<{
+    days: WeeklyTrainingDay[];
+    sourceLabel: string;
+  } | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+
+  const autoWeeklyDays = useMemo(
+    () => buildWeeklyPlannerFromDynamicSchedule(trainingSchedule),
+    [trainingSchedule]
+  );
+  const activeWeeklyDays = importedSchedule?.days ?? autoWeeklyDays;
+  const loadSummary = useMemo(
+    () => summarizeWeeklyTrainingLoad(activeWeeklyDays),
+    [activeWeeklyDays]
+  );
+
+  const handleImportTrainerFile = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = parseFm27TrainerSchedule(text);
+      if (!parsed) {
+        setImportError(
+          'Could not parse schedule. Upload a SemHiel2003/fm27-trainer JSON or Mon–Sun 3-slot CSV file.'
+        );
+        return;
+      }
+      setImportError(null);
+      setImportedSchedule({
+        days: parsed.days,
+        sourceLabel: `${parsed.sourceLabel} (${file.name})`,
+      });
+    } catch {
+      setImportError('Failed to read the selected training schedule file.');
+    }
+  };
 
   if (players.length === 0) {
     return (
@@ -282,76 +384,246 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
         </div>
       )}
 
-      {/* Dynamic Upcoming Fixture Training & Post-Match Rest Schedule */}
-      <div className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-4 border-b border-slate-200 dark:border-slate-800">
+      {/* 7-Day FM27 Training Planner (Mon-Sun, 3 slots/day, Mobile Day-by-Day + fm27-trainer JSON/CSV Import) */}
+      <div className="p-4 sm:p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-5">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 pb-4 border-b border-slate-200 dark:border-slate-800">
           <div className="flex items-start gap-2.5">
             <Calendar className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
             <div>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                Upcoming Fixture Training &amp; Recovery Periodisation (From{' '}
-                {saveDate})
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
+                7-Day Training Planner &amp; Recovery Periodisation (From {saveDate})
               </h2>
               <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-                Playbook v2.0 Section 8: Mandatory Post-Match Rest slashes the
-                training injury roll from 13.8% to 4.0%, paired with Build Up
-                &amp; Attacking Set-Piece prep before each upcoming fixture.
+                {importedSchedule
+                  ? `Active Custom Schedule: ${importedSchedule.sourceLabel}`
+                  : `Auto-periodised from ${upcomingFixtures.length} upcoming fixtures · Playbook v2.0 Mandatory Post-Match Rest`}
               </p>
             </div>
           </div>
-          <span className="text-xs font-mono text-emerald-700 dark:text-emerald-400">
-            {upcomingFixtures.length} Upcoming Fixtures Synced
-          </span>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <label
+              htmlFor="fm27-trainer-import"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/40 bg-sky-500/15 px-3 py-1.5 text-xs font-semibold text-sky-300 hover:bg-sky-500/25 transition cursor-pointer"
+            >
+              <Upload className="h-3.5 w-3.5" />
+              Import fm27-trainer JSON/CSV
+              <input
+                id="fm27-trainer-import"
+                type="file"
+                accept=".json,.csv,.txt"
+                onChange={handleImportTrainerFile}
+                className="hidden"
+              />
+            </label>
+            {importedSchedule && (
+              <button
+                type="button"
+                onClick={() => {
+                  setImportedSchedule(null);
+                  setImportError(null);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-700 transition cursor-pointer"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Reset Auto
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="overflow-x-auto mt-4">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                <th className="py-2.5 pr-4">Block</th>
-                <th className="py-2.5 pr-4">Date</th>
-                <th className="py-2.5 pr-4">Fixture Context</th>
-                <th className="py-2.5 pr-4">Slot 1 (Primary)</th>
-                <th className="py-2.5 pr-4">Slot 2 (Secondary)</th>
-                <th className="py-2.5 pr-4">Slot 3 (Dev / Rest)</th>
-                <th className="py-2.5">Periodisation Directive</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-xs">
-              {trainingSchedule.map((day, idx) => (
-                <tr
-                  key={`${day.date}-${idx}`}
-                  className={
-                    idx === 0
-                      ? 'bg-emerald-500/10'
-                      : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                  }
-                >
-                  <td className="py-2.5 pr-4 text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                    {day.week}
-                  </td>
-                  <td className="py-2.5 pr-4 font-mono font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap">
-                    {day.date}
-                  </td>
-                  <td className="py-2.5 pr-4 font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">
+        {importError && (
+          <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+            {importError}
+          </div>
+        )}
+
+        {/* Intensity & Fatigue Summary Bar */}
+        <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3.5 space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-200">
+              <Activity className="h-4 w-4 text-emerald-400" />
+              Weekly Intensity &amp; Fatigue Summary
+            </div>
+            <span
+              className={`rounded-md border px-2 py-0.5 text-[11px] font-semibold ${
+                loadSummary.riskTier === 'Optimal / Low Injury Risk'
+                  ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
+                  : loadSummary.riskTier === 'Moderate Load'
+                    ? 'border-amber-500/40 bg-amber-500/15 text-amber-300'
+                    : 'border-rose-500/40 bg-rose-500/15 text-rose-300'
+              }`}
+            >
+              {loadSummary.riskTier} · Fatigue {loadSummary.fatigueIndex}/100
+            </span>
+          </div>
+
+          <div className="h-2 w-full rounded-full bg-slate-800 overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${
+                loadSummary.fatigueIndex >= 72
+                  ? 'bg-rose-500'
+                  : loadSummary.fatigueIndex >= 52
+                    ? 'bg-amber-400'
+                    : 'bg-emerald-400'
+              }`}
+              style={{ width: `${loadSummary.fatigueIndex}%` }}
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+            <div className="flex flex-wrap gap-3 font-mono">
+              <span className="text-orange-300">High: {loadSummary.highCount}</span>
+              <span className="text-sky-300">Med: {loadSummary.mediumCount}</span>
+              <span className="text-teal-300">Low: {loadSummary.lowCount}</span>
+              <span className="text-slate-300">Rest: {loadSummary.restCount}</span>
+            </div>
+            <span className="text-slate-400">{loadSummary.summaryNote}</span>
+          </div>
+        </div>
+
+        {/* Mobile-Friendly Day-by-Day View (Pixel 10 Pro XL) */}
+        <div className="md:hidden space-y-3">
+          <div className="grid grid-cols-7 gap-1">
+            {activeWeeklyDays.map((day, idx) => (
+              <button
+                key={day.dayShort}
+                type="button"
+                onClick={() => setSelectedMobileDay(idx)}
+                className={`rounded-lg py-2 text-center text-[11px] font-bold transition cursor-pointer ${
+                  selectedMobileDay === idx
+                    ? 'bg-emerald-500 text-slate-950'
+                    : 'bg-slate-950 text-slate-400 border border-slate-800'
+                }`}
+              >
+                {day.dayShort}
+              </button>
+            ))}
+          </div>
+
+          {(() => {
+            const activeDay = activeWeeklyDays[selectedMobileDay] ?? activeWeeklyDays[0];
+            return (
+              <div className="rounded-xl border border-slate-800 bg-slate-950/80 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-bold text-white">
+                      {activeDay.dayFull}
+                      {activeDay.dateLabel ? ` · ${activeDay.dateLabel}` : ''}
+                    </div>
+                    {activeDay.fixtureContext && (
+                      <div className="text-[11px] text-emerald-400 mt-0.5">
+                        {activeDay.fixtureContext}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      aria-label="Previous day"
+                      onClick={() =>
+                        setSelectedMobileDay((d) => (d + 6) % 7)
+                      }
+                      className="rounded-lg border border-slate-700 bg-slate-900 p-1.5 text-slate-300"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Next day"
+                      onClick={() =>
+                        setSelectedMobileDay((d) => (d + 1) % 7)
+                      }
+                      className="rounded-lg border border-slate-700 bg-slate-900 p-1.5 text-slate-300"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {activeDay.slots.map((slot, sIdx) => {
+                    const style = CATEGORY_STYLES[slot.category];
+                    const slotTitle =
+                      sIdx === 0
+                        ? 'Slot 1 (Morning)'
+                        : sIdx === 1
+                          ? 'Slot 2 (Afternoon)'
+                          : 'Slot 3 (Extra / Rest)';
+                    return (
+                      <div
+                        key={sIdx}
+                        className={`rounded-lg border p-2.5 ${style.badge}`}
+                      >
+                        <div className="flex items-center justify-between text-[10px] uppercase tracking-wider opacity-80">
+                          <span>{slotTitle}</span>
+                          <span>{style.label}</span>
+                        </div>
+                        <div className="mt-1 text-xs font-semibold">
+                          {slot.label}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {activeDay.directive && (
+                  <p className="text-[11px] text-slate-400 border-t border-slate-800 pt-2">
+                    {activeDay.directive}
+                  </p>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* Desktop 7-Column Mon-Sun Planner Grid */}
+        <div className="hidden md:grid md:grid-cols-7 gap-2.5">
+          {activeWeeklyDays.map((day) => (
+            <div
+              key={day.dayShort}
+              className="rounded-xl border border-slate-800 bg-slate-950/70 p-2.5 flex flex-col gap-2"
+            >
+              <div className="border-b border-slate-800 pb-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-white">
+                    {day.dayShort}
+                  </span>
+                  {day.dateLabel && (
+                    <span className="font-mono text-[10px] text-slate-400">
+                      {day.dateLabel}
+                    </span>
+                  )}
+                </div>
+                {day.fixtureContext && (
+                  <div
+                    className="text-[10px] text-emerald-400 truncate mt-0.5"
+                    title={day.fixtureContext}
+                  >
                     {day.fixtureContext}
-                  </td>
-                  <td className="py-2.5 pr-4 font-semibold text-emerald-700 dark:text-emerald-400 whitespace-nowrap">
-                    {day.slot1}
-                  </td>
-                  <td className="py-2.5 pr-4 text-slate-800 dark:text-slate-200 whitespace-nowrap">
-                    {day.slot2}
-                  </td>
-                  <td className="py-2.5 pr-4 text-slate-800 dark:text-slate-200 whitespace-nowrap">
-                    {day.slot3}
-                  </td>
-                  <td className="py-2.5 text-slate-600 dark:text-slate-400">
-                    {day.directive}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1.5 flex-1">
+                {day.slots.map((slot, sIdx) => {
+                  const style = CATEGORY_STYLES[slot.category];
+                  return (
+                    <div
+                      key={sIdx}
+                      className={`rounded-lg border px-2 py-2 text-[11px] leading-snug ${style.badge}`}
+                    >
+                      <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-wider opacity-80 mb-0.5">
+                        <span className={`h-1.5 w-1.5 rounded-full ${style.dot}`} />
+                        <span>{style.label}</span>
+                      </div>
+                      <div className="font-semibold break-words">{slot.label}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 

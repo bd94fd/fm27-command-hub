@@ -27,6 +27,7 @@ import {
 } from '../types/fm27';
 import { verifyFm27Accuracy } from '../data/fm27KnowledgeBase';
 import { buildOfflineTacticalBriefing } from '../utils/offlineBriefingEngine';
+import { SaveSnapshotDiffPanel } from './SaveSnapshotDiffPanel';
 import {
   parseFmStructuredExport,
   ParsedFmExportResult,
@@ -1569,6 +1570,10 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           )}
         </form>
       </div>
+
+      <SaveSnapshotDiffPanel
+        refreshToken={`${hydratedFmSave?.saveDateLabel || ''}-${players.length}`}
+      />
     </div>
   );
 };

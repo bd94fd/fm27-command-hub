@@ -68,6 +68,10 @@ import {
   captureProgressionSnapshot,
   clearProgressionArchive,
 } from './utils/progressionDiff';
+import {
+  createSaveHistoryPoint,
+  putSaveHistoryPoint,
+} from './services/saveCache';
 
 const TacticalWarRoom = lazy(() =>
   import('./components/TacticalWarRoom').then((m) => ({
@@ -499,6 +503,18 @@ export default function App() {
         decoded.meta.clubName || 'Managed Club',
         hydrated.updatedSquad
       );
+      const parsedPos = Number(
+        (hydrated.leagueStandingLabel || '').match(/^(\d+)/)?.[1] ?? ''
+      );
+      const snapshotPoint = createSaveHistoryPoint({
+        saveName: decoded.meta.fileName || decoded.meta.saveName || 'fm27-save',
+        inGameDate: hydrated.saveDateLabel,
+        clubName: decoded.meta.clubName || 'Managed Club',
+        players: hydrated.updatedSquad,
+        balance: hydrated.balanceLabel || undefined,
+        leaguePosition: Number.isFinite(parsedPos) && parsedPos > 0 ? parsedPos : null,
+      });
+      void putSaveHistoryPoint(snapshotPoint);
     }
 
     setHydratedFmSave(hydrated);
@@ -1084,6 +1100,7 @@ export default function App() {
               <StaffDirectory
                 staff={staff}
                 clubName={hydratedFmSave?.decodedPayload.meta.clubName}
+                saveDate={saveDate}
                 jobVacancies={hydratedFmSave?.decodedPayload.jobVacancies ?? []}
                 onSelectStaff={setSelectedStaff}
               />
