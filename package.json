@@ -24,7 +24,7 @@
     "express": "^4.21.2",
     "firebase": "^13.4.0",
     "helmet": "^8.3.0",
-    "lucide-react": "^0.546.0",
+    "lucide-react": "^1.75.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "virtua": "^0.55.0",
