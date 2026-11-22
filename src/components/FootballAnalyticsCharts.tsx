@@ -479,17 +479,47 @@ export interface PizzaSliceDefinition {
   category: 'Physical' | 'Technical' | 'Mental';
 }
 
-const OUTFIELD_PIZZA_SLICES: PizzaSliceDefinition[] = [
+const FWD_PIZZA_SLICES: PizzaSliceDefinition[] = [
   { key: 'pace', label: 'Pace', category: 'Physical' },
   { key: 'acceleration', label: 'Accel', category: 'Physical' },
   { key: 'stamina', label: 'Stamina', category: 'Physical' },
   { key: 'jumpingReach', label: 'Jumping', category: 'Physical' },
-  { key: 'passing', label: 'Passing', category: 'Technical' },
-  { key: 'tackling', label: 'Tackling', category: 'Technical' },
   { key: 'finishing', label: 'Finishing', category: 'Technical' },
   { key: 'firstTouch', label: '1st Touch', category: 'Technical' },
+  { key: 'dribbling', label: 'Dribbling', category: 'Technical' },
+  { key: 'passing', label: 'Passing', category: 'Technical' },
+  { key: 'offTheBall', label: 'Off Ball', category: 'Mental' },
+  { key: 'composure', label: 'Composure', category: 'Mental' },
   { key: 'decisions', label: 'Decisions', category: 'Mental' },
+  { key: 'anticipation', label: 'Anticip.', category: 'Mental' },
+];
+
+const DEF_PIZZA_SLICES: PizzaSliceDefinition[] = [
+  { key: 'pace', label: 'Pace', category: 'Physical' },
+  { key: 'acceleration', label: 'Accel', category: 'Physical' },
+  { key: 'jumpingReach', label: 'Jumping', category: 'Physical' },
+  { key: 'strength', label: 'Strength', category: 'Physical' },
+  { key: 'tackling', label: 'Tackling', category: 'Technical' },
+  { key: 'marking', label: 'Marking', category: 'Technical' },
+  { key: 'heading', label: 'Heading', category: 'Technical' },
+  { key: 'passing', label: 'Passing', category: 'Technical' },
+  { key: 'positioning', label: 'Position', category: 'Mental' },
+  { key: 'decisions', label: 'Decisions', category: 'Mental' },
+  { key: 'concentration', label: 'Focus', category: 'Mental' },
+  { key: 'anticipation', label: 'Anticip.', category: 'Mental' },
+];
+
+const MID_PIZZA_SLICES: PizzaSliceDefinition[] = [
+  { key: 'pace', label: 'Pace', category: 'Physical' },
+  { key: 'acceleration', label: 'Accel', category: 'Physical' },
+  { key: 'stamina', label: 'Stamina', category: 'Physical' },
   { key: 'workRate', label: 'Work Rate', category: 'Mental' },
+  { key: 'passing', label: 'Passing', category: 'Technical' },
+  { key: 'firstTouch', label: '1st Touch', category: 'Technical' },
+  { key: 'dribbling', label: 'Dribbling', category: 'Technical' },
+  { key: 'tackling', label: 'Tackling', category: 'Technical' },
+  { key: 'decisions', label: 'Decisions', category: 'Mental' },
+  { key: 'vision', label: 'Vision', category: 'Mental' },
   { key: 'offTheBall', label: 'Off Ball', category: 'Mental' },
   { key: 'positioning', label: 'Position', category: 'Mental' },
 ];
@@ -509,6 +539,23 @@ const GK_PIZZA_SLICES: PizzaSliceDefinition[] = [
   { key: 'concentration', label: 'Focus', category: 'Mental' },
 ];
 
+export function getPizzaSlicesForPosition(position: string): PizzaSliceDefinition[] {
+  const p = (position || '').toUpperCase();
+  if (p.includes('GK')) return GK_PIZZA_SLICES;
+  if (/\bSTC\b|\bST\b|\bCF\b|ST\s*\(/i.test(p)) return FWD_PIZZA_SLICES;
+  if (
+    p.includes('DC') ||
+    p.includes('CB') ||
+    p.includes('DL') ||
+    p.includes('DR') ||
+    p.includes('D (') ||
+    p.includes('WB')
+  ) {
+    return DEF_PIZZA_SLICES;
+  }
+  return MID_PIZZA_SLICES;
+}
+
 export function estimateAttributePercentile(
   rawValue: number,
   baselineMean = 11.5
@@ -518,6 +565,23 @@ export function estimateAttributePercentile(
   const z = (val - baselineMean) / 2.2;
   const logistic = 1 / (1 + Math.exp(-z));
   return Math.max(5, Math.min(99, Math.round(logistic * 100)));
+}
+
+export function computeSquadRelativePercentile(
+  rawValue: number,
+  attrKey: keyof PlayerRecord['attributes'],
+  squadPlayers: PlayerRecord[]
+): number {
+  const values = squadPlayers
+    .map((p) => p.attributes?.[attrKey])
+    .filter((v): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0);
+  if (values.length < 4) {
+    return estimateAttributePercentile(rawValue);
+  }
+  const below = values.filter((v) => v < rawValue).length;
+  const equal = values.filter((v) => v === rawValue).length;
+  const pct = Math.round(((below + equal * 0.5) / values.length) * 100);
+  return Math.max(5, Math.min(99, pct));
 }
 
 function buildWedgePath(
@@ -537,6 +601,7 @@ function buildWedgePath(
 
 export interface RolePercentilePizzaChartProps {
   player: PlayerRecord;
+  squadPlayers?: PlayerRecord[];
   ipRoleName?: string;
   oopRoleName?: string;
   highlightedPrimaryKeys?: Set<string>;
@@ -545,12 +610,14 @@ export interface RolePercentilePizzaChartProps {
 
 export const RolePercentilePizzaChart: React.FC<RolePercentilePizzaChartProps> = ({
   player,
+  squadPlayers = [],
   ipRoleName,
   oopRoleName,
   highlightedPrimaryKeys,
   size = 310,
 }) => {
-  const slices = isGkPlayer(player) ? GK_PIZZA_SLICES : OUTFIELD_PIZZA_SLICES;
+  const slices = getPizzaSlicesForPosition(player.position);
+  const useSquadBaseline = squadPlayers.length >= 4;
   const cx = size / 2;
   const cy = size / 2;
   const maxR = size * 0.33;
@@ -566,10 +633,15 @@ export const RolePercentilePizzaChart: React.FC<RolePercentilePizzaChartProps> =
     <div className="flex flex-col items-center space-y-2">
       <div className="text-center">
         <div className="text-xs font-bold text-slate-200">
-          Role &amp; Positional Percentile Pizza ({player.position})
+          Position Attribute Profile ({player.position})
+        </div>
+        <div className="text-[10px] text-slate-400">
+          {useSquadBaseline
+            ? `Compared against your ${squadPlayers.length}-player squad`
+            : 'Compared against division baseline'}
         </div>
         {(ipRoleName || oopRoleName) && (
-          <div className="text-[11px] text-slate-400">
+          <div className="text-[11px] text-slate-400 mt-0.5">
             IP: <span className="text-emerald-300 font-semibold">{ipRoleName || '--'}</span>
             {' · '}OOP:{' '}
             <span className="text-sky-300 font-semibold">{oopRoleName || '--'}</span>
@@ -606,7 +678,9 @@ export const RolePercentilePizzaChart: React.FC<RolePercentilePizzaChartProps> =
           const midAngle = (startAngle + endAngle) / 2;
 
           const rawVal = Number(player.attributes?.[slice.key] ?? 10);
-          const pct = estimateAttributePercentile(rawVal);
+          const pct = useSquadBaseline
+            ? computeSquadRelativePercentile(rawVal, slice.key, squadPlayers)
+            : estimateAttributePercentile(rawVal);
           const r = Math.max(maxR * 0.14, (pct / 100) * maxR);
           const colors = categoryColor(slice.category);
           const normKey = String(slice.key).toLowerCase().replace(/[^a-z]/g, '');
@@ -666,9 +740,12 @@ export const RolePercentilePizzaChart: React.FC<RolePercentilePizzaChartProps> =
           <span className="h-2.5 w-2.5 rounded-sm bg-amber-500" /> Mental
         </span>
         <span className="inline-flex items-center gap-1 text-slate-300">
-          <span className="h-2.5 w-2.5 rounded-sm border border-white bg-slate-700" /> White rim = Role Key Priority
+          <span className="h-2.5 w-2.5 rounded-sm border border-white bg-slate-700" /> White rim = Key for Role
         </span>
       </div>
+      <p className="text-[10px] text-slate-500 text-center max-w-xs">
+        Longer slice = stronger attribute. E.g. <span className="font-mono text-slate-300">85p</span> means higher than 85% of {useSquadBaseline ? 'your squad' : 'the division baseline'}.
+      </p>
     </div>
   );
 };

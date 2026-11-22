@@ -1,16 +1,20 @@
 import React, { useMemo, useState } from 'react';
 import {
+  AlertTriangle,
   BookmarkPlus,
+  CheckCircle2,
   ClipboardPlus,
   Download,
+  LayoutDashboard,
   Shield,
   Sparkles,
+  TrendingUp,
   User,
   X,
   Zap,
 } from 'lucide-react';
 import { PlayerRecord, ShortlistRecord } from '../types/fm27';
-import { computeFm27EngineMetrics } from '../utils/fmSyncEngine';
+import { DivisionBenchmarks } from '../types/fmSave';
 import {
   FM27_ROLES,
   FM27_ROLE_ATTR_MAP,
@@ -19,17 +23,24 @@ import {
   scorePlayerForFm27Role,
 } from '../utils/fm27RoleMatcher';
 import {
-  evaluatePlaybookArchetype,
   getPlaybookContractNotes,
   partitionContractClausesAndBonuses,
 } from '../utils/recruitmentHelpers';
 import {
+  analyzePlayerCard,
+  getPrimaryPositionCode,
+  getRealShirtNumber,
+} from '../utils/playerCardAnalysis';
+import {
   AttributeRadarChart,
   RolePercentilePizzaChart,
+  formatDynamicCurrency,
 } from './FootballAnalyticsCharts';
 
 interface PlayerDetailModalProps {
   player: PlayerRecord | null;
+  squadPlayers?: PlayerRecord[];
+  divisionBenchmarks?: DivisionBenchmarks | null;
   shortlists: ShortlistRecord[];
   isManagedClubPlayer?: boolean;
   isTracked?: boolean;
@@ -39,7 +50,7 @@ interface PlayerDetailModalProps {
   onAddToShortlist: (shortlistId: string, playerId: string) => void;
 }
 
-type DetailTab = 'attributes' | 'positions' | 'metrics' | 'contract';
+type DetailTab = 'overview' | 'attributes' | 'positions' | 'metrics' | 'contract';
 
 const PITCH_ROWS: Array<Array<{ code: string; label: string }>> = [
   [{ code: 'ST', label: 'ST' }],
@@ -66,7 +77,8 @@ const PITCH_ROWS: Array<Array<{ code: string; label: string }>> = [
   [{ code: 'GK', label: 'GK' }],
 ];
 
-function attrColorClass(val: number): string {
+function attrColorClass(val: number | null): string {
+  if (val === null) return 'text-slate-600';
   if (val >= 16) return 'text-emerald-300 font-bold';
   if (val >= 13) return 'text-lime-300 font-semibold';
   if (val >= 10) return 'text-amber-200';
@@ -85,8 +97,27 @@ function normalizeAttrKey(s: string): string {
   return s.toLowerCase().replace(/[^a-z]/g, '');
 }
 
+function readOptionalAttr(val: number | undefined | null): number | null {
+  return typeof val === 'number' && Number.isFinite(val) && val > 0 ? val : null;
+}
+
+function formatFootLabel(player: PlayerRecord): string {
+  const pref = player.preferredFoot || 'Right';
+  if (
+    typeof player.leftFoot === 'number' &&
+    typeof player.rightFoot === 'number' &&
+    player.leftFoot > 0 &&
+    player.rightFoot > 0
+  ) {
+    return `${pref} (L ${player.leftFoot} / R ${player.rightFoot})`;
+  }
+  return `${pref} Foot`;
+}
+
 export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
   player,
+  squadPlayers = [],
+  divisionBenchmarks = null,
   shortlists,
   isManagedClubPlayer = false,
   isTracked = false,
@@ -95,18 +126,22 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
   onToggleTrack,
   onAddToShortlist,
 }) => {
-  const [activeTab, setActiveTab] = useState<DetailTab>('attributes');
+  const [activeTab, setActiveTab] = useState<DetailTab>('overview');
   const [selectedIpRole, setSelectedIpRole] = useState<string>('');
   const [selectedOopRole, setSelectedOopRole] = useState<string>('');
+  const [comparePlayerId, setComparePlayerId] = useState<string>('__AUTO__');
   const [selectedShortlistId, setSelectedShortlistId] = useState<string>('');
   const [shortlistFeedback, setShortlistFeedback] = useState<string | null>(null);
   const [exportFeedback, setExportFeedback] = useState<string | null>(null);
 
+  const analysis = useMemo(
+    () => (player ? analyzePlayerCard(player, squadPlayers, divisionBenchmarks) : null),
+    [player, squadPlayers, divisionBenchmarks]
+  );
+
   const naturalDefaults = useMemo(
     () =>
-      player
-        ? resolveNaturalDefaultRoles(player)
-        : { ipRole: '', oopRole: '' },
+      player ? resolveNaturalDefaultRoles(player) : { ipRole: '', oopRole: '' },
     [player]
   );
 
@@ -117,12 +152,6 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
 
   const scopedOopRoles = useMemo(
     () => (player ? getNaturalRolesForPlayer(player, 'Out of Possession') : []),
-    [player]
-  );
-
-  const playbookArchetype = useMemo(
-    () =>
-      player ? evaluatePlaybookArchetype(player.position, player.attributes) : null,
     [player]
   );
 
@@ -166,54 +195,74 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
     return { keySet, prefSet };
   }, [effectiveIpRole, effectiveOopRole]);
 
-  if (!player) return null;
+  const compareCandidates = useMemo(
+    () =>
+      player
+        ? squadPlayers
+            .filter((p) => p.id !== player.id)
+            .sort((a, b) => b.ability - a.ability)
+        : [],
+    [player, squadPlayers]
+  );
 
-  const engineMetrics = computeFm27EngineMetrics(player);
+  const resolvedComparePlayer = useMemo(() => {
+    if (!player) return null;
+    if (comparePlayerId === '__NONE__') return null;
+    if (comparePlayerId === '__AUTO__') {
+      return analysis?.squadDepth?.bestTeammate || null;
+    }
+    return compareCandidates.find((p) => p.id === comparePlayerId) || null;
+  }, [player, comparePlayerId, analysis, compareCandidates]);
+
+  if (!player || !analysis) return null;
+
   const a = player.attributes;
+  const realNumber = getRealShirtNumber(player);
+  const posCode = getPrimaryPositionCode(player.position);
 
-  const technicalAttrs: Array<{ label: string; value: number }> = [
-    { label: 'Corners', value: a.corners ?? 10 },
-    { label: 'Crossing', value: a.crossing ?? 10 },
-    { label: 'Dribbling', value: a.dribbling ?? 10 },
-    { label: 'Finishing', value: a.finishing },
-    { label: 'First Touch', value: a.firstTouch },
-    { label: 'Free Kicks', value: a.freeKicks ?? 10 },
-    { label: 'Heading', value: a.heading ?? 10 },
-    { label: 'Long Shots', value: a.longShots ?? 10 },
-    { label: 'Long Throws', value: a.longThrows ?? 10 },
-    { label: 'Marking', value: a.marking ?? 10 },
-    { label: 'Passing', value: a.passing },
-    { label: 'Penalties', value: a.penalties ?? 10 },
-    { label: 'Tackling', value: a.tackling },
-    { label: 'Technique', value: a.technique ?? 10 },
+  const technicalAttrs: Array<{ label: string; value: number | null }> = [
+    { label: 'Corners', value: readOptionalAttr(a.corners) },
+    { label: 'Crossing', value: readOptionalAttr(a.crossing) },
+    { label: 'Dribbling', value: readOptionalAttr(a.dribbling) },
+    { label: 'Finishing', value: readOptionalAttr(a.finishing) },
+    { label: 'First Touch', value: readOptionalAttr(a.firstTouch) },
+    { label: 'Free Kicks', value: readOptionalAttr(a.freeKicks) },
+    { label: 'Heading', value: readOptionalAttr(a.heading) },
+    { label: 'Long Shots', value: readOptionalAttr(a.longShots) },
+    { label: 'Long Throws', value: readOptionalAttr(a.longThrows) },
+    { label: 'Marking', value: readOptionalAttr(a.marking) },
+    { label: 'Passing', value: readOptionalAttr(a.passing) },
+    { label: 'Penalties', value: readOptionalAttr(a.penalties) },
+    { label: 'Tackling', value: readOptionalAttr(a.tackling) },
+    { label: 'Technique', value: readOptionalAttr(a.technique) },
   ];
 
-  const mentalAttrs: Array<{ label: string; value: number }> = [
-    { label: 'Aggression', value: a.aggression ?? 10 },
-    { label: 'Anticipation', value: a.anticipation ?? 10 },
-    { label: 'Bravery', value: a.bravery ?? 10 },
-    { label: 'Composure', value: a.composure ?? 10 },
-    { label: 'Concentration', value: a.concentration ?? 10 },
-    { label: 'Decisions', value: a.decisions },
-    { label: 'Determination', value: a.determination },
-    { label: 'Flair', value: a.flair ?? 10 },
-    { label: 'Leadership', value: a.leadership ?? 10 },
-    { label: 'Off The Ball', value: a.offTheBall },
-    { label: 'Positioning', value: a.positioning ?? 10 },
-    { label: 'Teamwork', value: a.teamwork ?? 10 },
-    { label: 'Vision', value: a.vision ?? 10 },
-    { label: 'Work Rate', value: a.workRate },
+  const mentalAttrs: Array<{ label: string; value: number | null }> = [
+    { label: 'Aggression', value: readOptionalAttr(a.aggression) },
+    { label: 'Anticipation', value: readOptionalAttr(a.anticipation) },
+    { label: 'Bravery', value: readOptionalAttr(a.bravery) },
+    { label: 'Composure', value: readOptionalAttr(a.composure) },
+    { label: 'Concentration', value: readOptionalAttr(a.concentration) },
+    { label: 'Decisions', value: readOptionalAttr(a.decisions) },
+    { label: 'Determination', value: readOptionalAttr(a.determination) },
+    { label: 'Flair', value: readOptionalAttr(a.flair) },
+    { label: 'Leadership', value: readOptionalAttr(a.leadership) },
+    { label: 'Off The Ball', value: readOptionalAttr(a.offTheBall) },
+    { label: 'Positioning', value: readOptionalAttr(a.positioning) },
+    { label: 'Teamwork', value: readOptionalAttr(a.teamwork) },
+    { label: 'Vision', value: readOptionalAttr(a.vision) },
+    { label: 'Work Rate', value: readOptionalAttr(a.workRate) },
   ];
 
-  const physicalAttrs: Array<{ label: string; value: number }> = [
-    { label: 'Acceleration', value: a.acceleration },
-    { label: 'Agility', value: a.agility ?? 10 },
-    { label: 'Balance', value: a.balance ?? 10 },
-    { label: 'Jumping Reach', value: a.jumpingReach },
-    { label: 'Natural Fitness', value: a.naturalFitness ?? 10 },
-    { label: 'Pace', value: a.pace },
-    { label: 'Stamina', value: a.stamina },
-    { label: 'Strength', value: a.strength ?? 10 },
+  const physicalAttrs: Array<{ label: string; value: number | null }> = [
+    { label: 'Acceleration', value: readOptionalAttr(a.acceleration) },
+    { label: 'Agility', value: readOptionalAttr(a.agility) },
+    { label: 'Balance', value: readOptionalAttr(a.balance) },
+    { label: 'Jumping Reach', value: readOptionalAttr(a.jumpingReach) },
+    { label: 'Natural Fitness', value: readOptionalAttr(a.naturalFitness) },
+    { label: 'Pace', value: readOptionalAttr(a.pace) },
+    { label: 'Stamina', value: readOptionalAttr(a.stamina) },
+    { label: 'Strength', value: readOptionalAttr(a.strength) },
   ];
 
   const isGoalkeeper =
@@ -221,18 +270,18 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
     (typeof a.reflexes === 'number' && a.reflexes >= 8) ||
     (typeof a.handling === 'number' && a.handling >= 8);
 
-  const gkAttrs: Array<{ label: string; value: number }> = [
-    { label: 'Aerial Reach', value: a.aerialReach ?? 1 },
-    { label: 'Command of Area', value: a.commandOfArea ?? 1 },
-    { label: 'Communication', value: a.communication ?? 1 },
-    { label: 'Eccentricity', value: a.eccentricity ?? 1 },
-    { label: 'Handling', value: a.handling ?? 1 },
-    { label: 'Kicking', value: a.kicking ?? 1 },
-    { label: 'One on Ones', value: a.oneOnOnes ?? 1 },
-    { label: 'Punching', value: a.punching ?? 1 },
-    { label: 'Reflexes', value: a.reflexes ?? 1 },
-    { label: 'Rushing Out', value: a.rushingOut ?? 1 },
-    { label: 'Throwing', value: a.throwing ?? 1 },
+  const gkAttrs: Array<{ label: string; value: number | null }> = [
+    { label: 'Aerial Reach', value: readOptionalAttr(a.aerialReach) },
+    { label: 'Command of Area', value: readOptionalAttr(a.commandOfArea) },
+    { label: 'Communication', value: readOptionalAttr(a.communication) },
+    { label: 'Eccentricity', value: readOptionalAttr(a.eccentricity) },
+    { label: 'Handling', value: readOptionalAttr(a.handling) },
+    { label: 'Kicking', value: readOptionalAttr(a.kicking) },
+    { label: 'One on Ones', value: readOptionalAttr(a.oneOnOnes) },
+    { label: 'Punching', value: readOptionalAttr(a.punching) },
+    { label: 'Reflexes', value: readOptionalAttr(a.reflexes) },
+    { label: 'Rushing Out', value: readOptionalAttr(a.rushingOut) },
+    { label: 'Throwing', value: readOptionalAttr(a.throwing) },
   ];
 
   const scoutBadges = player.scoutBadges || [];
@@ -256,7 +305,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
     return 1;
   };
 
-  const renderAttrRow = (item: { label: string; value: number }) => {
+  const renderAttrRow = (item: { label: string; value: number | null }) => {
     const norm = normalizeAttrKey(item.label);
     const isKey = highlightedKeys.keySet.has(norm);
     const isPref = !isKey && highlightedKeys.prefSet.has(norm);
@@ -280,7 +329,9 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
           )}
           {item.label}
         </span>
-        <span className={`font-mono ${attrColorClass(item.value)}`}>{item.value}</span>
+        <span className={`font-mono ${attrColorClass(item.value)}`}>
+          {item.value !== null ? item.value : '—'}
+        </span>
       </div>
     );
   };
@@ -301,7 +352,6 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Background gradient (dark slate / emerald border)
     const bg = ctx.createLinearGradient(0, 0, 760, 500);
     bg.addColorStop(0, '#020617');
     bg.addColorStop(0.55, '#0f172a');
@@ -313,18 +363,12 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
     ctx.lineWidth = 3;
     ctx.strokeRect(8, 8, 744, 484);
 
-    // Top Accent Bar
     ctx.fillStyle = '#10b981';
     ctx.fillRect(28, 28, 704, 4);
 
-    // Header: Name, Position & Stars (Strictly Zero Raw CA/PA, no fake #0)
     ctx.fillStyle = '#34d399';
     ctx.font = 'bold 13px monospace';
-    ctx.fillText(
-      `FM27 COMMAND HUB · PATCH 27.1.0 DUAL-PHASE PLAYER CARD`,
-      28,
-      54
-    );
+    ctx.fillText('FM27 COMMAND HUB · DUAL-PHASE PLAYER CARD', 28, 54);
 
     ctx.fillStyle = '#f8fafc';
     ctx.font = 'bold 30px sans-serif';
@@ -346,7 +390,6 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
       144
     );
 
-    // Dual-Phase IP/OOP Role Fit & Physical Engine Panel (Stacked cleanly so long role names NEVER collide)
     const ipRoleObj = FM27_ROLES.find((r) => r.name === effectiveIpRole);
     const oopRoleObj = FM27_ROLES.find((r) => r.name === effectiveOopRole);
     const ipFitScore = ipRoleObj ? scorePlayerForFm27Role(player, ipRoleObj) : 75;
@@ -374,7 +417,6 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
       209
     );
 
-    // Subtle divider between roles and physical engine / archetype row
     ctx.strokeStyle = 'rgba(51, 65, 85, 0.6)';
     ctx.beginPath();
     ctx.moveTo(44, 223);
@@ -383,13 +425,9 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
 
     ctx.fillStyle = '#a7f3d0';
     ctx.font = 'bold 12px monospace';
-    const engineSummary = `Engine ${engineMetrics.physicalEngineScore}/100 · ${engineMetrics.topSpeedMps} m/s · +${engineMetrics.jumpHeightMeters}m Jump`;
-    const archetypeSummary = playbookArchetype
-      ? ` · ${playbookArchetype.name} (${playbookArchetype.score}%)`
-      : '';
-    ctx.fillText(`${engineSummary}${archetypeSummary}`, 44, 246, 672);
+    const engineSummary = `Physical ${analysis.physical.score}/100 (${analysis.physical.tier}) · ${analysis.physical.topSpeedKmh} km/h · Durability: ${analysis.physical.durability.tier}`;
+    ctx.fillText(engineSummary, 44, 246, 672);
 
-    // 12 Key Attributes Grid (3 Columns x 4 Rows)
     const keyGrid: Array<{ label: string; value: number }> = isGoalkeeper
       ? [
           { label: 'Reflexes', value: a.reflexes ?? 10 },
@@ -449,11 +487,10 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
       ctx.fillText(String(item.value).padStart(2, ' '), x + colWidth - 34, y + 22);
     });
 
-    // Footer: Qualitative Scout Badges & Traits (Zero Raw CA/PA)
     const badgeLine =
       scoutBadges.length > 0
         ? `Scout Badges: ${scoutBadges.join(' · ')}`
-        : 'Scout Badges: Verified 1–20 Display Scale (Zero Raw CA/PA)';
+        : 'FM27 Command Hub · Relative Squad Stars & 1–20 Attributes';
     ctx.fillStyle = '#34d399';
     ctx.font = 'bold 12px monospace';
     ctx.fillText(badgeLine.slice(0, 88), 28, 468);
@@ -472,33 +509,72 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
     setTimeout(() => setExportFeedback(null), 2200);
   };
 
+  const durabilityBadgeClass =
+    analysis.physical.durability.tier === 'Ironman'
+      ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+      : analysis.physical.durability.tier === 'Reliable'
+        ? 'bg-sky-500/15 border-sky-500/40 text-sky-300'
+        : analysis.physical.durability.tier === 'Manage Load'
+          ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+          : 'bg-rose-500/15 border-rose-500/40 text-rose-300';
+
+  const tierBadgeClass = (tier: 'Natural Fit' | 'Solid' | 'Makeshift') =>
+    tier === 'Natural Fit'
+      ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+      : tier === 'Solid'
+        ? 'bg-sky-500/15 border-sky-500/40 text-sky-300'
+        : 'bg-amber-500/15 border-amber-500/40 text-amber-300';
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-2 sm:p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl"
+        className="w-full max-w-4xl max-h-[92vh] overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-slate-900/95 px-5 py-4 backdrop-blur">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold">
-              #{player.number}
+        <div className="sticky top-0 z-10 flex flex-wrap items-start justify-between gap-3 border-b border-slate-800 bg-slate-900/95 px-4 sm:px-5 py-3.5 backdrop-blur">
+          <div className="flex items-start gap-3">
+            <div
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold text-sm font-mono"
+              title={realNumber ? `Squad Number #${realNumber}` : `Primary Position: ${posCode}`}
+            >
+              {realNumber ? `#${realNumber}` : posCode}
             </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-lg font-bold text-white">{player.name}</h2>
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <h2 className="text-base sm:text-lg font-bold text-white leading-tight">
+                  {player.name}
+                </h2>
                 <span className="rounded-md bg-slate-800 px-2 py-0.5 text-xs font-mono text-emerald-300">
                   {player.position}
                 </span>
-                <span className="rounded-md bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-xs font-semibold text-amber-300">
+                <span
+                  className="rounded-md bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-xs font-semibold text-amber-300"
+                  title="Star rating relative to your current squad"
+                >
                   {player.ability.toFixed(1)}★ / {player.potential.toFixed(1)}★ Pot
                 </span>
-                {playbookArchetype && (
+                {analysis.bestIpRole && (
                   <span className="rounded-md bg-sky-500/15 border border-sky-500/35 px-2 py-0.5 text-xs font-semibold text-sky-300">
-                    {playbookArchetype.name} · {playbookArchetype.score}%
+                    Best Fit: {analysis.bestIpRole.role.name} · {analysis.bestIpRole.fitPct}%
+                  </span>
+                )}
+                {player.squadUnit && player.squadUnit !== 'First Team' && (
+                  <span className="rounded-md bg-indigo-500/15 border border-indigo-500/35 px-2 py-0.5 text-[11px] font-semibold text-indigo-300">
+                    {player.squadUnit}
+                  </span>
+                )}
+                {player.onLoan && (
+                  <span className="rounded-md bg-purple-500/15 border border-purple-500/35 px-2 py-0.5 text-[11px] font-semibold text-purple-300">
+                    On Loan
+                  </span>
+                )}
+                {player.morale && (
+                  <span className="rounded-md bg-slate-800 border border-slate-700 px-2 py-0.5 text-[11px] text-slate-300">
+                    Morale: {player.morale}
                   </span>
                 )}
                 {player.activeSuspensions && player.activeSuspensions.length > 0 && (
@@ -507,23 +583,28 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Age {player.age} · {player.preferredFoot || 'Right'} Foot
+              <p className="text-xs text-slate-400">
+                Age {player.age}
+                {player.nation && player.nation !== 'Unknown' ? ` · ${player.nation}` : ''} ·{' '}
+                {formatFootLabel(player)}
                 {player.heightCm ? ` · ${player.heightCm} cm` : ''} · {player.personality} ·{' '}
                 £{player.wagePw.toLocaleString()}/wk (exp {player.expires})
+                {typeof player.marketValue === 'number' && player.marketValue > 0
+                  ? ` · Value ${formatDynamicCurrency(player.marketValue, 'marketValue')}`
+                  : ''}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={handleExportPlayerCardPng}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/35 bg-sky-500/15 hover:bg-sky-500/25 px-3 py-1.5 text-xs font-semibold text-sky-300 transition cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/35 bg-sky-500/15 hover:bg-sky-500/25 px-2.5 py-1.5 text-xs font-semibold text-sky-300 transition cursor-pointer"
               title="Export 1-Click Shareable FM27 Player Card (PNG)"
             >
               <Download className="h-3.5 w-3.5" />
-              {exportFeedback || 'Export Card PNG'}
+              {exportFeedback || 'Export PNG'}
             </button>
             {!isManagedClubPlayer && (
               <button
@@ -531,7 +612,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                 onClick={() =>
                   onToggleTrack ? onToggleTrack(player) : onAddRecruitment(player)
                 }
-                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
                   isTracked
                     ? 'bg-emerald-500/20 hover:bg-emerald-500/30 border-emerald-500/50 text-emerald-300'
                     : 'bg-indigo-500/15 hover:bg-indigo-500/25 border-indigo-500/30 text-indigo-300'
@@ -573,14 +654,15 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-1 border-b border-slate-800 bg-slate-950/40 px-5 pt-2">
+        {/* Mobile-friendly single-line scrollable tabs */}
+        <div className="flex gap-1 overflow-x-auto border-b border-slate-800 bg-slate-950/40 px-4 sm:px-5 pt-2 no-scrollbar">
           {(
             [
-              { id: 'attributes', label: 'Attributes & IP/OOP Role Fit', icon: Sparkles },
-              { id: 'positions', label: 'Pitch Familiarity', icon: Shield },
-              { id: 'metrics', label: 'FM27 Engine Metrics', icon: Zap },
-              { id: 'contract', label: 'Season Output & Contract', icon: User },
+              { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+              { id: 'attributes', label: 'Attributes', icon: Sparkles },
+              { id: 'positions', label: 'Roles & Pitch', icon: Shield },
+              { id: 'metrics', label: 'Engine & Charts', icon: Zap },
+              { id: 'contract', label: 'Stats & Contract', icon: User },
             ] as const
           ).map((t) => {
             const Icon = t.icon;
@@ -588,7 +670,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
               <button
                 key={t.id}
                 onClick={() => setActiveTab(t.id)}
-                className={`inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-xs font-medium transition ${
+                className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-xs font-medium transition cursor-pointer ${
                   activeTab === t.id
                     ? 'border-emerald-400 text-emerald-300'
                     : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -602,7 +684,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
         </div>
 
         {/* Body */}
-        <div className="p-5 space-y-4">
+        <div className="p-4 sm:p-5 space-y-4">
           {player.activeSuspensions && player.activeSuspensions.length > 0 && (
             <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-xs text-rose-200 space-y-1">
               <div className="font-bold uppercase tracking-wider text-rose-300">
@@ -620,9 +702,227 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
             </div>
           )}
 
+          {/* TAB 1: OVERVIEW (Instant Manager's Briefing) */}
+          {activeTab === 'overview' && (
+            <div className="space-y-4">
+              {/* Scouting Verdict */}
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-300">
+                    Scouting Verdict
+                  </h3>
+                  {analysis.squadDepth && (
+                    <span className="rounded-md bg-slate-900/90 border border-slate-700 px-2 py-0.5 text-[11px] font-medium text-slate-200">
+                      {analysis.squadDepth.summary}
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-slate-200 leading-relaxed">
+                  {analysis.scoutingVerdict}
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  Stars ({player.ability.toFixed(1)}★ / {player.potential.toFixed(1)}★) are measured relative to your current squad.
+                </p>
+              </div>
+
+              {/* Strengths & Watchpoints */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2.5">
+                  <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-emerald-300">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Top Strengths
+                  </div>
+                  {analysis.strengths.length > 0 ? (
+                    <div className="space-y-2">
+                      {analysis.strengths.map((s) => (
+                        <div key={s.attrKey} className="text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-slate-100">{s.label}</span>
+                            <span className={`font-mono ${attrColorClass(s.value)}`}>
+                              {s.value}/20
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-400">{s.summary}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500 italic">
+                      No standout 12+ attributes recorded for this position yet.
+                    </p>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2.5">
+                  <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-amber-300">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Key Watchpoints
+                  </div>
+                  {analysis.watchpoints.length > 0 ? (
+                    <div className="space-y-2">
+                      {analysis.watchpoints.map((w) => (
+                        <div key={w.attrKey} className="text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-slate-100">{w.label}</span>
+                            <span className="font-mono text-rose-300 font-semibold">
+                              {w.value}/20
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-400">{w.summary}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-emerald-300/80">
+                      No major attribute weaknesses (all key positional traits are 10+).
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Recommended Dual-Phase Setup */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {analysis.bestIpRole && (
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                        Best In-Possession (IP) Role
+                      </span>
+                      <span
+                        className={`rounded border px-2 py-0.5 text-[10px] font-semibold ${tierBadgeClass(
+                          analysis.bestIpRole.tier
+                        )}`}
+                      >
+                        {analysis.bestIpRole.fitPct}% · {analysis.bestIpRole.tier}
+                      </span>
+                    </div>
+                    <div className="text-sm font-bold text-white">
+                      {analysis.bestIpRole.role.name}
+                    </div>
+                    {analysis.bestIpRole.topSupporting.length > 0 && (
+                      <div className="text-[11px] text-slate-400">
+                        Driven by:{' '}
+                        <span className="text-slate-200">
+                          {analysis.bestIpRole.topSupporting
+                            .map((x) => `${x.label} ${x.value}`)
+                            .join(' · ')}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {analysis.bestOopRole && (
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-sky-400">
+                        Best Out-of-Possession (OOP) Role
+                      </span>
+                      <span
+                        className={`rounded border px-2 py-0.5 text-[10px] font-semibold ${tierBadgeClass(
+                          analysis.bestOopRole.tier
+                        )}`}
+                      >
+                        {analysis.bestOopRole.fitPct}% · {analysis.bestOopRole.tier}
+                      </span>
+                    </div>
+                    <div className="text-sm font-bold text-white">
+                      {analysis.bestOopRole.role.name}
+                    </div>
+                    {analysis.bestOopRole.topSupporting.length > 0 && (
+                      <div className="text-[11px] text-slate-400">
+                        Driven by:{' '}
+                        <span className="text-slate-200">
+                          {analysis.bestOopRole.topSupporting
+                            .map((x) => `${x.label} ${x.value}`)
+                            .join(' · ')}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Actionable Manager Advice: Durability, Development & Club DNA */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Durability &amp; Workload
+                    </span>
+                    <span
+                      className={`rounded border px-2 py-0.5 text-[10px] font-semibold ${durabilityBadgeClass}`}
+                    >
+                      {analysis.physical.durability.tier}
+                    </span>
+                  </div>
+                  <div className="text-xs font-semibold text-white">
+                    {analysis.physical.durability.headline}
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    {analysis.physical.durability.advice}
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Development &amp; Training
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded bg-indigo-500/15 border border-indigo-500/30 px-2 py-0.5 text-[10px] font-semibold text-indigo-300">
+                      <TrendingUp className="h-3 w-3" />
+                      {analysis.development.stage}
+                    </span>
+                  </div>
+                  <div className="text-xs font-semibold text-white">
+                    {analysis.development.headline}
+                  </div>
+                  <div className="text-[11px] text-slate-300">
+                    Focus: <span className="text-emerald-300">{analysis.development.trainingFocus.join(', ')}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    {analysis.development.note}
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Club DNA Fit
+                    </span>
+                    <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-mono font-bold text-emerald-300">
+                      {analysis.clubDna.overallDnaScore}/100
+                    </span>
+                  </div>
+                  <div className="text-xs font-semibold text-white">
+                    {analysis.clubDna.bestArchetypeLabel}
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                    <div className="flex justify-between rounded bg-slate-900 px-2 py-1">
+                      <span className="text-slate-400">Physical</span>
+                      <span className="font-mono text-slate-200">{analysis.clubDna.pillarScores.physicalIntensity}</span>
+                    </div>
+                    <div className="flex justify-between rounded bg-slate-900 px-2 py-1">
+                      <span className="text-slate-400">Technical</span>
+                      <span className="font-mono text-slate-200">{analysis.clubDna.pillarScores.technicalSecurity}</span>
+                    </div>
+                    <div className="flex justify-between rounded bg-slate-900 px-2 py-1">
+                      <span className="text-slate-400">Tactical</span>
+                      <span className="font-mono text-slate-200">{analysis.clubDna.pillarScores.tacticalDiscipline}</span>
+                    </div>
+                    <div className="flex justify-between rounded bg-slate-900 px-2 py-1">
+                      <span className="text-slate-400">Aerial</span>
+                      <span className="font-mono text-slate-200">{analysis.clubDna.pillarScores.aerialDominance}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: ATTRIBUTES */}
           {activeTab === 'attributes' && (
             <>
-              {/* Pass 0: Scout Report Badges, Last 5 Form & Readable Player Traits */}
               {(scoutBadges.length > 0 ||
                 traits.length > 0 ||
                 (formTrend && formTrend.recentRatings.length > 0)) && (
@@ -717,7 +1017,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                 </div>
               )}
 
-              {/* IP / OOP role highlight selector */}
+              {/* IP / OOP role highlight selector with live Fit % */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
                 <div>
                   <label className="block text-[11px] font-semibold uppercase tracking-wider text-emerald-400 mb-1">
@@ -728,16 +1028,15 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     onChange={(e) => setSelectedIpRole(e.target.value)}
                     className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-200"
                   >
-                    <option value={naturalDefaults.ipRole}>
-                      {naturalDefaults.ipRole} (Assigned)
-                    </option>
-                    {scopedIpRoles
-                      .filter((r) => r.name !== naturalDefaults.ipRole)
-                      .map((r) => (
+                    {scopedIpRoles.map((r) => {
+                      const pct = scorePlayerForFm27Role(player, r);
+                      const isAssigned = r.name === naturalDefaults.ipRole;
+                      return (
                         <option key={`ip-${r.name}`} value={r.name}>
-                          {r.name}
+                          {r.name} ({pct}% Fit){isAssigned ? ' · Assigned' : ''}
                         </option>
-                      ))}
+                      );
+                    })}
                   </select>
                 </div>
                 <div>
@@ -749,16 +1048,15 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     onChange={(e) => setSelectedOopRole(e.target.value)}
                     className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-200"
                   >
-                    <option value={naturalDefaults.oopRole}>
-                      {naturalDefaults.oopRole} (Assigned)
-                    </option>
-                    {scopedOopRoles
-                      .filter((r) => r.name !== naturalDefaults.oopRole)
-                      .map((r) => (
+                    {scopedOopRoles.map((r) => {
+                      const pct = scorePlayerForFm27Role(player, r);
+                      const isAssigned = r.name === naturalDefaults.oopRole;
+                      return (
                         <option key={`oop-${r.name}`} value={r.name}>
-                          {r.name}
+                          {r.name} ({pct}% Fit){isAssigned ? ' · Assigned' : ''}
                         </option>
-                      ))}
+                      );
+                    })}
                   </select>
                 </div>
               </div>
@@ -781,14 +1079,17 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     Physical (8)
                   </h4>
                   {physicalAttrs.map(renderAttrRow)}
-                  <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-400">
-                    <div className="flex items-center gap-2 mb-1">
+                  <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-400 space-y-1">
+                    <div className="flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-emerald-400" />
                       <span>Key role attribute</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-sky-400" />
                       <span>Preferable role attribute</span>
+                    </div>
+                    <div className="text-[11px] text-slate-500 pt-1">
+                      “—” means that attribute wasn&apos;t included in this import.
                     </div>
                   </div>
                 </div>
@@ -807,6 +1108,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
             </>
           )}
 
+          {/* TAB 3: ROLES & PITCH */}
           {activeTab === 'positions' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div className="rounded-xl border border-emerald-900/50 bg-gradient-to-b from-emerald-950/40 to-slate-950 p-4 space-y-3">
@@ -833,37 +1135,61 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     </div>
                   ))}
                 </div>
+                <p className="text-[10px] text-slate-400 text-center">
+                  18–20 = Natural · 15–17 = Accomplished · 12–14 = Competent
+                </p>
               </div>
 
               <div className="space-y-3">
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-                    Assigned Dual-Phase Roles
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2.5">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-400">
+                    Top In-Possession (IP) Roles
                   </h4>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">In-Possession (IP):</span>
-                      <span className="font-semibold text-emerald-300">
-                        {naturalDefaults.ipRole}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Out-of-Possession (OOP):</span>
-                      <span className="font-semibold text-sky-300">
-                        {naturalDefaults.oopRole}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Preferred Foot:</span>
-                      <span className="font-semibold text-slate-200">
-                        {player.preferredFoot || 'Right'}
-                      </span>
-                    </div>
+                  <div className="space-y-1.5">
+                    {analysis.topIpRoles.map((r) => (
+                      <div
+                        key={r.role.name}
+                        className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs"
+                      >
+                        <span className="font-medium text-slate-200">{r.role.name}</span>
+                        <span
+                          className={`rounded border px-2 py-0.5 text-[10px] font-mono font-semibold ${tierBadgeClass(
+                            r.tier
+                          )}`}
+                        >
+                          {r.fitPct}% · {r.tier}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </div>
+
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2.5">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-sky-400">
+                    Top Out-of-Possession (OOP) Roles
+                  </h4>
+                  <div className="space-y-1.5">
+                    {analysis.topOopRoles.map((r) => (
+                      <div
+                        key={r.role.name}
+                        className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs"
+                      >
+                        <span className="font-medium text-slate-200">{r.role.name}</span>
+                        <span
+                          className={`rounded border px-2 py-0.5 text-[10px] font-mono font-semibold ${tierBadgeClass(
+                            r.tier
+                          )}`}
+                        >
+                          {r.fitPct}% · {r.tier}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-                    Scout & Tactical Notes
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                    Scout &amp; Tactical Notes
                   </h4>
                   <p className="text-xs text-slate-300 leading-relaxed">
                     {player.notes || 'Synced directly from FM27 save.'}
@@ -873,112 +1199,215 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
             </div>
           )}
 
+          {/* TAB 4: ENGINE & CHARTS */}
           {activeTab === 'metrics' && (
             <div className="space-y-5">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-                  <div className="text-[11px] uppercase tracking-wider text-slate-400">
-                    FM27 Engine Score
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] uppercase tracking-wider text-slate-400">
+                      FM27 Physical Score
+                    </span>
+                    <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">
+                      {analysis.physical.tier}
+                    </span>
                   </div>
-                  <div className="mt-1 text-2xl font-bold text-emerald-400 font-mono">
-                    {engineMetrics.physicalEngineScore}/100
+                  <div className="text-2xl font-bold text-emerald-400 font-mono">
+                    {analysis.physical.score}/100
                   </div>
-                  <div className="text-[11px] text-slate-400 mt-1">
-                    Custom physical + engine rating
+                  <div className="text-[11px] text-slate-400 leading-snug">
+                    {analysis.physical.explanation}
                   </div>
                 </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-                  <div className="text-[11px] uppercase tracking-wider text-slate-400">
+
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-1">
+                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
                     Top Sprint Speed
                   </div>
-                  <div className="mt-1 text-2xl font-bold text-sky-300 font-mono">
-                    {engineMetrics.topSpeedMps} m/s
+                  <div className="text-2xl font-bold text-sky-300 font-mono">
+                    {analysis.physical.topSpeedKmh} <span className="text-sm font-normal">km/h</span>
                   </div>
-                  <div className="text-[11px] text-slate-400 mt-1">
-                    Pace {a.pace} · Acc {a.acceleration}
+                  <div className="text-[11px] text-slate-300">
+                    {analysis.physical.speedVerdict}
+                  </div>
+                  <div className="text-[10px] text-slate-500 font-mono">
+                    {analysis.physical.topSpeedMps} m/s · Pace {a.pace} · Acc {a.acceleration}
                   </div>
                 </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-                  <div className="text-[11px] uppercase tracking-wider text-slate-400">
+
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-1">
+                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
                     Aerial Reach
                   </div>
-                  <div className="mt-1 text-2xl font-bold text-amber-300 font-mono">
-                    +{engineMetrics.jumpHeightMeters} m
+                  <div className="text-2xl font-bold text-amber-300 font-mono">
+                    +{analysis.physical.jumpHeightMeters} m
                   </div>
-                  <div className="text-[11px] text-slate-400 mt-1">
-                    JR {a.jumpingReach} · Heading {a.heading ?? 10}
+                  <div className="text-[11px] text-slate-300 leading-snug">
+                    {analysis.physical.aerialVerdict}
+                  </div>
+                  <div className="text-[10px] text-slate-500 font-mono">
+                    Jumping {a.jumpingReach}/20 · Heading {a.heading ?? '—'}/20
                   </div>
                 </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-                  <div className="text-[11px] uppercase tracking-wider text-slate-400">
-                    Condition / Sharpness
+
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] uppercase tracking-wider text-slate-400">
+                      Durability &amp; Load
+                    </span>
+                    <span
+                      className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${durabilityBadgeClass}`}
+                    >
+                      {analysis.physical.durability.tier}
+                    </span>
                   </div>
-                  <div className="mt-1 text-2xl font-bold text-slate-100 font-mono">
-                    {player.condition ?? '--'}% / {player.sharpness ?? '--'}%
+                  <div className="text-2xl font-bold text-slate-100 font-mono">
+                    {analysis.physical.durability.stamina}
+                    <span className="text-sm font-normal text-slate-400"> / </span>
+                    {analysis.physical.durability.naturalFitness ?? '—'}
                   </div>
-                  <div className="text-[11px] text-slate-400 mt-1">
-                    Stamina {a.stamina}/20
+                  <div className="text-[11px] text-slate-300 leading-snug">
+                    {analysis.physical.durability.headline}
+                  </div>
+                  <div className="text-[10px] text-slate-500">
+                    Stamina / Natural Fitness (out of 20)
                   </div>
                 </div>
               </div>
 
-              {/* Phase 1 (v3.0): Role & Positional Percentile Pizza Chart + 6-Axis Radar */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 flex items-center justify-center">
                   <RolePercentilePizzaChart
                     player={player}
+                    squadPlayers={squadPlayers}
                     ipRoleName={effectiveIpRole}
                     oopRoleName={effectiveOopRole}
                     highlightedPrimaryKeys={highlightedKeys.keySet}
                   />
                 </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 flex flex-col items-center justify-center">
-                  <div className="text-xs font-bold text-slate-200 mb-1">
-                    6-Axis Core Profile Radar
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 flex flex-col items-center justify-center space-y-2">
+                  <div className="w-full flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-xs font-bold text-slate-200">
+                      6-Axis Comparison Radar
+                    </div>
+                    {compareCandidates.length > 0 && (
+                      <select
+                        value={comparePlayerId}
+                        onChange={(e) => setComparePlayerId(e.target.value)}
+                        aria-label="Compare with teammate"
+                        className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] text-slate-200 max-w-[190px]"
+                      >
+                        {analysis.squadDepth?.bestTeammate && (
+                          <option value="__AUTO__">
+                            vs {analysis.squadDepth.bestTeammate.name} (Best {analysis.squadDepth.positionLabel.split(' ')[0]})
+                          </option>
+                        )}
+                        <option value="__NONE__">No comparison</option>
+                        {compareCandidates.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            vs {c.name} ({c.position})
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
-                  <AttributeRadarChart player={player} />
+                  <AttributeRadarChart
+                    player={player}
+                    comparePlayer={resolvedComparePlayer}
+                  />
                 </div>
               </div>
             </div>
           )}
 
+          {/* TAB 5: STATS & CONTRACT */}
           {activeTab === 'contract' && (
             <div className="space-y-4">
+              {analysis.seasonProduction.mode === 'fast_sync_missing' && (
+                <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
+                  <strong>Season match stats not in this snapshot:</strong> Player goals,
+                  assists, xG and match ratings weren&apos;t included (Fast Sync or partial
+                  checkpoint). Re-import your <span className="font-mono">.fm</span> save
+                  with <strong>Full Sync</strong> in the <strong>Hub</strong> tab to fill
+                  all player match stats.
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2 text-xs">
-                  <h4 className="font-bold uppercase tracking-wider text-slate-400 mb-2">
-                    Season Production
-                  </h4>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Apps / Minutes:</span>
-                    <span className="font-mono text-slate-200">
-                      {player.apps} ({player.minutes}m)
-                    </span>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <h4 className="font-bold uppercase tracking-wider text-slate-400">
+                      Season Production
+                    </h4>
+                    {analysis.seasonProduction.hasPlayed && player.statsSource && (
+                      <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300">
+                        {player.statsSource}
+                      </span>
+                    )}
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Avg Rating:</span>
-                    <span className="font-mono text-emerald-300">
-                      {player.rating !== null ? player.rating.toFixed(2) : '--'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Goals (xG / per 90):</span>
-                    <span className="font-mono text-slate-200">
-                      {player.goals} ({player.xG.toFixed(2)} xG · {player.xGPer90.toFixed(2)}/90)
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Assists (xA / per 90):</span>
-                    <span className="font-mono text-slate-200">
-                      {player.assists} ({player.xA.toFixed(2)} xA · {player.xAPer90.toFixed(2)}/90)
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Tackling / Aerial Win %:</span>
-                    <span className="font-mono text-slate-200">
-                      {player.tckPct}% / {player.hdrPct}%
-                    </span>
-                  </div>
+
+                  {!analysis.seasonProduction.hasPlayed ? (
+                    <p className="text-xs text-slate-400 py-3">
+                      {analysis.seasonProduction.mode === 'fast_sync_missing'
+                        ? 'Awaiting Full Sync to populate appearances, goals, assists and ratings.'
+                        : 'No competitive appearances recorded yet this season.'}
+                    </p>
+                  ) : (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Apps / Minutes:</span>
+                        <span className="font-mono text-slate-200">
+                          {player.apps} ({player.minutes}m)
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Avg Rating:</span>
+                        <span className="font-mono text-emerald-300 font-semibold">
+                          {player.rating !== null && player.rating > 0
+                            ? player.rating.toFixed(2)
+                            : '—'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Goals (xG / per 90):</span>
+                        <span className="font-mono text-slate-200">
+                          {player.goals} ({player.xG.toFixed(2)} xG · {player.xGPer90.toFixed(2)}/90)
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Assists (xA / per 90):</span>
+                        <span className="font-mono text-slate-200">
+                          {player.assists} ({player.xA.toFixed(2)} xA · {player.xAPer90.toFixed(2)}/90)
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Dribbles / Prog. Passes / Int (per 90):</span>
+                        <span className="font-mono text-slate-200">
+                          {player.drbPer90 > 0 ? player.drbPer90.toFixed(2) : '—'} /{' '}
+                          {player.prPassesPer90 > 0 ? player.prPassesPer90.toFixed(2) : '—'} /{' '}
+                          {player.intPer90 > 0 ? player.intPer90.toFixed(2) : '—'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Tackling / Aerial Win %:</span>
+                        <span className="font-mono text-slate-200">
+                          {player.tckPct > 0 ? `${player.tckPct}%` : '—'} /{' '}
+                          {player.hdrPct > 0 ? `${player.hdrPct}%` : '—'}
+                        </span>
+                      </div>
+                      {(analysis.seasonProduction.finishingNote ||
+                        analysis.seasonProduction.creationNote) && (
+                        <div className="pt-2 border-t border-slate-800 space-y-1 text-[11px] text-emerald-300">
+                          {analysis.seasonProduction.finishingNote && (
+                            <div>• {analysis.seasonProduction.finishingNote}</div>
+                          )}
+                          {analysis.seasonProduction.creationNote && (
+                            <div>• {analysis.seasonProduction.creationNote}</div>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
 
                 <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2 text-xs">
@@ -986,29 +1415,54 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     Contract &amp; Squad Standing
                   </h4>
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Squad Status:</span>
+                    <span className="text-slate-400">Hub Squad Role:</span>
                     <span className="font-semibold text-slate-200">{player.status}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Weekly Wage:</span>
+                    <span className="text-slate-400">Contract Promise:</span>
+                    <span className="font-semibold text-indigo-300">
+                      {analysis.contractStanding.promisedPlayingTime || 'Not recorded'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Weekly / Annual Wage:</span>
                     <span className="font-mono text-slate-200">
-                      £{player.wagePw.toLocaleString()}/wk
+                      £{player.wagePw.toLocaleString()}/wk (£
+                      {analysis.contractStanding.annualWage.toLocaleString()}/yr)
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-400">Contract Expires:</span>
-                    <span className="font-mono text-amber-300">{player.expires}</span>
+                    <span className="font-mono text-amber-300">
+                      {player.expires}
+                      {analysis.contractStanding.monthsRemaining !== null
+                        ? ` (${analysis.contractStanding.monthsRemaining}m left)`
+                        : ''}
+                    </span>
                   </div>
+                  {typeof player.marketValue === 'number' && player.marketValue > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Market Value:</span>
+                      <span className="font-mono text-emerald-300">
+                        {formatDynamicCurrency(player.marketValue, 'marketValue')}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span className="text-slate-400">Relative Ability / Potential:</span>
                     <span className="font-mono text-amber-300">
                       {player.ability.toFixed(1)}★ / {player.potential.toFixed(1)}★
                     </span>
                   </div>
+                  {analysis.contractStanding.promiseMismatch && (
+                    <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] text-amber-200">
+                      {analysis.contractStanding.promiseMismatch}
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Pass 1 Tier-1: Contract Clauses, Match Bonuses & Promised Playing Time */}
+              {/* Contract Clauses, Match Bonuses & Promised Playing Time */}
               {(() => {
                 const partitioned = partitionContractClausesAndBonuses(
                   player.contractDetails
@@ -1026,10 +1480,10 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                   <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-3 text-xs">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <h4 className="font-bold uppercase tracking-wider text-slate-400">
-                        Contract Clauses, Match Bonuses &amp; Promised Playing Time
+                        Contract Clauses &amp; Match Bonuses
                       </h4>
                       <span className="rounded bg-indigo-500/15 border border-indigo-500/30 px-2 py-0.5 text-[11px] font-semibold text-indigo-300">
-                        {player.contractDetails?.promisedPlayingTime || player.status}
+                        Promised: {player.contractDetails?.promisedPlayingTime || player.status}
                       </span>
                     </div>
 
@@ -1113,7 +1567,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                 );
               })()}
 
-              {/* Pass 0 Group 2: Career Season History */}
+              {/* Career Season History */}
               {seasonHistory.length > 0 && (
                 <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">

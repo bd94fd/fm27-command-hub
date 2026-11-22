@@ -1099,6 +1099,8 @@ export default function App() {
         <Suspense fallback={null}>
           <PlayerDetailModal
             player={selectedPlayer}
+            squadPlayers={players}
+            divisionBenchmarks={hydratedFmSave?.divisionBenchmarks ?? null}
             shortlists={shortlists}
             isManagedClubPlayer={Boolean(
               selectedPlayer && players.some((p) => p.id === selectedPlayer.id)
