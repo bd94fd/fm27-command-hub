@@ -179,10 +179,10 @@ test('Issue 1: server.ts + server/ modules enforce gemini-3.5-flash-lite/gemini-
   assert.doesNotMatch(combinedServerSrc, /response\.text\(\)/);
   assert.match(combinedServerSrc, /'User-Agent':\s*'aistudio-build'/);
 
-  const idxApi404 = serverSrc.indexOf("app.all('/api/*'");
+  const idxApi404 = serverSrc.indexOf("app.all('/api/{*splat}'");
   const idxVite = serverSrc.indexOf('await createViteServer(');
-  const idxSpa = serverSrc.indexOf("app.get('*'");
-  assert.ok(idxApi404 > 0, 'server.ts must register app.all("/api/*") JSON 404 handler');
+  const idxSpa = serverSrc.indexOf("app.get('/{*splat}'");
+  assert.ok(idxApi404 > 0, 'server.ts must register app.all("/api/{*splat}") JSON 404 handler');
   assert.ok(
     idxApi404 < idxVite && idxApi404 < idxSpa,
     'JSON /api/* 404 handler must be registered BEFORE Vite/SPA HTML catch-all'
