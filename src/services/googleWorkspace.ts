@@ -1,24 +1,36 @@
-import { initializeApp } from 'firebase/app';
-import {
-  getAuth,
-  signInWithPopup,
-  GoogleAuthProvider,
-  onAuthStateChanged,
-  User,
-} from 'firebase/auth';
+import type { Auth, GoogleAuthProvider, User } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
+
+export type { User };
 
 export const SCOPES = [
   'https://www.googleapis.com/auth/documents',
   'https://www.googleapis.com/auth/spreadsheets',
 ];
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
+let authPromise: Promise<{
+  auth: Auth;
+  provider: GoogleAuthProvider;
+  authMod: typeof import('firebase/auth');
+}> | null = null;
 
-const provider = new GoogleAuthProvider();
-for (const scope of SCOPES) {
-  provider.addScope(scope);
+async function getFirebaseAuthInstance() {
+  if (!authPromise) {
+    authPromise = (async () => {
+      const [{ initializeApp }, authMod] = await Promise.all([
+        import('firebase/app'),
+        import('firebase/auth'),
+      ]);
+      const app = initializeApp(firebaseConfig);
+      const auth = authMod.getAuth(app);
+      const provider = new authMod.GoogleAuthProvider();
+      for (const scope of SCOPES) {
+        provider.addScope(scope);
+      }
+      return { auth, provider, authMod };
+    })();
+  }
+  return authPromise;
 }
 
 let isSigningIn = false;
@@ -40,30 +52,57 @@ export function isUnauthorizedDomainError(error: unknown): boolean {
 export const initAuth = (
   onAuthSuccess?: (user: User, token: string) => void,
   onAuthFailure?: () => void
-) => {
-  return onAuthStateChanged(
-    auth,
-    async (user: User | null) => {
-      if (user) {
-        if (cachedAccessToken) {
-          if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
-        } else if (!isSigningIn) {
-          cachedAccessToken = null;
-          if (onAuthFailure) onAuthFailure();
+): (() => void) => {
+  let activeUnsub: (() => void) | null = null;
+  let cancelled = false;
+
+  void getFirebaseAuthInstance()
+    .then(({ auth, authMod }) => {
+      if (cancelled) return;
+      activeUnsub = authMod.onAuthStateChanged(
+        auth,
+        async (user: User | null) => {
+          if (user) {
+            if (cachedAccessToken) {
+              if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
+            } else if (!isSigningIn) {
+              cachedAccessToken = null;
+              if (onAuthFailure) onAuthFailure();
+            }
+          } else {
+            cachedAccessToken = null;
+            if (onAuthFailure) onAuthFailure();
+          }
+        },
+        (error) => {
+          if (isUnauthorizedDomainError(error)) {
+            console.warn(
+              'Firebase Auth unauthorized domain (ignored in UI):',
+              error
+            );
+            return;
+          }
+          console.error('Firebase Auth state error:', error);
         }
-      } else {
-        cachedAccessToken = null;
-        if (onAuthFailure) onAuthFailure();
-      }
-    },
-    (error) => {
+      );
+    })
+    .catch((error) => {
       if (isUnauthorizedDomainError(error)) {
-        console.warn('Firebase Auth unauthorized domain (ignored in UI):', error);
+        console.warn(
+          'Firebase Auth unauthorized domain (ignored in UI):',
+          error
+        );
         return;
       }
-      console.error('Firebase Auth state error:', error);
+      console.error('Firebase Auth load error:', error);
+    });
+
+  return () => {
+    cancelled = true;
+    if (activeUnsub) {
+      activeUnsub();
     }
-  );
+  };
 };
 
 export const googleSignIn = async (): Promise<{
@@ -72,8 +111,9 @@ export const googleSignIn = async (): Promise<{
 } | null> => {
   try {
     isSigningIn = true;
-    const result = await signInWithPopup(auth, provider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
+    const { auth, provider, authMod } = await getFirebaseAuthInstance();
+    const result = await authMod.signInWithPopup(auth, provider);
+    const credential = authMod.GoogleAuthProvider.credentialFromResult(result);
     if (!credential?.accessToken) {
       throw new Error('Failed to obtain Google OAuth access token.');
     }
@@ -96,7 +136,10 @@ export const getAccessToken = async (): Promise<string | null> => {
 };
 
 export const logout = async () => {
-  await auth.signOut();
+  if (authPromise) {
+    const { auth } = await authPromise;
+    await auth.signOut();
+  }
   cachedAccessToken = null;
 };
 

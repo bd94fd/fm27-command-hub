@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useDeferredValue } from 'react';
 import {
   AlertTriangle,
   Bookmark,
@@ -152,6 +152,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
     'ALL' | TransferActionVerdict
   >('ALL');
   const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
   const [targetFilter, setTargetFilter] = useState<ScoutContractFilter>('ALL');
   const [targetPosGroup, setTargetPosGroup] = useState<ScoutPositionGroup>('ALL');
   const [exactPosFilter, setExactPosFilter] = useState<string>('ALL');
@@ -307,7 +308,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
       ageBand: targetAgeBand,
       contractFilter: targetFilter,
       genuineGapsOnly,
-      searchQuery: search,
+      searchQuery: deferredSearch,
     });
     const withDna = base.map((item) => ({
       ...item,
@@ -359,7 +360,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
     targetAgeBand,
     targetFilter,
     genuineGapsOnly,
-    search,
+    deferredSearch,
   ]);
 
   const audit = useMemo(
@@ -403,7 +404,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
   }, [competitionRules, players]);
 
   const filteredAdvice = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = deferredSearch.trim().toLowerCase();
     return audit.playerAdvice.filter((item) => {
       if (verdictFilter !== 'ALL' && item.verdict !== verdictFilter) {
         return false;
@@ -417,7 +418,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
         item.tags.some((t) => t.toLowerCase().includes(q))
       );
     });
-  }, [audit.playerAdvice, verdictFilter, search]);
+  }, [audit.playerAdvice, verdictFilter, deferredSearch]);
 
   const expiringAdvice = useMemo(
     () =>

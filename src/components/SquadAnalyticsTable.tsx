@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useDeferredValue } from 'react';
 import {
   BarChart3,
   GitCompare,
@@ -67,6 +67,7 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
 }) => {
   const [viewMode, setViewMode] = useState<SquadViewMode>('table');
   const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
   const [squadUnitFilter, setSquadUnitFilter] = useState<
     'FIRST_TEAM' | 'YOUTH_RESERVES' | 'ALL'
   >('FIRST_TEAM');
@@ -116,7 +117,7 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
   }, [players]);
 
   const filteredPlayers = useMemo(() => {
-    const query = search.toLowerCase();
+    const query = deferredSearch.toLowerCase();
     return players
       .filter((p) => {
         const isFirstTeam = p.teamSlot === undefined || p.teamSlot === 0;
@@ -155,7 +156,7 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
         }
         return (b.wagePw || 0) - (a.wagePw || 0);
       });
-  }, [players, effectiveUnitFilter, search, statusFilter, posFilter, expiryYearFilter, sortBy]);
+  }, [players, effectiveUnitFilter, deferredSearch, statusFilter, posFilter, expiryYearFilter, sortBy]);
 
   const activeRadarPlayer = useMemo(() => {
     if (players.length === 0) return null;

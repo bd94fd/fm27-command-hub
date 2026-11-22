@@ -16,7 +16,6 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
-import { User } from 'firebase/auth';
 import {
   MatchLogEntry,
   PlayerRecord,
@@ -43,18 +42,6 @@ import {
   FmSaveProgressStage,
   FmImportScope,
 } from '../services/fmSaveReader';
-import {
-  initAuth,
-  googleSignIn,
-  logout,
-  getAccessToken,
-  fetchGoogleDocInfo,
-  appendEventToGoogleDoc,
-  fetchGoogleSheetMetadata,
-  appendRowToGoogleSheet,
-  GoogleDocInfo,
-  GoogleSheetMetadata,
-} from '../services/googleWorkspace';
 import {
   AnalystReasoningMode,
   buildConversationTranscript,

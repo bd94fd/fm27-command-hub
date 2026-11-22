@@ -194,5 +194,122 @@ describe('server routes & JSON 404', () => {
     assert.equal(body.headlineVerdict, 'Clinical 2-0 home win outperforming xG.');
     assert.ok(Array.isArray(body.primaryTacticalFlaws));
   });
+
+  it('compresses large JSON API payloads with gzip and configures smart static Cache-Control rules', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const zlib = await import('node:zlib');
+
+    const serverSrc = fs.readFileSync(path.resolve(process.cwd(), 'server.ts'), 'utf8');
+    assert.match(serverSrc, /app\.use\(compression\(\)\)/);
+    assert.match(serverSrc, /maxAge:\s*'1y'/);
+    assert.match(serverSrc, /immutable:\s*true/);
+    assert.match(serverSrc, /no-cache,\s*no-store,\s*must-revalidate/);
+
+    const appSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+    assert.match(appSrc, /const TacticalWarRoom = lazy\(/);
+    assert.match(appSrc, /const SetPiecesAndTraining = lazy\(/);
+    assert.match(appSrc, /const MatchLogArchive = lazy\(/);
+    assert.match(appSrc, /const PlayerDetailModal = lazy\(/);
+    assert.match(appSrc, /const StaffDetailModal = lazy\(/);
+
+    const gwSrc = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/services/googleWorkspace.ts'),
+      'utf8'
+    );
+    assert.match(gwSrc, /import\('firebase\/app'\)/);
+    assert.match(gwSrc, /import\('firebase\/auth'\)/);
+
+    const squadSrc = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/components/SquadAnalyticsTable.tsx'),
+      'utf8'
+    );
+    const recSrc = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/components/RecruitmentWorkspace.tsx'),
+      'utf8'
+    );
+    assert.match(squadSrc, /useDeferredValue\(search\)/);
+    assert.match(recSrc, /useDeferredValue\(search\)/);
+
+    const indexHtml = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
+    assert.doesNotMatch(indexHtml, /fonts\.googleapis\.com/);
+
+    // Verify live HTTP gzip response compression on large JSON payload
+    const config = loadServerConfig({ GEMINI_API_KEY: 'test-key' } as NodeJS.ProcessEnv);
+    const largeText = 'Tactical analysis block. '.repeat(200);
+    const geminiService = new GeminiService({
+      config,
+      clientFactory: () => ({
+        models: {
+          list: async () => ({
+            models: [{ name: 'models/gemini-3.5-flash-lite' }],
+          }),
+          generateContent: (async () => ({
+            get text() {
+              return JSON.stringify({
+                headlineVerdict: largeText,
+                xgAndExecutionAudit: largeText,
+                primaryTacticalFlaws: [largeText],
+                subOptimalRoleCombinations: [largeText],
+                inGameAdjustmentRecommendations: [largeText],
+              });
+            },
+          })) as never,
+        },
+      }),
+    });
+
+    const app = await createApp({ config, geminiService, serveFrontend: false });
+    const srv = await startTestServer(app);
+    activeClose = srv.close;
+
+    const url = new URL(`${srv.baseUrl}/api/fm27/match-debrief`);
+    const compressedEncoding = await new Promise<string | undefined>((resolve, reject) => {
+      const req = http.request(
+        {
+          hostname: url.hostname,
+          port: url.port,
+          path: url.pathname,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept-Encoding': 'gzip',
+          },
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => {
+            try {
+              const raw = Buffer.concat(chunks);
+              if (res.headers['content-encoding'] === 'gzip') {
+                const unzipped = zlib.gunzipSync(raw).toString('utf8');
+                const parsed = JSON.parse(unzipped) as { headlineVerdict?: string };
+                assert.equal(parsed.headlineVerdict, largeText);
+              }
+              resolve(res.headers['content-encoding']);
+            } catch (err) {
+              reject(err);
+            }
+          });
+        }
+      );
+      req.on('error', reject);
+      req.write(
+        JSON.stringify({
+          clubName: 'KVV Zelzate',
+          activeShape: '4-3-3 DM Wide',
+          matchSummary: {
+            opponent: 'KVK Ninove',
+            result: 'W',
+            score: '2 - 0',
+          },
+        })
+      );
+      req.end();
+    });
+
+    assert.equal(compressedEncoding, 'gzip');
+  });
 });
 

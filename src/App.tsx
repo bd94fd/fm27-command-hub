@@ -43,12 +43,7 @@ import {
   AutoSyncWorkspace,
   PlayerAutoUpdate,
 } from './components/AutoSyncWorkspace';
-import { TacticalWarRoom } from './components/TacticalWarRoom';
-import { SetPiecesAndTraining } from './components/SetPiecesAndTraining';
-import { MatchLogArchive } from './components/MatchLogArchive';
 import { LiveFmSaveProofCard } from './components/LiveFmSaveProofCard';
-import { PlayerDetailModal } from './components/PlayerDetailModal';
-import { StaffDetailModal } from './components/StaffDetailModal';
 import {
   loadPersistedFmState,
   loadPersistedFmStateFromIndexedDb,
@@ -69,6 +64,11 @@ import {
   clearProgressionArchive,
 } from './utils/progressionDiff';
 
+const TacticalWarRoom = lazy(() =>
+  import('./components/TacticalWarRoom').then((m) => ({
+    default: m.TacticalWarRoom,
+  }))
+);
 const SquadAnalyticsTable = lazy(() =>
   import('./components/SquadAnalyticsTable').then((m) => ({
     default: m.SquadAnalyticsTable,
@@ -82,6 +82,26 @@ const RecruitmentWorkspace = lazy(() =>
 const StaffDirectory = lazy(() =>
   import('./components/StaffDirectory').then((m) => ({
     default: m.StaffDirectory,
+  }))
+);
+const SetPiecesAndTraining = lazy(() =>
+  import('./components/SetPiecesAndTraining').then((m) => ({
+    default: m.SetPiecesAndTraining,
+  }))
+);
+const MatchLogArchive = lazy(() =>
+  import('./components/MatchLogArchive').then((m) => ({
+    default: m.MatchLogArchive,
+  }))
+);
+const PlayerDetailModal = lazy(() =>
+  import('./components/PlayerDetailModal').then((m) => ({
+    default: m.PlayerDetailModal,
+  }))
+);
+const StaffDetailModal = lazy(() =>
+  import('./components/StaffDetailModal').then((m) => ({
+    default: m.StaffDetailModal,
   }))
 );
 const KnowledgeBasePanel = lazy(() =>
@@ -868,21 +888,23 @@ export default function App() {
         </div>
 
         {activeTab === 'tactics' && (
-          <TacticalWarRoom
-            players={players}
-            saveDate={saveDate}
-            nextFixture={nextFixture}
-            clubName={clubName}
-            activeSuspensions={hydratedFmSave?.activeSuspensions ?? []}
-            competitionRules={hydratedFmSave?.competitionRules ?? null}
-            hydratedFmSave={hydratedFmSave}
-            activeShape={activeShape}
-            customSlots={customSlots}
-            applyToAnalystOnly={applyToAnalystOnly}
-            onChangeShape={setActiveShape}
-            onChangeCustomSlots={setCustomSlots}
-            onChangeApplyToAnalystOnly={setApplyToAnalystOnly}
-          />
+          <Suspense fallback={<LazyTabFallback label="Tactical War Room" />}>
+            <TacticalWarRoom
+              players={players}
+              saveDate={saveDate}
+              nextFixture={nextFixture}
+              clubName={clubName}
+              activeSuspensions={hydratedFmSave?.activeSuspensions ?? []}
+              competitionRules={hydratedFmSave?.competitionRules ?? null}
+              hydratedFmSave={hydratedFmSave}
+              activeShape={activeShape}
+              customSlots={customSlots}
+              applyToAnalystOnly={applyToAnalystOnly}
+              onChangeShape={setActiveShape}
+              onChangeCustomSlots={setCustomSlots}
+              onChangeApplyToAnalystOnly={setApplyToAnalystOnly}
+            />
+          </Suspense>
         )}
 
         {activeTab === 'squad' && (
@@ -954,26 +976,30 @@ export default function App() {
         )}
 
         {activeTab === 'setpieces' && (
-          <SetPiecesAndTraining
-            players={players}
-            saveDate={saveDate}
-            upcomingFixtures={hydratedFmSave?.decodedPayload.upcomingFixtures || []}
-            clubName={clubName}
-          />
+          <Suspense fallback={<LazyTabFallback label="Set Pieces & Training" />}>
+            <SetPiecesAndTraining
+              players={players}
+              saveDate={saveDate}
+              upcomingFixtures={hydratedFmSave?.decodedPayload.upcomingFixtures || []}
+              clubName={clubName}
+            />
+          </Suspense>
         )}
 
         {activeTab === 'matches' && (
-          <MatchLogArchive
-            matches={matches}
-            liveLeagueRecord={hydratedFmSave?.leagueRecordLabel || null}
-            liveSaveFileName={
-              hydratedFmSave?.decodedPayload.meta.fileName ||
-              hydratedFmSave?.decodedPayload.meta.saveName ||
-              null
-            }
-            clubName={hydratedFmSave?.decodedPayload.meta.clubName}
-            saveDate={saveDate}
-          />
+          <Suspense fallback={<LazyTabFallback label="Match Log Archive" />}>
+            <MatchLogArchive
+              matches={matches}
+              liveLeagueRecord={hydratedFmSave?.leagueRecordLabel || null}
+              liveSaveFileName={
+                hydratedFmSave?.decodedPayload.meta.fileName ||
+                hydratedFmSave?.decodedPayload.meta.saveName ||
+                null
+              }
+              clubName={hydratedFmSave?.decodedPayload.meta.clubName}
+              saveDate={saveDate}
+            />
+          </Suspense>
         )}
       </main>
 
@@ -1025,29 +1051,37 @@ export default function App() {
       </nav>
 
       {/* Global Modals & Drawers */}
-      <PlayerDetailModal
-        player={selectedPlayer}
-        shortlists={shortlists}
-        isManagedClubPlayer={Boolean(
-          selectedPlayer && players.some((p) => p.id === selectedPlayer.id)
-        )}
-        isTracked={Boolean(
-          selectedPlayer &&
-            isScoutTargetTracked(trackedTargets, {
-              uid: selectedPlayer.uid || 0,
-              name: selectedPlayer.name,
-            })
-        )}
-        onClose={() => setSelectedPlayer(null)}
-        onAddRecruitment={handleTrackPlayerInRecruitment}
-        onToggleTrack={handleToggleTrackPlayerFromModal}
-        onAddToShortlist={handleAddPlayerToShortlist}
-      />
+      {selectedPlayer && (
+        <Suspense fallback={null}>
+          <PlayerDetailModal
+            player={selectedPlayer}
+            shortlists={shortlists}
+            isManagedClubPlayer={Boolean(
+              selectedPlayer && players.some((p) => p.id === selectedPlayer.id)
+            )}
+            isTracked={Boolean(
+              selectedPlayer &&
+                isScoutTargetTracked(trackedTargets, {
+                  uid: selectedPlayer.uid || 0,
+                  name: selectedPlayer.name,
+                })
+            )}
+            onClose={() => setSelectedPlayer(null)}
+            onAddRecruitment={handleTrackPlayerInRecruitment}
+            onToggleTrack={handleToggleTrackPlayerFromModal}
+            onAddToShortlist={handleAddPlayerToShortlist}
+          />
+        </Suspense>
+      )}
 
-      <StaffDetailModal
-        staff={selectedStaff}
-        onClose={() => setSelectedStaff(null)}
-      />
+      {selectedStaff && (
+        <Suspense fallback={null}>
+          <StaffDetailModal
+            staff={selectedStaff}
+            onClose={() => setSelectedStaff(null)}
+          />
+        </Suspense>
+      )}
 
       {showKnowledgeBase && (
         <Suspense fallback={null}>

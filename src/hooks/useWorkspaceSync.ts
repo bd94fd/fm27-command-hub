@@ -78,6 +78,7 @@ export function useWorkspaceSync() {
   );
 
   useEffect(() => {
+    if (!showGoogleSettings) return;
     const unsub = initAuth(
       (user, token) => {
         setGoogleUser(user);
@@ -89,7 +90,7 @@ export function useWorkspaceSync() {
       }
     );
     return () => unsub();
-  }, []);
+  }, [showGoogleSettings]);
 
   const handleDocUrlChange = useCallback((val: string) => {
     setDocUrlOrId(val);

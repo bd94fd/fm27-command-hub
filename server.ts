@@ -1,4 +1,5 @@
 import express from 'express';
+import compression from 'compression';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -16,6 +17,14 @@ export interface CreateAppOptions {
   serveFrontend?: boolean;
 }
 
+const NO_CACHE_STATIC_FILES = new Set([
+  'index.html',
+  'fm-save-worker.js',
+  'fm-save-mapper.py',
+  'fm_layout_patcher.py',
+  'manifest.json',
+]);
+
 export async function createApp(
   options: CreateAppOptions = {}
 ): Promise<express.Express> {
@@ -23,6 +32,7 @@ export async function createApp(
   const config = options.config ?? loadServerConfig();
   const geminiService = options.geminiService ?? new GeminiService({ config });
 
+  app.use(compression());
   app.use(express.json({ limit: '100mb' }));
   app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
@@ -77,8 +87,28 @@ export async function createApp(
       app.use(vite.middlewares);
     } else {
       const distPath = path.join(process.cwd(), 'dist');
-      app.use(express.static(distPath));
+      app.use(
+        '/assets',
+        express.static(path.join(distPath, 'assets'), {
+          maxAge: '1y',
+          immutable: true,
+        })
+      );
+      app.use(
+        express.static(distPath, {
+          setHeaders(res, filePath) {
+            const base = path.basename(filePath);
+            if (NO_CACHE_STATIC_FILES.has(base)) {
+              res.setHeader(
+                'Cache-Control',
+                'no-cache, no-store, must-revalidate'
+              );
+            }
+          },
+        })
+      );
       app.get('*', (_req, res) => {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
         res.sendFile(path.join(distPath, 'index.html'));
       });
     }

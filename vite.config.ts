@@ -3,12 +3,16 @@ import react from '@vitejs/plugin-react';
 import fs from 'fs';
 import path from 'path';
 import {defineConfig} from 'vite';
+import {analyzer} from 'vite-bundle-analyzer';
 
 export default defineConfig(() => {
   return {
     plugins: [
       react(),
       tailwindcss(),
+      ...(process.env.ANALYZE_BUNDLE === 'true'
+        ? [analyzer({analyzerMode: 'static', openAnalyzer: false})]
+        : []),
       // Copies src/assets into dist/ so root-relative URLs like
       // "/src/assets/images/..." (e.g. generate_image output) still resolve
       // in production builds. Do not remove.
