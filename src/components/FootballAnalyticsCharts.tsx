@@ -1,5 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { PlayerRecord } from '../types/fm27';
+import {
+  ComparisonChartMode,
+  MultiPlayerComparisonDataset,
+} from '../utils/playerComparisonEngine';
+import { PlayerProgressionPoint } from '../utils/progressionDiff';
 
 export interface DynamicScatterScale {
   metric: 'marketValue' | 'wagePw';
@@ -282,13 +287,38 @@ export interface SquadAgeValueScatterPlotProps {
   onSelectPlayer?: (player: PlayerRecord) => void;
 }
 
+type ScatterXMetric = 'age' | 'pace' | 'stamina' | 'passing' | 'decisions';
+type ScatterYMetric = 'auto' | 'ability' | 'rating' | 'xGPer90';
+type PositionGroupFilter = 'ALL' | 'GK' | 'DEF' | 'MID' | 'FWD';
+
+function matchesPosGroup(pos: string, group: PositionGroupFilter): boolean {
+  if (group === 'ALL') return true;
+  const p = (pos || '').toUpperCase();
+  if (group === 'GK') return p.includes('GK');
+  if (group === 'DEF') return /(DC|CB|DL|DR|WB|D\s*\()/.test(p);
+  if (group === 'MID') return /(DM|MC|CM|ML|MR|AM|M\s*\()/.test(p);
+  return /(ST|CF|LW|RW|F\s*\()/.test(p);
+}
+
 export const SquadAgeValueScatterPlot: React.FC<SquadAgeValueScatterPlotProps> = ({
   players,
   selectedPlayerId = null,
   onSelectPlayer,
 }) => {
   const [hovered, setHovered] = useState<PlayerRecord | null>(null);
-  const scale = useMemo(() => computeDynamicScatterScale(players), [players]);
+  const [xMetric, setXMetric] = useState<ScatterXMetric>('age');
+  const [yMetric, setYMetric] = useState<ScatterYMetric>('auto');
+  const [posGroup, setPosGroup] = useState<PositionGroupFilter>('ALL');
+
+  const filteredPlayers = useMemo(
+    () => players.filter((p) => matchesPosGroup(p.position, posGroup)),
+    [players, posGroup]
+  );
+
+  const scale = useMemo(
+    () => computeDynamicScatterScale(filteredPlayers.length > 0 ? filteredPlayers : players),
+    [filteredPlayers, players]
+  );
 
   const width = 520;
   const height = 270;
@@ -299,72 +329,171 @@ export const SquadAgeValueScatterPlot: React.FC<SquadAgeValueScatterPlotProps> =
   const plotW = width - padLeft - padRight;
   const plotH = height - padTop - padBottom;
 
-  const ages = players.map((p) => p.age || 22);
-  const minAge = Math.min(17, ...(ages.length > 0 ? ages : [18]));
-  const maxAge = Math.max(35, ...(ages.length > 0 ? ages : [34]));
-  const ageSpan = Math.max(1, maxAge - minAge);
+  const getXVal = (p: PlayerRecord): number => {
+    if (xMetric === 'age') return p.age || 22;
+    return Number(p.attributes?.[xMetric] ?? 10);
+  };
 
-  const mapX = (age: number) =>
-    padLeft + ((Math.min(maxAge, Math.max(minAge, age)) - minAge) / ageSpan) * plotW;
+  const getYVal = (p: PlayerRecord): number => {
+    if (yMetric === 'ability') return p.ability || 0;
+    if (yMetric === 'rating') return p.rating ?? 6.5;
+    if (yMetric === 'xGPer90') return p.xGPer90 || 0;
+    return scale.metric === 'marketValue' ? p.marketValue || 0 : p.wagePw || 0;
+  };
+
+  const xLabel =
+    xMetric === 'age'
+      ? 'Age'
+      : xMetric.charAt(0).toUpperCase() + xMetric.slice(1);
+  const yLabel =
+    yMetric === 'auto'
+      ? scale.metricLabel
+      : yMetric === 'ability'
+        ? 'Ability ★'
+        : yMetric === 'rating'
+          ? 'Avg Rating'
+          : 'xG / 90';
+
+  const ages = filteredPlayers.map((p) => p.age || 22);
+  const minX = xMetric === 'age' ? Math.min(17, ...(ages.length > 0 ? ages : [18])) : 1;
+  const maxX = xMetric === 'age' ? Math.max(35, ...(ages.length > 0 ? ages : [34])) : 20;
+  const xSpan = Math.max(1, maxX - minX);
+
+  const minY = yMetric === 'rating' ? 5.5 : 0;
+  const maxY =
+    yMetric === 'auto'
+      ? scale.maxY
+      : yMetric === 'ability'
+        ? 5
+        : yMetric === 'rating'
+          ? 8.5
+          : Math.max(0.8, ...filteredPlayers.map((p) => p.xGPer90 || 0)) * 1.15;
+  const ySpan = Math.max(0.01, maxY - minY);
+
+  const mapX = (val: number) =>
+    padLeft + ((Math.min(maxX, Math.max(minX, val)) - minX) / xSpan) * plotW;
   const mapY = (val: number) =>
-    padTop + plotH - (Math.min(scale.maxY, Math.max(0, val)) / Math.max(1, scale.maxY)) * plotH;
+    padTop + plotH - ((Math.min(maxY, Math.max(minY, val)) - minY) / ySpan) * plotH;
 
-  const ageTicks = [minAge, Math.round((minAge + maxAge) / 2), 23, 29, maxAge]
-    .filter((v, i, arr) => v >= minAge && v <= maxAge && arr.indexOf(v) === i)
-    .sort((a, b) => a - b);
+  const formatY = (val: number) => {
+    if (yMetric === 'auto') return scale.formatTick(val);
+    if (yMetric === 'ability') return `${val.toFixed(1)}★`;
+    if (yMetric === 'rating') return val.toFixed(2);
+    return val.toFixed(2);
+  };
 
-  // Peak age band (23–28)
-  const peakX1 = mapX(Math.max(minAge, 23));
-  const peakX2 = mapX(Math.min(maxAge, 28));
+  const yTicks =
+    yMetric === 'auto'
+      ? scale.ticks
+      : [0, 0.25, 0.5, 0.75, 1].map((f) => minY + ySpan * f);
+
+  const xTicks =
+    xMetric === 'age'
+      ? [minX, Math.round((minX + maxX) / 2), 23, 29, maxX]
+          .filter((v, i, arr) => v >= minX && v <= maxX && arr.indexOf(v) === i)
+          .sort((a, b) => a - b)
+      : [1, 5, 10, 15, 20];
+
+  // Peak age band (23–28) when X is age
+  const peakX1 = mapX(Math.max(minX, 23));
+  const peakX2 = mapX(Math.min(maxX, 28));
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
         <span className="font-semibold text-slate-200">
-          Age vs {scale.metricLabel} (Dynamic Club-Tier Scale: 0 – {scale.formatTick(scale.maxY)})
+          {xLabel} vs {yLabel} ({filteredPlayers.length} players)
         </span>
         {hovered ? (
           <span className="font-mono text-[11px] text-emerald-300">
-            {hovered.name} · Age {hovered.age} ·{' '}
-            {scale.formatTick(
-              scale.metric === 'marketValue'
-                ? hovered.marketValue || 0
-                : hovered.wagePw || 0
-            )}{' '}
-            · {hovered.ability.toFixed(1)}★
+            {hovered.name} · {xLabel} {getXVal(hovered)} · {formatY(getYVal(hovered))} ·{' '}
+            {hovered.ability.toFixed(1)}★
           </span>
         ) : (
           <span className="text-[11px] text-slate-400">
-            Hover or click any dot to inspect player profile
+            Tap any dot to inspect player profile
           </span>
         )}
+      </div>
+
+      {/* Compact X/Y controls + Position filter chips */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1">
+          {(['ALL', 'GK', 'DEF', 'MID', 'FWD'] as const).map((grp) => (
+            <button
+              key={grp}
+              type="button"
+              onClick={() => setPosGroup(grp)}
+              className={`min-h-[32px] px-2.5 rounded-lg text-[11px] font-semibold border transition-colors ${
+                posGroup === grp
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                  : 'bg-slate-900/70 text-slate-400 border-slate-800 hover:text-slate-200'
+              }`}
+            >
+              {grp}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-1.5 text-[11px]">
+          <label className="inline-flex items-center gap-1 text-slate-400">
+            X:
+            <select
+              value={xMetric}
+              onChange={(e) => setXMetric(e.target.value as ScatterXMetric)}
+              className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-slate-200 text-[11px]"
+            >
+              <option value="age">Age</option>
+              <option value="pace">Pace</option>
+              <option value="stamina">Stamina</option>
+              <option value="passing">Passing</option>
+              <option value="decisions">Decisions</option>
+            </select>
+          </label>
+          <label className="inline-flex items-center gap-1 text-slate-400">
+            Y:
+            <select
+              value={yMetric}
+              onChange={(e) => setYMetric(e.target.value as ScatterYMetric)}
+              className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-slate-200 text-[11px]"
+            >
+              <option value="auto">{scale.metricLabel}</option>
+              <option value="ability">Ability ★</option>
+              <option value="rating">Avg Rating</option>
+              <option value="xGPer90">xG / 90</option>
+            </select>
+          </label>
+        </div>
       </div>
 
       <svg
         viewBox={`0 0 ${width} ${height}`}
         role="img"
-        aria-label={`Squad Age vs ${scale.metricLabel} scatter plot`}
+        aria-label={`Squad ${xLabel} vs ${yLabel} scatter plot`}
         className="w-full h-auto rounded-lg bg-slate-950/60 border border-slate-800"
       >
         {/* Peak-age shading (23–28) */}
-        <rect
-          x={peakX1}
-          y={padTop}
-          width={Math.max(0, peakX2 - peakX1)}
-          height={plotH}
-          fill="rgba(16, 185, 129, 0.06)"
-        />
-        <text
-          x={(peakX1 + peakX2) / 2}
-          y={padTop + 12}
-          textAnchor="middle"
-          className="fill-emerald-500/70 text-[9px] font-semibold"
-        >
-          Peak Years (23–28)
-        </text>
+        {xMetric === 'age' && (
+          <>
+            <rect
+              x={peakX1}
+              y={padTop}
+              width={Math.max(0, peakX2 - peakX1)}
+              height={plotH}
+              fill="rgba(16, 185, 129, 0.06)"
+            />
+            <text
+              x={(peakX1 + peakX2) / 2}
+              y={padTop + 12}
+              textAnchor="middle"
+              className="fill-emerald-500/70 text-[9px] font-semibold"
+            >
+              Peak Years (23–28)
+            </text>
+          </>
+        )}
 
         {/* Horizontal gridlines + dynamic Y ticks */}
-        {scale.ticks.map((tick) => {
+        {yTicks.map((tick) => {
           const y = mapY(tick);
           return (
             <g key={`y-${tick}`}>
@@ -383,17 +512,17 @@ export const SquadAgeValueScatterPlot: React.FC<SquadAgeValueScatterPlotProps> =
                 textAnchor="end"
                 className="fill-slate-400 text-[9px] font-mono"
               >
-                {scale.formatTick(tick)}
+                {formatY(tick)}
               </text>
             </g>
           );
         })}
 
-        {/* Vertical X ticks (Age) */}
-        {ageTicks.map((age) => {
-          const x = mapX(age);
+        {/* Vertical X ticks */}
+        {xTicks.map((tickVal) => {
+          const x = mapX(tickVal);
           return (
-            <g key={`x-${age}`}>
+            <g key={`x-${tickVal}`}>
               <line
                 x1={x}
                 y1={padTop}
@@ -410,18 +539,16 @@ export const SquadAgeValueScatterPlot: React.FC<SquadAgeValueScatterPlotProps> =
                 textAnchor="middle"
                 className="fill-slate-400 text-[9px] font-mono"
               >
-                {age}y
+                {xMetric === 'age' ? `${tickVal}y` : tickVal}
               </text>
             </g>
           );
         })}
 
         {/* Player scatter dots */}
-        {players.map((p) => {
-          const val =
-            scale.metric === 'marketValue' ? p.marketValue || 0 : p.wagePw || 0;
-          const x = mapX(p.age || 22);
-          const y = mapY(val);
+        {filteredPlayers.map((p) => {
+          const x = mapX(getXVal(p));
+          const y = mapY(getYVal(p));
           const isBanned =
             Array.isArray(p.activeSuspensions) && p.activeSuspensions.length > 0;
           const isSelected = p.id === selectedPlayerId || hovered?.id === p.id;
@@ -749,4 +876,373 @@ export const RolePercentilePizzaChart: React.FC<RolePercentilePizzaChartProps> =
     </div>
   );
 };
+
+export interface MultiPlayerComparisonChartProps {
+  dataset: MultiPlayerComparisonDataset;
+  initialMode?: ComparisonChartMode;
+  size?: number;
+}
+
+export const MultiPlayerComparisonChart: React.FC<MultiPlayerComparisonChartProps> = ({
+  dataset,
+  initialMode = 'radar',
+  size = 280,
+}) => {
+  const [mode, setMode] = useState<ComparisonChartMode>(initialMode);
+  const { players, colors, radarAxes, pizzaSlices, barMetrics } = dataset;
+
+  if (players.length === 0) {
+    return (
+      <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 text-center text-xs text-slate-400">
+        Select 1 to 3 players to compare.
+      </div>
+    );
+  }
+
+  const cx = size / 2;
+  const cy = size / 2;
+  const radius = size * 0.34;
+  const rings = [5, 10, 15, 20];
+
+  const getRadarPoint = (axisIndex: number, value: number, total: number): [number, number] => {
+    const angle = (Math.PI * 2 * axisIndex) / total - Math.PI / 2;
+    const clamped = Math.min(20, Math.max(1, value || 1));
+    const r = (clamped / 20) * radius;
+    return [cx + Math.cos(angle) * r, cy + Math.sin(angle) * r];
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Mode switcher — 44px touch targets for Pixel 10 Pro XL */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div
+          role="tablist"
+          aria-label="Comparison chart mode"
+          className="inline-flex rounded-xl border border-slate-800 bg-slate-950/80 p-1"
+        >
+          {(
+            [
+              { id: 'radar', label: 'Radar' },
+              { id: 'pizza', label: 'Pizza %' },
+              { id: 'bars', label: 'Bars' },
+            ] as const
+          ).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={mode === tab.id}
+              onClick={() => setMode(tab.id)}
+              className={`min-h-[40px] px-3.5 rounded-lg text-xs font-semibold transition-colors ${
+                mode === tab.id
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                  : 'text-slate-400 hover:text-slate-200 border border-transparent'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Player color legend */}
+        <div className="flex flex-wrap items-center gap-2 text-[11px]">
+          {players.map((p, idx) => (
+            <span
+              key={p.id}
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-800 bg-slate-900/80 px-2.5 py-1 text-slate-200"
+            >
+              <span
+                className="h-2.5 w-2.5 rounded-full shrink-0"
+                style={{ backgroundColor: colors[idx] }}
+              />
+              <span className="font-medium truncate max-w-[120px]">{p.name}</span>
+              <span className="text-[10px] text-slate-400 font-mono">{p.position}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* RADAR MODE */}
+      {mode === 'radar' && (
+        <div className="flex flex-col items-center">
+          <svg
+            viewBox={`0 0 ${size} ${size}`}
+            role="img"
+            aria-label={`Multi-player radar comparison for ${players.map((p) => p.name).join(' vs ')}`}
+            className="w-full max-w-[300px] h-auto"
+          >
+            {rings.map((ring) => {
+              const pts = radarAxes
+                .map((_, i) => getRadarPoint(i, ring, radarAxes.length).join(','))
+                .join(' ');
+              return (
+                <polygon
+                  key={ring}
+                  points={pts}
+                  fill="none"
+                  stroke="rgba(148, 163, 184, 0.18)"
+                  strokeWidth={ring === 20 ? 1.2 : 0.8}
+                />
+              );
+            })}
+            {radarAxes.map((ax, i) => {
+              const [x2, y2] = getRadarPoint(i, 20, radarAxes.length);
+              const [lx, ly] = getRadarPoint(i, 24, radarAxes.length);
+              return (
+                <g key={ax.key}>
+                  <line
+                    x1={cx}
+                    y1={cy}
+                    x2={x2}
+                    y2={y2}
+                    stroke="rgba(148, 163, 184, 0.18)"
+                    strokeWidth={0.8}
+                  />
+                  <text
+                    x={lx}
+                    y={ly}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    className="fill-slate-300 text-[9.5px] font-semibold"
+                  >
+                    {ax.label}
+                  </text>
+                </g>
+              );
+            })}
+            {players.map((p, pIdx) => {
+              const polyPts = radarAxes
+                .map((ax, aIdx) =>
+                  getRadarPoint(aIdx, ax.values[pIdx] ?? 10, radarAxes.length).join(',')
+                )
+                .join(' ');
+              const color = colors[pIdx];
+              return (
+                <g key={p.id}>
+                  <polygon
+                    points={polyPts}
+                    fill={color}
+                    fillOpacity={0.16}
+                    stroke={color}
+                    strokeWidth={2}
+                  />
+                  {radarAxes.map((ax, aIdx) => {
+                    const [x, y] = getRadarPoint(
+                      aIdx,
+                      ax.values[pIdx] ?? 10,
+                      radarAxes.length
+                    );
+                    return <circle key={ax.key} cx={x} cy={y} r={3} fill={color} />;
+                  })}
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+      )}
+
+      {/* PIZZA PERCENTILE MODE */}
+      {mode === 'pizza' && (
+        <div className="space-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {pizzaSlices.map((slice) => (
+              <div
+                key={slice.key}
+                className="rounded-lg border border-slate-800/90 bg-slate-950/60 p-2.5 space-y-1.5"
+              >
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-semibold text-slate-200">{slice.label}</span>
+                  <span className="text-[10px] text-slate-500 uppercase tracking-wider">
+                    {slice.category}
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  {players.map((p, idx) => {
+                    const pct = slice.percentiles[idx] ?? 50;
+                    const val = slice.values[idx] ?? 10;
+                    const bucket = slice.buckets[idx];
+                    return (
+                      <div key={p.id} className="space-y-0.5">
+                        <div className="flex items-center justify-between text-[10px] font-mono">
+                          <span className="text-slate-300 truncate max-w-[110px]">{p.name}</span>
+                          <span className="text-slate-200">
+                            {val} · <span style={{ color: colors[idx] }}>{pct}p</span>{' '}
+                            <span className="text-slate-500">({bucket})</span>
+                          </span>
+                        </div>
+                        <div className="h-1.5 w-full rounded-full bg-slate-800 overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{
+                              width: `${pct}%`,
+                              backgroundColor: colors[idx],
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* HORIZONTAL BARS MODE */}
+      {mode === 'bars' && (
+        <div className="space-y-2">
+          {barMetrics.map((metric) => (
+            <div
+              key={metric.key}
+              className="rounded-lg border border-slate-800/80 bg-slate-950/60 px-3 py-2 space-y-1.5"
+            >
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-slate-200">{metric.label}</span>
+                {metric.leaderIndex !== null && (
+                  <span
+                    className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700"
+                    style={{ color: colors[metric.leaderIndex] }}
+                  >
+                    Leader: {players[metric.leaderIndex]?.name.split(' ').slice(-1)[0]}
+                  </span>
+                )}
+              </div>
+              <div className="space-y-1">
+                {players.map((p, idx) => {
+                  const val = metric.values[idx] ?? 10;
+                  const widthPct = Math.round((val / 20) * 100);
+                  return (
+                    <div key={p.id} className="flex items-center gap-2 text-[11px]">
+                      <span className="w-24 truncate text-slate-400">{p.name}</span>
+                      <div className="flex-1 h-2 rounded-full bg-slate-800 overflow-hidden">
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: `${widthPct}%`,
+                            backgroundColor: colors[idx],
+                          }}
+                        />
+                      </div>
+                      <span className="w-7 text-right font-mono font-semibold text-slate-200">
+                        {val}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export interface PlayerProgressionSparklineProps {
+  points: PlayerProgressionPoint[];
+  playerName: string;
+}
+
+export const PlayerProgressionSparkline: React.FC<PlayerProgressionSparklineProps> = ({
+  points,
+  playerName,
+}) => {
+  if (points.length < 2) {
+    return (
+      <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3 text-xs text-slate-400">
+        Save at least 2 `.fm` snapshots over time to unlock {playerName}&apos;s progression timeline (star rating &amp; attribute delta).
+      </div>
+    );
+  }
+
+  const width = 360;
+  const height = 110;
+  const padX = 24;
+  const padY = 18;
+  const plotW = width - padX * 2;
+  const plotH = height - padY * 2;
+
+  const deltas = points.map((p) => p.netDeltaFromStart);
+  const minD = Math.min(0, ...deltas);
+  const maxD = Math.max(2, ...deltas);
+  const spanD = Math.max(1, maxD - minD);
+
+  const coords = points.map((pt, i) => {
+    const x = padX + (i / Math.max(1, points.length - 1)) * plotW;
+    const y = padY + plotH - ((pt.netDeltaFromStart - minD) / spanD) * plotH;
+    return { x, y, pt };
+  });
+
+  const polyline = coords.map((c) => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ');
+  const latest = points[points.length - 1];
+  const first = points[0];
+  const deltaSign = latest.netDeltaFromStart > 0 ? '+' : '';
+
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+        <span className="font-semibold text-slate-200">
+          Progression Timeline ({points.length} saves)
+        </span>
+        <div className="flex items-center gap-2 font-mono text-[11px]">
+          <span
+            className={
+              latest.netDeltaFromStart >= 0 ? 'text-emerald-400' : 'text-rose-400'
+            }
+          >
+            {deltaSign}
+            {latest.netDeltaFromStart} net attr
+          </span>
+          {latest.abilityStars != null && (
+            <span className="text-amber-300">{latest.abilityStars.toFixed(1)}★</span>
+          )}
+        </div>
+      </div>
+
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={`Progression timeline for ${playerName}`}
+        className="w-full h-auto"
+      >
+        <line
+          x1={padX}
+          y1={padY + plotH - ((0 - minD) / spanD) * plotH}
+          x2={width - padX}
+          y2={padY + plotH - ((0 - minD) / spanD) * plotH}
+          stroke="rgba(148, 163, 184, 0.2)"
+          strokeDasharray="3 3"
+        />
+        <polyline
+          fill="none"
+          stroke={latest.netDeltaFromStart >= 0 ? '#10b981' : '#f43f5e'}
+          strokeWidth={2.2}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          points={polyline}
+        />
+        {coords.map(({ x, y, pt }) => (
+          <g key={pt.saveDate}>
+            <circle
+              cx={x}
+              cy={y}
+              r={3.5}
+              fill={pt.netDeltaFromStart >= 0 ? '#10b981' : '#f43f5e'}
+              stroke="#0f172a"
+              strokeWidth={1.2}
+            />
+          </g>
+        ))}
+      </svg>
+
+      <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+        <span>{first.saveDate}</span>
+        <span>Avg Core: {latest.avgCoreAttr.toFixed(1)}</span>
+        <span>{latest.saveDate}</span>
+      </div>
+    </div>
+  );
+};
+
 

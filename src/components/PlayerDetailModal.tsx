@@ -34,9 +34,14 @@ import {
 import { isSuspensionActiveForCompetition } from '../utils/bestXiSolver';
 import {
   AttributeRadarChart,
+  PlayerProgressionSparkline,
   RolePercentilePizzaChart,
   formatDynamicCurrency,
 } from './FootballAnalyticsCharts';
+import {
+  buildPlayerProgressionSeries,
+  loadProgressionArchive,
+} from '../utils/progressionDiff';
 
 interface PlayerDetailModalProps {
   player: PlayerRecord | null;
@@ -1354,6 +1359,10 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                   />
                 </div>
               </div>
+              <PlayerProgressionSparkline
+                points={buildPlayerProgressionSeries(player.uid, loadProgressionArchive())}
+                playerName={player.name}
+              />
             </div>
           )}
 

@@ -495,3 +495,75 @@ export function computeProgressionDiff(
     youthIntakeHighlights: newgenRadar.filter((f) => f.isYouthIntakeHighlight),
   };
 }
+
+export interface PlayerProgressionPoint {
+  saveDate: string;
+  capturedAt: string;
+  age: number;
+  abilityStars: number | null;
+  potentialStars: number | null;
+  avgCoreAttr: number;
+  netDeltaFromStart: number;
+}
+
+/**
+ * Builds a chronological progression series for a single player UID across
+ * saved snapshots (strictly zero raw CA/PA — uses relative star ratings and
+ * visible attribute averages/deltas).
+ */
+export function buildPlayerProgressionSeries(
+  uid: number | undefined,
+  archive: ProgressionSnapshot[]
+): PlayerProgressionPoint[] {
+  if (typeof uid !== 'number' || !Number.isFinite(uid) || !Array.isArray(archive)) {
+    return [];
+  }
+
+  const points: PlayerProgressionPoint[] = [];
+  let baselineAttrs: Record<string, number> | null = null;
+
+  for (const snap of archive) {
+    const entry = snap.players?.[uid];
+    if (!entry) continue;
+
+    const attrs = entry.attributes || {};
+    const values = Object.values(attrs).filter(
+      (v): v is number => typeof v === 'number' && Number.isFinite(v)
+    );
+    const avgCoreAttr =
+      values.length > 0
+        ? Number((values.reduce((acc, v) => acc + v, 0) / values.length).toFixed(2))
+        : 0;
+
+    if (!baselineAttrs) {
+      baselineAttrs = attrs;
+    }
+
+    let netDeltaFromStart = 0;
+    for (const [k, v] of Object.entries(attrs)) {
+      const base = baselineAttrs[k];
+      if (typeof v === 'number' && typeof base === 'number') {
+        netDeltaFromStart += v - base;
+      }
+    }
+
+    points.push({
+      saveDate: snap.saveDate,
+      capturedAt: snap.capturedAt,
+      age: entry.age,
+      abilityStars:
+        typeof entry.abilityStars === 'number' && Number.isFinite(entry.abilityStars)
+          ? entry.abilityStars
+          : null,
+      potentialStars:
+        typeof entry.potentialStars === 'number' && Number.isFinite(entry.potentialStars)
+          ? entry.potentialStars
+          : null,
+      avgCoreAttr,
+      netDeltaFromStart,
+    });
+  }
+
+  return points;
+}
+

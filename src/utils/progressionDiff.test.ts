@@ -7,6 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PlayerRecord } from '../types/fm27';
 import {
+  buildPlayerProgressionSeries,
   buildProgressionSnapshot,
   captureProgressionSnapshot,
   clearProgressionArchive,
@@ -306,4 +307,26 @@ test('Pack 5 Youth Intake Radar ranks U18 intake players strictly by Star Rating
   const serialized = JSON.stringify({ latest, diff });
   assert.doesNotMatch(serialized, /"ca"|"pa"|"currentAbility"|"potentialAbility"/i);
 });
+
+test('buildPlayerProgressionSeries tracks chronological star ratings and net attribute deltas', () => {
+  const s1 = buildProgressionSnapshot('2026-09-01', 'KVV Zelzate', [
+    { ...makePlayer(5001, 'Rising Mid', 19, { pace: 12, passing: 12 }), ability: 2.5, potential: 4.5 },
+  ]);
+  const s2 = buildProgressionSnapshot('2026-11-01', 'KVV Zelzate', [
+    { ...makePlayer(5001, 'Rising Mid', 19, { pace: 13, passing: 14 }), ability: 3.0, potential: 4.5 },
+  ]);
+  const s3 = buildProgressionSnapshot('2027-01-01', 'KVV Zelzate', [
+    { ...makePlayer(5001, 'Rising Mid', 20, { pace: 14, passing: 15 }), ability: 3.5, potential: 4.5 },
+  ]);
+
+  const series = buildPlayerProgressionSeries(5001, [s1, s2, s3]);
+  assert.equal(series.length, 3);
+  assert.equal(series[0].netDeltaFromStart, 0);
+  assert.equal(series[1].netDeltaFromStart, 3);
+  assert.equal(series[2].netDeltaFromStart, 5);
+  assert.equal(series[0].abilityStars, 2.5);
+  assert.equal(series[2].abilityStars, 3.5);
+  assert.equal(buildPlayerProgressionSeries(undefined, [s1, s2]).length, 0);
+});
+
 
