@@ -55,6 +55,8 @@ def apply_fmsave_runtime_patches() -> bool:
     try:
         import fmsave._layouts as layouts_mod
         from fmsave._layouts import LayoutEntry, fm27_27_0_0, fm27_27_1_0
+        import fmsave._context as context_mod
+        import fmsave.readers.clubs as clubs_reader
         import fmsave.readers.tactics as tactics_reader
         import fmsave.readers.squad_planner as planner_reader
         import fmsave.readers.managed as managed_reader
@@ -304,7 +306,29 @@ def apply_fmsave_runtime_patches() -> bool:
     managed_reader._summary_links = _patched_summary_links
     managed_reader.scouting_budget = _patched_scouting_budget
 
-    # ── 5. Dynamic callable _build_modules hook for future 27.x builds ───────────
+    # ── 5. Bidirectional FM27 ClubTableLayout fallback (27.0.x <-> 27.1.x) ──────
+    # Dynamic build registration marks unseen 27.x builds as known_build=True, which
+    # disables fmsave's built-in fallback_table. Always supply the alternate FM27
+    # ClubTableLayout so both 27.0.x (0-byte tail) and 27.1.x (+5-byte finance tail)
+    # saves frame cleanly regardless of build string.
+    orig_find_club_layouts = clubs_reader.find_club_layouts
+
+    def _patched_find_club_layouts(game_db_schema: int | None, build: str) -> Any:
+        layouts = orig_find_club_layouts(game_db_schema, build)
+        if build.startswith("27.") and getattr(layouts, "fallback_table", None) is None:
+            alt_table = (
+                fm27_27_0_0.CLUB_TABLE
+                if layouts.table is fm27_27_1_0.CLUB_TABLE
+                else fm27_27_1_0.CLUB_TABLE
+            )
+            return replace(layouts, fallback_table=alt_table)
+        return layouts
+
+    clubs_reader.find_club_layouts = _patched_find_club_layouts
+    if hasattr(context_mod, "find_club_layouts"):
+        context_mod.find_club_layouts = _patched_find_club_layouts
+
+    # ── 6. Dynamic callable _build_modules hook for future 27.x builds ───────────
     if not hasattr(layouts_mod, "_orig_build_modules_fn"):
         layouts_mod._orig_build_modules_fn = layouts_mod._build_modules
 
@@ -322,22 +346,23 @@ def apply_fmsave_runtime_patches() -> bool:
 
 
 def register_dynamic_fm27_build(build_str: str) -> bool:
-    """Dynamically register an unseen FM27 27.x.y+z build to inherit patched 27.1.0 layouts."""
+    """Dynamically register an unseen FM27 27.x.y+z build to inherit matching 27.0 or 27.1 layouts."""
     if not build_str or not build_str.startswith("27."):
         return False
     apply_fmsave_runtime_patches()
     try:
         import fmsave._layouts as layouts_mod
-        from fmsave._layouts import LayoutEntry, fm27_27_1_0
+        from fmsave._layouts import LayoutEntry, fm27_27_0_0, fm27_27_1_0
     except Exception:
         return False
 
     if build_str in layouts_mod.known_builds() or build_str in _REGISTERED_SYNTHETIC_BUILDS:
         return True
 
+    base_mod = fm27_27_0_0 if build_str.startswith("27.0.") else fm27_27_1_0
     synthetic_layouts = tuple(
         LayoutEntry(e.region, e.schema, build_str, e.layout)
-        for e in fm27_27_1_0.LAYOUTS
+        for e in base_mod.LAYOUTS
     )
     mod = SyntheticFM27BuildModule(
         build=build_str,

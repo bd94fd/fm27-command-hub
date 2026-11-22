@@ -56,7 +56,7 @@ async function ensureBooted(reply, origin) {
         micropip.destroy?.();
       }
 
-      const patcherUrl = new URL('/fm_layout_patcher.py?v=17', origin || self.location.origin).href;
+      const patcherUrl = new URL('/fm_layout_patcher.py?v=18', origin || self.location.origin).href;
       try {
         const patcherResp = await fetch(patcherUrl, { cache: 'no-cache' });
         if (patcherResp.ok) {
