@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FORMATION_PRESETS, solveBestXi } from './bestXiSolver.ts';
-import { analyzeRestDefenseMatrix } from './restDefenseEngine.ts';
+import {
+  analyzeRestDefenseMatrix,
+  getRestDefenseRoleExplanation,
+} from './restDefenseEngine.ts';
 import { PlayerRecord } from '../types/fm27.ts';
 
 function makeDummyPlayer(id: string, name: string, position: string): PlayerRecord {
@@ -116,4 +119,27 @@ test('analyzeRestDefenseMatrix flags exposed flanks when both full-backs push hi
   assert.equal(leftFlank?.status, 'Exposed');
   assert.equal(rightFlank?.status, 'Exposed');
   assert.ok(matrix.alerts.length >= 2);
+});
+
+test('Rest Defence keeps LW and LCM separated on pitch and explains every role in plain English', () => {
+  const solved = solveBestXi(TEST_SQUAD, { shape: '4-3-3 DM Wide' });
+  const matrix = analyzeRestDefenseMatrix(solved.startingXI, '4-3-3 DM Wide');
+  const lw = matrix.nodes.find((n) => n.slotId === 'AML');
+  const lcm = matrix.nodes.find((n) => n.slotId === 'MCL');
+  assert.ok(lw && lcm, 'Expected AML and MCL nodes');
+  const dist = Math.hypot(lw.restX - lcm.restX, lw.restY - lcm.restY);
+  assert.ok(
+    dist >= 16,
+    `Expected LW (${lw.restX},${lw.restY}) and LCM (${lcm.restX},${lcm.restY}) to stay separated, got dist=${dist.toFixed(1)}`
+  );
+  for (const node of matrix.nodes) {
+    const explanation = getRestDefenseRoleExplanation(
+      node.categoryLabel,
+      node.category
+    );
+    assert.ok(
+      explanation.length >= 25,
+      `Expected plain-English explanation for ${node.categoryLabel}`
+    );
+  }
 });

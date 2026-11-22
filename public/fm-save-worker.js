@@ -348,6 +348,7 @@ self.onmessage = async (event) => {
         });
         await yieldTick();
         mapperModule.step_4_2_player_match_stats(false);
+        emitCheckpoint('stage_4_player_stats');
 
         activeStep = 'Stage 4/4: player_season_history (Career history)';
         reply({

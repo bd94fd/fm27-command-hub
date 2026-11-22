@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Calendar, Filter, Sparkles, Trophy } from 'lucide-react';
 import { MatchLogEntry } from '../types/fm27';
-import { computeCompetitiveSummary } from '../utils/fmSyncEngine';
 
 export interface PostMatchDebriefData {
   headlineVerdict: string;
@@ -244,10 +243,21 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
     });
   }, [matches, activeSeason, compFilter]);
 
-  const filteredSummary = useMemo(
-    () => computeCompetitiveSummary(filteredMatches),
-    [filteredMatches]
-  );
+  const filteredXgStats = useMemo(() => {
+    const xgMatches = filteredMatches.filter(
+      (m) => typeof m.xGFor === 'number' && typeof m.xGAgainst === 'number'
+    );
+    const totalXgFor = xgMatches.reduce((sum, m) => sum + (m.xGFor ?? 0), 0);
+    const totalXgAgainst = xgMatches.reduce(
+      (sum, m) => sum + (m.xGAgainst ?? 0),
+      0
+    );
+    return {
+      count: xgMatches.length,
+      totalXgFor,
+      totalXgAgainst,
+    };
+  }, [filteredMatches]);
 
   const wins = filteredMatches.filter((m) => m.result === 'W').length;
   const draws = filteredMatches.filter((m) => m.result === 'D').length;
@@ -278,8 +288,12 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
             {filteredMatches.length > 0 && (
               <span className="rounded-lg bg-slate-800 border border-slate-700 px-2.5 py-1 text-slate-200">
                 Showing {filteredMatches.length} GP: {wins}W-{draws}D-{losses}L
-                {filteredSummary.xgMatchesCount > 0
-                  ? ` · xG ${filteredSummary.totalXgFor.toFixed(2)}-${filteredSummary.totalXgAgainst.toFixed(2)}`
+                {filteredXgStats.count > 0
+                  ? ` · xG ${filteredXgStats.totalXgFor.toFixed(2)}-${filteredXgStats.totalXgAgainst.toFixed(2)}${
+                      filteredXgStats.count < filteredMatches.length
+                        ? ` (${filteredXgStats.count}/${filteredMatches.length} tracked)`
+                        : ''
+                    }`
                   : ''}
               </span>
             )}
@@ -354,7 +368,7 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
             <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xl mx-auto">
               Zero pre-filled matches or guessed xG figures. Drop your{' '}
               <span className="font-mono text-emerald-400">.fm</span> save file
-              in the <strong>Analyst</strong> tab to populate all played matches.
+              in the <strong>Hub</strong> tab to populate all played matches.
             </p>
           </div>
         ) : filteredMatches.length === 0 ? (

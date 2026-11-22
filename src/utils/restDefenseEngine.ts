@@ -92,6 +92,55 @@ function clampCoord(val: number, min = 8, max = 92): number {
   return Math.max(min, Math.min(max, Math.round(val * 10) / 10));
 }
 
+export function getRestDefenseRoleExplanation(
+  categoryLabel: string,
+  category: TransitionRoleCategory
+): string {
+  switch (categoryLabel) {
+    case 'Sweeper / Line Keeper':
+      return 'Guards the goal and sweeps up long balls played over the top of your defensive line.';
+    case 'Rest-Defense CB':
+      return 'Stays deep behind the ball while you attack to stop direct counter-attacks through the middle.';
+    case 'Auxiliary 3rd CB':
+      return 'Tucks inside from full-back to form a back three, giving extra central cover when you lose the ball.';
+    case 'Tucked Rest-Defense FB':
+      return 'Holds a cautious position behind the ball to protect the flank and screen counter-attacks.';
+    case 'Dropping Half-Back Base':
+      return 'Drops between the centre-backs in possession to create a solid three-man defensive base.';
+    case 'Zone 5 Pivot Screen':
+      return 'Patrols the vital space right in front of your centre-backs to cut off central counter-attacks.';
+    case 'Box-to-Box Counter-Presser':
+      return 'Supports the attack, then immediately presses or sprints back to help the midfield screen.';
+    case 'Tracking Wide Shuttle':
+      return 'Attacks down the wing, then tracks back quickly on transition to protect the wide lane.';
+    case 'Recovery Full-Back':
+      return 'Joins attacks selectively and sprints back into the defensive line as soon as possession turns over.';
+    case 'Half-Space Recovery AM':
+      return 'Links attacks in the pockets, then drops into the half-space to delay opponent counters.';
+    case 'Pressing Link Forward':
+      return 'Drops to link play and immediately presses the opposition defenders on turnover.';
+    case 'High Flank Overlapper':
+      return 'Pushes very high up the touchline in possession — leaves space behind that teammates must cover.';
+    case 'Wide Counter Outlet':
+      return 'Stays high and wide to stretch the opponent and launch fast breaks rather than tracking all the way back.';
+    case 'High Line Breaker':
+      return 'Stays high between the opposition lines to threaten in behind rather than dropping into the base.';
+    case 'Vertical Pin / Outlet':
+      return 'Pins the opposition centre-backs high up the pitch as your main outlet to launch attacks.';
+    default:
+      if (category === 'BASE_ANCHOR') {
+        return 'Stays behind the ball in possession to stop counter-attacks immediately.';
+      }
+      if (category === 'TRANSITION_SHUTTLE') {
+        return 'Shuttles between attack and defence, pressing or recovering quickly when possession is lost.';
+      }
+      if (category === 'ATTACKING_OUTLET') {
+        return 'Stays high up the pitch to pin defenders and provide an attacking outlet.';
+      }
+      return 'Protects the space behind your defensive line.';
+  }
+}
+
 export function classifySlotRestDefenseCategory(
   slot: SolvedSlot
 ): {
@@ -296,7 +345,18 @@ export function analyzeRestDefenseMatrix(
       if (slot.flank === 'L') restX = clampCoord(24);
       if (slot.flank === 'R') restX = clampCoord(76);
     } else if (info.category === 'TRANSITION_SHUTTLE') {
-      restY = clampCoord((ipY + oopY) / 2, 34, 68);
+      const isWideShuttle =
+        slot.positionGroup.toLowerCase().includes('wide') ||
+        slot.positionGroup.toLowerCase().includes('winger');
+      if (isWideShuttle) {
+        // Keep tracking wide shuttles clearly on their touchline above the full-backs
+        // so they never overlap LCM/RCM on narrow mobile screens
+        if (slot.flank === 'L') restX = clampCoord(Math.min(ipX, 17));
+        if (slot.flank === 'R') restX = clampCoord(Math.max(ipX, 83));
+        restY = clampCoord(Math.min((ipY + oopY) / 2, 31), 24, 33);
+      } else {
+        restY = clampCoord((ipY + oopY) / 2, 42, 68);
+      }
     }
 
     return {

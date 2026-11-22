@@ -1283,25 +1283,50 @@ export function hydrateAppFromDecodedFmSave(
 
   let squadOutputLabel: string | null = null;
   let squadOutputSubLabel: string | null = null;
-  if (decoded.players.length > 0) {
-    const totalGoals = decoded.players.reduce((s, p) => s + (p.goals || 0), 0);
-    const totalXg = decoded.players.reduce((s, p) => s + (p.xG || 0), 0);
-    const totalAssists = decoded.players.reduce((s, p) => s + (p.assists || 0), 0);
-    const totalXa = decoded.players.reduce((s, p) => s + (p.xA || 0), 0);
+  if (finalSquad.length > 0) {
+    const totalGoals = finalSquad.reduce((s, p) => s + (p.goals || 0), 0);
+    const totalXg = finalSquad.reduce((s, p) => s + (p.xG || 0), 0);
+    const totalAssists = finalSquad.reduce((s, p) => s + (p.assists || 0), 0);
+    const totalXa = finalSquad.reduce((s, p) => s + (p.xA || 0), 0);
+    const hasPlayerProduction =
+      totalGoals > 0 ||
+      totalAssists > 0 ||
+      totalXg > 0 ||
+      totalXa > 0 ||
+      finalSquad.some((p) => (p.minutes || 0) > 0);
     const ls = decoded.leagueStanding;
     const looksMultiSeason =
       ls && ls.played > 0 && totalGoals > ls.goalsFor + 6;
 
-    if (looksMultiSeason && ls) {
+    if ((looksMultiSeason || !hasPlayerProduction) && ls && ls.played > 0) {
       const gdStr = ls.goalDiff >= 0 ? `+${ls.goalDiff}` : `${ls.goalDiff}`;
       const gfPerGame = (ls.goalsFor / ls.played).toFixed(2);
       const gaPerGame = (ls.goalsAgainst / ls.played).toFixed(2);
       squadOutputLabel = `${ls.goalsFor} GF / ${ls.goalsAgainst} GA (${gdStr} GD)`;
-      squadOutputSubLabel = `Current Season League (${ls.played} GP · ${gfPerGame} GF/g · ${gaPerGame} GA/g)`;
-    } else {
-      squadOutputLabel = `${totalGoals} Gls (${totalXg.toFixed(2)} xG) · ${totalAssists} Ast (${totalXa.toFixed(2)} xA)`;
-      const topScorer = [...decoded.players].sort((a, b) => (b.goals || 0) - (a.goals || 0))[0];
-      const topRated = [...decoded.players]
+      const leagueXgMatches = updatedMatches.filter((m) => {
+        const comp = (m.competition || '').toLowerCase();
+        return (
+          typeof m.xGFor === 'number' &&
+          typeof m.xGAgainst === 'number' &&
+          !comp.includes('friendly') &&
+          !comp.includes('cup') &&
+          !comp.includes('beker')
+        );
+      });
+      if (!hasPlayerProduction && leagueXgMatches.length > 0) {
+        const sumXgFor = leagueXgMatches.reduce((s, m) => s + (m.xGFor ?? 0), 0);
+        const sumXgAg = leagueXgMatches.reduce((s, m) => s + (m.xGAgainst ?? 0), 0);
+        squadOutputSubLabel = `League (${ls.played} GP) · xG ${sumXgFor.toFixed(2)} For vs ${sumXgAg.toFixed(2)} Against`;
+      } else {
+        squadOutputSubLabel = `Current Season League (${ls.played} GP · ${gfPerGame} GF/g · ${gaPerGame} GA/g)`;
+      }
+    } else if (hasPlayerProduction) {
+      const hasPerPlayerXg = totalXg > 0 || totalXa > 0;
+      squadOutputLabel = hasPerPlayerXg
+        ? `${totalGoals} Gls (${totalXg.toFixed(2)} xG) · ${totalAssists} Ast (${totalXa.toFixed(2)} xA)`
+        : `${totalGoals} Gls · ${totalAssists} Ast`;
+      const topScorer = [...finalSquad].sort((a, b) => (b.goals || 0) - (a.goals || 0))[0];
+      const topRated = [...finalSquad]
         .filter((p) => typeof p.rating === 'number' && (p.minutes || 0) >= 90)
         .sort((a, b) => (b.rating || 0) - (a.rating || 0))[0];
       const subParts: string[] = [];
@@ -1314,7 +1339,10 @@ export function hydrateAppFromDecodedFmSave(
       squadOutputSubLabel =
         subParts.length > 0
           ? subParts.join(' · ')
-          : `Current season across ${decoded.players.length} squad players`;
+          : `Current season across ${finalSquad.length} squad players`;
+    } else {
+      squadOutputLabel = '0 GP · Season Not Started';
+      squadOutputSubLabel = `Re-sync with Full Sync if matches have been played (${finalSquad.length} players)`;
     }
   }
 

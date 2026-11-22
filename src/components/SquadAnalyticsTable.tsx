@@ -520,7 +520,18 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
             )}
           </div>
         ) : (
-          <div className="overflow-x-auto mt-4">
+          <div className="space-y-3 mt-4">
+            {players.length > 0 &&
+              players.every((p) => (p.minutes || 0) === 0 && (p.goals || 0) === 0) && (
+                <div className="rounded-lg border border-amber-500/35 bg-amber-950/25 px-3.5 py-2.5 text-xs text-amber-200">
+                  <strong>Season match stats not in this snapshot:</strong> Player goals,
+                  assists, xG and match ratings weren&apos;t included (Fast Sync or partial
+                  checkpoint). Re-import your <span className="font-mono">.fm</span> save
+                  with <strong>Full Sync</strong> in the <strong>Hub</strong> tab to fill
+                  all player match stats.
+                </div>
+              )}
+          <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-500 dark:text-slate-400">
@@ -547,6 +558,11 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
                       ? p.activeSuspensions[0]
                       : null;
                   const optYears = p.contractDetails?.optionalExtensionYears ?? 0;
+                  const hasPlayed =
+                    (p.minutes || 0) > 0 ||
+                    (Boolean(p.apps) && p.apps !== '0') ||
+                    (p.goals || 0) > 0 ||
+                    (p.assists || 0) > 0;
 
                   return (
                     <tr
@@ -600,7 +616,7 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
                         </div>
                       </td>
                       <td className="py-2.5 px-2 text-right font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                        {p.apps} ({p.minutes}m)
+                        {hasPlayed ? `${p.apps} (${p.minutes}m)` : '—'}
                       </td>
                       <td className="py-2.5 px-2 text-right font-mono font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
                         {typeof p.rating === 'number' && p.rating > 0
@@ -608,16 +624,20 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
                           : '—'}
                       </td>
                       <td className="py-2.5 px-2 text-right font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                        {p.goals ?? 0} ({(p.xG ?? 0).toFixed(2)})
+                        {hasPlayed ? `${p.goals ?? 0} (${(p.xG ?? 0).toFixed(2)})` : '—'}
                       </td>
                       <td className="py-2.5 px-2 text-right font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                        {p.assists ?? 0} ({(p.xA ?? 0).toFixed(2)})
+                        {hasPlayed ? `${p.assists ?? 0} (${(p.xA ?? 0).toFixed(2)})` : '—'}
                       </td>
                       <td className="py-2.5 px-2 text-right font-mono tabular-nums text-slate-700 dark:text-slate-300">
-                        {(p.prPassesPer90 ?? 0).toFixed(2)}
+                        {hasPlayed && (p.prPassesPer90 ?? 0) > 0
+                          ? (p.prPassesPer90 ?? 0).toFixed(2)
+                          : '—'}
                       </td>
                       <td className="py-2.5 px-2 text-right font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                        {p.hdrPct ?? 0}% / {p.tckPct ?? 0}%
+                        {hasPlayed && ((p.hdrPct ?? 0) > 0 || (p.tckPct ?? 0) > 0)
+                          ? `${p.hdrPct ?? 0}% / ${p.tckPct ?? 0}%`
+                          : '—'}
                       </td>
                       <td className="py-2.5 px-2 text-right font-mono tabular-nums text-slate-900 dark:text-slate-100 whitespace-nowrap">
                         {p.attributes?.pace ?? 10}/
@@ -640,6 +660,7 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
                 })}
               </tbody>
             </table>
+          </div>
           </div>
         )}
 

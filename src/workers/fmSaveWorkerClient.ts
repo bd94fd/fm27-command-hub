@@ -34,6 +34,8 @@ export function formatCheckpointStageLabel(stage: string): string {
       return 'Stage 3 (Fixtures & Full Domestic League Table)';
     case 'stage_4_club_ops':
       return 'Stage 4 (Club Ops, Market Scan & Match xG)';
+    case 'stage_4_player_stats':
+      return 'Stage 4 (Player Season Stats & Last-5 Form)';
     default:
       return stage || 'Squad Checkpoint';
   }

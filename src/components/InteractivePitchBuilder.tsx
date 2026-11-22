@@ -7,6 +7,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
+  HelpCircle,
   RefreshCw,
   Shield,
   Sparkles,
@@ -32,6 +33,7 @@ import {
 import { PersistedCustomSlot } from '../services/fmStorage';
 import {
   analyzeRestDefenseMatrix,
+  getRestDefenseRoleExplanation,
   PitchPhaseMode,
 } from '../utils/restDefenseEngine';
 
@@ -249,6 +251,8 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
   const [selectedSlotId, setSelectedSlotId] = useState<string>('ST');
   const [pitchPhaseMode, setPitchPhaseMode] =
     useState<PitchPhaseMode>('rest-defense');
+  const [showRestDefenseGuide, setShowRestDefenseGuide] = useState(true);
+  const [selectedLaneName, setSelectedLaneName] = useState<string | null>(null);
 
   const savedTacticLineup = useMemo(
     () =>
@@ -516,11 +520,11 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
         </div>
       </div>
 
-      {/* Phase 1 (v3.0): Dual-Phase & Rest-Defense Matrix Bar */}
+      {/* Phase 1 (v3.0): Dual-Phase & Rest-Defence Matrix Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800">
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="font-mono font-bold text-emerald-400">
-            {restDefenseMatrix.structureLabel}
+            {restDefenseMatrix.structureLabel.replace('Rest-Defense', 'Rest Defence')}
           </span>
           <span
             className={`rounded-md px-2 py-0.5 font-mono text-[11px] font-bold border ${
@@ -539,6 +543,14 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
             {restDefenseMatrix.shuttleCount} · Outlets:{' '}
             {restDefenseMatrix.outletCount}
           </span>
+          <button
+            type="button"
+            onClick={() => setShowRestDefenseGuide((v) => !v)}
+            className="inline-flex items-center gap-1 rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-emerald-300 transition cursor-pointer"
+          >
+            <HelpCircle className="w-3 h-3 shrink-0" />
+            <span>{showRestDefenseGuide ? 'Hide Guide' : 'What is Rest Defence?'}</span>
+          </button>
         </div>
 
         <div className="flex items-center gap-1 p-0.5 rounded-lg bg-slate-900 border border-slate-800">
@@ -546,7 +558,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
             [
               { id: 'ip', label: 'IP Attack Shape' },
               { id: 'oop', label: 'OOP Def Block' },
-              { id: 'rest-defense', label: 'Rest-Defense Matrix' },
+              { id: 'rest-defense', label: 'Rest Defence' },
             ] as const
           ).map((mode) => (
             <button
@@ -741,30 +753,131 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
             })}
           </div>
 
-          {/* 5-Lane Rest-Defense Corridor Status Bar */}
-          <div className="grid grid-cols-5 gap-1.5">
-            {restDefenseMatrix.lanes.map((lane) => {
-              const badgeCls =
-                lane.status === 'Secure'
-                  ? 'border-emerald-500/35 bg-emerald-950/30 text-emerald-300'
-                  : lane.status === 'Watch'
-                    ? 'border-amber-500/35 bg-amber-950/30 text-amber-300'
-                    : 'border-rose-500/45 bg-rose-950/40 text-rose-300';
-              return (
-                <div
-                  key={lane.lane}
-                  title={lane.detail}
-                  className={`rounded-lg border px-1.5 sm:px-2 py-1.5 text-center ${badgeCls}`}
-                >
-                  <div className="text-[9px] sm:text-[10px] font-bold truncate">
-                    {lane.lane}
+          {/* 5-Lane Rest-Defence Corridor Status Bar (tappable on mobile) */}
+          <div className="space-y-2">
+            <div className="grid grid-cols-5 gap-1.5">
+              {restDefenseMatrix.lanes.map((lane) => {
+                const isActiveLane = selectedLaneName === lane.lane;
+                const badgeCls =
+                  lane.status === 'Secure'
+                    ? 'border-emerald-500/35 bg-emerald-950/30 text-emerald-300'
+                    : lane.status === 'Watch'
+                      ? 'border-amber-500/35 bg-amber-950/30 text-amber-300'
+                      : 'border-rose-500/45 bg-rose-950/40 text-rose-300';
+                return (
+                  <button
+                    key={lane.lane}
+                    type="button"
+                    onClick={() =>
+                      setSelectedLaneName((curr) =>
+                        curr === lane.lane ? null : lane.lane
+                      )
+                    }
+                    title={lane.detail}
+                    className={`rounded-lg border px-1.5 sm:px-2 py-1.5 text-center transition cursor-pointer ${badgeCls} ${
+                      isActiveLane ? 'ring-2 ring-white/80' : ''
+                    }`}
+                  >
+                    <div className="text-[9px] sm:text-[10px] font-bold truncate">
+                      {lane.lane}
+                    </div>
+                    <div className="text-[9px] sm:text-[10px] font-mono">
+                      {lane.status} ({lane.coverageCount})
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {selectedLaneName &&
+              (() => {
+                const lane = restDefenseMatrix.lanes.find(
+                  (l) => l.lane === selectedLaneName
+                );
+                if (!lane) return null;
+                return (
+                  <div className="rounded-lg border border-slate-700 bg-slate-950/90 px-3 py-2 text-[11px] text-slate-200 flex items-center justify-between gap-2">
+                    <div>
+                      <strong className="text-emerald-300">{lane.lane}</strong>{' '}
+                      <span className="font-mono text-slate-400">
+                        ({lane.status} · {lane.coverageCount} covering)
+                      </span>
+                      : {lane.detail}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedLaneName(null)}
+                      className="text-slate-400 hover:text-white text-[10px] font-semibold shrink-0 cursor-pointer"
+                    >
+                      Close
+                    </button>
                   </div>
-                  <div className="text-[9px] sm:text-[10px] font-mono">
-                    {lane.status} ({lane.coverageCount})
+                );
+              })()}
+
+            {restDefenseMatrix.alerts.length > 0 && (
+              <div className="rounded-lg border border-rose-500/35 bg-rose-950/25 px-3 py-2 space-y-1 text-[11px] text-rose-200">
+                {restDefenseMatrix.alerts.map((alertText, idx) => (
+                  <div key={idx} className="flex items-start gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
+                    <span>{alertText}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Plain-English Rest Defence Guide */}
+            {showRestDefenseGuide && (
+              <div className="rounded-xl border border-emerald-500/25 bg-slate-950/85 p-3.5 space-y-2.5 text-xs text-slate-300">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-bold text-emerald-300 flex items-center gap-1.5">
+                    <Shield className="w-3.5 h-3.5 shrink-0" />
+                    Rest Defence Explained
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    Tap any player or lane above for details
+                  </span>
+                </div>
+                <p className="text-[11px] leading-relaxed text-slate-300">
+                  <strong className="text-white">Rest Defence</strong> is the shape your
+                  team stays in <em>while you have the ball</em> so you don&apos;t get
+                  caught on the counter-attack the instant you lose possession. Your{' '}
+                  <strong className="text-emerald-300">
+                    {restDefenseMatrix.baseDefenderCount}-{restDefenseMatrix.pivotScreenCount} Base
+                  </strong>{' '}
+                  means {restDefenseMatrix.baseDefenderCount} deep defenders plus{' '}
+                  {restDefenseMatrix.pivotScreenCount} holding/tucked screeners stay behind
+                  the ball. <strong className="text-white">Transition Stability</strong>{' '}
+                  ({restDefenseMatrix.stabilityScore}/100) scores how safely all 5 vertical
+                  lanes (flanks, half-spaces &amp; centre) are covered on turnover.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+                  <div className="rounded-lg border border-emerald-500/30 bg-emerald-950/20 px-2.5 py-1.5">
+                    <div className="font-bold text-emerald-300">
+                      Green Ring &amp; Dashed Shield
+                    </div>
+                    <div className="text-slate-300 mt-0.5">
+                      <strong>Base Anchors</strong> — stay behind the ball to stop
+                      counter-attacks immediately.
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-sky-500/30 bg-sky-950/20 px-2.5 py-1.5">
+                    <div className="font-bold text-sky-300">Blue Ring</div>
+                    <div className="text-slate-300 mt-0.5">
+                      <strong>Shuttles</strong> — support attacks, then counter-press or
+                      sprint back to plug gaps.
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-purple-500/30 bg-purple-950/20 px-2.5 py-1.5">
+                    <div className="font-bold text-purple-300">Purple Ring</div>
+                    <div className="text-slate-300 mt-0.5">
+                      <strong>Outlets</strong> — stay high to pin opposition defenders and
+                      launch fast breaks.
+                    </div>
                   </div>
                 </div>
-              );
-            })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -798,6 +911,33 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                   </span>
                 )}
               </div>
+
+              {/* Full Rest-Defence Job Explanation for Selected Player */}
+              {(() => {
+                const selRestNode = restNodeMap.get(selectedSlot.slotId);
+                if (!selRestNode) return null;
+                const badgeCls =
+                  selRestNode.category === 'BASE_ANCHOR'
+                    ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-300'
+                    : selRestNode.category === 'TRANSITION_SHUTTLE'
+                      ? 'border-sky-500/35 bg-sky-500/10 text-sky-300'
+                      : selRestNode.category === 'ATTACKING_OUTLET'
+                        ? 'border-purple-500/35 bg-purple-500/10 text-purple-300'
+                        : 'border-slate-700 bg-slate-900 text-slate-300';
+                return (
+                  <div className={`rounded-lg border px-3 py-2 text-[11px] space-y-0.5 ${badgeCls}`}>
+                    <div className="font-bold">
+                      Rest-Defence Job: {selRestNode.categoryLabel.replace('Rest-Defense', 'Rest Defence')}
+                    </div>
+                    <p className="opacity-90 leading-relaxed">
+                      {getRestDefenseRoleExplanation(
+                        selRestNode.categoryLabel,
+                        selRestNode.category
+                      )}
+                    </p>
+                  </div>
+                );
+              })()}
 
               {/* Player Override Selector */}
               <div className="space-y-1">

@@ -37,7 +37,7 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
   const targetsCount = (hydrated.recruitmentTargets || d.recruitmentTargets || []).length;
   const firstTeamCount = d.players.filter((p) => !p.teamSlot || p.teamSlot === 0).length;
   const youthCount = d.players.length - firstTeamCount;
-  const playersWithSeasonStats = d.players.filter((p) => (p.minutes || 0) > 0).length;
+  const playersWithSeasonStats = hydrated.updatedSquad.filter((p) => (p.minutes || 0) > 0).length;
   const matchesWithXg = d.playedMatches.filter((m) => m.xGFor !== null && m.xGFor !== undefined).length;
   const removedPlayers = hydrated.removedPlayers || [];
   const runway = hydrated.financialRunway || null;
