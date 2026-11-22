@@ -62,3 +62,28 @@ test('evaluateBackroomDepartmentEfficiency evaluates all 8 departments and flags
   assert.equal(gk?.status, 'Weak / Upgrade Needed');
 });
 
+test('calculateAllStaffRoleRatings applies 2x DDM weighting to coaching stars', () => {
+  const highDdm = calculateAllStaffRoleRatings({
+    ...sampleCoach.attributes,
+    attacking: 18,
+    technical: 18,
+    determination: 18,
+    authority: 18,
+    motivating: 18,
+  }).find((r) => r.key === 'att_tech');
+
+  const lowDdm = calculateAllStaffRoleRatings({
+    ...sampleCoach.attributes,
+    attacking: 18,
+    technical: 18,
+    determination: 5,
+    authority: 5,
+    motivating: 5,
+  }).find((r) => r.key === 'att_tech');
+
+  assert.equal(highDdm?.stars, 4.5);
+  assert.equal(lowDdm?.stars, 3.0);
+  assert.ok((highDdm?.score ?? 0) - (lowDdm?.score ?? 0) >= 25);
+});
+
+

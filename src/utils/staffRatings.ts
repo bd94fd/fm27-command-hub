@@ -34,8 +34,25 @@ export const STAFF_ATTRIBUTE_LABELS: Record<keyof StaffAttributes, string> = {
   analysing_data: 'Analysing Data',
 };
 
-function ddm(a: StaffAttributes): number {
-  return (a.determination + a.authority + a.motivating) / 3;
+/**
+ * FM27 coaching star weighting (Determination + Level of Discipline + Motivating weighted 2x each).
+ * - Dual-attribute coaching (Attacking/Defending/Possession/Set Pieces): 6x primary + 3x secondary + 2x DDM (÷ 15)
+ * - Single-attribute coaching (Fitness/Goalkeeping): 9x primary + 2x DDM (÷ 15)
+ */
+function ddmWeighted2x(a: StaffAttributes): number {
+  return (a.determination + a.authority + a.motivating) * 2;
+}
+
+function dualAttrCoachingScore(
+  primary: number,
+  secondary: number,
+  attrs: StaffAttributes
+): number {
+  return (primary * 6 + secondary * 3 + ddmWeighted2x(attrs)) / 15;
+}
+
+function singleAttrCoachingScore(primary: number, attrs: StaffAttributes): number {
+  return (primary * 9 + ddmWeighted2x(attrs)) / 15;
 }
 
 function toStars(rawOutOf20: number): { stars: number; score: number } {
@@ -50,7 +67,6 @@ function toStars(rawOutOf20: number): { stars: number; score: number } {
 export function calculateAllStaffRoleRatings(
   attrs: StaffAttributes
 ): StaffRoleRating[] {
-  const core = ddm(attrs);
   const defs: Array<{
     key: string;
     label: string;
@@ -61,55 +77,55 @@ export function calculateAllStaffRoleRatings(
       key: 'att_tech',
       label: 'Attacking — Technical',
       category: 'Coaching',
-      value: attrs.attacking * 0.45 + attrs.technical * 0.35 + core * 0.2,
+      value: dualAttrCoachingScore(attrs.attacking, attrs.technical, attrs),
     },
     {
       key: 'att_tac',
       label: 'Attacking — Tactical',
       category: 'Coaching',
-      value: attrs.attacking * 0.45 + attrs.tactical * 0.35 + core * 0.2,
+      value: dualAttrCoachingScore(attrs.attacking, attrs.tactical, attrs),
     },
     {
       key: 'def_tech',
       label: 'Defending — Technical',
       category: 'Coaching',
-      value: attrs.defending * 0.45 + attrs.technical * 0.35 + core * 0.2,
+      value: dualAttrCoachingScore(attrs.defending, attrs.technical, attrs),
     },
     {
       key: 'def_tac',
       label: 'Defending — Tactical',
       category: 'Coaching',
-      value: attrs.defending * 0.45 + attrs.tactical * 0.35 + core * 0.2,
+      value: dualAttrCoachingScore(attrs.defending, attrs.tactical, attrs),
     },
     {
       key: 'pos_tech',
       label: 'Possession — Technical',
       category: 'Coaching',
-      value: attrs.possession * 0.45 + attrs.technical * 0.35 + core * 0.2,
+      value: dualAttrCoachingScore(attrs.possession, attrs.technical, attrs),
     },
     {
       key: 'pos_tac',
       label: 'Possession — Tactical',
       category: 'Coaching',
-      value: attrs.possession * 0.45 + attrs.tactical * 0.35 + core * 0.2,
+      value: dualAttrCoachingScore(attrs.possession, attrs.tactical, attrs),
     },
     {
       key: 'set_pieces',
       label: 'Set Pieces Coaching',
       category: 'Coaching',
-      value: attrs.set_pieces * 0.55 + attrs.tactical * 0.25 + core * 0.2,
+      value: dualAttrCoachingScore(attrs.set_pieces, attrs.tactical, attrs),
     },
     {
       key: 'fitness',
       label: 'Fitness — Strength & Quickness',
       category: 'Fitness',
-      value: attrs.fitness * 0.65 + core * 0.35,
+      value: singleAttrCoachingScore(attrs.fitness, attrs),
     },
     {
       key: 'goalkeeping',
       label: 'Goalkeeping Coaching',
       category: 'Goalkeeping',
-      value: attrs.goalkeeping * 0.65 + core * 0.35,
+      value: singleAttrCoachingScore(attrs.goalkeeping, attrs),
     },
     {
       key: 'scouting',
