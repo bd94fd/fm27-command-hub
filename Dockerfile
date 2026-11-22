@@ -3,7 +3,7 @@
 FROM ghcr.io/astral-sh/uv:0.6.6 AS uv-bin
 
 # Stage 1: Build Frontend & Prune Dev Dependencies
-FROM node:22-slim AS builder
+FROM node:26-slim AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -13,7 +13,7 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Slim Runtime Image (Non-Root + Python 3.14 fmsave 0.14.3)
-FROM node:22-slim AS runtime
+FROM node:26-slim AS runtime
 WORKDIR /app
 
 COPY --from=uv-bin /uv /usr/local/bin/uv
