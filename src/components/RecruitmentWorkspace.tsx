@@ -1,21 +1,6 @@
 import React, { useMemo, useState, useDeferredValue } from 'react';
+import { CheckCircle2 } from 'lucide-react';
 import { VList } from 'virtua';
-import {
-  AlertTriangle,
-  Bookmark,
-  Briefcase,
-  CalendarClock,
-  CheckCircle2,
-  GitCompare,
-  Layers,
-  MessageSquare,
-  Search,
-  Sparkles,
-  Trash2,
-  TrendingDown,
-  UserPlus,
-  X,
-} from 'lucide-react';
 import {
   PlayerRecord,
   RecruitmentCase,
@@ -35,21 +20,14 @@ import {
   ClubFinancialInput,
   TransferActionVerdict,
 } from '../utils/transferAudit';
-import { buildMultiPlayerComparison } from '../utils/playerComparisonEngine';
-import { MultiPlayerComparisonChart } from './FootballAnalyticsCharts';
-import { evaluateScoutTargetCard } from '../utils/cardIntelligenceEngine';
 import { ScoutTargetDetailModal } from './ScoutTargetDetailModal';
 import {
-  buildScoutTargetPlayerRecord,
   buildTargetVsStarterComparison,
   computeTargetBestRoleFit,
   enrichAndFilterScoutedTargets,
   evaluatePlaybookArchetype,
-  evaluateTargetSquadDepth,
   findTopSeniorStarterForPosition,
   formatTargetContractSummary,
-  getPositionRelevantAttributes,
-  PlaybookArchetypeMatch,
   ScoutAgeBand,
   ScoutContractFilter,
   ScoutPositionGroup,
@@ -66,9 +44,18 @@ import {
   evaluatePlayerClubDna,
   loadPersistedClubDnaWeights,
   savePersistedClubDnaWeights,
-  STRATEGIC_DNA_ARCHETYPES,
   StrategicDnaArchetypeId,
 } from '../utils/clubDnaEngine';
+import { RecruitmentHeader } from './recruitment/RecruitmentHeader';
+import { SquadAdviceView } from './recruitment/SquadAdviceView';
+import { ContractHorizonView } from './recruitment/ContractHorizonView';
+import { PositionalDepthView } from './recruitment/PositionalDepthView';
+import { ScoutTargetFilters } from './recruitment/ScoutTargetFilters';
+import { ScoutTargetCard } from './recruitment/ScoutTargetCard';
+import { ShortlistView } from './recruitment/ShortlistView';
+import { CompareTargetModal } from './recruitment/CompareTargetModal';
+import { SelectionCompareDock } from './recruitment/SelectionCompareDock';
+import type { AuditView } from './recruitment/recruitmentTypes';
 
 interface RecruitmentWorkspaceProps {
   cases: RecruitmentCase[];
@@ -96,44 +83,6 @@ interface RecruitmentWorkspaceProps {
   onDeleteShortlist: (id: string) => void;
   onRemoveFromShortlist: (shortlistId: string, playerId: string) => void;
   onSelectPlayer: (player: PlayerRecord) => void;
-}
-
-type AuditView = 'advice' | 'contracts' | 'depth' | 'targets' | 'shortlist';
-
-function archetypeBadgeClass(tone: PlaybookArchetypeMatch['badgeTone']): string {
-  switch (tone) {
-    case 'rose':
-      return 'bg-rose-500/15 text-rose-300 border-rose-500/35';
-    case 'sky':
-      return 'bg-sky-500/15 text-sky-300 border-sky-500/35';
-    case 'emerald':
-      return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35';
-    case 'amber':
-      return 'bg-amber-500/15 text-amber-300 border-amber-500/35';
-    case 'indigo':
-      return 'bg-indigo-500/15 text-indigo-300 border-indigo-500/35';
-    case 'purple':
-      return 'bg-purple-500/15 text-purple-300 border-purple-500/35';
-  }
-}
-
-function verdictBadgeClass(verdict: TransferActionVerdict): string {
-  switch (verdict) {
-    case 'Protect Youth Asset':
-      return 'bg-purple-500/15 text-purple-300 border-purple-500/40';
-    case 'Renew Now':
-      return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40';
-    case 'Sell / Transfer List':
-      return 'bg-rose-500/15 text-rose-300 border-rose-500/40';
-    case 'Replace Before Selling':
-      return 'bg-orange-500/15 text-orange-300 border-orange-500/40';
-    case 'Let Expire':
-      return 'bg-amber-500/15 text-amber-300 border-amber-500/40';
-    case 'Loan Out':
-      return 'bg-sky-500/15 text-sky-300 border-sky-500/40';
-    case 'Hold':
-      return 'bg-slate-800 text-slate-300 border-slate-700';
-  }
 }
 
 export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
@@ -556,1268 +505,109 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
     [audit.positionalNeeds]
   );
 
-  const { clubProfile } = audit;
-
   return (
     <div className="space-y-4">
       {/* Header & Club Financial Health Banner */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/75 p-4 sm:p-5 space-y-4">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-              <Briefcase className="h-5 w-5 text-emerald-400" />
-              {clubName && clubName !== '--'
-                ? `${clubName} · Transfers, Contracts & Squad Audit`
-                : 'Transfers, Contracts & Squad Audit'}
-            </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Club-aware transfer &amp; contract strategy factoring in finances, financial runway, youth potential, personalities &amp; positional depth ({saveDate})
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {youthReservesCount > 0 && (
-              <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-950 border border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setIncludeYouthInAudit(false)}
-                  className={`px-2 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
-                    !includeYouthInAudit
-                      ? 'bg-emerald-600 text-white'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  First Team ({firstTeamPlayers.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIncludeYouthInAudit(true)}
-                  className={`px-2 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
-                    includeYouthInAudit
-                      ? 'bg-emerald-600 text-white'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  All Squad ({players.length})
-                </button>
-              </div>
-            )}
-            {transferWindows && typeof transferWindows.isOpen === 'boolean' && (
-              <span
-                className={`rounded-md border px-2 py-0.5 text-[11px] font-mono font-semibold ${
-                  transferWindows.isOpen
-                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
-                    : 'bg-slate-800 text-slate-400 border-slate-700'
-                }`}
-              >
-                Window: {transferWindows.isOpen ? 'OPEN' : 'Closed'}
-              </span>
-            )}
-            {financialRunway && (
-              <span
-                className={`rounded-md border px-2 py-0.5 text-[11px] font-mono font-semibold tabular-nums ${
-                  financialRunway.status === 'Critical'
-                    ? 'bg-rose-500/15 text-rose-300 border-rose-500/40'
-                    : financialRunway.status === 'Warning'
-                      ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
-                      : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
-                }`}
-              >
-                Runway: {financialRunway.status} ({financialRunway.runwayMonths < 999 ? `${financialRunway.runwayMonths}m` : 'Pos'} · Burn £{Math.round(financialRunway.monthlyBurnRate).toLocaleString()}/mo)
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Club Size & Debt Strategy Banner */}
-        {players.length > 0 && (
-          <div
-            className={`rounded-xl border p-3 space-y-1.5 ${
-              clubProfile.isInDebt
-                ? 'border-rose-500/40 bg-rose-950/25'
-                : clubProfile.isMateriallyOverWageBudget
-                  ? 'border-amber-500/40 bg-amber-950/20'
-                  : 'border-emerald-500/30 bg-emerald-950/20'
-            }`}
-          >
-            <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
-              {clubProfile.isInDebt && (
-                <TrendingDown className="h-4 w-4 text-rose-400 shrink-0" />
-              )}
-              <span
-                className={
-                  clubProfile.isInDebt
-                    ? 'text-rose-300'
-                    : clubProfile.isMateriallyOverWageBudget
-                      ? 'text-amber-300'
-                      : 'text-emerald-300'
-                }
-              >
-                {clubProfile.strategyHeadline}
-              </span>
-            </div>
-            <ul className="space-y-0.5 text-[11px] text-slate-300">
-              {clubProfile.strategyBullets.map((b, idx) => (
-                <li key={idx} className="flex items-start gap-1.5">
-                  <span className="text-slate-500">•</span>
-                  <span>{b}</span>
-                </li>
-              ))}
-              {audit.tierBenchmarks.divisionDeficits.map((def, idx) => (
-                <li key={`div-${idx}`} className="flex items-start gap-1.5 text-amber-300">
-                  <span className="text-amber-400">•</span>
-                  <span>Division Benchmark Gap: {def}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* Pass 1 Tier-1: Competition Registration Compliance Strip */}
-        {competitionRules && registrationCheck && players.length > 0 && (
-          <div
-            className={`rounded-xl border px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs ${
-              registrationCheck.overLimit
-                ? 'border-rose-500/40 bg-rose-950/25 text-rose-200'
-                : 'border-sky-500/30 bg-sky-950/20 text-sky-200'
-            }`}
-          >
-            <div className="flex flex-wrap items-center gap-2 font-semibold">
-              <span className="uppercase tracking-wider text-[10px] px-1.5 py-0.5 rounded bg-slate-900/70 border border-slate-700 text-slate-200">
-                Registration Compliance · {competitionRules.competitionName || 'League'}
-              </span>
-              {competitionRules.maxSquadSize !== null && (
-                <span className="font-mono">
-                  {registrationCheck.countableSenior} / {competitionRules.maxSquadSize} Senior Slots
-                  {competitionRules.u21Exempt
-                    ? ` (${registrationCheck.u21Count} U21 Exempt)`
-                    : ''}
-                </span>
-              )}
-              {registrationCheck.overLimit && (
-                <span className="text-rose-300 font-bold">
-                  OVER LIMIT — trim or loan senior squad before registration lock
-                </span>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-slate-300">
-              {competitionRules.minHomegrownClub !== null && (
-                <span>Min HGC: {competitionRules.minHomegrownClub}</span>
-              )}
-              {competitionRules.minHomegrownNation !== null && (
-                <span>Min HGN: {competitionRules.minHomegrownNation}</span>
-              )}
-              {competitionRules.maxForeignPlayers !== null && (
-                <span>Max Foreign: {competitionRules.maxForeignPlayers}</span>
-              )}
-              {competitionRules.matchdaySubsLimit !== null && (
-                <span>Matchday Subs: {competitionRules.matchdaySubsLimit}</span>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* 4 Compact Financial & Action KPIs (Single Canonical Financial Source of Truth) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-          <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 min-w-0">
-            <div className="text-[11px] text-slate-400">Bank Balance &amp; Wage Cap</div>
-            <div
-              className={`text-sm sm:text-base font-bold font-mono tabular-nums mt-0.5 ${
-                clubProfile.isInDebt ? 'text-rose-400' : 'text-emerald-400'
-              }`}
-            >
-              {clubProfile.balanceLabel}
-            </div>
-            <div className="text-[11px] font-mono tabular-nums text-slate-300 mt-0.5 break-words">
-              {clubProfile.wageComplianceLabel}
-            </div>
-          </div>
-          <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 min-w-0">
-            <div className="text-[11px] text-slate-400">Renew / Youth Protection</div>
-            <div className="text-sm sm:text-base font-bold font-mono tabular-nums text-emerald-400 mt-0.5">
-              {players.length > 0
-                ? `${audit.countsByVerdict['Renew Now'] + audit.countsByVerdict['Protect Youth Asset']} Players`
-                : '--'}
-            </div>
-            <div className="text-[11px] text-slate-400 mt-0.5">
-              {audit.countsByVerdict['Protect Youth Asset']} U21 protected ·{' '}
-              {audit.expiringWithin12mCount} exp &le;12m
-            </div>
-          </div>
-          <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 min-w-0">
-            <div className="text-[11px] text-slate-400">Projected Savings (Unbanked)</div>
-            <div className="text-sm sm:text-base font-bold font-mono tabular-nums text-amber-300 mt-0.5">
-              {players.length > 0
-                ? `£${audit.projectedWeeklySavings.toLocaleString()}/wk`
-                : '--'}
-            </div>
-            <div className="text-[11px] text-slate-400 mt-0.5">
-              Banked: £{audit.actualBankedWeeklySavings.toLocaleString()}/wk ·{' '}
-              {audit.countsByVerdict['Sell / Transfer List'] +
-                audit.countsByVerdict['Replace Before Selling']}{' '}
-              sell · {audit.countsByVerdict['Let Expire']} exit
-            </div>
-          </div>
-          <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 min-w-0">
-            <div className="text-[11px] text-slate-400">Senior Depth &amp; Succession</div>
-            <div className="text-sm sm:text-base font-bold font-mono text-sky-300 mt-0.5 break-words">
-              {players.length > 0
-                ? thinPositions.length > 0
-                  ? thinPositions.map((b) => b.code).join(', ')
-                  : successionGapPositions.length > 0
-                    ? `U23: ${successionGapPositions.map((b) => b.code).join(', ')}`
-                    : 'Balanced'
-                : '--'}
-            </div>
-            <div className="text-[11px] text-slate-400 mt-0.5">
-              {audit.squadTierCounts.senior} Senior · {audit.squadTierCounts.youthReserve} U21/Res
-              {audit.squadTierCounts.onLoan > 0 ? ` · ${audit.squadTierCounts.onLoan} Loan` : ''}
-            </div>
-          </div>
-        </div>
-
-        {/* 5 Focused View Switchers */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 pt-1">
-          {(
-            [
-              {
-                id: 'advice',
-                label: `Squad Advice (${scopedPlayerAdvice.length})`,
-                icon: Sparkles,
-              },
-              {
-                id: 'contracts',
-                label: `Expiring (${
-                  contractHorizonSummary.critical6m.length +
-                  contractHorizonSummary.warning12m.length +
-                  contractHorizonSummary.watch18m.length
-                })`,
-                icon: CalendarClock,
-              },
-              {
-                id: 'depth',
-                label: `Needs (${audit.actionableNeedsCount})`,
-                icon: Layers,
-              },
-              {
-                id: 'targets',
-                label: `Scouted (${scoutedTargets.length})`,
-                icon: UserPlus,
-              },
-              {
-                id: 'shortlist',
-                label: `Shortlist (${trackedTargets.length})`,
-                icon: Bookmark,
-              },
-            ] as const
-          ).map((t) => {
-            const Icon = t.icon;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setView(t.id)}
-                className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-2.5 min-h-[42px] text-xs font-semibold transition cursor-pointer ${
-                  view === t.id
-                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                    : 'bg-slate-950/70 text-slate-400 border border-slate-800 hover:text-slate-200'
-                }`}
-              >
-                <Icon className="h-3.5 w-3.5 shrink-0" />
-                <span className="whitespace-nowrap">{t.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <RecruitmentHeader
+        clubName={clubName}
+        saveDate={saveDate}
+        youthReservesCount={youthReservesCount}
+        includeYouthInAudit={includeYouthInAudit}
+        setIncludeYouthInAudit={setIncludeYouthInAudit}
+        firstTeamPlayers={firstTeamPlayers}
+        players={players}
+        transferWindows={transferWindows}
+        financialRunway={financialRunway}
+        audit={audit}
+        registrationCheck={registrationCheck}
+        competitionRules={competitionRules}
+        thinPositions={thinPositions}
+        successionGapPositions={successionGapPositions}
+        view={view}
+        setView={setView}
+        scopedPlayerAdvice={scopedPlayerAdvice}
+        contractHorizonSummary={contractHorizonSummary}
+        scoutedTargets={scoutedTargets}
+        trackedTargets={trackedTargets}
+      />
 
       {players.length === 0 ? (
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-10 text-center space-y-2">
-          <div className="text-sm font-bold text-slate-200">
-            Awaiting .fm Save
-          </div>
-          <p className="text-xs text-slate-400 max-w-md mx-auto">
-            Load your `.fm` save in the <strong>Hub</strong> tab to generate club-aware transfer, contract, youth, and wage advice.
-          </p>
-        </div>
+    <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-10 text-center space-y-2">
+      <div className="text-sm font-bold text-slate-200">
+        Awaiting .fm Save
+      </div>
+      <p className="text-xs text-slate-400 max-w-md mx-auto">
+        Load your `.fm` save in the <strong>Hub</strong> tab to generate club-aware transfer, contract, youth, and wage advice.
+      </p>
+    </div>
       ) : (
         <>
           {/* VIEW 1: TAILORED PLAYER-BY-PLAYER ADVICE */}
           {view === 'advice' && (
-            <div className="space-y-3">
-              {/* Filter Pills + Search */}
-              <div className="flex flex-col sm:flex-row gap-2.5 sm:items-center sm:justify-between">
-                <div className="flex flex-wrap gap-1.5">
-                  {(
-                    [
-                      { id: 'ALL', label: `All (${scopedPlayerAdvice.length})` },
-                      {
-                        id: 'Protect Youth Asset',
-                        label: `Youth (${scopedCountsByVerdict['Protect Youth Asset']})`,
-                      },
-                      {
-                        id: 'Renew Now',
-                        label: `Renew (${scopedCountsByVerdict['Renew Now']})`,
-                      },
-                      {
-                        id: 'Sell / Transfer List',
-                        label: `Sell (${scopedCountsByVerdict['Sell / Transfer List']})`,
-                      },
-                      {
-                        id: 'Replace Before Selling',
-                        label: `Replace 1st (${scopedCountsByVerdict['Replace Before Selling']})`,
-                      },
-                      {
-                        id: 'Let Expire',
-                        label: `Let Expire (${scopedCountsByVerdict['Let Expire']})`,
-                      },
-                      {
-                        id: 'Loan Out',
-                        label: `Loan (${scopedCountsByVerdict['Loan Out']})`,
-                      },
-                      {
-                        id: 'Hold',
-                        label: `Hold (${scopedCountsByVerdict['Hold']})`,
-                      },
-                    ] as const
-                  ).map((pill) => (
-                    <button
-                      key={pill.id}
-                      type="button"
-                      onClick={() => setVerdictFilter(pill.id)}
-                      className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition ${
-                        verdictFilter === pill.id
-                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
-                      }`}
-                    >
-                      {pill.label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="relative sm:w-56">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Filter player, pos, tag..."
-                    className="w-full rounded-xl border border-slate-800 bg-slate-950 py-1.5 pl-8 pr-3 text-xs text-slate-100 placeholder:text-slate-500"
-                  />
-                </div>
-              </div>
-
-              {/* Player Advice Cards */}
-              <div className="space-y-2.5">
-                {filteredAdvice.map((item) => {
-                  const p = item.player;
-                  return (
-                    <div
-                      key={p.id}
-                      className="rounded-xl border border-slate-800 bg-slate-900/70 p-3.5 sm:p-4 space-y-2 hover:border-slate-700 transition"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <button
-                          type="button"
-                          onClick={() => onSelectPlayer(p)}
-                          className="text-left group"
-                        >
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="text-sm font-bold text-white group-hover:text-emerald-300 transition">
-                              {p.name}
-                            </span>
-                            <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-mono text-slate-300">
-                              {p.position}
-                            </span>
-                            <span className="text-[11px] font-mono text-amber-300">
-                              {p.ability.toFixed(1)}★/{p.potential.toFixed(1)}★
-                            </span>
-                          </div>
-                          <div className="text-[11px] text-slate-400 mt-0.5">
-                            Age {p.age} · £{p.wagePw.toLocaleString()}/wk (£
-                            {item.annualWage.toLocaleString()}/yr) · Exp{' '}
-                            <span className="font-mono text-slate-200">
-                              {p.expires}
-                            </span>
-                            {item.monthsLeft !== null ? ` (${Math.max(0, item.monthsLeft)} mos)` : ''}{' '}
-                            · {p.minutes} mins played
-                          </div>
-                        </button>
-
-                        <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0">
-                          {(p.status === 'Surplus' ||
-                            /surplus/i.test(
-                              p.contractDetails?.promisedPlayingTime || ''
-                            )) && (
-                            <span
-                              title="Player is marked Surplus To Requirements in your FM27 save"
-                              className="rounded-full border border-rose-500/60 bg-rose-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rose-200"
-                            >
-                              In-Game: Surplus
-                            </span>
-                          )}
-                          <span
-                            title={
-                              item.verdict === 'Sell / Transfer List'
-                                ? 'App recommendation based on squad depth, wages, and age'
-                                : undefined
-                            }
-                            className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${verdictBadgeClass(
-                              item.verdict
-                            )}`}
-                          >
-                            {item.verdict === 'Sell / Transfer List'
-                              ? 'App Advice: Sell'
-                              : item.verdict}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-1">
-                        <span
-                          className={`rounded-md border px-2 py-0.5 text-[10px] font-bold ${
-                            item.abilityReadinessTier === 'squad_star'
-                              ? 'bg-amber-500/20 border-amber-500/50 text-amber-200'
-                              : item.abilityReadinessTier === 'starter_level'
-                                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-                                : item.abilityReadinessTier === 'rotation_ready'
-                                  ? 'bg-teal-500/15 border-teal-500/40 text-teal-300'
-                                  : item.abilityReadinessTier === 'developing_prospect'
-                                    ? 'bg-sky-500/10 border-sky-500/30 text-sky-300'
-                                    : 'bg-purple-500/15 border-purple-500/35 text-purple-300'
-                          }`}
-                        >
-                          {item.abilityReadinessLabel}
-                        </span>
-                        {item.tags.map((tag, idx) => {
-                          const isBannedTag = tag.startsWith('BANNED');
-                          const isOptionTag = tag.startsWith('Club Option');
-                          const isClauseTag = tag.startsWith('Release Clause');
-                          const isPromoteTag =
-                            tag === 'Promote to First Team' ||
-                            tag.startsWith('Promote to Backup') ||
-                            tag === 'U21 · First-Team Ready';
-                          return (
-                            <span
-                              key={idx}
-                              className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${
-                                isBannedTag
-                                  ? 'bg-rose-500/20 border-rose-500/50 text-rose-300 font-bold'
-                                  : isPromoteTag
-                                    ? 'bg-teal-500/20 border-teal-500/50 text-teal-200 font-semibold'
-                                    : isOptionTag
-                                      ? 'bg-sky-500/15 border-sky-500/40 text-sky-300'
-                                      : isClauseTag
-                                        ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
-                                        : 'bg-slate-800/90 border-slate-700/80 text-slate-300'
-                              }`}
-                            >
-                              {tag}
-                            </span>
-                          );
-                        })}
-                      </div>
-
-                      <div className="text-xs font-semibold text-slate-100">
-                        {item.headline}
-                      </div>
-                      <p className="text-xs text-slate-400 leading-relaxed">
-                        <strong className="text-slate-300">Why:</strong>{' '}
-                        {item.rationale}
-                      </p>
-                      <div className="rounded-lg border border-slate-800/90 bg-slate-950/70 px-3 py-2 text-xs text-emerald-300/95 flex items-start gap-2">
-                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-emerald-400" />
-                        <span>
-                          <strong className="text-emerald-300">Action:</strong>{' '}
-                          {item.recommendedMove}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            <SquadAdviceView
+              scopedPlayerAdvice={scopedPlayerAdvice}
+              scopedCountsByVerdict={scopedCountsByVerdict}
+              verdictFilter={verdictFilter}
+              setVerdictFilter={setVerdictFilter}
+              search={search}
+              setSearch={setSearch}
+              filteredAdvice={filteredAdvice}
+              onSelectPlayer={onSelectPlayer}
+            />
           )}
 
           {/* VIEW 2: PHASE 2.3 (v3.0) CONTRACT HORIZON & WAGE RISK MONITOR */}
           {view === 'contracts' && (
-            <div className="space-y-3">
-              {/* 4-Tier Contract Horizon KPI Matrix */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-                {[
-                  {
-                    id: 'CRITICAL_6M' as const,
-                    title: 'Critical (≤ 6 Months)',
-                    count: contractHorizonSummary.critical6m.length,
-                    desc: 'Eligible for Bosman pre-contracts now',
-                    cls: 'border-rose-500/45 bg-rose-950/25 text-rose-300',
-                  },
-                  {
-                    id: 'WARNING_12M' as const,
-                    title: 'Warning (6–12 Months)',
-                    count: contractHorizonSummary.warning12m.length,
-                    desc: 'Final contract year — renew or cash in',
-                    cls: 'border-amber-500/40 bg-amber-950/20 text-amber-300',
-                  },
-                  {
-                    id: 'WATCH_18M' as const,
-                    title: 'Watch (12–18 Months)',
-                    count: contractHorizonSummary.watch18m.length,
-                    desc: 'Peak transfer-value decision window',
-                    cls: 'border-sky-500/35 bg-sky-950/20 text-sky-300',
-                  },
-                  {
-                    id: 'SECURE_18M_PLUS' as const,
-                    title: 'Secure (18+ Months)',
-                    count: contractHorizonSummary.secure18mPlus.length,
-                    desc: 'Long-term contract security locked',
-                    cls: 'border-emerald-500/35 bg-emerald-950/20 text-emerald-300',
-                  },
-                ].map((tier) => (
-                  <button
-                    key={tier.id}
-                    type="button"
-                    onClick={() =>
-                      setContractHorizonTier((curr) =>
-                        curr === tier.id ? 'ALL' : tier.id
-                      )
-                    }
-                    className={`rounded-xl border p-3.5 text-left transition cursor-pointer ${tier.cls} ${
-                      contractHorizonTier === tier.id
-                        ? 'ring-2 ring-white/70'
-                        : 'opacity-90 hover:opacity-100'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold">{tier.title}</span>
-                      <span className="font-mono text-base font-extrabold">
-                        {tier.count}
-                      </span>
-                    </div>
-                    <div className="text-[11px] opacity-80 mt-1">
-                      {tier.desc}
-                    </div>
-                  </button>
-                ))}
-              </div>
-
-              {/* Wage Budget Risk & Free-Transfer Loss Summary Strip */}
-              <div className="rounded-xl border border-slate-800 bg-slate-900/75 px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs">
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="text-slate-300">
-                    12m Wage at Risk:{' '}
-                    <strong className="font-mono text-amber-300">
-                      £{contractHorizonSummary.wageAtRisk12m.toLocaleString()}/wk
-                    </strong>
-                  </span>
-                  <span className="text-slate-300">
-                    Key Assets Expiring ≤12m:{' '}
-                    <strong className="font-mono text-rose-300">
-                      {contractHorizonSummary.keyAssetsAtRisk.length}
-                    </strong>
-                  </span>
-                  <span className="text-slate-300">
-                    Projected Wage Freed (Release/Sell):{' '}
-                    <strong className="font-mono text-emerald-300">
-                      £{contractHorizonSummary.projectedWageFreed.toLocaleString()}/wk
-                    </strong>
-                  </span>
-                </div>
-                {contractHorizonTier !== 'ALL' && (
-                  <button
-                    type="button"
-                    onClick={() => setContractHorizonTier('ALL')}
-                    className="rounded-lg bg-slate-800 hover:bg-slate-700 px-2.5 py-1 text-[11px] font-semibold text-slate-200 cursor-pointer"
-                  >
-                    Show All ≤18m ({contractHorizonSummary.critical6m.length + contractHorizonSummary.warning12m.length + contractHorizonSummary.watch18m.length})
-                  </button>
-                )}
-              </div>
-
-              {contractHorizonSummary.activeList.length === 0 ? (
-                <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 text-center text-xs text-slate-400">
-                  No players in the selected contract horizon tier.
-                </div>
-              ) : (
-                contractHorizonSummary.activeList.map((item) => {
-                  const p = item.player;
-                  const horizonBadge =
-                    item.monthsLeft !== null && item.monthsLeft <= 6
-                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                      : item.monthsLeft !== null && item.monthsLeft <= 12
-                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                        : 'bg-sky-500/15 text-sky-300 border-sky-500/35';
-                  return (
-                    <div
-                      key={p.id}
-                      className="rounded-xl border border-slate-800 bg-slate-900/70 p-3.5 space-y-1.5"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <button
-                          type="button"
-                          onClick={() => onSelectPlayer(p)}
-                          className="text-left"
-                        >
-                          <span className="text-sm font-bold text-white hover:text-emerald-300">
-                            {p.name}
-                          </span>{' '}
-                          <span className="text-[11px] font-mono text-slate-400">
-                            ({p.position} · Age {p.age} · {p.ability.toFixed(1)}★/{p.potential.toFixed(1)}★)
-                          </span>
-                        </button>
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className={`rounded-md border px-2 py-0.5 text-[10px] font-mono font-bold ${horizonBadge}`}
-                          >
-                            {item.monthsLeft !== null
-                              ? `${item.monthsLeft}m Horizon`
-                              : '18m+'}
-                          </span>
-                          <span
-                            className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${verdictBadgeClass(
-                              item.verdict
-                            )}`}
-                          >
-                            {item.verdict}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="text-xs text-amber-300 font-mono">
-                        Expires {p.expires} ({item.monthsLeft ?? '--'}m left) · £{p.wagePw}/wk · {p.minutes}m · {p.personality}
-                      </div>
-                      <div className="text-xs text-slate-300">
-                        {item.recommendedMove}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
+            <ContractHorizonView
+              contractHorizonSummary={contractHorizonSummary}
+              contractHorizonTier={contractHorizonTier}
+              setContractHorizonTier={setContractHorizonTier}
+              onSelectPlayer={onSelectPlayer}
+            />
           )}
 
           {/* VIEW 3: 4-3-3 POSITIONAL DEPTH — SENIOR PRIMARY VS VERSATILITY COVER VS U21/YOUTH VS ON LOAN */}
           {view === 'depth' && (
-            <div className="space-y-3">
-              {/* Squad Depth Audit Summary Bar */}
-              <div className="rounded-xl border border-slate-800 bg-slate-900/70 px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
-                <div className="flex flex-wrap items-center gap-2 text-slate-300">
-                  <span className="font-semibold text-white">
-                    Squad-Relative Primary Depth
-                  </span>
-                  <span className="text-slate-500">·</span>
-                  <span>
-                    First-Team Ready U21s (≥{' '}
-                    <strong className="font-mono text-teal-300">
-                      {audit.tierBenchmarks.firstTeamRotationFloor.toFixed(1)}★
-                    </strong>
-                    , Starter ≥{' '}
-                    <strong className="font-mono text-emerald-300">
-                      {audit.tierBenchmarks.firstTeamStarterFloor.toFixed(1)}★
-                    </strong>
-                    ) are separated from raw Academy prospects so 3.5★ ready players are never mixed with 1.0★ teenagers.
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-mono tabular-nums">
-                  <span className="rounded bg-rose-500/15 border border-rose-500/35 px-2 py-0.5 text-rose-300">
-                    Need Signing: {thinPositions.length}
-                  </span>
-                  <span className="rounded bg-teal-500/15 border border-teal-500/35 px-2 py-0.5 text-teal-300">
-                    Promote Internal: {promoteInternalPositions.length}
-                  </span>
-                  <span className="rounded bg-purple-500/15 border border-purple-500/35 px-2 py-0.5 text-purple-300">
-                    Succession: {successionGapPositions.length}
-                  </span>
-                  <span className="rounded bg-amber-500/15 border border-amber-500/35 px-2 py-0.5 text-amber-300">
-                    Overstocked: {overstockedPositions.length}
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                {audit.positionalNeeds.map((b) => {
-                  const isThin = b.status === 'Need Signing';
-                  const isPromoteInternal = b.status === 'Promote Internal';
-                  const isOver = b.status === 'Overstocked';
-                  const isSuccessionGap = b.hasSuccessionGap;
-                  const readyYouthCount = b.firstTeamReadyYouthPlayers.length;
-                  return (
-                    <div
-                      key={b.code}
-                      className={`rounded-2xl border p-4 space-y-3 flex flex-col ${
-                        isThin
-                          ? 'border-rose-500/40 bg-rose-950/20'
-                          : isPromoteInternal
-                            ? 'border-teal-500/45 bg-teal-950/15'
-                            : isSuccessionGap
-                              ? 'border-purple-500/45 bg-purple-950/20'
-                              : isOver
-                                ? 'border-amber-500/40 bg-amber-950/15'
-                                : 'border-slate-800 bg-slate-900/60'
-                      }`}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                          <h4 className="text-sm font-bold text-white">{b.label}</h4>
-                          {isPromoteInternal && (
-                            <span className="rounded bg-teal-500/20 border border-teal-500/50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-teal-200">
-                              Promote Internal
-                            </span>
-                          )}
-                          {isSuccessionGap && (
-                            <span className="rounded bg-purple-500/25 border border-purple-500/50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-purple-200">
-                              Succession Gap
-                            </span>
-                          )}
-                        </div>
-                        <span
-                          className={`text-[11px] font-mono tabular-nums font-bold px-2 py-0.5 rounded-md shrink-0 ${
-                            isThin
-                              ? 'bg-rose-500/20 text-rose-300'
-                              : isPromoteInternal
-                                ? 'bg-teal-500/20 text-teal-200'
-                                : isOver
-                                  ? 'bg-amber-500/20 text-amber-300'
-                                  : 'bg-emerald-500/15 text-emerald-300'
-                          }`}
-                        >
-                          {b.currentCount} Senior
-                          {readyYouthCount > 0 ? ` + ${readyYouthCount} Ready` : ''} (Ideal {b.idealMin}–{b.idealMax})
-                        </span>
-                      </div>
-
-                      {isSuccessionGap && (
-                        <div className="rounded-lg border border-purple-500/35 bg-purple-950/40 p-2.5 text-[11px] text-purple-200 leading-snug">
-                          All senior primary options are <strong>28+</strong> with <strong>no U23 cover</strong> — scout a U23 successor.
-                        </div>
-                      )}
-
-                      {isPromoteInternal && (
-                        <div className="rounded-lg border border-teal-500/35 bg-teal-950/35 p-2.5 text-[11px] text-teal-100 space-y-1">
-                          <div className="font-bold flex items-center gap-1 text-teal-300">
-                            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                            <span>
-                              No External Signing Needed — Promote {readyYouthCount} First-Team Ready U21 Option{readyYouthCount === 1 ? '' : 's'}
-                            </span>
-                          </div>
-                          <div className="text-[11px] text-slate-300 leading-snug">
-                            {b.firstTeamReadyYouthPlayers
-                              .map((p) => `${p.name} (Age ${p.age}, ${p.ability.toFixed(1)}★)`)
-                              .join(', ')}{' '}
-                            already meet your {audit.tierBenchmarks.firstTeamRotationFloor.toFixed(1)}★ First-Team standard.
-                          </div>
-                        </div>
-                      )}
-
-                      {isThin && (
-                        <div className="rounded-lg border border-rose-500/30 bg-rose-950/40 p-2.5 text-[11px] text-rose-200 space-y-1">
-                          <div className="font-bold flex items-center gap-1 text-rose-300">
-                            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                            <span>
-                              First-Team Primary Gap ({b.effectiveReadyCount}/{b.idealMin} ready
-                              {b.secondaryCoverPlayers.length > 0
-                                ? `, ${b.secondaryCoverPlayers.length} versatile cover`
-                                : ''}
-                              )
-                            </span>
-                          </div>
-                          <div className="text-[11px] text-slate-300 leading-snug">
-                            {b.scoutProfile}
-                          </div>
-                        </div>
-                      )}
-
-                      {isOver && (
-                        <div className="text-[11px] text-amber-300 leading-snug">
-                          Senior primary depth is overstocked ({b.currentCount} vs ideal {b.idealMin}–{b.idealMax}) — review paid backups before adding wages.
-                        </div>
-                      )}
-
-                      {/* 1. Senior Primary Players (All rows shown cleanly, zero mid-row clipping) */}
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-slate-400">
-                          <span>Senior First Team (Primary)</span>
-                          <span>{b.seniorPrimaryPlayers.length}</span>
-                        </div>
-                        {b.seniorPrimaryPlayers.length === 0 ? (
-                          <div className="text-[11px] text-slate-500 italic px-1">
-                            {readyYouthCount > 0
-                              ? '0 assigned to Senior slot — promote Ready U21 below'
-                              : 'No senior primary options'}
-                          </div>
-                        ) : (
-                          <div className="space-y-1">
-                            {b.seniorPrimaryPlayers.map((p) => {
-                              const isSurplus =
-                                p.status === 'Surplus' ||
-                                /surplus/i.test(
-                                  p.contractDetails?.promisedPlayingTime || ''
-                                );
-                              const isTeenStarter =
-                                p.age <= 20 &&
-                                p.ability >= audit.tierBenchmarks.firstTeamStarterFloor;
-                              return (
-                                <button
-                                  key={p.id}
-                                  type="button"
-                                  onClick={() => onSelectPlayer(p)}
-                                  className="w-full flex items-center justify-between gap-2 rounded-lg bg-slate-950/75 border border-slate-800/80 px-2.5 py-2 text-xs hover:border-emerald-500/40 transition text-left cursor-pointer"
-                                >
-                                  <div className="min-w-0 flex-1">
-                                    <div className="font-medium text-slate-100 break-words leading-tight">
-                                      {p.name}
-                                    </div>
-                                    <div className="text-[10px] text-slate-400 mt-0.5 flex flex-wrap items-center gap-1.5">
-                                      <span>Age {p.age}</span>
-                                      <span>·</span>
-                                      <span className="font-mono tabular-nums">
-                                        £{p.wagePw.toLocaleString()}/wk
-                                      </span>
-                                      {isTeenStarter && (
-                                        <span className="rounded bg-emerald-500/20 px-1 text-[9px] font-bold text-emerald-300">
-                                          Young Starter
-                                        </span>
-                                      )}
-                                      {isSurplus && (
-                                        <span className="rounded bg-rose-500/20 px-1 text-[9px] font-bold text-rose-300">
-                                          Surplus
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <span className="font-mono tabular-nums text-amber-300 font-semibold text-[11px] shrink-0">
-                                    {p.ability.toFixed(1)}★/{p.potential.toFixed(1)}★
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* 2. First-Team Ready U21 / Reserve Players (Meet squad rotation/starter CA floor — Promote Now) */}
-                      {b.firstTeamReadyYouthPlayers.length > 0 && (
-                        <div className="space-y-1.5 pt-2 border-t border-slate-800/70">
-                          <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-teal-300">
-                            <span>First-Team Ready (U21 / Reserve — Promote)</span>
-                            <span>{b.firstTeamReadyYouthPlayers.length}</span>
-                          </div>
-                          <div className="space-y-1">
-                            {b.firstTeamReadyYouthPlayers.map((p) => {
-                              const isStarterQual =
-                                p.ability >= audit.tierBenchmarks.firstTeamStarterFloor;
-                              return (
-                                <button
-                                  key={`rdy-${p.id}`}
-                                  type="button"
-                                  onClick={() => onSelectPlayer(p)}
-                                  className="w-full flex items-center justify-between gap-2 rounded-lg bg-teal-950/30 border border-teal-500/35 px-2.5 py-1.5 text-[11px] hover:border-teal-400/70 transition text-left cursor-pointer"
-                                >
-                                  <div className="min-w-0 flex-1">
-                                    <span className="text-teal-50 font-semibold break-words">
-                                      {p.name}{' '}
-                                      <span className="text-[10px] font-normal text-teal-200/80">
-                                        (Age {p.age})
-                                      </span>
-                                    </span>
-                                    <div className="mt-0.5 flex flex-wrap items-center gap-1">
-                                      <span
-                                        className={`rounded px-1.5 py-0.2 text-[9px] font-bold ${
-                                          isStarterQual
-                                            ? 'bg-emerald-500/20 text-emerald-300'
-                                            : 'bg-teal-500/20 text-teal-200'
-                                        }`}
-                                      >
-                                        {isStarterQual ? 'Starter Level' : 'Rotation Ready'}
-                                      </span>
-                                      <span className="text-[9px] font-mono text-slate-400">
-                                        £{p.wagePw.toLocaleString()}/wk
-                                      </span>
-                                    </div>
-                                  </div>
-                                  <span className="font-mono tabular-nums text-amber-300 font-semibold shrink-0">
-                                    {p.ability.toFixed(1)}★/{p.potential.toFixed(1)}★
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* 3. Secondary Versatility / Cover (Marked clearly as cover, NOT counted as separate bodies) */}
-                      {b.secondaryCoverPlayers.length > 0 && (
-                        <div className="space-y-1.5 pt-2 border-t border-slate-800/70">
-                          <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-sky-400/90">
-                            <span>Versatility / Cover (Secondary)</span>
-                            <span>+{b.secondaryCoverPlayers.length}</span>
-                          </div>
-                          <div className="flex flex-wrap gap-1.5">
-                            {b.secondaryCoverPlayers.map((p) => (
-                              <button
-                                key={`cov-${p.id}`}
-                                type="button"
-                                onClick={() => onSelectPlayer(p)}
-                                className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500/10 border border-sky-500/25 px-2 py-1 text-[11px] text-sky-200 hover:border-sky-400 transition cursor-pointer"
-                              >
-                                <span className="font-medium">{p.name}</span>
-                                <span className="text-[10px] font-mono text-sky-300/80">
-                                  ({p.position.split(',')[0].trim()})
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* 4. Academy / Developing Prospects (Below First-Team CA floor — long-term pipeline) */}
-                      {b.academyProspectPlayers.length > 0 && (
-                        <div className="space-y-1.5 pt-2 border-t border-slate-800/70">
-                          <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-purple-300/90">
-                            <span>Academy / Developing (Not Senior-Ready Yet)</span>
-                            <span>{b.academyProspectPlayers.length}</span>
-                          </div>
-                          <div className="space-y-1">
-                            {b.academyProspectPlayers.map((p) => {
-                              const isDeveloping =
-                                p.ability >=
-                                Math.max(2.0, audit.tierBenchmarks.firstTeamRotationFloor - 1.0);
-                              const isHighCeiling = p.potential >= 4.0;
-                              return (
-                                <button
-                                  key={`yth-${p.id}`}
-                                  type="button"
-                                  onClick={() => onSelectPlayer(p)}
-                                  className="w-full flex items-center justify-between gap-2 rounded-lg bg-purple-950/20 border border-purple-500/20 px-2.5 py-1.5 text-[11px] hover:border-purple-400/50 transition text-left cursor-pointer"
-                                >
-                                  <div className="min-w-0 flex-1">
-                                    <span className="text-purple-100/90 font-medium break-words">
-                                      {p.name}{' '}
-                                      <span className="text-[10px] text-purple-300/70">
-                                        (Age {p.age})
-                                      </span>
-                                    </span>
-                                    <div className="mt-0.5 flex flex-wrap items-center gap-1">
-                                      <span
-                                        className={`rounded px-1.5 py-0.2 text-[9px] font-semibold ${
-                                          isDeveloping
-                                            ? 'bg-sky-500/15 text-sky-300'
-                                            : 'bg-slate-800 text-slate-400'
-                                        }`}
-                                      >
-                                        {isDeveloping ? 'Developing U21' : 'Raw Academy'}
-                                      </span>
-                                      {isHighCeiling && (
-                                        <span className="rounded bg-amber-500/15 px-1.5 py-0.2 text-[9px] font-semibold text-amber-300">
-                                          High Ceiling
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <span className="font-mono tabular-nums text-amber-300/85 shrink-0">
-                                    {p.ability.toFixed(1)}★/{p.potential.toFixed(1)}★
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* 4. Out on Loan */}
-                      {b.onLoanPlayers.length > 0 && (
-                        <div className="space-y-1.5 pt-2 border-t border-slate-800/70">
-                          <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-indigo-300">
-                            <span>Out on Loan</span>
-                            <span>{b.onLoanPlayers.length}</span>
-                          </div>
-                          <div className="flex flex-wrap gap-1.5">
-                            {b.onLoanPlayers.map((p) => (
-                              <button
-                                key={`loan-${p.id}`}
-                                type="button"
-                                onClick={() => onSelectPlayer(p)}
-                                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/30 px-2 py-1 text-[11px] text-indigo-200 hover:border-indigo-400 transition cursor-pointer"
-                              >
-                                <span>{p.name}</span>
-                                <span className="font-mono text-[10px] text-amber-300">
-                                  {p.ability.toFixed(1)}★/{p.potential.toFixed(1)}★
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            <PositionalDepthView
+              audit={audit}
+              thinPositions={thinPositions}
+              promoteInternalPositions={promoteInternalPositions}
+              successionGapPositions={successionGapPositions}
+              overstockedPositions={overstockedPositions}
+              onSelectPlayer={onSelectPlayer}
+            />
           )}
 
           {/* VIEW 4: PASS 0 GROUP 4 SCOUTED FREE AGENTS & EXPIRING <= 6M + PHASE 2 CLUB DNA ENGINE */}
           {view === 'targets' && (
             <div className="space-y-3">
               {/* Interactive Scouted Filter Bar */}
-              <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 space-y-2.5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  {/* Position Group Chips */}
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {(['ALL', 'GK', 'DEF', 'MID', 'FWD'] as const).map((grp) => (
-                      <button
-                        key={grp}
-                        type="button"
-                        onClick={() => setTargetPosGroup(grp)}
-                        className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition cursor-pointer ${
-                          targetPosGroup === grp
-                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                            : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
-                        }`}
-                      >
-                        {grp}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Age Band Chips */}
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {(
-                      [
-                        { id: 'ALL', label: 'All Ages' },
-                        { id: 'U23', label: 'U23' },
-                        { id: '23-28', label: '23–28' },
-                        { id: '29+', label: '29+' },
-                      ] as const
-                    ).map((band) => (
-                      <button
-                        key={band.id}
-                        type="button"
-                        onClick={() => setTargetAgeBand(band.id)}
-                        className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition cursor-pointer ${
-                          targetAgeBand === band.id
-                            ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
-                            : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
-                        }`}
-                      >
-                        {band.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Phase 2 (v3.0): Configurable Club DNA Archetypes & Pillar Weight Tuner */}
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-[11px] font-bold text-emerald-300 mr-1">
-                      Club DNA:
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDnaArchetypeFilter('ALL');
-                        setVisibleTargetCount(24);
-                      }}
-                      className={`rounded-lg px-2 py-0.5 text-[11px] font-semibold border transition cursor-pointer ${
-                        dnaArchetypeFilter === 'ALL'
-                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                          : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
-                      }`}
-                    >
-                      All DNA
-                    </button>
-                    {STRATEGIC_DNA_ARCHETYPES.map((arch) => (
-                      <button
-                        key={arch.id}
-                        type="button"
-                        onClick={() => {
-                          setDnaArchetypeFilter(arch.id);
-                          setVisibleTargetCount(24);
-                        }}
-                        className={`rounded-lg px-2 py-0.5 text-[11px] font-semibold border transition cursor-pointer ${
-                          dnaArchetypeFilter === arch.id
-                            ? archetypeBadgeClass(arch.badgeTone)
-                            : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
-                        }`}
-                      >
-                        {arch.shortLabel}
-                      </button>
-                    ))}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowDnaTuner((v) => !v)}
-                    className="rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700 px-2.5 py-1 text-[11px] font-semibold text-emerald-300 transition cursor-pointer"
-                  >
-                    {showDnaTuner ? 'Hide DNA Weight Sliders' : 'Tune Club DNA Weights'}
-                  </button>
-                </div>
-
-                {showDnaTuner && (
-                  <div className="rounded-xl border border-emerald-500/30 bg-slate-950/90 p-3 space-y-2.5">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-emerald-300">
-                        Custom Club DNA 4-Pillar Weight Matrix (0–100 + Division Benchmark Calibration)
-                      </span>
-                      <button
-                        type="button"
-                        onClick={handleResetDnaWeights}
-                        className="text-[11px] text-slate-400 hover:text-white underline cursor-pointer"
-                      >
-                        Reset Default DNA
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-                      {(
-                        [
-                          {
-                            key: 'physicalIntensity',
-                            label: 'Physical Intensity (Pac/Acc/Sta)',
-                          },
-                          {
-                            key: 'technicalSecurity',
-                            label: 'Technical Security (Pas/1st/Drb)',
-                          },
-                          {
-                            key: 'tacticalDiscipline',
-                            label: 'Tactical Discipline (Dec/Pos/Ant)',
-                          },
-                          {
-                            key: 'aerialDominance',
-                            label: 'Aerial Dominance (Jum/Str/Hea)',
-                          },
-                        ] as const
-                      ).map((pillar) => (
-                        <div key={pillar.key} className="space-y-1">
-                          <div className="flex justify-between text-[11px]">
-                            <span className="text-slate-300">{pillar.label}</span>
-                            <span className="font-mono font-bold text-emerald-300">
-                              {clubDnaWeights[pillar.key]}
-                            </span>
-                          </div>
-                          <input
-                            type="range"
-                            min={0}
-                            max={100}
-                            step={5}
-                            value={clubDnaWeights[pillar.key]}
-                            onChange={(e) =>
-                              handleUpdateDnaWeight(
-                                pillar.key,
-                                Number(e.target.value)
-                              )
-                            }
-                            className="w-full accent-emerald-500"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {(
-                      [
-                        { id: 'ALL', label: `All (${scoutedTargets.length})` },
-                        {
-                          id: 'FREE',
-                          label: `Free Agents (${scoutedTargets.filter((t) => t.isFreeAgent).length})`,
-                        },
-                        {
-                          id: 'EXPIRING',
-                          label: `Expiring ≤6m (${scoutedTargets.filter((t) => !t.isFreeAgent).length})`,
-                        },
-                      ] as const
-                    ).map((btn) => (
-                      <button
-                        key={btn.id}
-                        type="button"
-                        onClick={() => setTargetFilter(btn.id)}
-                        className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition cursor-pointer ${
-                          targetFilter === btn.id
-                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                            : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
-                        }`}
-                      >
-                        {btn.label}
-                      </button>
-                    ))}
-
-                    <select
-                      aria-label="Exact Position"
-                      value={exactPosFilter}
-                      onChange={(e) => {
-                        setExactPosFilter(e.target.value);
-                        setVisibleTargetCount(24);
-                      }}
-                      className="rounded-lg bg-slate-950 border border-slate-700 px-2 py-1 text-[11px] font-semibold text-slate-200 focus:border-emerald-500 focus:outline-none"
-                    >
-                      <option value="ALL">All Exact Slots</option>
-                      {(['GK', 'DC', 'DL', 'DR', 'DM', 'MC', 'AMC', 'AML', 'AMR', 'STC'] as const).map((slot) => (
-                        <option key={slot} value={slot}>
-                          {slot}
-                        </option>
-                      ))}
-                    </select>
-
-                    <select
-                      aria-label="Sort Scouted Targets"
-                      value={targetSortBy}
-                      onChange={(e) => {
-                        setTargetSortBy(
-                          e.target.value as
-                            | 'GAP_FIT'
-                            | 'CLUB_DNA'
-                            | 'ROLE_FIT'
-                            | 'ARCHETYPE'
-                            | 'AGE'
-                            | 'WAGE'
-                        );
-                        setVisibleTargetCount(24);
-                      }}
-                      className="rounded-lg bg-slate-950 border border-slate-700 px-2 py-1 text-[11px] font-semibold text-slate-200 focus:border-emerald-500 focus:outline-none"
-                    >
-                      <option value="GAP_FIT">Sort: Gap &amp; Role Fit</option>
-                      <option value="CLUB_DNA">Sort: Club DNA Score (0–100)</option>
-                      <option value="ROLE_FIT">Sort: Best Role Fit %</option>
-                      <option value="ARCHETYPE">Sort: Playbook Archetype</option>
-                      <option value="AGE">Sort: Youngest First</option>
-                      <option value="WAGE">Sort: Lowest Wage</option>
-                    </select>
-
-                    <button
-                      type="button"
-                      aria-pressed={genuineGapsOnly}
-                      onClick={() => {
-                        setGenuineGapsOnly((prev) => !prev);
-                        setVisibleTargetCount(24);
-                      }}
-                      className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition cursor-pointer ${
-                        genuineGapsOnly
-                          ? 'bg-emerald-500/25 text-emerald-200 border-emerald-400 ring-1 ring-emerald-400/40 shadow-sm shadow-emerald-500/20'
-                          : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
-                      }`}
-                    >
-                      {genuineGapsOnly ? '✓ Genuine Gaps Only' : 'Genuine Gaps Only'}
-                    </button>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    {search.trim() && (
-                      <button
-                        type="button"
-                        onClick={() => setSearch('')}
-                        className="inline-flex items-center gap-1 rounded-lg bg-amber-500/15 border border-amber-500/40 px-2 py-0.5 text-[11px] font-semibold text-amber-200 hover:bg-amber-500/25 cursor-pointer"
-                      >
-                        Filter: &ldquo;{search.trim()}&rdquo; ×
-                      </button>
-                    )}
-                    <span className="text-[11px] text-slate-400">
-                      Scout pool: {filteredScoutedTargets.length} matching ({scoutedTargets.length} in save)
-                    </span>
-                  </div>
-                </div>
-              </div>
+              <ScoutTargetFilters
+                scoutedTargets={scoutedTargets}
+                filteredScoutedTargets={filteredScoutedTargets}
+                targetPosGroup={targetPosGroup}
+                setTargetPosGroup={setTargetPosGroup}
+                targetAgeBand={targetAgeBand}
+                setTargetAgeBand={setTargetAgeBand}
+                dnaArchetypeFilter={dnaArchetypeFilter}
+                setDnaArchetypeFilter={setDnaArchetypeFilter}
+                setVisibleTargetCount={setVisibleTargetCount}
+                showDnaTuner={showDnaTuner}
+                setShowDnaTuner={setShowDnaTuner}
+                clubDnaWeights={clubDnaWeights}
+                handleUpdateDnaWeight={handleUpdateDnaWeight}
+                handleResetDnaWeights={handleResetDnaWeights}
+                targetFilter={targetFilter}
+                setTargetFilter={setTargetFilter}
+                exactPosFilter={exactPosFilter}
+                setExactPosFilter={setExactPosFilter}
+                targetSortBy={targetSortBy}
+                setTargetSortBy={setTargetSortBy}
+                genuineGapsOnly={genuineGapsOnly}
+                setGenuineGapsOnly={setGenuineGapsOnly}
+                search={search}
+                setSearch={setSearch}
+              />
 
               {scoutedTargets.length === 0 ? (
                 <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 text-center text-xs text-slate-400">
@@ -1857,202 +647,28 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                           );
 
                           return (
-                            <div
+                            <ScoutTargetCard
                               key={target.uid || target.name}
-                              role="button"
-                              tabIndex={0}
-                              onClick={() => handleOpenTargetCard(target)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') {
-                                  e.preventDefault();
-                                  handleOpenTargetCard(target);
-                                }
+                              item={{
+                                target,
+                                bestRole,
+                                archetype,
+                                dna,
+                                relevantAttributes,
+                                depth,
+                                contractDisplay,
                               }}
-                              className={`rounded-xl border p-4 space-y-2.5 text-left transition cursor-pointer hover:border-emerald-500/50 ${
-                                depth.isGenuineGap
-                                  ? 'border-amber-500/40 bg-amber-950/15'
-                                  : 'border-slate-800 bg-slate-900/70'
-                              }`}
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0">
-                                  <h3 className="text-sm font-bold text-white truncate">
-                                    {target.name}
-                                  </h3>
-                                  <p className="text-[11px] text-slate-400">
-                                    {target.age} yrs · {target.nationality} ·{' '}
-                                    <span className="font-mono text-emerald-300">
-                                      {target.primaryPosition}
-                                    </span>
-                                  </p>
-                                </div>
-                                <span
-                                  className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-semibold border ${
-                                    target.isFreeAgent
-                                      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
-                                      : 'bg-amber-500/15 text-amber-300 border-amber-500/40'
-                                  }`}
-                                >
-                                  {contractDisplay.primaryLabel}
-                                </span>
-                              </div>
-
-                              {/* Club DNA v3.0 Archetype + Playbook v2.0 + Free Trial Badge + Best Role & Wage */}
-                              <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                                <span
-                                  className={`rounded border px-2 py-0.5 font-bold ${archetypeBadgeClass(
-                                    dna.badgeTone
-                                  )}`}
-                                >
-                                  DNA: {dna.bestArchetypeShortLabel} · {dna.overallDnaScore}/100
-                                </span>
-                                <span
-                                  className={`rounded border px-2 py-0.5 font-semibold ${archetypeBadgeClass(
-                                    archetype.badgeTone
-                                  )}`}
-                                >
-                                  {archetype.name} · {archetype.score}%
-                                </span>
-                                {contractDisplay.trialBadge && (
-                                  <span className="rounded bg-teal-500/15 border border-teal-500/40 px-2 py-0.5 text-[10px] font-bold text-teal-300">
-                                    {contractDisplay.trialBadge}
-                                  </span>
-                                )}
-                                <span className="rounded bg-emerald-500/15 border border-emerald-500/35 px-2 py-0.5 font-semibold text-emerald-300">
-                                  {bestRole.roleName} · {bestRole.fitPct}% Fit
-                                </span>
-                                {contractDisplay.wageLabel && (
-                                  <span className="rounded bg-slate-950/80 border border-slate-800 px-2 py-0.5 font-mono text-slate-300">
-                                    Wage {contractDisplay.wageLabel}
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* 4 Position-Relevant Attributes */}
-                              <div className="grid grid-cols-4 gap-1.5 text-[11px] font-mono text-slate-200">
-                                {relevantAttributes.map((attrChip) => (
-                                  <div
-                                    key={attrChip.label}
-                                    className="rounded bg-slate-950/80 border border-slate-800 px-2 py-1 text-center"
-                                  >
-                                    <span className="text-slate-400 mr-1">
-                                      {attrChip.label}
-                                    </span>
-                                    <span
-                                      className={
-                                        attrChip.value >= 14
-                                          ? 'text-emerald-300 font-bold'
-                                          : attrChip.value >= 11
-                                            ? 'text-slate-100 font-semibold'
-                                            : 'text-slate-400'
-                                      }
-                                    >
-                                      {attrChip.value}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-
-                              {target.scoutBadges && target.scoutBadges.length > 0 && (
-                                <div className="flex flex-wrap gap-1">
-                                  {target.scoutBadges.map((badge) => (
-                                    <span
-                                      key={badge}
-                                      className="rounded bg-indigo-500/15 border border-indigo-500/30 px-1.5 py-0.5 text-[10px] text-indigo-300"
-                                    >
-                                      {badge}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-
-                              {/* Inline FM27 Scout Card Verdict Strip */}
-                              {(() => {
-                                const intel = evaluateScoutTargetCard(target, players, {
-                                  divisionBenchmarks,
-                                  activeTactic: lastMatchTactic,
-                                  governance,
-                                });
-                                const toneCls =
-                                  intel.tone === 'emerald'
-                                    ? 'text-emerald-300'
-                                    : intel.tone === 'sky'
-                                      ? 'text-sky-300'
-                                      : intel.tone === 'amber'
-                                        ? 'text-amber-300'
-                                        : intel.tone === 'rose'
-                                          ? 'text-rose-300'
-                                          : 'text-slate-300';
-                                return (
-                                  <div className="rounded-lg border border-slate-800/90 bg-slate-950/75 px-2.5 py-1.5 text-[11px] flex flex-wrap items-center justify-between gap-2">
-                                    <span className="truncate text-slate-300">
-                                      <strong className={toneCls}>{intel.verdictLabel}</strong>
-                                      <span className="text-slate-500"> · </span>
-                                      <span>{intel.inlineRationale}</span>
-                                    </span>
-                                    <span className="font-mono text-[10px] text-slate-400 shrink-0">
-                                      {intel.cost3YrLabel} · Tap for Deep Dossier
-                                    </span>
-                                  </div>
-                                );
-                              })()}
-
-                              <div className="flex flex-wrap items-center justify-between pt-1.5 border-t border-slate-800/80 text-[11px] gap-2">
-                                {depth.isGenuineGap ? (
-                                  <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                                    {depth.label}
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center rounded px-2 py-0.5 text-[10px] font-medium bg-slate-800/80 text-slate-400 border border-slate-700/80">
-                                    {depth.label}
-                                  </span>
-                                )}
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleToggleCompareTray(target);
-                                    }}
-                                    className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-semibold transition cursor-pointer ${
-                                      compareTrayTargets.some((t) => t.uid === target.uid)
-                                        ? 'bg-amber-500/25 border-amber-400/60 text-amber-200'
-                                        : 'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700 text-slate-300'
-                                    }`}
-                                    title="Add to 3-player comparison tray"
-                                  >
-                                    {compareTrayTargets.some((t) => t.uid === target.uid)
-                                      ? 'In Tray'
-                                      : '+ Tray'}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setCompareTarget(target);
-                                    }}
-                                    className="inline-flex items-center gap-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/35 px-2 py-1 text-[11px] font-semibold text-sky-300 transition cursor-pointer"
-                                  >
-                                    <GitCompare className="h-3 w-3" />
-                                    Compare
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleToggleTrack(target);
-                                    }}
-                                    className={`rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition cursor-pointer ${
-                                      isTracked
-                                        ? 'bg-emerald-500/25 hover:bg-emerald-500/35 border-emerald-400/60 text-emerald-200'
-                                        : 'bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/30 text-emerald-300'
-                                    }`}
-                                  >
-                                    {isTracked ? '✓ Tracked' : '+ Track'}
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
+                              isTracked={isTracked}
+                              handleOpenTargetCard={handleOpenTargetCard}
+                              handleToggleCompareTray={handleToggleCompareTray}
+                              setCompareTarget={setCompareTarget}
+                              handleToggleTrack={handleToggleTrack}
+                              compareTrayTargets={compareTrayTargets}
+                              players={players}
+                              divisionBenchmarks={divisionBenchmarks}
+                              lastMatchTactic={lastMatchTactic}
+                              governance={governance}
+                            />
                           );
                         }
                       )}
@@ -2065,568 +681,49 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
 
           {/* VIEW 5: PERSISTED SHORTLIST */}
           {view === 'shortlist' && (
-            <div className="space-y-3">
-              <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h3 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
-                    <Bookmark className="h-4 w-4 text-emerald-400" />
-                    Persisted Recruitment Shortlist ({trackedTargets.length})
-                  </h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Saved locally in browser storage · Tap any card for full 52-attribute profile or compare directly against our senior starter
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  disabled={trackedTargets.length === 0 || !onAskAnalyst}
-                  onClick={handleAskAnalystCompareShortlist}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 disabled:opacity-40 border border-emerald-500/40 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition cursor-pointer"
-                >
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  Ask Analyst to Compare Shortlist
-                </button>
-              </div>
-
-              {trackedTargets.length === 0 ? (
-                <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 text-center text-xs text-slate-400">
-                  No targets shortlisted yet. Tap <strong>+ Track</strong> on any player in the <strong>Scouted</strong> tab to persist them here.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {trackedTargets.map((target) => {
-                    const bestRole = computeTargetBestRoleFit(target);
-                    const archetype = evaluatePlaybookArchetype(
-                      target.primaryPosition,
-                      target.attributes
-                    );
-                    const relevantAttributes = getPositionRelevantAttributes(target);
-                    const depth = evaluateTargetSquadDepth(
-                      target.primaryPosition,
-                      players
-                    );
-                    const contractDisplay = formatTargetContractSummary(target);
-
-                    return (
-                      <div
-                        key={target.uid || target.name}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => handleOpenTargetCard(target)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            handleOpenTargetCard(target);
-                          }
-                        }}
-                        className="rounded-xl border border-emerald-500/30 bg-slate-900/75 p-4 space-y-2.5 text-left transition cursor-pointer hover:border-emerald-400/60"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <h3 className="text-sm font-bold text-white truncate">
-                              {target.name}
-                            </h3>
-                            <p className="text-[11px] text-slate-400">
-                              {target.age} yrs · {target.nationality} ·{' '}
-                              <span className="font-mono text-emerald-300">
-                                {target.primaryPosition}
-                              </span>
-                            </p>
-                          </div>
-                          <span
-                            className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-semibold border ${
-                              target.isFreeAgent
-                                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
-                                : 'bg-amber-500/15 text-amber-300 border-amber-500/40'
-                            }`}
-                          >
-                            {contractDisplay.primaryLabel}
-                          </span>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                          <span
-                            className={`rounded border px-2 py-0.5 font-semibold ${archetypeBadgeClass(
-                              archetype.badgeTone
-                            )}`}
-                          >
-                            {archetype.name} · {archetype.score}%
-                          </span>
-                          {contractDisplay.trialBadge && (
-                            <span className="rounded bg-teal-500/15 border border-teal-500/40 px-2 py-0.5 text-[10px] font-bold text-teal-300">
-                              {contractDisplay.trialBadge}
-                            </span>
-                          )}
-                          <span className="rounded bg-emerald-500/15 border border-emerald-500/35 px-2 py-0.5 font-semibold text-emerald-300">
-                            {bestRole.roleName} · {bestRole.fitPct}% Fit
-                          </span>
-                          {contractDisplay.wageLabel && (
-                            <span className="rounded bg-slate-950/80 border border-slate-800 px-2 py-0.5 font-mono text-slate-300">
-                              Wage {contractDisplay.wageLabel}
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-4 gap-1.5 text-[11px] font-mono text-slate-200">
-                          {relevantAttributes.map((attrChip) => (
-                            <div
-                              key={attrChip.label}
-                              className="rounded bg-slate-950/80 border border-slate-800 px-2 py-1 text-center"
-                            >
-                              <span className="text-slate-400 mr-1">
-                                {attrChip.label}
-                              </span>
-                              <span
-                                className={
-                                  attrChip.value >= 14
-                                    ? 'text-emerald-300 font-bold'
-                                    : attrChip.value >= 11
-                                      ? 'text-slate-100 font-semibold'
-                                      : 'text-slate-400'
-                                }
-                              >
-                                {attrChip.value}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Inline FM27 Shortlist Card Verdict Strip */}
-                        {(() => {
-                          const intel = evaluateScoutTargetCard(target, players, {
-                            divisionBenchmarks,
-                            activeTactic: lastMatchTactic,
-                            governance,
-                          });
-                          const toneCls =
-                            intel.tone === 'emerald'
-                              ? 'text-emerald-300'
-                              : intel.tone === 'sky'
-                                ? 'text-sky-300'
-                                : intel.tone === 'amber'
-                                  ? 'text-amber-300'
-                                  : intel.tone === 'rose'
-                                    ? 'text-rose-300'
-                                    : 'text-slate-300';
-                          return (
-                            <div className="rounded-lg border border-slate-800/90 bg-slate-950/75 px-2.5 py-1.5 text-[11px] flex flex-wrap items-center justify-between gap-2">
-                              <span className="truncate text-slate-300">
-                                <strong className={toneCls}>{intel.verdictLabel}</strong>
-                                <span className="text-slate-500"> · </span>
-                                <span>{intel.inlineRationale}</span>
-                              </span>
-                              <span className="font-mono text-[10px] text-slate-400 shrink-0">
-                                {intel.cost3YrLabel}
-                              </span>
-                            </div>
-                          );
-                        })()}
-
-                        <div className="flex flex-wrap items-center justify-between pt-1.5 border-t border-slate-800/80 text-[11px] gap-1.5">
-                          <span className="text-[10px] text-slate-400">
-                            {depth.label}
-                          </span>
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleOpenTargetCard(target);
-                              }}
-                              className="rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2 py-1 text-[11px] font-semibold text-slate-200 transition cursor-pointer"
-                            >
-                              Open Card
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setCompareTarget(target);
-                              }}
-                              className="inline-flex items-center gap-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/35 px-2 py-1 text-[11px] font-semibold text-sky-300 transition cursor-pointer"
-                            >
-                              <GitCompare className="h-3 w-3" />
-                              Compare
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRemoveTracked(target);
-                              }}
-                              className="inline-flex items-center gap-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/35 px-2 py-1 text-[11px] font-semibold text-rose-300 transition cursor-pointer"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                              Remove
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+            <ShortlistView
+              trackedTargets={trackedTargets}
+              onAskAnalyst={onAskAnalyst}
+              handleAskAnalystCompareShortlist={handleAskAnalystCompareShortlist}
+              handleOpenTargetCard={handleOpenTargetCard}
+              setCompareTarget={setCompareTarget}
+              handleRemoveTracked={handleRemoveTracked}
+              players={players}
+              divisionBenchmarks={divisionBenchmarks}
+              lastMatchTactic={lastMatchTactic}
+              governance={governance}
+            />
           )}
         </>
       )}
 
-      {/* Confirmation Toast */}
-      {toastMessage && (
-        <div
-          role="status"
-          className="fixed bottom-20 md:bottom-6 right-4 z-50 flex items-center gap-2 rounded-xl border border-emerald-500/50 bg-slate-900/95 px-4 py-2.5 text-xs font-semibold text-emerald-200 shadow-xl backdrop-blur"
-        >
-          <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
+    {/* Confirmation Toast */}
+    {toastMessage && (
+      <div
+        role="status"
+        className="fixed bottom-20 md:bottom-6 right-4 z-50 flex items-center gap-2 rounded-xl border border-emerald-500/50 bg-slate-900/95 px-4 py-2.5 text-xs font-semibold text-emerald-200 shadow-xl backdrop-blur"
+      >
+        <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+        <span>{toastMessage}</span>
+      </div>
+    )}
 
-      {/* 1-Tap Compare vs Starter Modal */}
-      {activeComparison && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-3 sm:p-4"
-          onClick={() => setCompareTarget(null)}
-        >
-          <div
-            className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl p-4 sm:p-5 space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-sky-400 flex items-center gap-1.5">
-                  <GitCompare className="h-3.5 w-3.5" />
-                  1-Tap Compare vs Current Senior Starter
-                </div>
-                <h3 className="text-base font-bold text-white mt-0.5">
-                  <span className="text-emerald-300">
-                    {activeComparison.target.name}
-                  </span>{' '}
-                  <span className="text-slate-500">vs</span>{' '}
-                  <span className="text-sky-300">
-                    {activeComparison.starter
-                      ? activeComparison.starter.name
-                      : 'No Senior Starter'}
-                  </span>
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setCompareTarget(null)}
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition cursor-pointer"
-                aria-label="Close comparison"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
+      <CompareTargetModal
+        activeComparison={activeComparison}
+        setCompareTarget={setCompareTarget}
+        handleOpenTargetCard={handleOpenTargetCard}
+        handleToggleTrack={handleToggleTrack}
+        trackedTargets={trackedTargets}
+      />
 
-            {!activeComparison.comparison || !activeComparison.starter ? (
-              <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-6 text-center text-xs text-slate-400">
-                No senior starter found in the squad for{' '}
-                <strong>{activeComparison.target.primaryPosition}</strong> to compare against yet.
-              </div>
-            ) : (
-              <>
-                {/* SVG 6-Axis Radar Comparison */}
-                <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 flex flex-col sm:flex-row items-center gap-4">
-                  <div className="shrink-0">
-                    {(() => {
-                      const axes = activeComparison.comparison.radarAxes;
-                      const cx = 110;
-                      const cy = 110;
-                      const maxR = 76;
-                      const pointAt = (idx: number, val: number) => {
-                        const angle = (Math.PI * 2 * idx) / axes.length - Math.PI / 2;
-                        const r = (Math.max(1, Math.min(20, val)) / 20) * maxR;
-                        return `${(cx + r * Math.cos(angle)).toFixed(1)},${(cy + r * Math.sin(angle)).toFixed(1)}`;
-                      };
-                      const targetPoly = axes
-                        .map((ax, i) => pointAt(i, ax.targetVal))
-                        .join(' ');
-                      const starterPoly = axes
-                        .map((ax, i) => pointAt(i, ax.starterVal))
-                        .join(' ');
-                      return (
-                        <svg
-                          viewBox="0 0 220 220"
-                          className="w-48 h-48 sm:w-52 sm:h-52"
-                          aria-label="Attribute radar comparison"
-                        >
-                          {[5, 10, 15, 20].map((ring) => (
-                            <polygon
-                              key={ring}
-                              points={axes
-                                .map((_, i) => pointAt(i, ring))
-                                .join(' ')}
-                              fill="none"
-                              stroke="rgb(51 65 85)"
-                              strokeWidth="1"
-                              strokeDasharray={ring === 20 ? undefined : '2 2'}
-                            />
-                          ))}
-                          {axes.map((ax, i) => {
-                            const angle = (Math.PI * 2 * i) / axes.length - Math.PI / 2;
-                            const x2 = cx + maxR * Math.cos(angle);
-                            const y2 = cy + maxR * Math.sin(angle);
-                            const lx = cx + (maxR + 18) * Math.cos(angle);
-                            const ly = cy + (maxR + 18) * Math.sin(angle);
-                            return (
-                              <g key={ax.label}>
-                                <line
-                                  x1={cx}
-                                  y1={cy}
-                                  x2={x2}
-                                  y2={y2}
-                                  stroke="rgb(51 65 85)"
-                                  strokeWidth="1"
-                                />
-                                <text
-                                  x={lx}
-                                  y={ly}
-                                  textAnchor="middle"
-                                  dominantBaseline="middle"
-                                  fill="rgb(203 213 225)"
-                                  fontSize="10"
-                                  fontFamily="monospace"
-                                >
-                                  {ax.label}
-                                </text>
-                              </g>
-                            );
-                          })}
-                          <polygon
-                            points={starterPoly}
-                            fill="rgba(56, 189, 248, 0.20)"
-                            stroke="rgb(56, 189, 248)"
-                            strokeWidth="2"
-                          />
-                          <polygon
-                            points={targetPoly}
-                            fill="rgba(16, 185, 129, 0.25)"
-                            stroke="rgb(16, 185, 129)"
-                            strokeWidth="2"
-                          />
-                        </svg>
-                      );
-                    })()}
-                  </div>
-
-                  {/* Age, Wage & Archetype Summary */}
-                  <div className="flex-1 w-full space-y-2 text-xs">
-                    <div className="flex flex-wrap items-center gap-3 text-[11px]">
-                      <span className="inline-flex items-center gap-1.5 text-emerald-300 font-semibold">
-                        <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-                        {activeComparison.target.name} ({activeComparison.target.primaryPosition})
-                      </span>
-                      <span className="inline-flex items-center gap-1.5 text-sky-300 font-semibold">
-                        <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
-                        {activeComparison.starter.name} ({activeComparison.starter.position})
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded-lg border border-slate-800 bg-slate-900/80 p-2.5">
-                        <div className="text-[10px] text-slate-400">Age Comparison</div>
-                        <div className="font-mono font-bold text-white mt-0.5">
-                          {activeComparison.target.age} vs {activeComparison.starter.age}
-                        </div>
-                        <div
-                          className={`text-[10px] font-mono font-semibold ${
-                            activeComparison.comparison.ageDelta <= 0
-                              ? 'text-emerald-300'
-                              : 'text-amber-300'
-                          }`}
-                        >
-                          {activeComparison.comparison.ageDelta > 0 ? '+' : ''}
-                          {activeComparison.comparison.ageDelta} yrs
-                        </div>
-                      </div>
-
-                      <div className="rounded-lg border border-slate-800 bg-slate-900/80 p-2.5">
-                        <div className="text-[10px] text-slate-400">Weekly Wage</div>
-                        <div className="font-mono font-bold text-white mt-0.5">
-                          £{(activeComparison.target.demandedWageEur || 0).toLocaleString()} vs £
-                          {(activeComparison.starter.wagePw || 0).toLocaleString()}
-                        </div>
-                        <div
-                          className={`text-[10px] font-mono font-semibold ${
-                            activeComparison.comparison.wageDelta <= 0
-                              ? 'text-emerald-300'
-                              : 'text-rose-300'
-                          }`}
-                        >
-                          {activeComparison.comparison.wageDelta > 0 ? '+' : ''}
-                          £{activeComparison.comparison.wageDelta.toLocaleString()}/wk
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="rounded-lg border border-slate-800 bg-slate-900/80 p-2.5 flex items-center justify-between">
-                      <span className="text-[11px] text-slate-300">
-                        Playbook Archetype:{' '}
-                        <strong className="text-white">
-                          {activeComparison.comparison.archetype.name}
-                        </strong>
-                      </span>
-                      <span className="font-mono text-xs font-bold">
-                        <span className="text-emerald-300">
-                          {activeComparison.comparison.archetype.score}%
-                        </span>{' '}
-                        <span className="text-slate-500">vs</span>{' '}
-                        <span className="text-sky-300">
-                          {activeComparison.comparison.starterArchetype.score}%
-                        </span>
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Green/Red Attribute Deltas */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {activeComparison.comparison.radarAxes.map((ax) => (
-                    <div
-                      key={ax.label}
-                      className="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2 flex items-center justify-between text-xs font-mono"
-                    >
-                      <span className="text-slate-300 font-semibold">{ax.label}</span>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-emerald-300 font-bold">
-                          {ax.targetVal}
-                        </span>
-                        <span className="text-slate-500">/</span>
-                        <span className="text-sky-300">{ax.starterVal}</span>
-                        <span
-                          className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
-                            ax.delta > 0
-                              ? 'bg-emerald-500/20 text-emerald-300'
-                              : ax.delta < 0
-                                ? 'bg-rose-500/20 text-rose-300'
-                                : 'bg-slate-800 text-slate-400'
-                          }`}
-                        >
-                          {ax.delta > 0 ? `+${ax.delta}` : ax.delta}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-
-            <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-800">
-              <button
-                type="button"
-                onClick={() => {
-                  const t = activeComparison.target;
-                  setCompareTarget(null);
-                  handleOpenTargetCard(t);
-                }}
-                className="rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 transition cursor-pointer"
-              >
-                Open Full Card
-              </button>
-              <button
-                type="button"
-                onClick={() => handleToggleTrack(activeComparison.target)}
-                className="rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition cursor-pointer"
-              >
-                {isScoutTargetTracked(trackedTargets, activeComparison.target)
-                  ? '✓ Tracked'
-                  : '+ Track'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Sticky Mobile 3-Player Compare Tray */}
-      {compareTrayTargets.length > 0 && (
-        <div className="fixed bottom-4 left-3 right-3 sm:left-auto sm:right-6 z-40 max-w-xl rounded-2xl border border-emerald-500/40 bg-slate-900/95 backdrop-blur-md shadow-2xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-300">
-              Compare Tray ({compareTrayTargets.length}/3)
-            </span>
-            {compareTrayTargets.map((t) => (
-              <button
-                key={t.uid}
-                type="button"
-                onClick={() => handleToggleCompareTray(t)}
-                className="inline-flex items-center gap-1 rounded-full bg-slate-800 border border-slate-700 px-2 py-0.5 text-[11px] text-slate-200 hover:border-rose-500/50"
-                title="Remove from tray"
-              >
-                <span className="truncate max-w-[90px]">{t.name}</span>
-                <X className="h-3 w-3 text-slate-400" />
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => setCompareTrayTargets([])}
-              className="min-h-[40px] px-2.5 rounded-xl border border-slate-700 bg-slate-800 text-xs font-semibold text-slate-300 hover:text-white cursor-pointer"
-            >
-              Clear
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsMultiCompareOpen(true)}
-              className="min-h-[40px] px-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
-            >
-              <GitCompare className="h-3.5 w-3.5" />
-              Compare ({compareTrayTargets.length})
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* 3-Player Switchable Radar / Pizza / Bars Comparison Modal */}
-      {isMultiCompareOpen && compareTrayTargets.length > 0 && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-3 sm:p-4"
-          onClick={() => setIsMultiCompareOpen(false)}
-        >
-          <div
-            className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl p-4 sm:p-5 space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-                  <GitCompare className="h-3.5 w-3.5" />
-                  Multi-Player Comparison (Radar · Pizza % · Bars)
-                </div>
-                <h3 className="text-base font-bold text-white mt-0.5">
-                  {compareTrayTargets.map((t) => t.name).join(' vs ')}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsMultiCompareOpen(false)}
-                className="min-h-[40px] min-w-[40px] inline-flex items-center justify-center rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white transition cursor-pointer"
-                aria-label="Close multi-player comparison"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <MultiPlayerComparisonChart
-              dataset={buildMultiPlayerComparison(
-                compareTrayTargets.length === 1
-                  ? (() => {
-                      const starter = findTopSeniorStarterForPosition(
-                        compareTrayTargets[0].primaryPosition,
-                        auditPlayers
-                      );
-                      return starter
-                        ? [compareTrayTargets[0], starter]
-                        : compareTrayTargets;
-                    })()
-                  : compareTrayTargets,
-                auditPlayers
-              )}
-            />
-          </div>
-        </div>
-      )}
+      <SelectionCompareDock
+        compareTrayTargets={compareTrayTargets}
+        handleToggleCompareTray={handleToggleCompareTray}
+        setCompareTrayTargets={setCompareTrayTargets}
+        isMultiCompareOpen={isMultiCompareOpen}
+        setIsMultiCompareOpen={setIsMultiCompareOpen}
+        auditPlayers={auditPlayers}
+      />
 
       {/* Deep Scout Target Analysis Modal (Percentile Pizza + Starter Radar + FM27 Fit) */}
       <ScoutTargetDetailModal
