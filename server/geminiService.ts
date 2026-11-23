@@ -178,6 +178,18 @@ export class GeminiService {
     return Boolean(this.config.geminiApiKey);
   }
 
+  /**
+   * Resolves the Fast model, honoring the GEMINI_FAST_MODEL env override
+   * (defaults to gemini-3.5-flash-lite) while filtering retired model names.
+   */
+  getFastModelId(): string {
+    const normalized = normalizeModelName(this.config.geminiFastModelOverride || '');
+    if (!normalized || isRetiredGeminiModel(normalized)) {
+      return FAST_MODEL_ID;
+    }
+    return normalized;
+  }
+
   clearDiscoveryCache(): void {
     this.discoveryCache = null;
   }
@@ -279,7 +291,7 @@ export class GeminiService {
 
     // 2. Client Fast vs. Deep preference
     if (options?.reasoningMode === 'fast_lite') {
-      return FAST_MODEL_ID;
+      return this.getFastModelId();
     }
     if (
       options?.reasoningMode === 'deep_high' ||
@@ -328,6 +340,7 @@ export class GeminiService {
       requestedModel: options?.requestedModel,
     });
     const fallbackModel = this.config.fallbackModel || FALLBACK_GEMINI_MODEL;
+    const fastModel = this.getFastModelId();
     const deadline = this.now() + timeoutMs;
 
     const invoke = async (model: string, capDeadline = deadline) => {
@@ -369,8 +382,8 @@ export class GeminiService {
     };
 
     const resolveFailoverModel = (model: string): string => {
-      if (model === DEEP_MODEL_ID) return FAST_MODEL_ID;
-      if (model === FAST_MODEL_ID) return DEEP_MODEL_ID;
+      if (model === DEEP_MODEL_ID) return fastModel;
+      if (model === fastModel) return DEEP_MODEL_ID;
       return model !== fallbackModel ? fallbackModel : DEEP_MODEL_ID;
     };
 
@@ -399,7 +412,7 @@ export class GeminiService {
 
     // Reserve ~33% of the total budget for automatic Fast-model failover when Deep Analyst runs slow
     const canTimeoutFailoverToFast =
-      primaryModel !== FAST_MODEL_ID && timeoutMs >= 30_000;
+      primaryModel !== fastModel && timeoutMs >= 30_000;
     const primaryDeadline = canTimeoutFailoverToFast
       ? this.now() + Math.round(timeoutMs * 0.67)
       : deadline;
@@ -418,7 +431,7 @@ export class GeminiService {
         canTimeoutFailoverToFast &&
         deadline - this.now() > 2_000
       ) {
-        return await invokeWithOverloadRetry(FAST_MODEL_ID, deadline);
+        return await invokeWithOverloadRetry(fastModel, deadline);
       }
       if (isTransientOverloadError(err)) {
         const failoverModel = resolveFailoverModel(primaryModel);

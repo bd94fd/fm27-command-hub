@@ -862,16 +862,33 @@ test('validatePreFlightAnalystPayload flags missing or null required fields and 
   assert.deepEqual(partialResult.missingFields, [
     'clubStanding',
     'nextOpponent',
-    'boardPromises',
   ]);
   assert.equal(partialResult.fields.squadRoleFits.present, true);
   assert.equal(partialResult.fields.clubStanding.present, false);
   assert.equal(partialResult.fields.nextOpponent.present, false);
   assert.equal(partialResult.fields.boardPromises.present, false);
+  assert.equal(partialResult.fields.boardPromises.informational, true);
+  assert.match(partialResult.fields.boardPromises.detail, /None active|not exposed/i);
   assert.ok(partialResult.warningMessage?.includes('Club Standing'));
   assert.ok(partialResult.warningMessage?.includes('Next Opponent'));
-  assert.ok(partialResult.warningMessage?.includes('Board Promises'));
+  assert.ok(!partialResult.warningMessage?.includes('Board Promises'));
   assert.ok(partialResult.warningMessage?.toLowerCase().includes('re-import'));
+
+  // 2b. Missing/empty boardPromises alone must NEVER trigger the amber re-import banner
+  const boardOnlyResult = validatePreFlightAnalystPayload({
+    clubStanding: '#3 · 12 pts (5 GP)',
+    nextOpponent: { opponent: 'Jong Cercle', competition: 'Eerste Nationale VV' },
+    squadRoleFits: { warRoomFilledSlots: 11, warRoomAvgFitPct: 91 },
+    boardPromises: null,
+  });
+  assert.equal(boardOnlyResult.valid, true);
+  assert.equal(boardOnlyResult.needsReimport, false);
+  assert.deepEqual(boardOnlyResult.missingFields, []);
+  assert.equal(boardOnlyResult.warningTitle, null);
+  assert.equal(boardOnlyResult.warningMessage, null);
+  assert.equal(boardOnlyResult.fields.boardPromises.present, false);
+  assert.equal(boardOnlyResult.fields.boardPromises.informational, true);
+  assert.match(boardOnlyResult.fields.boardPromises.detail, /None active|not exposed/i);
 
   // 3. End-to-end runPreFlightAnalystValidation catches missing nextOpponent & boardPromises from partially extracted .fm save
   const partialState = {
@@ -918,10 +935,14 @@ test('validatePreFlightAnalystPayload flags missing or null required fields and 
   assert.ok(payload.clubStanding !== null, 'clubStanding should be extracted');
   assert.ok(payload.squadRoleFits !== null, 'squadRoleFits should be extracted');
   assert.equal(payload.nextOpponent, null, 'nextOpponent should be null when upcomingFixtures is empty');
-  assert.equal(payload.boardPromises, null, 'boardPromises should be null when governance/promises failed extraction');
+  assert.equal(payload.boardPromises, null, 'boardPromises should be null when governance/promises are not exposed');
   assert.equal(validation.valid, false);
   assert.equal(validation.needsReimport, true);
-  assert.deepEqual(validation.missingFields, ['nextOpponent', 'boardPromises']);
+  assert.deepEqual(validation.missingFields, ['nextOpponent']);
+  assert.equal(validation.fields.boardPromises.present, false);
+  assert.equal(validation.fields.boardPromises.informational, true);
+  assert.match(validation.fields.boardPromises.detail, /None active|not exposed/i);
+  assert.ok(!validation.warningMessage?.includes('Board Promises'));
 });
 
 

@@ -52,6 +52,115 @@ describe('server routes & JSON 404', () => {
     assert.match(String(notFoundJson.error), /API endpoint not found/i);
   });
 
+  it('returns structured JSON (never HTML) for /api root, malformed JSON, and rate limits', async () => {
+    const config = loadServerConfig({
+      GEMINI_API_KEY: 'test-key',
+      RATE_LIMIT_MAX_REQUESTS: '1',
+    } as NodeJS.ProcessEnv);
+    const geminiService = new GeminiService({
+      config,
+      clientFactory: () => ({
+        models: {
+          list: async () => ({
+            models: [{ name: 'models/gemini-3.5-flash-lite' }],
+          }),
+          generateContent: (async () => ({
+            get text() {
+              return JSON.stringify({ headlineVerdict: 'OK' });
+            },
+          })) as never,
+        },
+      }),
+    });
+    const app = await createApp({ config, geminiService, serveFrontend: false });
+    const srv = await startTestServer(app);
+    activeClose = srv.close;
+
+    const apiRootRes = await fetch(`${srv.baseUrl}/api`);
+    assert.equal(apiRootRes.status, 404);
+    assert.match(apiRootRes.headers.get('content-type') || '', /application\/json/i);
+    const apiRootJson = (await apiRootRes.json()) as Record<string, unknown>;
+    assert.match(String(apiRootJson.error), /API endpoint not found/i);
+
+    const malformedRes = await fetch(`${srv.baseUrl}/api/fm27/tactical-chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{"message": "broken"',
+    });
+    assert.equal(malformedRes.status, 400);
+    assert.match(malformedRes.headers.get('content-type') || '', /application\/json/i);
+    const malformedJson = (await malformedRes.json()) as Record<string, unknown>;
+    assert.match(String(malformedJson.error), /Malformed JSON/i);
+
+    const debriefBody = JSON.stringify({
+      clubName: 'KVV Zelzate',
+      matchSummary: { opponent: 'KVK Ninove', result: 'W', score: '2 - 0' },
+    });
+    const firstRes = await fetch(`${srv.baseUrl}/api/fm27/match-debrief`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: debriefBody,
+    });
+    assert.equal(firstRes.status, 200);
+
+    const rateLimitedRes = await fetch(`${srv.baseUrl}/api/fm27/match-debrief`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: debriefBody,
+    });
+    assert.equal(rateLimitedRes.status, 429);
+    assert.match(
+      rateLimitedRes.headers.get('content-type') || '',
+      /application\/json/i
+    );
+    const rateLimitedJson = (await rateLimitedRes.json()) as Record<string, unknown>;
+    assert.match(String(rateLimitedJson.error), /Rate limit exceeded/i);
+  });
+
+  it('honors GEMINI_FAST_MODEL for Fast Analyst requests and /api/health', async () => {
+    let capturedModel = '';
+    const fastModel = 'gemini-3.5-flash-lite-preview';
+    const config = loadServerConfig({
+      GEMINI_API_KEY: 'test-key',
+      GEMINI_FAST_MODEL: fastModel,
+    } as NodeJS.ProcessEnv);
+    assert.equal(config.geminiFastModelOverride, fastModel);
+
+    const geminiService = new GeminiService({
+      config,
+      clientFactory: () => ({
+        models: {
+          list: async () => ({ models: [{ name: `models/${fastModel}` }] }),
+          generateContent: (async (req: { model: string }) => {
+            capturedModel = req.model;
+            return {
+              get text() {
+                return JSON.stringify({ analysisMarkdown: 'Fast Analyst OK' });
+              },
+            };
+          }) as never,
+        },
+      }),
+    });
+
+    const app = await createApp({ config, geminiService, serveFrontend: false });
+    const srv = await startTestServer(app);
+    activeClose = srv.close;
+
+    const healthRes = await fetch(`${srv.baseUrl}/api/health`);
+    assert.equal(healthRes.status, 200);
+    const healthJson = (await healthRes.json()) as Record<string, unknown>;
+    assert.equal(healthJson.fastModel, fastModel);
+
+    const chatRes = await fetch(`${srv.baseUrl}/api/fm27/tactical-chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'Fast check', reasoningMode: 'fast_lite' }),
+    });
+    assert.equal(chatRes.status, 200);
+    assert.equal(capturedModel, fastModel);
+  });
+
   it('supports optional persona, Fast/Deep model selection, and returns JSON 504 on timeout', async () => {
     let capturedSystemInstruction = '';
     let capturedModel = '';

@@ -3,6 +3,7 @@ export interface ServerConfig {
   nodeEnv: string;
   geminiApiKey: string;
   geminiModelOverride: string | null;
+  geminiFastModelOverride: string;
   fallbackModel: string;
   preferredModels: readonly string[];
   aiTimeoutMs: number;
@@ -44,6 +45,7 @@ export function loadServerConfig(
       : rawPort || defaultAppPort;
   const geminiApiKey = (env.GEMINI_API_KEY || '').trim();
   const rawModelOverride = (env.GEMINI_MODEL || '').trim();
+  const rawFastModelOverride = (env.GEMINI_FAST_MODEL || '').trim();
   const rawHubToken = (env.HUB_ACCESS_TOKEN || '').trim();
 
   return {
@@ -51,6 +53,7 @@ export function loadServerConfig(
     nodeEnv,
     geminiApiKey,
     geminiModelOverride: rawModelOverride || null,
+    geminiFastModelOverride: rawFastModelOverride || FALLBACK_GEMINI_MODEL,
     fallbackModel: FALLBACK_GEMINI_MODEL,
     preferredModels: PREFERRED_GEMINI_MODELS,
     aiTimeoutMs: DEFAULT_AI_TIMEOUT_MS,

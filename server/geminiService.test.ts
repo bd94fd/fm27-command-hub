@@ -17,6 +17,8 @@ describe('server/config', () => {
     } as NodeJS.ProcessEnv);
 
     assert.equal(cfg.geminiApiKey, '');
+    assert.equal(cfg.geminiModelOverride, null);
+    assert.equal(cfg.geminiFastModelOverride, 'gemini-3.5-flash-lite');
     assert.equal(cfg.fallbackModel, 'gemini-3.5-flash-lite');
     assert.deepEqual(cfg.preferredModels, [
       'gemini-3.5-flash-lite',
@@ -30,10 +32,12 @@ describe('server/config', () => {
     const cfg = loadServerConfig({
       GEMINI_API_KEY: 'server-secret-key',
       GEMINI_MODEL: 'gemini-3.5-flash',
+      GEMINI_FAST_MODEL: 'gemini-3.5-flash-lite-preview',
     } as NodeJS.ProcessEnv);
 
     assert.equal(cfg.geminiApiKey, 'server-secret-key');
     assert.equal(cfg.geminiModelOverride, 'gemini-3.5-flash');
+    assert.equal(cfg.geminiFastModelOverride, 'gemini-3.5-flash-lite-preview');
   });
 
   it('binds dev server to port 3000 even when container PORT collides with NGINX_PORT=8080', () => {
