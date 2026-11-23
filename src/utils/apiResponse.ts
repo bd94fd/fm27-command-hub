@@ -4,6 +4,86 @@
  * never surface raw `Unexpected token '<'` parse exceptions in the UI.
  */
 
+export type ApiFailureKind = 'http' | 'non-json' | 'network';
+
+export interface ApiResponseErrorOptions {
+  status: number;
+  kind: ApiFailureKind;
+  retryable: boolean;
+  isHtml?: boolean;
+  reason?: string;
+}
+
+/** Typed API failure carrying the exact HTTP status so the UI can explain it. */
+export class ApiResponseError extends Error {
+  readonly status: number;
+  readonly kind: ApiFailureKind;
+  readonly retryable: boolean;
+  readonly isHtml: boolean;
+  readonly reason: string;
+
+  constructor(message: string, options: ApiResponseErrorOptions) {
+    super(message);
+    this.name = 'ApiResponseError';
+    this.status = options.status;
+    this.kind = options.kind;
+    this.retryable = options.retryable;
+    this.isHtml = options.isHtml ?? false;
+    this.reason = options.reason || message;
+  }
+}
+
+function shortenReason(text: string, max = 180): string {
+  const oneLine = text.replace(/\s+/g, ' ').trim();
+  if (!oneLine) return '';
+  return oneLine.length > max ? `${oneLine.slice(0, max - 1)}…` : oneLine;
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
+/** Builds a short, human-readable "HTTP <status>: <reason>" description. */
+export function describeApiFailure(err: unknown): string {
+  if (err instanceof ApiResponseError) {
+    if (err.kind === 'network' || err.status <= 0) {
+      return `Network error: ${shortenReason(err.reason)}`;
+    }
+    return `HTTP ${err.status}: ${shortenReason(err.reason)}`;
+  }
+  const message = err instanceof Error ? err.message : String(err ?? '');
+  return shortenReason(message) || 'Unknown network error';
+}
+
+/** True when retrying (Fast Analyst / offline fallback) can plausibly succeed. */
+export function isRecoverableAnalystFailure(err: unknown): boolean {
+  if (err instanceof ApiResponseError) {
+    return (
+      err.retryable ||
+      err.isHtml ||
+      err.kind === 'non-json' ||
+      isRetryableStatus(err.status)
+    );
+  }
+  const message = err instanceof Error ? err.message : String(err ?? '');
+  return /failed to fetch|networkerror|load failed|unexpected non-json|timed out|timeout|aborted|\b(?:429|500|502|503|504)\b/i.test(
+    message
+  );
+}
+
+/** Normalizes a rejected fetch / thrown value into an ApiResponseError. */
+export function toApiResponseError(err: unknown): ApiResponseError {
+  if (err instanceof ApiResponseError) return err;
+  const message = err instanceof Error ? err.message : String(err ?? '');
+  const reason = shortenReason(message) || 'The request could not reach the server.';
+  return new ApiResponseError(`Network error: ${reason}`, {
+    status: 0,
+    kind: 'network',
+    retryable: true,
+    reason,
+  });
+}
+
 export async function parseJsonApiResponse<T = Record<string, unknown>>(
   res: Response,
   fallbackError = 'Request failed. Please try again.'
@@ -27,44 +107,87 @@ export async function parseJsonApiResponse<T = Record<string, unknown>>(
   }
 
   if (!res.ok) {
+    const status = res.status;
+    const retryable = isRetryableStatus(status);
     const serverErr =
       parsed &&
       typeof parsed === 'object' &&
       'error' in parsed &&
       typeof (parsed as { error?: unknown }).error === 'string'
-        ? (parsed as { error: string }).error.trim()
+        ? shortenReason((parsed as { error: string }).error)
         : '';
 
     if (serverErr) {
-      throw new Error(serverErr);
+      throw new ApiResponseError(`HTTP ${status}: ${serverErr}`, {
+        status,
+        kind: 'http',
+        retryable,
+        reason: serverErr,
+      });
     }
 
-    if (res.status === 504) {
-      throw new Error(
-        'The Tactical Analyst timed out waiting for a response. Please try again with a shorter prompt.'
-      );
+    if (status === 504) {
+      const reason =
+        'The Tactical Analyst timed out waiting for a response. Please try again with a shorter prompt.';
+      throw new ApiResponseError(`HTTP 504: ${reason}`, {
+        status,
+        kind: 'http',
+        retryable: true,
+        reason,
+      });
     }
-    if (res.status === 404) {
-      throw new Error(
-        'The requested API endpoint could not be reached (HTTP 404). Please refresh and try again.'
-      );
+    if (status === 404) {
+      const reason =
+        'The requested API endpoint could not be reached. Please refresh and try again.';
+      throw new ApiResponseError(`HTTP 404: ${reason}`, {
+        status,
+        kind: 'http',
+        retryable: false,
+        reason,
+      });
     }
-    if (res.status === 413) {
-      throw new Error(
-        'The request payload was too large. Try removing large attachments and sending again.'
-      );
+    if (status === 413) {
+      const reason =
+        'The request payload was too large. Try removing large attachments and sending again.';
+      throw new ApiResponseError(`HTTP 413: ${reason}`, {
+        status,
+        kind: 'http',
+        retryable: false,
+        reason,
+      });
     }
     if (looksLikeHtml) {
-      throw new Error(
-        `Server temporarily unavailable (HTTP ${res.status}). Please retry in a moment.`
-      );
+      const reason =
+        'The server returned an HTML error page instead of JSON. Please retry in a moment.';
+      throw new ApiResponseError(`HTTP ${status}: ${reason}`, {
+        status,
+        kind: 'http',
+        retryable: true,
+        isHtml: true,
+        reason,
+      });
     }
-    throw new Error(`${fallbackError} (HTTP ${res.status})`);
+    throw new ApiResponseError(`HTTP ${status}: ${fallbackError}`, {
+      status,
+      kind: 'http',
+      retryable,
+      reason: fallbackError,
+    });
   }
 
   if (looksLikeHtml || !isJsonContentType || parsed === null) {
-    throw new Error(
-      'Received an unexpected non-JSON response from the server. Please retry in a moment.'
+    const reason = looksLikeHtml
+      ? 'The server returned an HTML page instead of JSON.'
+      : 'The server response was not valid JSON.';
+    throw new ApiResponseError(
+      `Received an unexpected non-JSON response from the server (HTTP ${res.status}). Please retry in a moment.`,
+      {
+        status: res.status,
+        kind: 'non-json',
+        retryable: true,
+        isHtml: looksLikeHtml,
+        reason,
+      }
     );
   }
 

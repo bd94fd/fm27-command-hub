@@ -32,6 +32,11 @@ const NO_CACHE_STATIC_FILES = new Set([
   'manifest.json',
 ]);
 
+function isApiRequest(req: express.Request): boolean {
+  const requestPath = req.path || req.originalUrl || '';
+  return requestPath === '/api' || requestPath.startsWith('/api/');
+}
+
 export async function createApp(
   options: CreateAppOptions = {}
 ): Promise<express.Express> {
@@ -69,18 +74,43 @@ export async function createApp(
       error: `API endpoint not found: ${req.method} ${req.path}`,
     });
   });
+  app.all('/api', (req, res) => {
+    return res.status(404).json({
+      error: `API endpoint not found: ${req.method} ${req.path}`,
+    });
+  });
+  // Belt-and-braces: no /api/* request may ever fall through to the SPA HTML shell
+  app.use('/api', (req, res) => {
+    return res.status(404).json({
+      error: `API endpoint not found: ${req.method} ${req.originalUrl}`,
+    });
+  });
 
   app.use(
     (
-      err: { type?: string; status?: number; name?: string; message?: string },
+      err: {
+        type?: string;
+        status?: number;
+        name?: string;
+        message?: string;
+        statusCode?: number;
+      },
       req: express.Request,
       res: express.Response,
       next: express.NextFunction
     ) => {
+      if (!isApiRequest(req)) {
+        return next(err);
+      }
+      // A partially written response cannot be converted to JSON safely.
+      if (res.headersSent) {
+        return next(err);
+      }
       if (
         err &&
         (err.type === 'entity.too.large' ||
           err.status === 413 ||
+          err.statusCode === 413 ||
           err.name === 'PayloadTooLargeError')
       ) {
         return res.status(413).json({
@@ -88,16 +118,23 @@ export async function createApp(
             'Request payload was too large (upload chunks are limited to 8 MB each; total .fm save limit is 1024 MB / 1 GB; attached screenshots are automatically compressed).',
         });
       }
-      if (req.path.startsWith('/api/')) {
-        const status =
-          typeof err?.status === 'number' && err.status >= 400 && err.status < 600
-            ? err.status
-            : 500;
-        return res.status(status).json({
-          error: err?.message || 'Unexpected server API error.',
+      if (err && err.type === 'entity.parse.failed') {
+        return res.status(400).json({
+          error: 'Malformed JSON request body. Please retry the request.',
         });
       }
-      return next(err);
+      const status =
+        typeof err?.status === 'number' && err.status >= 400 && err.status < 600
+          ? err.status
+          : typeof err?.statusCode === 'number' &&
+              err.statusCode >= 400 &&
+              err.statusCode < 600
+            ? err.statusCode
+            : 500;
+      return res.status(status).json({
+        error: err?.message || 'Unexpected server API error.',
+        status,
+      });
     }
   );
 

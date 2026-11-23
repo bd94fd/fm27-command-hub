@@ -2082,6 +2082,8 @@ export interface PreFlightFieldCheck {
   label: string;
   present: boolean;
   detail: string;
+  /** Informational fields are shown for context and never block the sync status. */
+  informational?: boolean;
 }
 
 export interface PreFlightPayloadValidationResult {
@@ -2102,12 +2104,28 @@ const PREFLIGHT_FIELD_LABELS: Record<PreFlightRequiredFieldKey, string> = {
   boardPromises: 'Board Promises',
 };
 
-const PREFLIGHT_REQUIRED_KEYS: PreFlightRequiredFieldKey[] = [
+/**
+ * Core fields whose genuine extraction failure requires a save re-import.
+ * `boardPromises` is intentionally excluded: FM27 builds that do not expose
+ * board/promise data are a normal, valid state, not a failed extraction.
+ */
+export const CORE_PREFLIGHT_REQUIRED_KEYS: PreFlightRequiredFieldKey[] = [
   'clubStanding',
   'nextOpponent',
   'squadRoleFits',
+];
+
+export const INFORMATIONAL_PREFLIGHT_KEYS: PreFlightRequiredFieldKey[] = [
   'boardPromises',
 ];
+
+const PREFLIGHT_REQUIRED_KEYS: PreFlightRequiredFieldKey[] = [
+  ...CORE_PREFLIGHT_REQUIRED_KEYS,
+  ...INFORMATIONAL_PREFLIGHT_KEYS,
+];
+
+export const BOARD_PROMISES_NONE_LABEL =
+  'None active / not exposed in this FM27 build';
 
 function isDiagnosticsReport(
   input: PreFlightAnalystPayload | AnalystPayloadDiagnosticsReport
@@ -2241,6 +2259,7 @@ function summarizePresentField(
       if (obj || prm || aud) {
         return `${obj} targets · ${prm} club promises · ${aud} playing-time audits`;
       }
+      return BOARD_PROMISES_NONE_LABEL;
     }
   }
   return 'Extracted';
@@ -2248,9 +2267,10 @@ function summarizePresentField(
 
 /**
  * Pre-flight payload validator that verifies the presence (non-missing, non-null)
- * of `clubStanding`, `nextOpponent`, `squadRoleFits`, and `boardPromises`.
+ * of the core fields `clubStanding`, `nextOpponent`, and `squadRoleFits`.
+ * `boardPromises` is reported for context only and never triggers a re-import.
  * Accepts either a direct pre-flight payload object or an `AnalystPayloadDiagnosticsReport`.
- * When any required field is missing or null, returns `valid: false`, `needsReimport: true`,
+ * When a core field is missing or null, returns `valid: false`, `needsReimport: true`,
  * and a clear warning message for the UI's Sync status area.
  */
 export function validatePreFlightAnalystPayload(
@@ -2281,15 +2301,19 @@ export function validatePreFlightAnalystPayload(
     const value = normalized[key];
     const present = isPresentPayloadValue(value);
     const label = PREFLIGHT_FIELD_LABELS[key];
+    const informational = INFORMATIONAL_PREFLIGHT_KEYS.includes(key);
     fields[key] = {
       key,
       label,
       present,
+      informational,
       detail: present
         ? summarizePresentField(key, value)
-        : 'Missing or failed extraction',
+        : informational
+          ? BOARD_PROMISES_NONE_LABEL
+          : 'Missing or failed extraction',
     };
-    if (!present) {
+    if (!present && !informational) {
       missingFields.push(key);
       missingLabels.push(label);
     }

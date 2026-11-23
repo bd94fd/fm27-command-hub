@@ -54,6 +54,7 @@ import {
   AnalystReasoningMode,
   buildConversationTranscript,
   buildLiveTacticalAnalystContext,
+  CORE_PREFLIGHT_REQUIRED_KEYS,
   ExtendedPlayerAutoUpdate,
   PreFlightPayloadValidationResult,
   runPreFlightAnalystValidation,
@@ -61,8 +62,12 @@ import {
 import { FormationPresetKey } from '../utils/bestXiSolver';
 import { PersistedCustomSlot } from '../services/fmStorage';
 import {
+  ApiResponseError,
+  describeApiFailure,
+  isRecoverableAnalystFailure,
   parseJsonApiResponse,
   sanitizeReaderNotes,
+  toApiResponseError,
 } from '../utils/apiResponse';
 
 export type PlayerAutoUpdate = ExtendedPlayerAutoUpdate;
@@ -195,6 +200,9 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [chatFallbackNotice, setChatFallbackNotice] = useState<string | null>(
+    null
+  );
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const feedEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -375,6 +383,8 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
 
     setTurns((prev) => [...prev, userTurn]);
     setIsSending(true);
+    setChatError(null);
+    setChatFallbackNotice(null);
 
     const newlyAttachedHydratedSave =
       fmFilesToSend.find((f) => f.hydratedSave)?.hydratedSave ?? null;
@@ -435,6 +445,38 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       latestHydratedSave?.balanceLabel ||
       '--';
 
+    const appendOfflineBriefing = (fallbackReason: string) => {
+      const offlineData = buildOfflineTacticalBriefing({
+        clubName: effectiveClubName,
+        saveDate: effectiveSaveDate,
+        nextFixture: effectiveNextFixture,
+        leagueStandingSub: effectiveStandingSub,
+        wageSpend: effectiveWageSpend,
+        balance: effectiveBalance,
+        players: effectivePlayers,
+        matches: effectiveMatches,
+        hydratedFmSave: latestHydratedSave,
+        userQuery: finalPrompt,
+        activeShape,
+        customSlots,
+        fallbackReason,
+      });
+      const offlineTurn: ChatTurnPayload = {
+        id: `assistant-offline-${Date.now()}`,
+        role: 'assistant',
+        screenDetected: offlineData.screenDetected,
+        inGameDate: offlineData.inGameDate,
+        analysisMarkdown: offlineData.analysisMarkdown,
+        immediateClicks: offlineData.immediateClicks,
+        followUpQuestions: offlineData.followUpQuestions,
+        chronicleTitle: offlineData.chronicleTitle,
+        chronicleOutcomeMetric: offlineData.chronicleOutcomeMetric,
+        eventNumber: nextEventNum,
+        playerUpdatesApplied: [],
+      };
+      setTurns((prev) => [...prev, offlineTurn]);
+    };
+
     try {
       const contextInput = {
         clubName: effectiveClubName,
@@ -491,35 +533,104 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         }
       }
 
-      const postTacticalChat = async () => {
-        const response = await fetch('/api/fm27/tactical-chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestPayload),
-        });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return parseJsonApiResponse<any>(
-          response,
-          'Failed to get Tactical Analyst response'
-        );
+      const postTacticalChat = async (mode: AnalystReasoningMode) => {
+        try {
+          const response = await fetch('/api/fm27/tactical-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...requestPayload, reasoningMode: mode }),
+          });
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          return await parseJsonApiResponse<any>(
+            response,
+            'Failed to get Tactical Analyst response'
+          );
+        } catch (err: unknown) {
+          throw toApiResponseError(err);
+        }
       };
+
+      const isDeepAnalystMode =
+        reasoningMode === 'deep_high' || reasoningMode === 'max_xhigh';
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let data: any;
+      let failure: ApiResponseError | null = null;
       try {
-        data = await postTacticalChat();
+        data = await postTacticalChat(reasoningMode);
       } catch (firstErr) {
-        const firstMsg =
-          firstErr instanceof Error ? firstErr.message : String(firstErr);
-        const isTransientGatewayOrHtml =
-          /unexpected non-JSON|502|503|504|Failed to fetch|NetworkError/i.test(
-            firstMsg
-          );
-        if (!isTransientGatewayOrHtml) {
-          throw firstErr;
+        failure = toApiResponseError(firstErr);
+        // Cheap transient gateway glitches are worth one same-mode retry. Real
+        // timeouts (504) and overload (503/429) go straight to the Fast fallback
+        // so the user is not left waiting on a second Deep timeout.
+        const shouldRetrySameMode =
+          failure.kind === 'network' ||
+          failure.kind === 'non-json' ||
+          failure.isHtml ||
+          failure.status === 502;
+        if (shouldRetrySameMode) {
+          await new Promise((resolve) => setTimeout(resolve, 900));
+          try {
+            data = await postTacticalChat(reasoningMode);
+            failure = null;
+          } catch (retryErr) {
+            failure = toApiResponseError(retryErr);
+          }
         }
-        await new Promise((resolve) => setTimeout(resolve, 900));
-        data = await postTacticalChat();
+      }
+
+      if (failure) {
+        const primaryDetail = describeApiFailure(failure);
+        const keyMissing = /GEMINI_API_KEY|not configured|API key/i.test(
+          failure.message
+        );
+
+        if (keyMissing) {
+          setChatFallbackNotice(
+            `Analyst unavailable — ${primaryDetail}. Showing the local offline briefing instead.`
+          );
+          appendOfflineBriefing('no external LLM API key configured');
+          return;
+        }
+
+        let fastDetail: string | null = null;
+        let fastSucceeded = false;
+        if (isDeepAnalystMode && isRecoverableAnalystFailure(failure)) {
+          setChatFallbackNotice(
+            `Deep Analyst failed — ${primaryDetail}. Automatically retrying with Fast Analyst…`
+          );
+          await new Promise((resolve) => setTimeout(resolve, 600));
+          try {
+            data = await postTacticalChat('fast_lite');
+            failure = null;
+            fastSucceeded = true;
+          } catch (fastErr) {
+            const fastFailure = toApiResponseError(fastErr);
+            failure = fastFailure;
+            fastDetail = describeApiFailure(fastFailure);
+          }
+        }
+
+        if (failure) {
+          if (isRecoverableAnalystFailure(failure)) {
+            setChatFallbackNotice(
+              fastDetail
+                ? `Deep Analyst failed — ${primaryDetail}. Fast Analyst also failed — ${fastDetail}. Showing the local offline briefing instead.`
+                : `Analyst unavailable — ${primaryDetail}. Showing the local offline briefing instead.`
+            );
+            appendOfflineBriefing('AI service unavailable / offline');
+            return;
+          }
+          setChatFallbackNotice(null);
+          setChatError(primaryDetail);
+          return;
+        }
+
+        if (fastSucceeded) {
+          setChatFallbackNotice(
+            `Deep Analyst failed — ${primaryDetail}. Fast Analyst answered instead.`
+          );
+        }
       }
 
       const assignedEventNum = nextEventNum;
@@ -603,67 +714,25 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
 
       setTurns((prev) => [...prev, assistantTurn]);
     } catch (err: unknown) {
-      const rawMsg =
-        err instanceof Error
-          ? err.message
-          : 'Error communicating with FM27 Tactical Analyst';
-      const isOfflineOrKeyMissing =
-        /GEMINI_API_KEY|not configured|API key|Failed to fetch|NetworkError|503|429|UNAVAILABLE|RESOURCE_EXHAUSTED/i.test(
-          rawMsg
-        );
-
-      if (isOfflineOrKeyMissing) {
-        const offlineData = buildOfflineTacticalBriefing({
-          clubName: effectiveClubName,
-          saveDate: effectiveSaveDate,
-          nextFixture: effectiveNextFixture,
-          leagueStandingSub: effectiveStandingSub,
-          wageSpend: effectiveWageSpend,
-          balance: effectiveBalance,
-          players: effectivePlayers,
-          matches: effectiveMatches,
-          hydratedFmSave: latestHydratedSave,
-          userQuery: finalPrompt,
-          activeShape,
-          customSlots,
-          fallbackReason: /GEMINI_API_KEY|not configured|API key/i.test(rawMsg)
-            ? 'no external LLM API key configured'
-            : 'AI service unavailable / offline',
-        });
-        const offlineTurn: ChatTurnPayload = {
-          id: `assistant-offline-${Date.now()}`,
-          role: 'assistant',
-          screenDetected: offlineData.screenDetected,
-          inGameDate: offlineData.inGameDate,
-          analysisMarkdown: offlineData.analysisMarkdown,
-          immediateClicks: offlineData.immediateClicks,
-          followUpQuestions: offlineData.followUpQuestions,
-          chronicleTitle: offlineData.chronicleTitle,
-          chronicleOutcomeMetric: offlineData.chronicleOutcomeMetric,
-          eventNumber: nextEventNum,
-          playerUpdatesApplied: [],
-        };
-        setTurns((prev) => [...prev, offlineTurn]);
+      if (err instanceof ApiResponseError) {
+        const failureDetail = describeApiFailure(err);
+        if (isRecoverableAnalystFailure(err)) {
+          setChatFallbackNotice(
+            `Analyst unavailable — ${failureDetail}. Showing the local offline briefing instead.`
+          );
+          appendOfflineBriefing('AI service unavailable / offline');
+          return;
+        }
+        setChatFallbackNotice(null);
+        setChatError(failureDetail);
         return;
       }
-
-      let friendlyMsg = rawMsg;
-      if (rawMsg.trim().includes('{"error"') || rawMsg.trim().startsWith('{')) {
-        try {
-          const parsed = JSON.parse(rawMsg.slice(rawMsg.indexOf('{'))) as {
-            error?: { message?: string };
-            message?: string;
-          };
-          friendlyMsg =
-            parsed.error?.message ||
-            parsed.message ||
-            'The Tactical Analyst encountered a temporary service error. Please try again.';
-        } catch {
-          friendlyMsg =
-            'The Tactical Analyst encountered a temporary service error. Please try again.';
-        }
-      }
-      setChatError(friendlyMsg);
+      setChatFallbackNotice(null);
+      setChatError(
+        err instanceof Error
+          ? err.message
+          : 'Error communicating with FM27 Tactical Analyst'
+      );
     } finally {
       setIsSending(false);
     }
@@ -740,6 +809,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   const processIncomingFiles = async (files: File[]) => {
     if (files.length === 0) return;
     setChatError(null);
+    setChatFallbackNotice(null);
 
     for (const file of files) {
       const lower = file.name.toLowerCase();
@@ -1054,6 +1124,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     }
 
     setChatError(null);
+    setChatFallbackNotice(null);
     const currentImages = [...uploadedImages];
     const currentFmFiles = [...attachedFmFiles];
     if (!quickPrompt) setMessageInput('');
@@ -1256,6 +1327,17 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               </button>
             )}
 
+            {activePreFlightValidation?.fields.boardPromises?.informational &&
+              !activePreFlightValidation.fields.boardPromises.present && (
+                <span
+                  title={activePreFlightValidation.fields.boardPromises.detail}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-slate-400 bg-slate-900 border border-slate-800 rounded-lg"
+                >
+                  <Clock className="w-3 h-3 text-slate-500 shrink-0" />
+                  Board Promises · None active
+                </span>
+              )}
+
             {turns.length > 0 && (
               <>
                 <button
@@ -1281,6 +1363,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                   onClick={() => {
                     setTurns([]);
                     setChatError(null);
+                    setChatFallbackNotice(null);
                   }}
                   className="px-2 py-1 text-[11px] font-medium text-slate-400 hover:text-white bg-slate-900 border border-slate-800 rounded-lg cursor-pointer"
                 >
@@ -1333,18 +1416,27 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             {Object.values(activePreFlightValidation.fields).map((field) => (
               <div
                 key={field.key}
+                title={field.detail}
                 className={`px-2 py-1 rounded-lg border text-[10px] flex items-center gap-1.5 min-w-0 ${
-                  field.present
-                    ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
-                    : 'bg-amber-950/60 border-amber-500/45 text-amber-200 font-semibold'
+                  field.informational
+                    ? 'bg-slate-900/80 border-slate-700 text-slate-300'
+                    : field.present
+                      ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
+                      : 'bg-amber-950/60 border-amber-500/45 text-amber-200 font-semibold'
                 }`}
               >
-                {field.present ? (
+                {field.informational ? (
+                  <Clock className="w-3 h-3 text-slate-400 shrink-0" />
+                ) : field.present ? (
                   <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
                 ) : (
                   <AlertCircle className="w-3 h-3 text-amber-400 shrink-0" />
                 )}
-                <span className="truncate">{field.label}</span>
+                <span className="truncate">
+                  {field.informational && !field.present
+                    ? `${field.label} · None active`
+                    : field.label}
+                </span>
               </div>
             ))}
           </div>
@@ -1366,8 +1458,8 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                 >
                   Pre-Flight Payload Check:{' '}
                   {activePreFlightValidation.valid
-                    ? 'All 4 Required Fields Mapped'
-                    : `${activePreFlightValidation.missingFields.length}/4 Failed Extraction`}
+                    ? `All ${CORE_PREFLIGHT_REQUIRED_KEYS.length} Core Fields Mapped`
+                    : `${activePreFlightValidation.missingFields.length}/${CORE_PREFLIGHT_REQUIRED_KEYS.length} Core Fields Failed Extraction`}
                 </span>
                 {activePreFlightValidation.needsReimport && (
                   <label
@@ -1383,14 +1475,19 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                 {Object.values(activePreFlightValidation.fields).map((field) => (
                   <div
                     key={field.key}
+                    title={field.detail}
                     className={`px-2.5 py-1.5 rounded-lg border flex items-center justify-between gap-2 ${
-                      field.present
-                        ? 'bg-slate-900/90 border-slate-800 text-slate-300'
-                        : 'bg-amber-950/40 border-amber-500/40 text-amber-200'
+                      field.informational
+                        ? 'bg-slate-900/70 border-slate-700 text-slate-300'
+                        : field.present
+                          ? 'bg-slate-900/90 border-slate-800 text-slate-300'
+                          : 'bg-amber-950/40 border-amber-500/40 text-amber-200'
                     }`}
                   >
                     <span className="inline-flex items-center gap-1.5 font-medium shrink-0">
-                      {field.present ? (
+                      {field.informational ? (
+                        <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      ) : field.present ? (
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                       ) : (
                         <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
@@ -1733,6 +1830,16 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           </div>
         )}
 
+        {chatFallbackNotice && (
+          <div
+            role="status"
+            className="p-2.5 bg-amber-500/10 border border-amber-500/35 rounded-lg flex items-start gap-2 text-xs text-amber-200"
+          >
+            <Zap className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+            <span className="leading-snug">{chatFallbackNotice}</span>
+          </div>
+        )}
+
         {chatError && (
           <div className="p-2.5 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2 text-xs text-red-400">
             <AlertCircle className="w-4 h-4 shrink-0" />
@@ -1854,7 +1961,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                 }
               >
                 {activePreFlightValidation && !activePreFlightValidation.valid
-                  ? `Sync Status: ${activePreFlightValidation.missingFields.length} field(s) missing — re-import advised`
+                  ? `Sync Status: ${activePreFlightValidation.missingFields.length} core field(s) missing — re-import advised`
                   : serverDecodeAvailable
                     ? 'Server Sync Ready'
                     : 'Local Reader Ready'}
