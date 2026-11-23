@@ -56,7 +56,7 @@ async function ensureBooted(reply, origin) {
         micropip.destroy?.();
       }
 
-      const patcherUrl = new URL('/fm_layout_patcher.py?v=18', origin || self.location.origin).href;
+      const patcherUrl = new URL('/fm_layout_patcher.py?v=21', origin || self.location.origin).href;
       try {
         const patcherResp = await fetch(patcherUrl, { cache: 'no-cache' });
         if (patcherResp.ok) {
@@ -67,7 +67,7 @@ async function ensureBooted(reply, origin) {
         // Optional runtime layout patcher; mapper degrades gracefully if absent
       }
 
-      const mapperUrl = new URL('/fm-save-mapper.py?v=17', origin || self.location.origin).href;
+      const mapperUrl = new URL('/fm-save-mapper.py?v=21', origin || self.location.origin).href;
       const mapperResp = await fetch(mapperUrl, { cache: 'no-cache' });
       if (!mapperResp.ok) {
         throw new Error(`Failed to load save reader script (HTTP ${mapperResp.status}).`);

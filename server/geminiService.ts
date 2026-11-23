@@ -407,8 +407,11 @@ export class GeminiService {
     try {
       return await invokeWithOverloadRetry(primaryModel, primaryDeadline);
     } catch (err: unknown) {
-      if (isNotFoundError(err) && primaryModel !== fallbackModel) {
-        return await invokeWithOverloadRetry(fallbackModel);
+      if (isNotFoundError(err)) {
+        this.clearDiscoveryCache();
+        if (primaryModel !== fallbackModel) {
+          return await invokeWithOverloadRetry(fallbackModel);
+        }
       }
       if (
         err instanceof AnalystTimeoutError &&

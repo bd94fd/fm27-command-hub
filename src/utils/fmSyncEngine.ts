@@ -7,6 +7,10 @@ import {
   SetPieceRoutine,
   TrainingSessionDay,
 } from '../types/fm27';
+import {
+  classifyMatchCompetitionBucket,
+  deriveFootballSeasonLabel,
+} from './matchScopeHelpers';
 
 /**
  * Calculates combined double-gameweek minutes and verifies whether the player
@@ -40,36 +44,48 @@ export function evaluateDoubleGwLoad(row: DoubleGwTrackerRow): {
 
 /**
  * Computes aggregate season metrics from competitive match logs.
+ * When `seasonOrSaveDate` is provided (either a season label like "2027/28" or
+ * a save date like "15/09/2027"), restricts matches to that season if matching
+ * dated fixtures exist so prior seasons never bleed into current-season totals.
  */
-export function computeCompetitiveSummary(matches: MatchLogEntry[]) {
-  const competitiveMatches = matches.filter((m) => {
+export function computeCompetitiveSummary(
+  matches: MatchLogEntry[],
+  seasonOrSaveDate?: string | null
+) {
+  let scopedMatches = matches;
+  if (seasonOrSaveDate && seasonOrSaveDate !== '--' && seasonOrSaveDate !== 'ALL') {
+    const targetSeason = /^\d{4}\/\d{2}$/.test(seasonOrSaveDate.trim())
+      ? seasonOrSaveDate.trim()
+      : deriveFootballSeasonLabel(seasonOrSaveDate);
+    if (targetSeason && targetSeason !== 'Unknown Season') {
+      const seasonFiltered = matches.filter(
+        (m) => deriveFootballSeasonLabel(m.date) === targetSeason
+      );
+      if (seasonFiltered.length > 0) {
+        scopedMatches = seasonFiltered;
+      }
+    }
+  }
+
+  const competitiveMatches = scopedMatches.filter((m) => {
     const comp = (m.competition || '').toLowerCase();
-    return (
-      !comp.includes('friendly') &&
-      !comp.includes('non-comp') &&
-      !comp.includes('non_comp') &&
-      !comp.includes('reserve') &&
-      !comp.includes('u21') &&
-      !comp.includes('u19') &&
-      !comp.includes('u18') &&
-      !comp.includes('youth') &&
-      !comp.includes('international')
-    );
+    if (
+      comp.includes('non-comp') ||
+      comp.includes('non_comp') ||
+      comp.includes('reserve') ||
+      comp.includes('u21') ||
+      comp.includes('u19') ||
+      comp.includes('u18') ||
+      comp.includes('youth') ||
+      comp.includes('international')
+    ) {
+      return false;
+    }
+    return classifyMatchCompetitionBucket(m.competition) !== 'friendly';
   });
-  const leagueMatches = competitiveMatches.filter((m) => {
-    const comp = (m.competition || '').toLowerCase();
-    return (
-      !comp.includes('cup') &&
-      !comp.includes('beker') &&
-      !comp.includes('coupe') &&
-      !comp.includes('pokal') &&
-      !comp.includes('copa') &&
-      (comp.includes('national') ||
-        comp.includes('league') ||
-        comp.includes('division') ||
-        comp.length > 0)
-    );
-  });
+  const leagueMatches = competitiveMatches.filter(
+    (m) => classifyMatchCompetitionBucket(m.competition) === 'league'
+  );
   const targetMatches =
     leagueMatches.length > 0 ? leagueMatches : competitiveMatches;
   const wins = targetMatches.filter((m) => m.result === 'W').length;

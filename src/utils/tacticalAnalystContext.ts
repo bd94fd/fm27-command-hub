@@ -8,7 +8,7 @@ import {
   buildDynamicSetPieceRoutines,
   computeCompetitiveSummary,
 } from './fmSyncEngine';
-import { Pass0ExtractionPayload } from '../types/fmSave';
+import { Pass0ExtractionPayload, RecruitmentTarget } from '../types/fmSave';
 import {
   calculateFinancialRunway,
   HydratedSaveState,
@@ -21,6 +21,31 @@ import {
   solveBestXi,
 } from './bestXiSolver';
 import { buildAiResearchContextBlock } from './fmfShortlistExporter';
+import type { DeepJourneyReport } from '../services/saveCache';
+import { evaluateScoutTargetCard } from './cardIntelligenceEngine';
+import {
+  filterMeaningfulInstructions,
+  resolveSquadPlannerSlotMeta,
+} from './squadPlannerHelper';
+import {
+  buildTacticOverrideKey,
+  getSlotPositionBucket,
+  loadTacticRoleOverrides,
+} from './fm27TacticRoleInference';
+import {
+  buildClubGovernanceState,
+  buildLastMatchTacticBlueprint,
+} from './clubGovernanceAndTactics';
+import { loadFm27BinaryDictionary } from './fm27BinaryDictionary';
+import {
+  classifyMatchCompetitionBucket,
+  deriveFootballSeasonLabel,
+  extractMatchSeasons,
+  formatBucketCompactSummary,
+  formatCompetitionBucketTag,
+  formatSignedCurrency,
+  summarizeMatchesByScope,
+} from './matchScopeHelpers';
 
 export function formatCompactPositionRatings(player: PlayerRecord): string {
   const ratings = player.positionRatings;
@@ -89,7 +114,7 @@ export function buildTacticalAnalystContext(data: Pass0ExtractionPayload): strin
   return `
 === TACTICAL ANALYST SYSTEM CONTEXT ===
 Club UID: ${data.clubUid}
-Financial Runway Status: ${runway.status} (${runway.runwayMonths} months remaining, Burn Rate: €${Math.round(runway.monthlyBurnRate).toLocaleString()}/mo)
+Financial Runway Status: ${runway.status} (${runway.runwayMonths} months remaining, Burn Rate: £${Math.round(runway.monthlyBurnRate).toLocaleString()}/mo)
 Facilities: Training=${String(data.facilities?.training || 'Unknown')}, Youth=${String(data.facilities?.youth || 'Unknown')}
 Active Job Vacancies: ${vacanciesList}${suspensionBlock}
 
@@ -157,6 +182,8 @@ export interface LiveAnalystStateInput {
   hydratedFmSave: HydratedSaveState | null;
   staff?: StaffRecord[];
   recruitmentCases?: RecruitmentCase[];
+  trackedTargets?: RecruitmentTarget[];
+  latestJourneyReport?: DeepJourneyReport | null;
   userQuery?: string;
   activeShape?: FormationPresetKey;
   customSlots?: CustomSlotOverride[];
@@ -206,7 +233,7 @@ export const FM27_ENGINE_KNOWLEDGE_BASE = `=== FOOTBALL MANAGER 27 (PATCH 27.1.0
  * so the Tactical Analyst uses the EXACT same Best XI solver, competition-aware suspension
  * logic, Transfers positional depth chart, and Set-Piece rankings as every other tab.
  */
-export const MAX_LIVE_ANALYST_CONTEXT_CHARS = 9600;
+export const MAX_LIVE_ANALYST_CONTEXT_CHARS = 15500;
 
 export function buildLiveTacticalAnalystContext(
   state: LiveAnalystStateInput
@@ -222,6 +249,10 @@ export function buildLiveTacticalAnalystContext(
     players,
     matches,
     hydratedFmSave,
+    staff = [],
+    recruitmentCases = [],
+    trackedTargets = [],
+    latestJourneyReport = null,
     activeShape = '4-3-3 DM Wide',
     customSlots = [],
   } = state;
@@ -230,9 +261,9 @@ export function buildLiveTacticalAnalystContext(
   const sections: string[] = [
     [
       '=== FM27 PATCH 27.1.0 & PLAYBOOK v2.0 CORE RULES ===',
-      '- Dual-Phase 4-3-3: Tracking Winger (TW) OOP both flanks; Balanced Ground Build-Up + Short/Mixed GK Dist + Standard Passing.',
+      '- Dual-Phase IP/OOP ONLY (no Defend/Support/Attack duties): Tracking Winger (TW) OOP both flanks; Balanced Ground Build-Up + Short/Mixed GK Dist + Standard Passing; Patch 27.1.0 Holding Full-Back presses more aggressively and counter-attack transitions + wide OOP pressing are re-tuned.',
       '- Laws: 1 tweak/20-25m; never sub both CBs protecting lead; <=2 2H sub windows (60-63m, 75m+); keep 3 midfielders late (never 4-2-4); <=125m double-GW cap + Post-Match Rest.',
-      '- Truth: ZERO raw CA/PA; match War Room XI, 100%-Fit XI, Transfers Action Plan & PosFam; NEVER put SURPLUS/Sell players on bench when cover exists; NEVER loan Promote-to-Backup youth; cite full season stats (Apps, Mins, G/xG, A/xA, Rt).',
+      '- Truth: ZERO raw CA/PA; match War Room XI, 100%-Fit XI, Last-Match Tactic, Governance/Promises, Transfers Action Plan & PosFam; NEVER put SURPLUS/Sell players on bench when cover exists; NEVER loan Promote-to-Backup youth; cite full season stats (Apps, Mins, G/xG, A/xA, Rt).',
     ].join('\n'),
   ];
 
@@ -244,7 +275,7 @@ export function buildLiveTacticalAnalystContext(
   }
 
   const decoded = hydratedFmSave?.decodedPayload;
-  const summary = computeCompetitiveSummary(matches);
+  const summary = computeCompetitiveSummary(matches, saveDate);
   const setPiecePlan = buildDynamicSetPieceRoutines(players);
 
   const nextFixtureObj = decoded?.upcomingFixtures?.[0] || null;
@@ -393,6 +424,162 @@ export function buildLiveTacticalAnalystContext(
 
   sections.push(clubLines.join('\n'));
 
+  // 2b. Governance, Manager Contract, Board/Supporter Confidence, Objectives & Playing-Time Promises
+  // Live-evaluate against the latest FM27 Binary Dictionary so newly calibrated offset rules appear immediately
+  const liveDict = loadFm27BinaryDictionary();
+  const gov = hydratedFmSave?.decodedPayload
+    ? buildClubGovernanceState(hydratedFmSave.decodedPayload, players, liveDict)
+    : hydratedFmSave?.governance;
+  if (gov) {
+    const govLines: string[] = ['=== CLUB GOVERNANCE, MANAGER CONTRACT, BOARD TARGETS & PROMISES ==='];
+    const mc = gov.managerContract;
+    govLines.push(
+      mc.available
+        ? `Manager Contract: ${mc.managerName} | Wage: ${mc.wagePw ? `£${mc.wagePw.toLocaleString()}/wk` : 'N/A'} | Expires: ${mc.expires || 'N/A'}${mc.contractExpiryMonths != null ? ` (${mc.contractExpiryMonths}m left)` : ''}${mc.jobSecurity ? ` | Job Security: ${mc.jobSecurity}` : ''}`
+        : `Manager Contract: ${mc.managerName} (contract details not exposed in this save)`
+    );
+    govLines.push(
+      `Board Rating: ${gov.boardConfidence.available ? `${gov.boardConfidence.grade || gov.boardConfidence.score || 'Available'}${gov.boardConfidence.summary ? ` (${gov.boardConfidence.summary})` : ''}` : 'Not exposed in this FM27 save'} | Supporter Rating: ${gov.supporterConfidence.available ? `${gov.supporterConfidence.grade || gov.supporterConfidence.score || 'Available'}${gov.supporterConfidence.summary ? ` (${gov.supporterConfidence.summary})` : ''}` : 'Not exposed in this FM27 save'}`
+    );
+    if (gov.boardObjectives.length > 0) {
+      govLines.push(
+        `Board Objectives: ${gov.boardObjectives
+          .slice(0, 6)
+          .map((o) => `${o.title}${o.importance ? ` [${o.importance}]` : ''}${o.status ? ` (${o.status})` : ''}`)
+          .join(' | ')}`
+      );
+    }
+    if (gov.clubPromises.length > 0) {
+      govLines.push(
+        `Active Club/Manager Promises: ${gov.clubPromises
+          .slice(0, 6)
+          .map((pr) => `${pr.subject}${pr.targetName ? ` -> ${pr.targetName}` : ''}${pr.dueDate ? ` by ${pr.dueDate}` : ''}${pr.status ? ` [${pr.status}]` : ''}`)
+          .join(' | ')}`
+      );
+    }
+    const atRiskPromises = gov.playerPromiseAudits.filter(
+      (a) => a.status === 'breached' || a.status === 'at_risk'
+    );
+    const onTrackPromises = gov.playerPromiseAudits.filter(
+      (a) => a.status === 'on_track'
+    );
+    if (atRiskPromises.length > 0 || onTrackPromises.length > 0) {
+      govLines.push(
+        `Squad Playing-Time Promise Audit (${atRiskPromises.length} At Risk/Breached, ${onTrackPromises.length} On Track): ${[
+          ...atRiskPromises.slice(0, 6),
+          ...onTrackPromises.slice(0, 2),
+        ]
+          .map(
+            (a) =>
+              `${a.playerName}[${a.status}]: Promised "${a.promisedPlayingTime}" vs ${a.actualMinutesSharePct}% mins (${a.minutesPlayed}m)`
+          )
+          .join(' | ')}`
+      );
+    }
+    sections.push(govLines.join('\n'));
+  }
+
+  // 2c. Last Match / Active FM27 Save Tactic Blueprint (Full IP/OOP Roles + Instructions + Patch 27.1.0 Audit)
+  const roleOverrides = loadTacticRoleOverrides();
+  const lastTactic = hydratedFmSave?.decodedPayload
+    ? buildLastMatchTacticBlueprint(
+        hydratedFmSave.decodedPayload,
+        players,
+        0,
+        roleOverrides,
+        liveDict
+      ) ?? hydratedFmSave?.lastMatchTactic
+    : hydratedFmSave?.lastMatchTactic;
+  if (lastTactic) {
+    const tacLines: string[] = [
+      `=== LAST GAME / ACTIVE SAVE TACTIC BLUEPRINT (${lastTactic.tacticName}) ===`,
+      `Formations: IP ${lastTactic.inPossessionFormation} / OOP ${lastTactic.outOfPossessionFormation} | Mentality: ${lastTactic.mentality} | Style: ${lastTactic.styleName} | Patch 27.1.0 Effectiveness: ${lastTactic.tacticalEffectivenessScore}/100`,
+    ];
+    if (lastTactic.opponent) {
+      tacLines.push(
+        `Last Match: ${lastTactic.matchDate || ''} vs ${lastTactic.opponent}${lastTactic.score ? ` (${lastTactic.result || ''} ${lastTactic.score})` : ''}`.trim()
+      );
+    }
+    const ti = lastTactic.teamInstructions;
+    const ipTiList = filterMeaningfulInstructions(ti.inPossession);
+    const trTiList = filterMeaningfulInstructions(ti.inTransition);
+    const oopTiList = filterMeaningfulInstructions(ti.outOfPossession);
+    const appendIfMissing = (list: string[], val?: string | null) => {
+      if (!val) return;
+      const lower = val.toLowerCase();
+      if (!list.some((item) => item.toLowerCase().includes(lower))) {
+        list.push(val);
+      }
+    };
+    appendIfMissing(ipTiList, ti.passingDirectness);
+    appendIfMissing(ipTiList, ti.tempo);
+    appendIfMissing(ipTiList, ti.width);
+    appendIfMissing(oopTiList, ti.defensiveLine);
+    appendIfMissing(oopTiList, ti.lineOfEngagement);
+    appendIfMissing(oopTiList, ti.pressingIntensity);
+    const ipTi = ipTiList.join(', ');
+    const trTi = trTiList.join(', ');
+    const oopTi = oopTiList.join(', ');
+    if (ipTi || trTi || oopTi) {
+      tacLines.push(
+        `Team Instructions -> IP[${ipTi || 'Default'}] | Trans[${trTi || 'Default'}] | OOP[${oopTi || 'Default'}]`
+      );
+    }
+    if (lastTactic.starters.length > 0) {
+      const tacKey = buildTacticOverrideKey(lastTactic.tacticName || 'Club Tactic', 0);
+      const isResolvedSource = (src?: string | null): boolean =>
+        src === 'confirmed' ||
+        src === 'dictionary_decoded' ||
+        src === 'save_decoded' ||
+        src === 'fingerprint_matched';
+      const starterBits = lastTactic.starters.slice(0, 11).map((s, idx) => {
+        const slotIdx = s.slotIndex ?? idx;
+        const slotOv = roleOverrides.bySlot?.[`${tacKey}::${slotIdx}`];
+        const ipBucket = getSlotPositionBucket(s.position);
+        const oopBucket = getSlotPositionBucket(s.outOfPossessionPosition || s.position);
+        const ipFp =
+          s.ipBinaryFingerprint && roleOverrides.byFingerprint
+            ? roleOverrides.byFingerprint[`${ipBucket}::ip::${s.ipBinaryFingerprint}`]
+            : undefined;
+        const oopFp =
+          s.oopBinaryFingerprint && roleOverrides.byFingerprint
+            ? roleOverrides.byFingerprint[`${oopBucket}::oop::${s.oopBinaryFingerprint}`]
+            : undefined;
+        const effIp = slotOv?.ipRole || s.inPossessionRole || ipFp || s.ipRole || 'Std';
+        const effOop = slotOv?.oopRole || s.outOfPossessionRole || oopFp || s.oopRole || 'Std';
+        const ipResolved = Boolean(slotOv?.ipRole || ipFp) || isResolvedSource(s.ipRoleSource);
+        const oopResolved = Boolean(slotOv?.oopRole || oopFp) || isResolvedSource(s.oopRoleSource);
+        const ipTag = ipResolved ? '' : '~';
+        const oopTag = oopResolved ? '' : '~';
+
+        const piList = [
+          ...filterMeaningfulInstructions(s.inPossessionInstructions).slice(0, 3),
+          ...filterMeaningfulInstructions(s.outOfPossessionInstructions).slice(0, 3),
+        ];
+        const piStr = piList.length > 0 ? ` PI[${piList.join(',')}]` : '';
+        const shiftStr =
+          s.outOfPossessionPosition && s.outOfPossessionPosition !== s.position
+            ? `${s.position}->${s.outOfPossessionPosition}`
+            : s.position;
+        const rtStr = s.lastMatchRating != null ? ` ${s.lastMatchRating.toFixed(1)}rt` : '';
+        return `${shiftStr}:${s.playerName || 'Vacant'}(IP:${ipTag}${effIp}/OOP:${oopTag}${effOop}${rtStr}${piStr})`;
+      });
+      tacLines.push(`Starters Used (auto-decoded from .fm save; ~ = inferred): ${starterBits.join(' | ')}`);
+    }
+    if (lastTactic.substitutes.length > 0) {
+      tacLines.push(
+        `Matchday Subs: ${lastTactic.substitutes
+          .slice(0, 7)
+          .map((sub) => `${sub.playerName}(${sub.position || 'Sub'}${sub.lastMatchRating != null ? `,${sub.lastMatchRating.toFixed(1)}rt` : ''})`)
+          .join(' | ')}`
+      );
+    }
+    if (lastTactic.tacticalEffectivenessNotes.length > 0) {
+      tacLines.push(`Patch 27.1.0 Audit: ${lastTactic.tacticalEffectivenessNotes.slice(0, 3).join(' | ')}`);
+    }
+    sections.push(tacLines.join('\n'));
+  }
+
   // 3. Exact War Room Starting XI (Unified with InteractivePitchBuilder / TacticalWarRoom)
   const warRoomSolved = solveBestXi(solverPool, {
     shape: activeShape,
@@ -476,38 +663,65 @@ export function buildLiveTacticalAnalystContext(
     );
   }
 
-  // 5. Transfers & Squad Advice Positional Depth Chart (exact match with Transfers tab default first-team scope)
-  const firstTeamForAudit = players.filter(
-    (p) => p.teamSlot === undefined || p.teamSlot === 0
-  );
-  const transferAuditPlayers =
-    firstTeamForAudit.length > 0 ? firstTeamForAudit : players;
+  // 5. Transfers & Squad Advice Positional Depth Chart (exact match with Transfers tab canonical split)
   const transferAudit = buildSquadTransferAudit(
-    transferAuditPlayers,
+    players,
     saveDate,
     {
-      balanceNum: decoded?.finances?.balance ?? null,
+      balanceNum:
+        hydratedFmSave?.canonicalBalanceNum ?? decoded?.finances?.balance ?? null,
       wagePayrollWeekly: decoded?.finances?.wagePayrollWeekly ?? null,
       wageBudgetWeekly: decoded?.finances?.wageBudgetWeekly ?? null,
       transferBudgetRemaining: decoded?.finances?.transferBudgetRemaining ?? null,
-      balanceLabel: balance,
-      wageSpendLabel: wageSpend,
+      balanceLabel: hydratedFmSave?.balanceLabel || balance,
+      wageSpendLabel: hydratedFmSave?.wageComplianceLabel || wageSpend,
+      monthlyBurnRate: hydratedFmSave?.financialRunway?.monthlyBurnRate ?? null,
     },
     hydratedFmSave?.divisionBenchmarks ?? null
   );
 
   if (transferAudit.positionalNeeds.length > 0) {
     const depthLines = transferAudit.positionalNeeds
-      .filter((n) => n.players.length > 0 || n.status === 'Need Signing')
+      .filter(
+        (n) =>
+          n.players.length > 0 ||
+          n.status === 'Need Signing' ||
+          n.status === 'Promote Internal'
+      )
       .map((n) => {
-        const ranked = n.players
+        const ranked = n.seniorPrimaryPlayers
           .slice(0, 3)
-          .map((p, idx) => `#${idx + 1} ${p.name}(${p.ability.toFixed(1)}★)`)
+          .map((p, idx) => `#${idx + 1} ${p.name}(${p.ability.toFixed(1)}★,${p.age}y)`)
           .join(', ');
-        return `${n.code}[${n.status === 'Need Signing' ? 'NEED' : n.status === 'Overstocked' ? 'OVER' : 'OK'}]:${ranked || 'NONE'}`;
+        const readyU21Note =
+          n.firstTeamReadyYouthPlayers.length > 0
+            ? ` +${n.firstTeamReadyYouthPlayers.length} ReadyU21[${n.firstTeamReadyYouthPlayers
+                .slice(0, 2)
+                .map((p) => `${p.name} ${p.ability.toFixed(1)}★/${p.age}y`)
+                .join(', ')}]`
+            : '';
+        const academyNote =
+          n.academyProspectPlayers.length > 0
+            ? ` +${n.academyProspectPlayers.length} Academy`
+            : '';
+        const coverNote =
+          n.secondaryCoverPlayers.length > 0
+            ? ` +${n.secondaryCoverPlayers.length} cover`
+            : '';
+        const flag =
+          n.status === 'Need Signing'
+            ? 'NEED'
+            : n.status === 'Promote Internal'
+              ? 'PROMOTE_U21'
+              : n.hasSuccessionGap
+                ? 'SUCCESSION'
+                : n.status === 'Overstocked'
+                  ? 'OVER'
+                  : 'OK';
+        return `${n.code}[${flag} ${n.currentCount}Sen/${n.effectiveReadyCount}Ready vs ${n.idealMin}-${n.idealMax}${coverNote}${readyU21Note}${academyNote}]:${ranked || 'NONE'}`;
       });
     sections.push(
-      `=== TRANSFERS & SQUAD ADVICE POSITIONAL DEPTH CHART ===\n${depthLines.join(' | ')}`
+      `=== TRANSFERS & SQUAD ADVICE POSITIONAL DEPTH CHART (First-Team Floor: ${transferAudit.tierBenchmarks.firstTeamRotationFloor.toFixed(1)}★ Ready / ${transferAudit.tierBenchmarks.firstTeamStarterFloor.toFixed(1)}★ Starter) ===\n${depthLines.join(' | ')}`
     );
   }
 
@@ -661,16 +875,239 @@ export function buildLiveTacticalAnalystContext(
     );
   }
 
-  // 7. Recent 5 Matches (placed before squad profiles so match form is never trimmed)
+  // 6b. FM27 Squad Planner, Backroom Staff & Recruitment / Shortlist Targets
+  const plannerSlots = hydratedFmSave?.squadPlanner || [];
+  if (plannerSlots.length > 0) {
+    const currentSeasonSlots = plannerSlots
+      .filter((s) => (s.seasonOffset ?? 0) === 0 && s.playerNames.length > 0)
+      .map((s) => ({ raw: s, meta: resolveSquadPlannerSlotMeta(s) }))
+      .sort((a, b) => a.meta.sortOrder - b.meta.sortOrder);
+
+    const displaySlots =
+      currentSeasonSlots.length > 0
+        ? currentSeasonSlots
+        : plannerSlots
+            .filter((s) => s.playerNames.length > 0)
+            .map((s) => ({ raw: s, meta: resolveSquadPlannerSlotMeta(s) }))
+            .sort((a, b) => a.meta.sortOrder - b.meta.sortOrder);
+
+    const plannerStr = displaySlots
+      .slice(0, 14)
+      .map(
+        ({ raw, meta }) =>
+          `${meta.code}:${raw.playerNames.slice(0, 2).join('>')}`
+      )
+      .join(' | ');
+
+    const nextSeasonSlots = plannerSlots.filter((s) => (s.seasonOffset ?? 0) === 1);
+    const nextSeasonMap = new Map<number, number>(
+      nextSeasonSlots.map((s) => [s.slot, s.playerNames.length])
+    );
+    const thinNextYear =
+      nextSeasonMap.size > 0
+        ? currentSeasonSlots
+            .filter(({ raw }) => {
+              const nextCnt = nextSeasonMap.get(raw.slot) ?? 0;
+              return nextCnt <= 1 && nextCnt < raw.playerNames.length;
+            })
+            .slice(0, 6)
+            .map(({ raw, meta }) => `${meta.code}(${nextSeasonMap.get(raw.slot) ?? 0} left)`)
+        : [];
+
+    sections.push(
+      `=== FM27 SQUAD PLANNER DEPTH (CURRENT SEASON) ===\n${plannerStr}${
+        thinNextYear.length > 0 ? `\nNext Season Thin Spots (+1yr): ${thinNextYear.join(', ')}` : ''
+      }`
+    );
+  }
+
+  const effectiveStaff =
+    staff.length > 0
+      ? staff
+      : (decoded?.staff || []).map((s) => ({
+          id: String(s.uid),
+          name: s.name,
+          role: s.role,
+          age: s.age ?? 40,
+          nation: s.nation ?? '',
+          wagePw: s.wagePw ?? 0,
+          expires: s.expires ?? 'N/A',
+          notes: '',
+        }));
+  if (effectiveStaff.length > 0) {
+    const parseDateToUtcMs = (raw?: string | null): number | null => {
+      if (!raw) return null;
+      const dmy = raw.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (dmy) return Date.UTC(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
+      const iso = raw.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if (iso) return Date.UTC(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+      return null;
+    };
+    const refMs = parseDateToUtcMs(saveDate);
+    const expiringStaff = effectiveStaff
+      .filter((st) => {
+        if (!st.expires) return false;
+        const expMs = parseDateToUtcMs(st.expires);
+        if (refMs != null && expMs != null) {
+          const monthsLeft = (expMs - refMs) / (1000 * 60 * 60 * 24 * 30.4375);
+          return monthsLeft >= -1 && monthsLeft <= 12;
+        }
+        return false;
+      })
+      .slice(0, 5)
+      .map((st) => `${st.name}(${st.role},exp ${st.expires})`);
+    sections.push(
+      `=== BACKROOM STAFF (${effectiveStaff.length}) ===\nRoles: ${effectiveStaff
+        .slice(0, 8)
+        .map((st) => `${st.role}:${st.name}`)
+        .join(' | ')}${expiringStaff.length > 0 ? `\nExpiring Soon: ${expiringStaff.join(' | ')}` : ''}`
+    );
+  }
+
+  const scoutPool: RecruitmentTarget[] = [
+    ...trackedTargets,
+    ...(decoded?.recruitmentTargets || []).filter(
+      (t) => !trackedTargets.some((tr) => tr.uid === t.uid)
+    ),
+  ];
+  if (scoutPool.length > 0 || recruitmentCases.length > 0) {
+    const recLines: string[] = ['=== RECRUITMENT SHORTLIST & TOP SCOUTED TARGETS ==='];
+    if (trackedTargets.length > 0) {
+      recLines.push(
+        `Tracked Shortlist (${trackedTargets.length}): ${trackedTargets
+          .slice(0, 6)
+          .map((t) => {
+            const evalCard = evaluateScoutTargetCard(t, players, {
+              divisionBenchmarks: hydratedFmSave?.divisionBenchmarks ?? null,
+              activeTactic: lastTactic ?? null,
+              governance: gov ?? null,
+            });
+            return `${t.name}(${t.primaryPosition},${t.age}y,${t.currentClub || 'Free'},${evalCard.verdictLabel},DNA${evalCard.dnaFitPct}%,${evalCard.bestIpRole}/${evalCard.bestOopRole},${evalCard.cost3YrLabel})`;
+          })
+          .join(' | ')}`
+      );
+    }
+    const topUntracked = scoutPool
+      .filter((t) => !trackedTargets.some((tr) => tr.uid === t.uid))
+      .slice(0, 5);
+    if (topUntracked.length > 0) {
+      recLines.push(
+        `Top Market Scanner Targets: ${topUntracked
+          .map(
+            (t) =>
+              `${t.name}(${t.primaryPosition},${t.age}y,${t.currentClub || 'Free'},£${Math.round(t.demandedWageEur || 0)}/wk)`
+          )
+          .join(' | ')}`
+      );
+    }
+    if (recruitmentCases.length > 0) {
+      recLines.push(
+        `Active Recruitment Briefs: ${recruitmentCases
+          .slice(0, 4)
+          .map((c) => `${c.position}[${c.stage}]: ${c.playerName} (${c.targetIpRole})`)
+          .join(' | ')}`
+      );
+    }
+    sections.push(recLines.join('\n'));
+  }
+
+  // 7. Match xG Momentum Analytics & Recent 5 Matches (placed before squad profiles so form is never trimmed)
   if (matches.length > 0) {
-    const matchLines = matches.slice(0, 5).map((m) => {
+    const { seasons, currentSeason } = extractMatchSeasons(matches, saveDate);
+    const activeSeasonScope =
+      currentSeason !== 'ALL' ? currentSeason : deriveFootballSeasonLabel(saveDate);
+    const scopeBreakdown = summarizeMatchesByScope(
+      matches,
+      activeSeasonScope !== 'Unknown Season' ? activeSeasonScope : undefined
+    );
+
+    const scopeLines: string[] = [];
+    if (scopeBreakdown.competitive.played > 0) {
+      scopeLines.push(
+        `Competitive (${activeSeasonScope} League+Cup): ${formatBucketCompactSummary(scopeBreakdown.competitive)}`
+      );
+    }
+    if (scopeBreakdown.league.played > 0) {
+      scopeLines.push(
+        `League Only (${activeSeasonScope}): ${formatBucketCompactSummary(scopeBreakdown.league)}`
+      );
+    }
+    if (scopeBreakdown.cup.played > 0) {
+      scopeLines.push(
+        `Cup Only (${activeSeasonScope}): ${formatBucketCompactSummary(scopeBreakdown.cup)}`
+      );
+    }
+    if (scopeBreakdown.friendly.played > 0) {
+      scopeLines.push(
+        `Friendlies Only (${activeSeasonScope} — DO NOT mix into competitive form): ${formatBucketCompactSummary(scopeBreakdown.friendly)}`
+      );
+    }
+    if (seasons.length > 1) {
+      const priorSummaries = seasons
+        .filter((s) => s !== activeSeasonScope)
+        .slice(0, 2)
+        .map((s) => {
+          const b = summarizeMatchesByScope(matches, s);
+          return `${s}: Comp ${b.competitive.won}W-${b.competitive.drawn}D-${b.competitive.lost}L (${b.league.played} LGE, ${b.cup.played} CUP, ${b.friendly.played} FRD)`;
+        });
+      if (priorSummaries.length > 0) {
+        scopeLines.push(`Prior Seasons: ${priorSummaries.join(' | ')}`);
+      }
+    }
+
+    const recentCompMatches = matches.filter(
+      (m) => classifyMatchCompetitionBucket(m.competition) !== 'friendly'
+    );
+    const recentToList =
+      recentCompMatches.length > 0 ? recentCompMatches.slice(0, 6) : matches.slice(0, 5);
+    const matchLines = recentToList.map((m) => {
+      const tag = formatCompetitionBucketTag(classifyMatchCompetitionBucket(m.competition));
+      const seasonTag = deriveFootballSeasonLabel(m.date);
       const xgPart =
         m.xGFor !== null && m.xGAgainst !== null
           ? ` xG ${m.xGFor.toFixed(2)}-${m.xGAgainst.toFixed(2)}`
           : '';
-      return `${m.date} ${m.opponent}(${m.venue}) ${m.result} ${m.score}${xgPart}`;
+      return `[${tag} ${seasonTag}] ${m.date} ${m.opponent}(${m.venue}) ${m.result} ${m.score}${xgPart}`;
     });
-    sections.push(`=== RECENT MATCHES ===\n${matchLines.join(' | ')}`);
+    sections.push(
+      `=== RECENT MATCHES & XG ANALYTICS (BY SEASON & COMPETITION) ===\n${scopeLines.join('\n') || `Season Record: ${summary.played}GP`}\nRecent Results: ${matchLines.join(' | ')}`
+    );
+  }
+
+  // 7b. Save-to-Save Journey Trajectory (when 2+ snapshots cached)
+  if (latestJourneyReport) {
+    const jr = latestJourneyReport;
+    const imp = jr.improved.slice(0, 4).map((i) => `${i.title}${i.deltaLabel ? ` (${i.deltaLabel})` : ''}`).join(' | ');
+    const wor = jr.worsened.slice(0, 4).map((i) => `${i.title}${i.deltaLabel ? ` (${i.deltaLabel})` : ''}`).join(' | ');
+    const note = jr.thingsToNote.slice(0, 3).map((i) => `${i.title}: ${i.detail}`).join(' | ');
+    const fmtSigned = (n: number) => `${n >= 0 ? '+' : ''}${n}`;
+    const topDeltas = jr.playerStatDeltas
+      .slice(0, 4)
+      .map(
+        (p) =>
+          `${p.name} (${fmtSigned(p.goalsDelta)}G/${fmtSigned(p.assistsDelta)}A/${fmtSigned(p.minutesDelta)}m${
+            p.ratingTo != null ? `, ${p.ratingTo.toFixed(2)}rt` : ''
+          })`
+      )
+      .join(', ');
+    const compTo = jr.competitionComparison?.to;
+    const compLine = compTo
+      ? `Competition Split (${jr.toSeason}): League ${formatBucketCompactSummary(compTo.league)} | Cup ${formatBucketCompactSummary(compTo.cup)} | Friendlies ${formatBucketCompactSummary(compTo.friendly)}`
+      : null;
+    const kpiLine = `KPI Deltas: Squad ${jr.baseDiff.kpiDeltas.toSquadCount} (${jr.baseDiff.kpiDeltas.squadCountDelta >= 0 ? '+' : ''}${jr.baseDiff.kpiDeltas.squadCountDelta}), Avg ★ ${jr.baseDiff.kpiDeltas.toAvgAbility.toFixed(2)} (${jr.baseDiff.kpiDeltas.avgAbilityDelta >= 0 ? '+' : ''}${jr.baseDiff.kpiDeltas.avgAbilityDelta.toFixed(2)}★), Wages £${jr.baseDiff.kpiDeltas.toTotalWagePw.toLocaleString()}/wk (${formatSignedCurrency(jr.baseDiff.kpiDeltas.totalWageDeltaPw)}/wk), Balance ${jr.baseDiff.kpiDeltas.fromBalance || '--'} -> ${jr.baseDiff.kpiDeltas.toBalance || '--'}`;
+    sections.push(
+      [
+        `=== SAVE-TO-SAVE JOURNEY REPORT (${jr.fromDate} [${jr.fromSeason}] -> ${jr.toDate} [${jr.toSeason}], ${jr.timeline.length} saves${jr.sameSeason ? '' : ' — CROSS-SEASON'}) ===`,
+        kpiLine,
+        compLine,
+        `Improved: ${imp || 'None'}`,
+        `Worsened: ${wor || 'None'}`,
+        topDeltas ? `Standout Player Deltas: ${topDeltas}` : null,
+        note ? `Things to Note: ${note}` : null,
+      ]
+        .filter(Boolean)
+        .join('\n')
+    );
   }
 
   // 8. First-Team & Key Squad Profiles with FULL Season Stats, Wages, Standing, PosFam & Transfer Verdict (zero raw CA/PA)
@@ -682,27 +1119,48 @@ export function buildLiveTacticalAnalystContext(
     return exp && exp !== 'N/A' && exp !== '--' ? exp : '-';
   };
 
-  const topSquad = [...players]
-    .sort((a, b) => {
-      const unitA = a.teamSlot === undefined || a.teamSlot === 0 ? 0 : 1;
-      const unitB = b.teamSlot === undefined || b.teamSlot === 0 ? 0 : 1;
-      const hasAction = (p: PlayerRecord) => {
-        const adv = adviceById.get(p.id);
-        return adv && (adv.verdict !== 'Hold' || adv.tags.some((t) => t.startsWith('Promote to Backup')))
-          ? 0
-          : 1;
-      };
-      const rank = (s: PlayerRecord['status']) =>
-        s === 'Starter' ? 0 : s === 'Rotation' ? 1 : s === 'Youth' ? 2 : s === 'Surplus' ? 3 : 4;
-      return (
-        unitA - unitB ||
-        (unitA === 1 ? hasAction(a) - hasAction(b) : 0) ||
-        (b.ability || 0) - (a.ability || 0) ||
-        (b.minutes || 0) - (a.minutes || 0) ||
-        rank(a.status) - rank(b.status)
-      );
-    })
-    .slice(0, 26);
+  const queryLower = (state.userQuery || '').trim().toLowerCase();
+  const isMentionedInQuery = (p: PlayerRecord): boolean => {
+    if (!queryLower) return false;
+    const fullLower = p.name.trim().toLowerCase();
+    if (fullLower.length >= 3 && queryLower.includes(fullLower)) return true;
+    const parts = fullLower.split(/\s+/).filter(Boolean);
+    const surname = parts[parts.length - 1] || '';
+    if (surname.length >= 4) {
+      const escaped = surname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (new RegExp(`\\b${escaped}\\b`, 'i').test(queryLower)) return true;
+    }
+    return false;
+  };
+
+  const sortedSquad = [...players].sort((a, b) => {
+    const unitA = a.teamSlot === undefined || a.teamSlot === 0 ? 0 : 1;
+    const unitB = b.teamSlot === undefined || b.teamSlot === 0 ? 0 : 1;
+    const hasAction = (p: PlayerRecord) => {
+      const adv = adviceById.get(p.id);
+      return adv && (adv.verdict !== 'Hold' || adv.tags.some((t) => t.startsWith('Promote to Backup')))
+        ? 0
+        : 1;
+    };
+    const rank = (s: PlayerRecord['status']) =>
+      s === 'Starter' ? 0 : s === 'Rotation' ? 1 : s === 'Youth' ? 2 : s === 'Surplus' ? 3 : 4;
+    return (
+      unitA - unitB ||
+      (unitA === 1 ? hasAction(a) - hasAction(b) : 0) ||
+      (b.ability || 0) - (a.ability || 0) ||
+      (b.minutes || 0) - (a.minutes || 0) ||
+      rank(a.status) - rank(b.status)
+    );
+  });
+
+  const queriedPlayers = queryLower
+    ? sortedSquad.filter((p) => isMentionedInQuery(p))
+    : [];
+  const queriedIds = new Set(queriedPlayers.map((p) => p.id));
+  const topSquad = [
+    ...queriedPlayers,
+    ...sortedSquad.filter((p) => !queriedIds.has(p.id)),
+  ].slice(0, 26);
 
   const squadLines = topSquad.map((p) => {
     const a = p.attributes;
@@ -767,18 +1225,26 @@ export function buildLiveTacticalAnalystContext(
   sections.push(
     `=== SQUAD PROFILES & SEASON STATS (${topSquad.length} OF ${players.length}) ===\n${squadLines.join('\n')}`
   );
-  sections.push(
-    buildAiResearchContextBlock({
-      clubName: clubName || 'Club',
-      players: topSquad,
-      includeMeta: true,
-      includeDualPhase: true,
-    })
-  );
+  const researchBlock = buildAiResearchContextBlock({
+    clubName: clubName || 'Club',
+    players: topSquad,
+    includeMeta: true,
+    includeDualPhase: true,
+  });
 
-  let output = sections.join('\n\n');
-  if (output.length > MAX_LIVE_ANALYST_CONTEXT_CHARS) {
-    output = `${output.slice(0, MAX_LIVE_ANALYST_CONTEXT_CHARS - 20).trimEnd()}\n[Context trimmed]`;
+  const coreOutput = sections.join('\n\n');
+  let output: string;
+  if (coreOutput.length + 2 + researchBlock.length <= MAX_LIVE_ANALYST_CONTEXT_CHARS) {
+    output = `${coreOutput}\n\n${researchBlock}`;
+  } else if (coreOutput.length <= MAX_LIVE_ANALYST_CONTEXT_CHARS) {
+    // Preserve Squad Profiles & Journey Report intact; trim optional research appendix first
+    const remaining = MAX_LIVE_ANALYST_CONTEXT_CHARS - coreOutput.length - 2;
+    output =
+      remaining > 180
+        ? `${coreOutput}\n\n${researchBlock.slice(0, remaining).trimEnd()}`
+        : coreOutput;
+  } else {
+    output = `${coreOutput.slice(0, MAX_LIVE_ANALYST_CONTEXT_CHARS - 20).trimEnd()}\n[Context trimmed]`;
   }
   return output;
 }
@@ -849,18 +1315,57 @@ export function applyAnalystPlayerUpdates(
 
   const matchedNames: string[] = [];
 
+  const normName = (s: string) =>
+    s
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase();
+
+  // Resolve each update to at most ONE best-matching squad player so shared surnames never collide
+  const updateByPlayerId = new Map<string, ExtendedPlayerAutoUpdate>();
+  for (const u of updates) {
+    if (!u.name) continue;
+    const target = normName(u.name);
+    if (!target) continue;
+
+    // 1. Exact full-name match
+    let matched = players.find((p) => normName(p.name) === target);
+
+    // 2. Unique full-name containment match (only when target is >= 4 chars)
+    if (!matched && target.length >= 4) {
+      const containMatches = players.filter((p) => {
+        const pNorm = normName(p.name);
+        return pNorm.includes(target) || target.includes(pNorm);
+      });
+      if (containMatches.length === 1) {
+        matched = containMatches[0];
+      }
+    }
+
+    // 3. Unique exact surname match (surname >= 4 chars and only one player has that surname)
+    if (!matched) {
+      const targetParts = target.split(/\s+/).filter(Boolean);
+      const targetLast = targetParts[targetParts.length - 1] || '';
+      if (targetLast.length >= 4) {
+        const surnameMatches = players.filter((p) => {
+          const pParts = normName(p.name).split(/\s+/).filter(Boolean);
+          const pLast = pParts[pParts.length - 1] || '';
+          return pLast === targetLast;
+        });
+        if (surnameMatches.length === 1) {
+          matched = surnameMatches[0];
+        }
+      }
+    }
+
+    if (matched) {
+      updateByPlayerId.set(matched.id, u);
+    }
+  }
+
   const updatedPlayers = players.map((player) => {
-    const match = updates.find((u) => {
-      if (!u.name) return false;
-      const target = u.name.trim().toLowerCase();
-      const pName = player.name.toLowerCase();
-      const lastWord = pName.split(' ').slice(-1)[0];
-      return (
-        pName === target ||
-        pName.includes(target) ||
-        (lastWord.length >= 3 && target.includes(lastWord))
-      );
-    });
+    const match = updateByPlayerId.get(player.id);
     if (!match) return player;
 
     if (!matchedNames.includes(player.name)) {
@@ -930,3 +1435,907 @@ export function applyAnalystPlayerUpdates(
 
   return { updatedPlayers, matchedNames };
 }
+
+/**
+ * Mirrors server/config.ts MAX_CONTEXT_CHARS so client-side diagnostics catch
+ * any payload that would be silently truncated by the server security guard.
+ */
+export const SERVER_MAX_CONTEXT_CHARS = 18_000;
+
+export interface AnalystPayloadSectionMetric {
+  header: string;
+  chars: number;
+  lines: number;
+  pctOfLimit: number;
+}
+
+export interface AnalystRequiredFieldAudit {
+  clubStanding: {
+    ok: boolean;
+    value: string | null;
+    source: 'decoded_fm_save' | 'fallback_state' | 'missing';
+    decodedExpected: string | null;
+  };
+  nextOpponent: {
+    ok: boolean;
+    value: string | null;
+    competition: string | null;
+    source: 'decoded_fm_save' | 'fallback_state' | 'missing';
+    decodedExpected: string | null;
+  };
+  squadRoleFits: {
+    ok: boolean;
+    warRoomSectionPresent: boolean;
+    warRoomFilledSlots: number;
+    warRoomAvgFitPct: number | null;
+    lastTacticSectionPresent: boolean;
+    tacticStartersMapped: number;
+    decodedIpRoles: number;
+    decodedOopRoles: number;
+    inferredFallbackRoles: number;
+  };
+  boardPromises: {
+    ok: boolean;
+    governanceSectionPresent: boolean;
+    managerContractMapped: boolean;
+    boardObjectivesCount: number;
+    clubPromisesCount: number;
+    playerPromiseAuditsCount: number;
+    atRiskPromisesCount: number;
+    boardObjectivesInPayload: boolean;
+    clubPromisesInPayload: boolean;
+    playingTimeAuditInPayload: boolean;
+  };
+}
+
+export interface AnalystRequestDiagnosticsMeta {
+  message?: string;
+  history?: Array<{ role: 'user' | 'assistant'; text: string }>;
+  images?: unknown[];
+  importedFileContext?: string;
+  reasoningMode?: AnalystReasoningMode | string;
+  nextEventNumber?: number;
+  currentSaveDate?: string;
+  clubName?: string;
+  /** Pass pre-built context string to avoid recomputing when already generated */
+  liveAppContextOverride?: string;
+}
+
+export interface AnalystPayloadDiagnosticsReport {
+  timestamp: string;
+  clubName: string;
+  saveDate: string;
+  hasDecodedFmSave: boolean;
+  limits: {
+    liveContextChars: number;
+    liveContextMaxChars: number;
+    serverMaxChars: number;
+    liveUtilizationPct: number;
+    serverUtilizationPct: number;
+    withinLiveLimit: boolean;
+    withinServerLimit: boolean;
+    wasTrimmed: boolean;
+    importedFileContextChars: number;
+    importedWithinServerLimit: boolean;
+    historyTurns: number;
+    historyChars: number;
+    messageChars: number;
+    imageCount: number;
+    totalJsonPayloadChars: number;
+  };
+  sections: AnalystPayloadSectionMetric[];
+  requiredData: AnalystRequiredFieldAudit;
+  privacyAudit: {
+    zeroRawCaPa: boolean;
+    flaggedTokens: string[];
+  };
+  warnings: string[];
+  passed: boolean;
+  exactPayloadStructure: {
+    endpoint: string;
+    message: string;
+    history: Array<{ role: 'user' | 'assistant'; chars: number }>;
+    imageCount: number;
+    importedFileContextChars: number;
+    liveAppContextChars: number;
+    reasoningMode?: string;
+    nextEventNumber?: number;
+    currentSaveDate?: string;
+    clubName?: string;
+    liveAppContext: string;
+  };
+}
+
+export interface AnalystDiagnosticsLogger {
+  groupCollapsed?: (...args: unknown[]) => void;
+  groupEnd?: () => void;
+  table?: (tabularData: unknown) => void;
+  log?: (...args: unknown[]) => void;
+  warn?: (...args: unknown[]) => void;
+  error?: (...args: unknown[]) => void;
+}
+
+function parseContextSections(liveAppContext: string): AnalystPayloadSectionMetric[] {
+  if (!liveAppContext.trim()) return [];
+  const headerRegex = /^===\s*(.+?)\s*===$/gm;
+  const matches: Array<{ header: string; index: number }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = headerRegex.exec(liveAppContext)) !== null) {
+    matches.push({ header: m[1].trim(), index: m.index });
+  }
+  if (matches.length === 0) {
+    return [
+      {
+        header: 'UNSECTIONED',
+        chars: liveAppContext.length,
+        lines: liveAppContext.split('\n').length,
+        pctOfLimit: Number(
+          ((liveAppContext.length / MAX_LIVE_ANALYST_CONTEXT_CHARS) * 100).toFixed(1)
+        ),
+      },
+    ];
+  }
+
+  return matches.map((entry, idx) => {
+    const start = entry.index;
+    const end = idx + 1 < matches.length ? matches[idx + 1].index : liveAppContext.length;
+    const chunk = liveAppContext.slice(start, end).trim();
+    return {
+      header: entry.header,
+      chars: chunk.length,
+      lines: chunk.split('\n').length,
+      pctOfLimit: Number(
+        ((chunk.length / MAX_LIVE_ANALYST_CONTEXT_CHARS) * 100).toFixed(1)
+      ),
+    };
+  });
+}
+
+/**
+ * Inspects the exact payload structure sent to the AI Tactical Analyst:
+ * - Verifies liveAppContext & importedFileContext stay within client & server char limits
+ * - Breaks down every section's character budget
+ * - Audits required .fm save mappings (club standing, next opponent, squad role fits, board promises)
+ * - Verifies zero raw CA/PA integers leak into the prompt payload
+ */
+export function diagnoseTacticalAnalystPayload(
+  state: LiveAnalystStateInput,
+  requestMeta: AnalystRequestDiagnosticsMeta = {}
+): AnalystPayloadDiagnosticsReport {
+  const liveAppContext =
+    requestMeta.liveAppContextOverride ?? buildLiveTacticalAnalystContext(state);
+  const decoded = state.hydratedFmSave?.decodedPayload ?? null;
+  const hasDecodedFmSave = Boolean(decoded);
+  const effectiveClub =
+    requestMeta.clubName ||
+    decoded?.meta?.clubName ||
+    (state.clubName && state.clubName !== '--' ? state.clubName : 'Unknown Club');
+  const effectiveDate =
+    requestMeta.currentSaveDate ||
+    state.saveDate ||
+    decoded?.meta?.gameDateDmy ||
+    '--';
+
+  const message = requestMeta.message ?? state.userQuery ?? '';
+  const history = requestMeta.history ?? [];
+  const images = requestMeta.images ?? [];
+  const importedFileContext = requestMeta.importedFileContext ?? '';
+
+  const liveContextChars = liveAppContext.length;
+  const importedFileContextChars = importedFileContext.length;
+  const historyChars = history.reduce((sum, h) => sum + (h.text?.length ?? 0), 0);
+  const messageChars = message.length;
+  const wasTrimmed = liveAppContext.includes('[Context trimmed]');
+  const withinLiveLimit = liveContextChars <= MAX_LIVE_ANALYST_CONTEXT_CHARS;
+  const withinServerLimit = liveContextChars <= SERVER_MAX_CONTEXT_CHARS;
+  const importedWithinServerLimit = importedFileContextChars <= SERVER_MAX_CONTEXT_CHARS;
+
+  const estimatedRequestJson = JSON.stringify({
+    message,
+    history,
+    imageCount: images.length,
+    importedFileContext: importedFileContext || undefined,
+    liveAppContext,
+    reasoningMode: requestMeta.reasoningMode,
+    nextEventNumber: requestMeta.nextEventNumber,
+    currentSaveDate: effectiveDate,
+    clubName: effectiveClub,
+  });
+
+  const sections = parseContextSections(liveAppContext);
+  const warnings: string[] = [];
+
+  // 1. Character Limit Checks
+  if (!withinLiveLimit) {
+    warnings.push(
+      `liveAppContext (${liveContextChars} chars) exceeds MAX_LIVE_ANALYST_CONTEXT_CHARS (${MAX_LIVE_ANALYST_CONTEXT_CHARS}).`
+    );
+  }
+  if (!withinServerLimit) {
+    warnings.push(
+      `liveAppContext (${liveContextChars} chars) exceeds SERVER_MAX_CONTEXT_CHARS (${SERVER_MAX_CONTEXT_CHARS}) and will be truncated by the server guard.`
+    );
+  }
+  if (wasTrimmed) {
+    warnings.push(
+      `liveAppContext hit the ${MAX_LIVE_ANALYST_CONTEXT_CHARS}-char ceiling and was trimmed — verify tail sections (Squad Profiles / Journey Report) were not cut.`
+    );
+  }
+  if (!importedWithinServerLimit) {
+    warnings.push(
+      `importedFileContext (${importedFileContextChars} chars) exceeds SERVER_MAX_CONTEXT_CHARS (${SERVER_MAX_CONTEXT_CHARS}) and will be truncated server-side.`
+    );
+  }
+
+  // 2. Club Standing Audit
+  const standingMatch = liveAppContext.match(/^Standing:\s*(.+)$/m);
+  const standingValue = standingMatch ? standingMatch[1].trim() : null;
+  const decodedStanding = decoded?.leagueStanding ?? null;
+  const decodedStandingExpected =
+    decodedStanding && typeof decodedStanding.position === 'number'
+      ? `#${decodedStanding.position} (${decodedStanding.points} pts, ${decodedStanding.played} GP)`
+      : state.hydratedFmSave?.leagueRecordLabel || null;
+  const standingMeaningful =
+    Boolean(standingValue) &&
+    standingValue !== '--' &&
+    standingValue !== '-- · --' &&
+    !standingValue!.startsWith('0GP (0W-0D-0L, 0Pts) · --');
+  const standingMatchesDecoded =
+    !decodedStanding ||
+    !standingValue ||
+    standingValue.includes(`#${decodedStanding.position}`) ||
+    standingValue.includes(`${decodedStanding.points}pts`) ||
+    standingValue.includes(`${decodedStanding.points}Pts`) ||
+    standingValue.includes(`${decodedStanding.points} pts`);
+  const standingOk =
+    Boolean(standingValue) &&
+    (standingMeaningful || !hasDecodedFmSave) &&
+    standingMatchesDecoded;
+  if (hasDecodedFmSave && !standingOk) {
+    warnings.push(
+      `Club standing mapping issue: emitted "${standingValue ?? 'MISSING'}" (expected from decoded save: ${decodedStandingExpected ?? 'standing data'}).`
+    );
+  }
+
+  // 3. Next Opponent Audit
+  const nextMatch = liveAppContext.match(/^Next:\s*(.+)$/m);
+  const nextValue = nextMatch ? nextMatch[1].trim() : null;
+  const decodedNextFixture = decoded?.upcomingFixtures?.[0] ?? null;
+  const decodedNextOpponent = decodedNextFixture?.opponent ?? null;
+  const nextCompetition = decodedNextFixture?.competition ?? null;
+  const nextHasOpponent =
+    Boolean(nextValue) &&
+    nextValue !== '--' &&
+    !/^awaiting/i.test(nextValue!) &&
+    !/^tbd$/i.test(nextValue!);
+  const nextMatchesDecoded =
+    !decodedNextOpponent ||
+    (Boolean(nextValue) &&
+      nextValue!.toLowerCase().includes(decodedNextOpponent.toLowerCase()));
+  const nextOk =
+    (!decodedNextOpponent && nextHasOpponent) ||
+    (Boolean(decodedNextOpponent) && nextMatchesDecoded) ||
+    (!hasDecodedFmSave && state.players.length === 0);
+  if (decodedNextOpponent && !nextMatchesDecoded) {
+    warnings.push(
+      `Next opponent "${decodedNextOpponent}" from decoded .fm save is missing from LIVE CLUB SNAPSHOT ("Next: ${nextValue ?? 'MISSING'}").`
+    );
+  } else if (hasDecodedFmSave && !nextHasOpponent && decoded?.upcomingFixtures && decoded.upcomingFixtures.length > 0) {
+    warnings.push(
+      `Next fixture was present in decoded save but not mapped into LIVE CLUB SNAPSHOT.`
+    );
+  }
+
+  // 4. Squad Role Fits Audit (War Room XI + Last-Match Decoded IP/OOP Blueprint)
+  const warRoomHeaderIdx = liveAppContext.search(
+    /^=== (?:WAR ROOM COMPUTED .+? STARTING XI|ACTIVE PITCH BUILDER LINEUP OVERRIDE .+?) ===$/m
+  );
+  const warRoomSectionPresent = warRoomHeaderIdx >= 0;
+  let warRoomBody = '';
+  if (warRoomHeaderIdx >= 0) {
+    const afterHeader = liveAppContext.slice(warRoomHeaderIdx);
+    const firstNewline = afterHeader.indexOf('\n');
+    if (firstNewline >= 0) {
+      const rest = afterHeader.slice(firstNewline + 1);
+      const nextSectionIdx = rest.search(/\n\n===/);
+      warRoomBody = nextSectionIdx >= 0 ? rest.slice(0, nextSectionIdx) : rest;
+    }
+  }
+  const avgFitMatch = warRoomBody.match(/AvgFit:\s*(\d+)%/);
+  const warRoomAvgFitPct = avgFitMatch ? Number(avgFitMatch[1]) : null;
+  const warRoomBodyLines = warRoomBody
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const warRoomXiLine =
+    warRoomBodyLines.find((l) => !l.startsWith('AvgFit:') && l.includes(':')) ?? '';
+  const warRoomSlots = warRoomXiLine
+    ? warRoomXiLine.split(' | ').filter((s) => s.trim().length > 0)
+    : [];
+  const warRoomFilledSlots = warRoomSlots.filter((s) => !/:OPEN\(/.test(s)).length;
+
+  const lastTacticSectionPresent = liveAppContext.includes(
+    '=== LAST GAME / ACTIVE SAVE TACTIC BLUEPRINT'
+  );
+  const startersUsedLine =
+    liveAppContext.match(/^Starters Used .+?:\s*(.+)$/m)?.[1] ?? '';
+  const starterRoleTokens = Array.from(
+    startersUsedLine.matchAll(/\(IP:([^/]+)\/OOP:([^)\s]+(?:\s+[^)\s]+)*?)(?:\s+\d+\.\d+rt|\s+PI\[|\))/g)
+  );
+  let decodedIpRoles = 0;
+  let decodedOopRoles = 0;
+  let inferredFallbackRoles = 0;
+  for (const tok of starterRoleTokens) {
+    const ipRaw = (tok[1] || '').trim();
+    const oopRaw = (tok[2] || '').trim();
+    if (ipRaw.startsWith('~')) inferredFallbackRoles += 1;
+    else if (ipRaw && ipRaw !== 'Std') decodedIpRoles += 1;
+    if (oopRaw.startsWith('~')) inferredFallbackRoles += 1;
+    else if (oopRaw && oopRaw !== 'Std') decodedOopRoles += 1;
+  }
+
+  const expectedTacticInSave = Boolean(
+    (decoded?.tactics && decoded.tactics.length > 0) || state.hydratedFmSave?.lastMatchTactic
+  );
+  const squadRoleFitsOk =
+    state.players.length === 0 ||
+    (warRoomSectionPresent &&
+      warRoomFilledSlots >= Math.min(11, state.players.length) &&
+      (!expectedTacticInSave || lastTacticSectionPresent));
+  if (state.players.length > 0 && !warRoomSectionPresent) {
+    warnings.push('WAR ROOM COMPUTED DUAL-PHASE XI section is missing from liveAppContext.');
+  }
+  if (state.players.length >= 11 && warRoomFilledSlots < 11) {
+    warnings.push(
+      `Only ${warRoomFilledSlots}/11 War Room XI role-fit slots were filled despite ${state.players.length} squad players.`
+    );
+  }
+  if (expectedTacticInSave && !lastTacticSectionPresent) {
+    warnings.push(
+      'Decoded .fm save contains a club tactic, but LAST GAME / ACTIVE SAVE TACTIC BLUEPRINT is missing from liveAppContext.'
+    );
+  }
+
+  // 5. Board Promises & Governance Audit
+  const liveDict = loadFm27BinaryDictionary();
+  const gov = decoded
+    ? buildClubGovernanceState(decoded, state.players, liveDict)
+    : state.hydratedFmSave?.governance ?? null;
+  const governanceSectionPresent = liveAppContext.includes(
+    '=== CLUB GOVERNANCE, MANAGER CONTRACT, BOARD TARGETS & PROMISES ==='
+  );
+  const managerContractMapped =
+    /^Manager Contract:\s*(?!.*not exposed)/m.test(liveAppContext);
+  const boardObjectivesCount = gov?.boardObjectives.length ?? 0;
+  const clubPromisesCount = gov?.clubPromises.length ?? 0;
+  const playerPromiseAuditsCount = gov?.playerPromiseAudits.length ?? 0;
+  const atRiskPromisesCount =
+    gov?.playerPromiseAudits.filter(
+      (a) => a.status === 'breached' || a.status === 'at_risk'
+    ).length ?? 0;
+  const boardObjectivesInPayload = /^Board Objectives:/m.test(liveAppContext);
+  const clubPromisesInPayload = /^Active Club\/Manager Promises:/m.test(liveAppContext);
+  const playingTimeAuditInPayload = /^Squad Playing-Time Promise Audit/m.test(liveAppContext);
+
+  const boardPromisesOk =
+    !gov ||
+    (governanceSectionPresent &&
+      (boardObjectivesCount === 0 || boardObjectivesInPayload) &&
+      (clubPromisesCount === 0 || clubPromisesInPayload) &&
+      (playerPromiseAuditsCount === 0 || playingTimeAuditInPayload));
+
+  if (gov && !governanceSectionPresent) {
+    warnings.push(
+      'CLUB GOVERNANCE, MANAGER CONTRACT, BOARD TARGETS & PROMISES section is missing from liveAppContext.'
+    );
+  }
+  if (boardObjectivesCount > 0 && !boardObjectivesInPayload) {
+    warnings.push(
+      `${boardObjectivesCount} decoded board objective(s) did not map into liveAppContext.`
+    );
+  }
+  if (clubPromisesCount > 0 && !clubPromisesInPayload) {
+    warnings.push(
+      `${clubPromisesCount} decoded club/manager promise(s) did not map into liveAppContext.`
+    );
+  }
+  if (playerPromiseAuditsCount > 0 && !playingTimeAuditInPayload) {
+    warnings.push(
+      `${playerPromiseAuditsCount} squad playing-time promise audit(s) did not map into liveAppContext.`
+    );
+  }
+
+  // 6. Zero Raw CA/PA Leak Check
+  const rawCaPaMatches = Array.from(
+    liveAppContext.matchAll(/\b(?:CA|PA)\s*[:=]\s*\d+\b/gi)
+  ).map((hit) => hit[0]);
+  const zeroRawCaPa = rawCaPaMatches.length === 0;
+  if (!zeroRawCaPa) {
+    warnings.push(
+      `Privacy policy breach: raw numeric CA/PA token(s) detected in liveAppContext: ${rawCaPaMatches.join(', ')}`
+    );
+  }
+
+  return {
+    timestamp: new Date().toISOString(),
+    clubName: effectiveClub,
+    saveDate: effectiveDate,
+    hasDecodedFmSave,
+    limits: {
+      liveContextChars,
+      liveContextMaxChars: MAX_LIVE_ANALYST_CONTEXT_CHARS,
+      serverMaxChars: SERVER_MAX_CONTEXT_CHARS,
+      liveUtilizationPct: Number(
+        ((liveContextChars / MAX_LIVE_ANALYST_CONTEXT_CHARS) * 100).toFixed(1)
+      ),
+      serverUtilizationPct: Number(
+        ((liveContextChars / SERVER_MAX_CONTEXT_CHARS) * 100).toFixed(1)
+      ),
+      withinLiveLimit,
+      withinServerLimit,
+      wasTrimmed,
+      importedFileContextChars,
+      importedWithinServerLimit,
+      historyTurns: history.length,
+      historyChars,
+      messageChars,
+      imageCount: images.length,
+      totalJsonPayloadChars: estimatedRequestJson.length,
+    },
+    sections,
+    requiredData: {
+      clubStanding: {
+        ok: standingOk,
+        value: standingValue,
+        source: decodedStanding
+          ? 'decoded_fm_save'
+          : standingMeaningful
+            ? 'fallback_state'
+            : 'missing',
+        decodedExpected: decodedStandingExpected,
+      },
+      nextOpponent: {
+        ok: nextOk,
+        value: nextValue,
+        competition: nextCompetition,
+        source: decodedNextOpponent
+          ? 'decoded_fm_save'
+          : nextHasOpponent
+            ? 'fallback_state'
+            : 'missing',
+        decodedExpected: decodedNextOpponent,
+      },
+      squadRoleFits: {
+        ok: squadRoleFitsOk,
+        warRoomSectionPresent,
+        warRoomFilledSlots,
+        warRoomAvgFitPct,
+        lastTacticSectionPresent,
+        tacticStartersMapped: starterRoleTokens.length,
+        decodedIpRoles,
+        decodedOopRoles,
+        inferredFallbackRoles,
+      },
+      boardPromises: {
+        ok: boardPromisesOk,
+        governanceSectionPresent,
+        managerContractMapped,
+        boardObjectivesCount,
+        clubPromisesCount,
+        playerPromiseAuditsCount,
+        atRiskPromisesCount,
+        boardObjectivesInPayload,
+        clubPromisesInPayload,
+        playingTimeAuditInPayload,
+      },
+    },
+    privacyAudit: {
+      zeroRawCaPa,
+      flaggedTokens: rawCaPaMatches,
+    },
+    warnings,
+    passed: warnings.length === 0,
+    exactPayloadStructure: {
+      endpoint: '/api/fm27/tactical-chat',
+      message,
+      history: history.map((h) => ({
+        role: h.role,
+        chars: h.text?.length ?? 0,
+      })),
+      imageCount: images.length,
+      importedFileContextChars,
+      liveAppContextChars: liveContextChars,
+      reasoningMode: requestMeta.reasoningMode,
+      nextEventNumber: requestMeta.nextEventNumber,
+      currentSaveDate: effectiveDate,
+      clubName: effectiveClub,
+      liveAppContext,
+    },
+  };
+}
+
+/**
+ * Runs `diagnoseTacticalAnalystPayload` and logs a structured, collapsible
+ * payload audit to the developer console (and saves the latest report to
+ * `globalThis.__FM27_LAST_ANALYST_DIAGNOSTICS__` for inspection).
+ */
+export function logTacticalAnalystPayloadDiagnostics(
+  state: LiveAnalystStateInput,
+  requestMeta: AnalystRequestDiagnosticsMeta = {},
+  logger: AnalystDiagnosticsLogger = console
+): AnalystPayloadDiagnosticsReport {
+  const report = diagnoseTacticalAnalystPayload(state, requestMeta);
+
+  try {
+    (globalThis as Record<string, unknown>).__FM27_LAST_ANALYST_DIAGNOSTICS__ =
+      report;
+  } catch {
+    // Non-writable globalThis in strict sandboxes — safe to ignore
+  }
+
+  const badge = report.passed ? 'PASS' : `WARN (${report.warnings.length})`;
+  const title = `[FM27 Analyst Payload Diagnostics] ${badge} | ${report.clubName} (${report.saveDate}) | ${report.limits.liveContextChars.toLocaleString()}/${report.limits.liveContextMaxChars.toLocaleString()} chars (${report.limits.liveUtilizationPct}%) | Server Cap ${report.limits.serverUtilizationPct}%`;
+
+  logger.groupCollapsed?.(title);
+
+  logger.table?.({
+    liveAppContext: {
+      chars: report.limits.liveContextChars,
+      limit: report.limits.liveContextMaxChars,
+      serverCap: report.limits.serverMaxChars,
+      status:
+        report.limits.withinLiveLimit &&
+        report.limits.withinServerLimit &&
+        !report.limits.wasTrimmed
+          ? 'OK'
+          : 'EXCEEDED / TRIMMED',
+    },
+    importedFileContext: {
+      chars: report.limits.importedFileContextChars,
+      limit: report.limits.serverMaxChars,
+      serverCap: report.limits.serverMaxChars,
+      status: report.limits.importedWithinServerLimit ? 'OK' : 'EXCEEDED',
+    },
+    chatMessageAndHistory: {
+      chars: report.limits.messageChars + report.limits.historyChars,
+      limit: `${report.limits.historyTurns} turns`,
+      serverCap: `${report.limits.imageCount} img(s)`,
+      status: `Total JSON ${report.limits.totalJsonPayloadChars.toLocaleString()} chars`,
+    },
+  });
+
+  logger.table?.(
+    report.sections.map((s) => ({
+      section: s.header,
+      chars: s.chars,
+      lines: s.lines,
+      pctOfLimit: `${s.pctOfLimit}%`,
+    }))
+  );
+
+  logger.table?.({
+    clubStanding: {
+      ok: report.requiredData.clubStanding.ok,
+      source: report.requiredData.clubStanding.source,
+      mappedValue: report.requiredData.clubStanding.value ?? 'MISSING',
+    },
+    nextOpponent: {
+      ok: report.requiredData.nextOpponent.ok,
+      source: report.requiredData.nextOpponent.source,
+      mappedValue: report.requiredData.nextOpponent.value ?? 'MISSING',
+    },
+    squadRoleFits: {
+      ok: report.requiredData.squadRoleFits.ok,
+      source: report.requiredData.squadRoleFits.lastTacticSectionPresent
+        ? 'war_room + decoded_tactic'
+        : 'war_room_only',
+      mappedValue: `${report.requiredData.squadRoleFits.warRoomFilledSlots}/11 XI (Fit ${report.requiredData.squadRoleFits.warRoomAvgFitPct ?? '--'}/100) · Decoded IP:${report.requiredData.squadRoleFits.decodedIpRoles} OOP:${report.requiredData.squadRoleFits.decodedOopRoles} Inferred:${report.requiredData.squadRoleFits.inferredFallbackRoles}`,
+    },
+    boardPromises: {
+      ok: report.requiredData.boardPromises.ok,
+      source: report.requiredData.boardPromises.governanceSectionPresent
+        ? 'decoded_governance'
+        : 'not_loaded',
+      mappedValue: `Obj:${report.requiredData.boardPromises.boardObjectivesCount} Promises:${report.requiredData.boardPromises.clubPromisesCount} PlayingTime:${report.requiredData.boardPromises.playerPromiseAuditsCount} (${report.requiredData.boardPromises.atRiskPromisesCount} at-risk)`,
+    },
+    zeroRawCaPa: {
+      ok: report.privacyAudit.zeroRawCaPa,
+      source: 'privacy_guard',
+      mappedValue: report.privacyAudit.zeroRawCaPa
+        ? 'Clean (0 raw CA/PA)'
+        : report.privacyAudit.flaggedTokens.join(', '),
+    },
+  });
+
+  if (report.warnings.length > 0) {
+    for (const w of report.warnings) {
+      logger.warn?.(`[FM27 Analyst Diagnostics Warning] ${w}`);
+    }
+  }
+
+  const preFlight = validatePreFlightAnalystPayload(report);
+  if (!preFlight.valid && preFlight.warningMessage) {
+    logger.warn?.(`[FM27 Pre-Flight Payload Validator] ${preFlight.warningMessage}`);
+  }
+
+  logger.log?.('Exact AI Request Payload Structure:', report.exactPayloadStructure);
+  logger.groupEnd?.();
+
+  return report;
+}
+
+export type PreFlightRequiredFieldKey =
+  | 'clubStanding'
+  | 'nextOpponent'
+  | 'squadRoleFits'
+  | 'boardPromises';
+
+export interface PreFlightAnalystPayload {
+  clubStanding?: unknown;
+  nextOpponent?: unknown;
+  squadRoleFits?: unknown;
+  boardPromises?: unknown;
+}
+
+export interface PreFlightFieldCheck {
+  key: PreFlightRequiredFieldKey;
+  label: string;
+  present: boolean;
+  detail: string;
+}
+
+export interface PreFlightPayloadValidationResult {
+  valid: boolean;
+  checkedAt: string;
+  missingFields: PreFlightRequiredFieldKey[];
+  missingLabels: string[];
+  fields: Record<PreFlightRequiredFieldKey, PreFlightFieldCheck>;
+  warningTitle: string | null;
+  warningMessage: string | null;
+  needsReimport: boolean;
+}
+
+const PREFLIGHT_FIELD_LABELS: Record<PreFlightRequiredFieldKey, string> = {
+  clubStanding: 'Club Standing',
+  nextOpponent: 'Next Opponent',
+  squadRoleFits: 'Squad Role Fits',
+  boardPromises: 'Board Promises',
+};
+
+const PREFLIGHT_REQUIRED_KEYS: PreFlightRequiredFieldKey[] = [
+  'clubStanding',
+  'nextOpponent',
+  'squadRoleFits',
+  'boardPromises',
+];
+
+function isDiagnosticsReport(
+  input: PreFlightAnalystPayload | AnalystPayloadDiagnosticsReport
+): input is AnalystPayloadDiagnosticsReport {
+  return (
+    typeof input === 'object' &&
+    input !== null &&
+    'requiredData' in input &&
+    typeof (input as AnalystPayloadDiagnosticsReport).requiredData === 'object' &&
+    (input as AnalystPayloadDiagnosticsReport).requiredData !== null &&
+    'exactPayloadStructure' in input
+  );
+}
+
+function isPlaceholderString(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  if (trimmed === '--' || trimmed === '-- · --') return true;
+  if (/^(?:missing|null|undefined|n\/a|tbd|unknown)$/i.test(trimmed)) return true;
+  if (/^awaiting\b/i.test(trimmed)) return true;
+  return false;
+}
+
+function isPresentPayloadValue(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return !isPlaceholderString(value);
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value === 'boolean') return value;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') {
+    const rec = value as Record<string, unknown>;
+    if ('ok' in rec && typeof rec.ok === 'boolean' && !rec.ok) return false;
+    return Object.keys(rec).length > 0;
+  }
+  return false;
+}
+
+/**
+ * Extracts the 4 pre-flight required fields (`clubStanding`, `nextOpponent`,
+ * `squadRoleFits`, `boardPromises`) from a diagnostics report, returning `null`
+ * for any field that failed extraction or is missing from the decoded save payload.
+ */
+export function extractPreFlightPayloadFields(
+  report: AnalystPayloadDiagnosticsReport
+): Record<PreFlightRequiredFieldKey, unknown> {
+  const { clubStanding, nextOpponent, squadRoleFits, boardPromises } =
+    report.requiredData;
+
+  const standingPayload =
+    clubStanding.ok &&
+    clubStanding.value &&
+    clubStanding.source !== 'missing' &&
+    !isPlaceholderString(clubStanding.value)
+      ? clubStanding.value
+      : null;
+
+  const nextOpponentPayload =
+    nextOpponent.ok &&
+    nextOpponent.value &&
+    nextOpponent.source !== 'missing' &&
+    !isPlaceholderString(nextOpponent.value)
+      ? {
+          opponent: nextOpponent.decodedExpected ?? nextOpponent.value,
+          label: nextOpponent.value,
+          competition: nextOpponent.competition,
+          source: nextOpponent.source,
+        }
+      : null;
+
+  const squadRoleFitsPayload =
+    squadRoleFits.ok &&
+    squadRoleFits.warRoomSectionPresent &&
+    squadRoleFits.warRoomFilledSlots > 0
+      ? {
+          warRoomFilledSlots: squadRoleFits.warRoomFilledSlots,
+          warRoomAvgFitPct: squadRoleFits.warRoomAvgFitPct,
+          lastTacticSectionPresent: squadRoleFits.lastTacticSectionPresent,
+          tacticStartersMapped: squadRoleFits.tacticStartersMapped,
+          decodedIpRoles: squadRoleFits.decodedIpRoles,
+          decodedOopRoles: squadRoleFits.decodedOopRoles,
+        }
+      : null;
+
+  const hasExtractedBoardOrPromiseData =
+    boardPromises.boardObjectivesCount > 0 ||
+    boardPromises.clubPromisesCount > 0 ||
+    boardPromises.playerPromiseAuditsCount > 0;
+
+  const boardPromisesPayload =
+    boardPromises.ok &&
+    boardPromises.governanceSectionPresent &&
+    hasExtractedBoardOrPromiseData
+      ? {
+          boardObjectivesCount: boardPromises.boardObjectivesCount,
+          clubPromisesCount: boardPromises.clubPromisesCount,
+          playerPromiseAuditsCount: boardPromises.playerPromiseAuditsCount,
+          atRiskPromisesCount: boardPromises.atRiskPromisesCount,
+        }
+      : null;
+
+  return {
+    clubStanding: standingPayload,
+    nextOpponent: nextOpponentPayload,
+    squadRoleFits: squadRoleFitsPayload,
+    boardPromises: boardPromisesPayload,
+  };
+}
+
+function summarizePresentField(
+  key: PreFlightRequiredFieldKey,
+  value: unknown
+): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return `${value.length} item(s)`;
+  if (typeof value === 'object' && value !== null) {
+    const rec = value as Record<string, unknown>;
+    if (key === 'nextOpponent' && typeof rec.label === 'string') {
+      return rec.label;
+    }
+    if (key === 'squadRoleFits' && typeof rec.warRoomFilledSlots === 'number') {
+      const fitStr =
+        typeof rec.warRoomAvgFitPct === 'number'
+          ? ` · ${rec.warRoomAvgFitPct}% avg fit`
+          : '';
+      return `${rec.warRoomFilledSlots}/11 XI slots mapped${fitStr}`;
+    }
+    if (key === 'boardPromises') {
+      const obj = Number(rec.boardObjectivesCount ?? 0);
+      const prm = Number(rec.clubPromisesCount ?? 0);
+      const aud = Number(rec.playerPromiseAuditsCount ?? 0);
+      if (obj || prm || aud) {
+        return `${obj} targets · ${prm} club promises · ${aud} playing-time audits`;
+      }
+    }
+  }
+  return 'Extracted';
+}
+
+/**
+ * Pre-flight payload validator that verifies the presence (non-missing, non-null)
+ * of `clubStanding`, `nextOpponent`, `squadRoleFits`, and `boardPromises`.
+ * Accepts either a direct pre-flight payload object or an `AnalystPayloadDiagnosticsReport`.
+ * When any required field is missing or null, returns `valid: false`, `needsReimport: true`,
+ * and a clear warning message for the UI's Sync status area.
+ */
+export function validatePreFlightAnalystPayload(
+  payload: PreFlightAnalystPayload | AnalystPayloadDiagnosticsReport | null | undefined
+): PreFlightPayloadValidationResult {
+  const normalized: Record<PreFlightRequiredFieldKey, unknown> =
+    !payload
+      ? {
+          clubStanding: null,
+          nextOpponent: null,
+          squadRoleFits: null,
+          boardPromises: null,
+        }
+      : isDiagnosticsReport(payload)
+        ? extractPreFlightPayloadFields(payload)
+        : {
+            clubStanding: payload.clubStanding ?? null,
+            nextOpponent: payload.nextOpponent ?? null,
+            squadRoleFits: payload.squadRoleFits ?? null,
+            boardPromises: payload.boardPromises ?? null,
+          };
+
+  const fields = {} as Record<PreFlightRequiredFieldKey, PreFlightFieldCheck>;
+  const missingFields: PreFlightRequiredFieldKey[] = [];
+  const missingLabels: string[] = [];
+
+  for (const key of PREFLIGHT_REQUIRED_KEYS) {
+    const value = normalized[key];
+    const present = isPresentPayloadValue(value);
+    const label = PREFLIGHT_FIELD_LABELS[key];
+    fields[key] = {
+      key,
+      label,
+      present,
+      detail: present
+        ? summarizePresentField(key, value)
+        : 'Missing or failed extraction',
+    };
+    if (!present) {
+      missingFields.push(key);
+      missingLabels.push(label);
+    }
+  }
+
+  const valid = missingFields.length === 0;
+  const warningTitle = valid
+    ? null
+    : 'Save Data Failed Extraction — Re-import Required';
+  const warningMessage = valid
+    ? null
+    : `Pre-flight check found missing save data (${missingLabels.join(', ')}). Certain save data failed extraction from your .fm file and needs re-importing for accurate Tactical Analyst advice.`;
+
+  return {
+    valid,
+    checkedAt: new Date().toISOString(),
+    missingFields,
+    missingLabels,
+    fields,
+    warningTitle,
+    warningMessage,
+    needsReimport: !valid,
+  };
+}
+
+/**
+ * Runs diagnostics and pre-flight validation in a single pass against live app state.
+ */
+export function runPreFlightAnalystValidation(
+  state: LiveAnalystStateInput,
+  requestMeta: AnalystRequestDiagnosticsMeta = {},
+  options: {
+    logToConsole?: boolean;
+    logger?: AnalystDiagnosticsLogger;
+  } = {}
+): {
+  diagnostics: AnalystPayloadDiagnosticsReport;
+  payload: Record<PreFlightRequiredFieldKey, unknown>;
+  validation: PreFlightPayloadValidationResult;
+} {
+  const diagnostics = options.logToConsole
+    ? logTacticalAnalystPayloadDiagnostics(state, requestMeta, options.logger)
+    : diagnoseTacticalAnalystPayload(state, requestMeta);
+  const payload = extractPreFlightPayloadFields(diagnostics);
+  const validation = validatePreFlightAnalystPayload(payload);
+  return { diagnostics, payload, validation };
+}
+
+

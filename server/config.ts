@@ -22,7 +22,7 @@ export const PREFERRED_GEMINI_MODELS = [
 export const DEFAULT_AI_TIMEOUT_MS = 45_000;
 export const DEEP_AI_TIMEOUT_MS = 60_000;
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
-export const MAX_CONTEXT_CHARS = 10_000; // 10k-char cap
+export const MAX_CONTEXT_CHARS = 18_000; // Matches 15.5k liveAppContext + headroom so Squad Profiles & Journey are never truncated
 export const DEFAULT_RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
 export const DEFAULT_RATE_LIMIT_MAX_REQUESTS = 60;
 
@@ -33,8 +33,15 @@ export const DEFAULT_RATE_LIMIT_MAX_REQUESTS = 60;
 export function loadServerConfig(
   env: NodeJS.ProcessEnv = process.env
 ): ServerConfig {
-  const port = Number(env.PORT) || 3000;
   const nodeEnv = (env.NODE_ENV || 'development').trim();
+  const isDev = nodeEnv !== 'production';
+  const defaultAppPort = Number(env.DEFAULT_APP_PORT) || 3000;
+  const rawPort = Number(env.PORT);
+  const nginxPort = Number(env.NGINX_PORT);
+  const port =
+    isDev || (rawPort > 0 && nginxPort > 0 && rawPort === nginxPort)
+      ? defaultAppPort
+      : rawPort || defaultAppPort;
   const geminiApiKey = (env.GEMINI_API_KEY || '').trim();
   const rawModelOverride = (env.GEMINI_MODEL || '').trim();
   const rawHubToken = (env.HUB_ACCESS_TOKEN || '').trim();

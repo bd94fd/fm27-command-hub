@@ -128,6 +128,40 @@ export interface DivisionBenchmarks {
   byPositionGroup: Record<'GK' | 'DEF' | 'MID' | 'FWD', DivisionPositionBenchmark>;
 }
 
+export interface TacticInstructionSetting {
+  key: string;
+  label: string;
+  value: string;
+  phase?: 'in_possession' | 'in_transition' | 'out_of_possession' | 'general';
+}
+
+export interface TacticTeamInstructions {
+  inPossession: string[];
+  inTransition: string[];
+  outOfPossession: string[];
+  mentality?: string | null;
+  styleName?: string | null;
+  passingDirectness?: string | null;
+  tempo?: string | null;
+  width?: string | null;
+  defensiveLine?: string | null;
+  lineOfEngagement?: string | null;
+  pressingIntensity?: string | null;
+  rawSettings?: TacticInstructionSetting[];
+  rawTeamInstructionBytes?: number[];
+  styleCode?: number | null;
+}
+
+export interface RawTacticSettingUnit {
+  index: number;
+  headHex: string;
+  firstBits: number;
+  secondLow: number;
+  secondMid: number;
+  secondHigh: number;
+  signature: string;
+}
+
 export interface TacticSlotAssignment {
   slotIndex: number;
   position: string;
@@ -137,15 +171,103 @@ export interface TacticSlotAssignment {
   outOfPossessionRole?: string | null;
   ipRole?: string | null;
   oopRole?: string | null;
+  ipRoleSource?:
+    | 'dictionary_decoded'
+    | 'save_decoded'
+    | 'confirmed'
+    | 'fingerprint_matched'
+    | 'inferred';
+  oopRoleSource?:
+    | 'dictionary_decoded'
+    | 'save_decoded'
+    | 'confirmed'
+    | 'fingerprint_matched'
+    | 'inferred';
+  ipRoleConfidence?: number;
+  oopRoleConfidence?: number;
+  ipRoleReasoning?: string | null;
+  oopRoleReasoning?: string | null;
+  ipRoleCandidates?: Array<{ name: string; score: number; fitPct: number }>;
+  oopRoleCandidates?: Array<{ name: string; score: number; fitPct: number }>;
+  ipRoleBits?: string | null;
+  oopRoleBits?: string | null;
+  ipTrailBits?: string | null;
+  oopTrailBits?: string | null;
+  ipRoleCoreSignature?: string | null;
+  oopRoleCoreSignature?: string | null;
+  ipBinaryFingerprint?: string | null;
+  oopBinaryFingerprint?: string | null;
+  ipSettingUnits?: RawTacticSettingUnit[];
+  oopSettingUnits?: RawTacticSettingUnit[];
   playerUid?: number | null;
   playerName?: string | null;
   settingCountIp?: number;
   settingCountOop?: number;
+  inPossessionInstructions?: string[];
+  outOfPossessionInstructions?: string[];
+  rawIpSettings?: TacticInstructionSetting[];
+  rawOopSettings?: TacticInstructionSetting[];
+  lastMatchRating?: number | null;
+  lastMatchMinutes?: number | null;
+  lastMatchGoals?: number;
+  lastMatchAssists?: number;
+}
+
+export interface BinarySectionInventoryItem {
+  name: string;
+  schema: number | null;
+  sizeBytes?: number | null;
+}
+
+export interface BinaryGovernanceProbeWindow {
+  id: string;
+  section: string;
+  anchorLabel: string;
+  anchorOffset: number;
+  windowStart: number;
+  bytesHex: string;
+  u8Values: number[];
+  u16Values?: number[];
+  u32Values?: number[];
+  candidateDates?: Array<{ relOffset: number; dmy: string }>;
+  candidateUidHits?: Array<{ relOffset: number; uid: number; label: string }>;
+}
+
+export interface BinaryPromiseCandidate {
+  id: string;
+  section: string;
+  anchorOffset: number;
+  playerUid?: number | null;
+  playerName?: string | null;
+  dueDateDmy?: string | null;
+  typeCode?: number | null;
+  statusCode?: number | null;
+  rawHex: string;
+}
+
+export interface BinaryManagerContractProbe {
+  source: string;
+  wagePw?: number | null;
+  expiresDmy?: string | null;
+  contractExpiryMonths?: number | null;
+  staffUid?: number | null;
+  confidence: 'high' | 'medium' | 'probe';
+}
+
+export interface BinaryForensicsSnapshot {
+  fmBuild: string;
+  fmsaveVersion?: string;
+  sections: BinarySectionInventoryItem[];
+  governanceProbes: BinaryGovernanceProbeWindow[];
+  promiseCandidates: BinaryPromiseCandidate[];
+  managerContractProbes: BinaryManagerContractProbe[];
+  scanMs?: number;
 }
 
 export interface SquadPlannerSlot {
   seasonOffset: number;
   slot: number;
+  positionCode?: string | null;
   playerUids: number[];
   playerNames: string[];
 }
@@ -157,7 +279,107 @@ export interface DeepTacticRecord {
   mentality: string;
   inPossessionFormation?: string | null;
   outOfPossessionFormation?: string | null;
+  isActive?: boolean;
+  teamInstructions?: TacticTeamInstructions | null;
   slots?: TacticSlotAssignment[];
+}
+
+export interface LastMatchTacticSubstitute {
+  slot: number;
+  playerUid: number | null;
+  playerName: string;
+  position?: string;
+  lastMatchRating?: number | null;
+  lastMatchMinutes?: number | null;
+}
+
+export interface LastMatchTacticBlueprint {
+  source: 'last_match_reconstructed' | 'active_save_tactic';
+  matchDate?: string | null;
+  opponent?: string | null;
+  competition?: string | null;
+  venue?: 'H' | 'A' | null;
+  score?: string | null;
+  result?: 'W' | 'D' | 'L' | null;
+  xGFor?: number | null;
+  xGAgainst?: number | null;
+  possession?: number | null;
+  tacticName: string;
+  styleName: string;
+  mentality: string;
+  inPossessionFormation: string;
+  outOfPossessionFormation: string;
+  teamInstructions: TacticTeamInstructions;
+  starters: TacticSlotAssignment[];
+  substitutes: LastMatchTacticSubstitute[];
+  hasDecodedInstructions: boolean;
+  tacticalEffectivenessScore: number;
+  tacticalEffectivenessNotes: string[];
+}
+
+export interface ManagerContractInfo {
+  available: boolean;
+  managerName: string;
+  staffUid?: number | null;
+  wagePw?: number | null;
+  expires?: string | null;
+  contractExpiryMonths?: number | null;
+  age?: number | null;
+  nation?: string | null;
+  jobSecurity?: string | null;
+}
+
+export interface GovernanceConfidenceGrade {
+  available: boolean;
+  grade?: string | null;
+  score?: number | null;
+  summary?: string | null;
+  sourceNote?: string | null;
+}
+
+export interface BoardObjectiveRecord {
+  id: string;
+  category: 'competition' | 'club_vision' | 'finance' | 'recruitment' | 'playing_style';
+  title: string;
+  target: string;
+  importance?: string | null;
+  status?: 'on_track' | 'at_risk' | 'behind' | 'achieved' | 'info';
+  source: 'save_binary' | 'league_rule_context';
+}
+
+export interface ClubPromiseRecord {
+  id: string;
+  subject: string;
+  targetName?: string | null;
+  summary: string;
+  dueDate?: string | null;
+  status: 'met' | 'on_track' | 'at_risk' | 'breached' | 'active';
+  source: 'save_binary' | 'contract_playing_time';
+}
+
+export interface PlayerPromiseAudit {
+  playerUid?: number;
+  playerId: string;
+  playerName: string;
+  position: string;
+  promisedPlayingTime: string;
+  expectedMinMinutesSharePct: number;
+  actualMinutesSharePct: number;
+  minutesPlayed: number;
+  status: 'met' | 'on_track' | 'at_risk' | 'breached' | 'preseason';
+  note: string;
+}
+
+export interface ClubGovernanceState {
+  managerContract: ManagerContractInfo;
+  boardConfidence: GovernanceConfidenceGrade;
+  supporterConfidence: GovernanceConfidenceGrade;
+  boardObjectives: BoardObjectiveRecord[];
+  clubPromises: ClubPromiseRecord[];
+  playerPromiseAudits: PlayerPromiseAudit[];
+  promisesAtRiskCount: number;
+  binaryProbedFields: string[];
+  unavailableNotes: string[];
 }
 
 export interface CompetitionRegistrationRules {
@@ -330,8 +552,18 @@ export interface FmExtractionManifest {
   playerSeasonHistory: number;
   teamMatchStats: number;
   tactics: number;
+  tacticInstructionsCount?: number;
+  squadPlannerSlots?: number;
+  setPieceRoutines?: number;
+  mentoringGroups?: number;
+  sponsorships?: number;
   hasFinances: boolean;
   hasLeagueStanding: boolean;
+  hasManagerContract?: boolean;
+  hasBoardConfidence?: boolean;
+  hasSupporterConfidence?: boolean;
+  hasBoardObjectives?: boolean;
+  promisesCount?: number;
   warningsCount: number;
   fastSync: boolean;
 }
@@ -352,6 +584,8 @@ export interface Pass0ExtractionPayload {
   leagueTableRows?: LeagueTableRow[];
   divisionBenchmarks?: DivisionBenchmarks | null;
   tactics?: DeepTacticRecord[];
+  governance?: Partial<ClubGovernanceState> | null;
+  binaryForensics?: BinaryForensicsSnapshot | null;
   selections: Record<string, unknown>;
   setPieces: Record<string, unknown>;
   training: Record<string, unknown>;

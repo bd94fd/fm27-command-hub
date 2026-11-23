@@ -5,6 +5,16 @@ import {
   buildMatchMomentumSummary,
   buildSeasonChronicle,
 } from '../utils/seasonInsights';
+import {
+  classifyMatchEntryBucket,
+  deriveFootballSeasonLabel,
+  formatCompetitionFilterLabel,
+  MatchCompetitionFilter,
+  matchesEntryCompetitionFilter,
+  parseScoreGoals,
+  summarizeMatchesByScope,
+} from '../utils/matchScopeHelpers';
+import { MatchXgMomentumChart } from './FootballAnalyticsCharts';
 
 export interface PostMatchDebriefData {
   headlineVerdict: string;
@@ -111,41 +121,7 @@ interface MatchLogArchiveProps {
 }
 
 export function getFootballSeasonLabel(dateStr: string): string {
-  const s = (dateStr || '').trim();
-  let year: number | null = null;
-  let month: number | null = null;
-
-  const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (dmy) {
-    month = Number(dmy[2]);
-    year = Number(dmy[3]);
-  } else {
-    const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-    if (iso) {
-      year = Number(iso[1]);
-      month = Number(iso[2]);
-    }
-  }
-
-  if (!year || !month) return 'Unknown Season';
-  // European football season runs July 1 -> June 30
-  const startYear = month >= 7 ? year : year - 1;
-  const endShort = String((startYear + 1) % 100).padStart(2, '0');
-  return `${startYear}/${endShort}`;
-}
-
-function classifyCompetition(comp: string): 'League' | 'Cup / Friendly' {
-  const c = (comp || '').toLowerCase();
-  if (
-    c.includes('friendly') ||
-    c.includes('cup') ||
-    c.includes('beker') ||
-    c.includes('trophy') ||
-    c.includes('playoff')
-  ) {
-    return 'Cup / Friendly';
-  }
-  return 'League';
+  return deriveFootballSeasonLabel(dateStr);
 }
 
 export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
@@ -174,7 +150,7 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
   }, [saveDate, seasons]);
 
   const [selectedSeason, setSelectedSeason] = useState<string>('');
-  const [compFilter, setCompFilter] = useState<'ALL' | 'League' | 'Cup / Friendly'>('ALL');
+  const [compFilter, setCompFilter] = useState<MatchCompetitionFilter | null>(null);
   const [openDebriefMatchId, setOpenDebriefMatchId] = useState<string | null>(
     null
   );
@@ -236,16 +212,42 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
 
   const activeSeason = selectedSeason || currentSeason;
 
-  const filteredMatches = useMemo(() => {
+  const seasonScopedMatches = useMemo(() => {
     return matches.filter((m) => {
       const season = getFootballSeasonLabel(m.date);
       if (activeSeason !== 'ALL' && season !== activeSeason) return false;
-      if (compFilter !== 'ALL' && classifyCompetition(m.competition) !== compFilter) {
-        return false;
-      }
       return true;
     });
-  }, [matches, activeSeason, compFilter]);
+  }, [matches, activeSeason]);
+
+  const seasonScopeBreakdown = useMemo(
+    () =>
+      summarizeMatchesByScope(
+        matches,
+        activeSeason === 'ALL' ? 'ALL' : activeSeason
+      ),
+    [matches, activeSeason]
+  );
+
+  const seasonBucketCounts = useMemo(
+    () => ({
+      competitive: seasonScopeBreakdown.competitive.played,
+      league: seasonScopeBreakdown.league.played,
+      cup: seasonScopeBreakdown.cup.played,
+      friendly: seasonScopeBreakdown.friendly.played,
+      all: seasonScopeBreakdown.all.played,
+    }),
+    [seasonScopeBreakdown]
+  );
+
+  const activeCompFilter: MatchCompetitionFilter =
+    compFilter ?? (seasonBucketCounts.competitive > 0 ? 'competitive' : 'all');
+
+  const filteredMatches = useMemo(() => {
+    return seasonScopedMatches.filter((m) =>
+      matchesEntryCompetitionFilter(m, activeCompFilter, seasonScopedMatches)
+    );
+  }, [seasonScopedMatches, activeCompFilter]);
 
   const filteredXgStats = useMemo(() => {
     const xgMatches = filteredMatches.filter(
@@ -256,36 +258,267 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
       (sum, m) => sum + (m.xGAgainst ?? 0),
       0
     );
+    let goalsFor = 0;
+    let goalsAgainst = 0;
+    let cleanSheets = 0;
+    let homeW = 0;
+    let homeD = 0;
+    let homeL = 0;
+    let awayW = 0;
+    let awayD = 0;
+    let awayL = 0;
+    for (const m of filteredMatches) {
+      const [gf, ga] = parseScoreGoals(m.score);
+      goalsFor += gf;
+      goalsAgainst += ga;
+      if (ga === 0) cleanSheets += 1;
+      if (m.venue === 'H') {
+        if (m.result === 'W') homeW += 1;
+        else if (m.result === 'D') homeD += 1;
+        else homeL += 1;
+      } else {
+        if (m.result === 'W') awayW += 1;
+        else if (m.result === 'D') awayD += 1;
+        else awayL += 1;
+      }
+    }
     return {
       count: xgMatches.length,
       totalXgFor,
       totalXgAgainst,
+      goalsFor,
+      goalsAgainst,
+      cleanSheets,
+      homeRecord: `${homeW}W-${homeD}D-${homeL}L`,
+      awayRecord: `${awayW}W-${awayD}D-${awayL}L`,
     };
   }, [filteredMatches]);
 
   const wins = filteredMatches.filter((m) => m.result === 'W').length;
   const draws = filteredMatches.filter((m) => m.result === 'D').length;
   const losses = filteredMatches.filter((m) => m.result === 'L').length;
+  const points = wins * 3 + draws;
+  const ppg = filteredMatches.length > 0 ? points / filteredMatches.length : 0;
+  const winPct =
+    filteredMatches.length > 0
+      ? Math.round((wins / filteredMatches.length) * 100)
+      : 0;
+
+  const [chronicleScope, setChronicleScope] = useState<MatchCompetitionFilter>('competitive');
 
   const momentumSummary = useMemo(
     () => buildMatchMomentumSummary(filteredMatches),
     [filteredMatches]
   );
-  const seasonChronicle = useMemo(
-    () => buildSeasonChronicle(matches),
-    [matches]
+
+  const chronicleSourceMatches = useMemo(
+    () =>
+      matches.filter((m) =>
+        matchesEntryCompetitionFilter(m, chronicleScope, matches)
+      ),
+    [matches, chronicleScope]
   );
+
+  const seasonChronicle = useMemo(
+    () => buildSeasonChronicle(chronicleSourceMatches),
+    [chronicleSourceMatches]
+  );
+
+  const activeScopeLabel = useMemo(() => {
+    const compLabel = formatCompetitionFilterLabel(activeCompFilter);
+    const seasonPart = activeSeason === 'ALL' ? 'All Seasons' : activeSeason;
+    return `${seasonPart} · ${compLabel} (${filteredMatches.length} GP)`;
+  }, [activeSeason, activeCompFilter, filteredMatches.length]);
+
+  const leagueOnlyCountInSeason = seasonBucketCounts.league;
 
   return (
     <div className="space-y-4">
+      {/* Synced Analytics Scope Overview: League vs Cup vs Friendlies + Key Performance KPIs */}
+      {matches.length > 0 && (
+        <div className="rounded-xl border border-slate-800 bg-slate-900/75 p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="text-sm font-bold text-white flex flex-wrap items-center gap-2">
+                <span>Match Analytics Overview</span>
+                <span className="rounded border border-emerald-500/35 bg-emerald-500/15 px-2 py-0.5 font-mono text-[10px] font-semibold text-emerald-300">
+                  {activeScopeLabel}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Tap League, Cup, or Friendlies below to filter the xG chart, momentum story, and match log together.
+              </p>
+            </div>
+            {liveLeagueRecord && (
+              <span className="rounded-lg bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 text-[11px] font-mono text-emerald-300 font-semibold">
+                League Table: {liveLeagueRecord}
+              </span>
+            )}
+          </div>
+
+          {/* Clickable Competition Scope Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+            {(
+              [
+                {
+                  id: 'league' as const,
+                  label: 'League',
+                  rec: seasonScopeBreakdown.league,
+                  activeCls: 'border-emerald-500/60 bg-emerald-950/35',
+                  idleCls: 'border-slate-800 bg-slate-950/60 hover:border-emerald-500/35',
+                  accent: 'text-emerald-300',
+                },
+                {
+                  id: 'cup' as const,
+                  label: 'Cup',
+                  rec: seasonScopeBreakdown.cup,
+                  activeCls: 'border-sky-500/60 bg-sky-950/35',
+                  idleCls: 'border-slate-800 bg-slate-950/60 hover:border-sky-500/35',
+                  accent: 'text-sky-300',
+                },
+                {
+                  id: 'friendly' as const,
+                  label: 'Friendlies',
+                  rec: seasonScopeBreakdown.friendly,
+                  activeCls: 'border-amber-500/60 bg-amber-950/25',
+                  idleCls: 'border-slate-800 bg-slate-950/60 hover:border-amber-500/35',
+                  accent: 'text-amber-300',
+                },
+              ] as const
+            ).map((card) => {
+              const isActive = activeCompFilter === card.id;
+              return (
+                <button
+                  key={card.id}
+                  type="button"
+                  onClick={() =>
+                    setCompFilter((curr) =>
+                      curr === card.id ? 'competitive' : card.id
+                    )
+                  }
+                  className={`rounded-lg border px-3 py-2 text-left transition cursor-pointer ${
+                    isActive ? card.activeCls : card.idleCls
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider">
+                    <span className={card.accent}>{card.label}</span>
+                    <span className="font-mono text-slate-300">{card.rec.played} GP</span>
+                  </div>
+                  {card.rec.played === 0 ? (
+                    <div className="mt-1 text-[11px] text-slate-500">0 matches</div>
+                  ) : (
+                    <div className="mt-1 flex items-baseline justify-between gap-2 font-mono tabular-nums text-[11px]">
+                      <span className="text-white font-semibold">
+                        {card.rec.won}W-{card.rec.drawn}D-{card.rec.lost}L ({card.rec.goalsFor}:{card.rec.goalsAgainst})
+                      </span>
+                      <span className="text-[10px] text-slate-400">
+                        {card.rec.xgDiff !== null
+                          ? `xGD ${card.rec.xgDiff >= 0 ? '+' : ''}${card.rec.xgDiff.toFixed(2)}`
+                          : 'No xG'}
+                      </span>
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* 4-Card Synced KPI Strip */}
+          {filteredMatches.length > 0 && (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 text-xs">
+              <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                  Record &amp; Pace
+                </div>
+                <div className="mt-0.5 font-mono tabular-nums font-bold text-white">
+                  {wins}W-{draws}D-{losses}L
+                </div>
+                <div className="text-[10px] font-mono text-emerald-300">
+                  {ppg.toFixed(2)} PPG · {winPct}% Win
+                </div>
+              </div>
+              <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                  Goals &amp; Shutouts
+                </div>
+                <div className="mt-0.5 font-mono tabular-nums font-bold text-white">
+                  {filteredXgStats.goalsFor} : {filteredXgStats.goalsAgainst}{' '}
+                  <span className="text-[11px] font-normal text-slate-400">
+                    ({filteredXgStats.goalsFor - filteredXgStats.goalsAgainst >= 0 ? '+' : ''}
+                    {filteredXgStats.goalsFor - filteredXgStats.goalsAgainst})
+                  </span>
+                </div>
+                <div className="text-[10px] font-mono text-sky-300">
+                  {filteredXgStats.cleanSheets} Clean Sheet{filteredXgStats.cleanSheets === 1 ? '' : 's'}
+                </div>
+              </div>
+              <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                  xG &amp; Finishing
+                </div>
+                {filteredXgStats.count > 0 ? (
+                  <>
+                    <div className="mt-0.5 font-mono tabular-nums font-bold text-white">
+                      {filteredXgStats.totalXgFor.toFixed(2)} – {filteredXgStats.totalXgAgainst.toFixed(2)}
+                    </div>
+                    <div
+                      className={`text-[10px] font-mono ${
+                        filteredXgStats.totalXgFor - filteredXgStats.totalXgAgainst >= 0
+                          ? 'text-emerald-300'
+                          : 'text-rose-300'
+                      }`}
+                    >
+                      xGD {filteredXgStats.totalXgFor - filteredXgStats.totalXgAgainst >= 0 ? '+' : ''}
+                      {(filteredXgStats.totalXgFor - filteredXgStats.totalXgAgainst).toFixed(2)} · Fin{' '}
+                      {filteredXgStats.goalsFor - filteredXgStats.totalXgFor >= 0 ? '+' : ''}
+                      {(filteredXgStats.goalsFor - filteredXgStats.totalXgFor).toFixed(2)}
+                    </div>
+                  </>
+                ) : (
+                  <div className="mt-1 text-[11px] text-slate-500">No xG tracked</div>
+                )}
+              </div>
+              <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                  Home vs Away
+                </div>
+                <div className="mt-0.5 font-mono tabular-nums text-[11px] text-white">
+                  H: <strong>{filteredXgStats.homeRecord}</strong>
+                </div>
+                <div className="font-mono tabular-nums text-[11px] text-slate-300">
+                  A: <strong>{filteredXgStats.awayRecord}</strong>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {matches.length >= 2 && (
+        <MatchXgMomentumChart
+          matches={matches}
+          saveDate={saveDate}
+          title="Match xG Momentum & Finishing Trends"
+          controlledSeason={activeSeason}
+          onSeasonChange={setSelectedSeason}
+          controlledScope={activeCompFilter}
+          onScopeChange={setCompFilter}
+        />
+      )}
+
       {momentumSummary && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-mono uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-semibold">
-                Match Momentum &amp; xG Story
-              </span>
-              <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+          <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-semibold">
+                  Match Momentum &amp; xG Story
+                </span>
+                <span className="rounded bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 px-1.5 py-0.5 text-[10px] font-mono text-slate-600 dark:text-slate-300">
+                  {activeScopeLabel}
+                </span>
+              </div>
+              <span className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400">
                 {momentumSummary.actualPoints} pts vs {momentumSummary.expectedPoints} xPts (
                 {momentumSummary.pointsDelta >= 0 ? '+' : ''}
                 {momentumSummary.pointsDelta})
@@ -294,11 +527,11 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
             <div className="text-sm font-semibold text-slate-900 dark:text-white">
               {momentumSummary.verdictTitle}
             </div>
-            <p className="text-xs text-slate-600 dark:text-slate-300">
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
               {momentumSummary.verdictDetail}
             </p>
             {momentumSummary.matchesWithXg > 0 && (
-              <div className="flex flex-wrap gap-2 pt-1 text-[11px] font-mono text-slate-600 dark:text-slate-300">
+              <div className="flex flex-wrap gap-2 pt-1 text-[11px] font-mono tabular-nums text-slate-600 dark:text-slate-300">
                 <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800">
                   Goals vs xG: {momentumSummary.goalsFor} vs {momentumSummary.xGFor} (
                   {momentumSummary.finishingDelta >= 0 ? '+' : ''}
@@ -307,31 +540,69 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                 <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800">
                   Conceded vs xGA: {momentumSummary.goalsAgainst} vs {momentumSummary.xGAgainst}
                 </span>
+                <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                  xG tracked: {momentumSummary.matchesWithXg}/{filteredMatches.length} GP
+                </span>
               </div>
             )}
           </div>
 
           {seasonChronicle.length > 0 && (
-            <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
-              <div className="text-[11px] font-mono uppercase tracking-wider text-sky-600 dark:text-sky-400 font-semibold">
-                Season Chronicle
+            <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] font-mono uppercase tracking-wider text-sky-600 dark:text-sky-400 font-semibold">
+                    Season Chronicle
+                  </span>
+                  <span className="rounded bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 px-1.5 py-0.5 text-[10px] font-mono text-slate-600 dark:text-slate-300">
+                    {formatCompetitionFilterLabel(chronicleScope)}
+                  </span>
+                </div>
+                <div className="inline-flex flex-wrap items-center rounded-lg bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 p-0.5 text-[10px] font-semibold">
+                  {(
+                    [
+                      { id: 'competitive', label: 'Comp' },
+                      { id: 'league', label: 'League' },
+                      { id: 'cup', label: 'Cup' },
+                      { id: 'friendly', label: 'Friendlies' },
+                      { id: 'all', label: 'All' },
+                    ] as const
+                  ).map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setChronicleScope(opt.id)}
+                      className={`px-2 py-0.5 rounded-md transition cursor-pointer ${
+                        chronicleScope === opt.id
+                          ? 'bg-emerald-500/20 text-emerald-300'
+                          : 'text-slate-500 hover:text-slate-200'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="space-y-1.5">
                 {seasonChronicle.slice(0, 3).map((s) => (
                   <div
                     key={s.seasonLabel}
-                    className="flex flex-wrap items-center justify-between gap-2 text-xs px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/60"
+                    className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-1.5 text-xs px-2.5 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/60"
                   >
-                    <span className="font-mono font-semibold text-slate-900 dark:text-white">
-                      {s.seasonLabel}
-                    </span>
-                    <span className="font-mono text-slate-700 dark:text-slate-200">
-                      {s.wins}W-{s.draws}D-{s.losses}L · {s.goalsFor}:{s.goalsAgainst}
-                    </span>
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                      {s.cleanSheets} CS · {s.longestUnbeatenRun} unbeaten
-                      {s.biggestWin ? ` · Best: ${s.biggestWin}` : ''}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono font-semibold text-slate-900 dark:text-white">
+                        {s.seasonLabel}
+                      </span>
+                      <span className="font-mono tabular-nums text-[11px] text-slate-400">
+                        ({s.played} GP)
+                      </span>
+                      <span className="font-mono tabular-nums text-slate-700 dark:text-slate-200">
+                        {`${s.wins}W-${s.draws}D-${s.losses}L · ${s.goalsFor}:${s.goalsAgainst}`}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 break-words">
+                      {`${s.cleanSheets} CS · ${s.longestUnbeatenRun} unbeaten${s.biggestWin ? ` · Best: ${s.biggestWin}` : ''}`}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -341,7 +612,7 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
       )}
       <div className="p-4 sm:p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 pb-4 border-b border-slate-200 dark:border-slate-800">
-          <div>
+          <div className="min-w-0">
             <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
               {clubName && clubName !== '--'
                 ? `${clubName} · Match Log by Season & Competition`
@@ -353,15 +624,20 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                 : 'Awaiting .fm Save — Import your .fm save file to populate played fixtures and results'}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2 text-xs font-mono text-slate-700 dark:text-slate-300">
+          <div className="flex flex-wrap items-center gap-2 text-xs font-mono tabular-nums text-slate-700 dark:text-slate-300">
             {liveLeagueRecord && (
               <span className="rounded-lg bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 text-emerald-300 font-semibold">
-                Current League: {liveLeagueRecord}
+                League Table Only: {liveLeagueRecord}
               </span>
             )}
             {filteredMatches.length > 0 && (
               <span className="rounded-lg bg-slate-800 border border-slate-700 px-2.5 py-1 text-slate-200">
-                Showing {filteredMatches.length} GP: {wins}W-{draws}D-{losses}L
+                {`${formatCompetitionFilterLabel(activeCompFilter)} (${filteredMatches.length} GP${
+                  activeCompFilter === 'all' && leagueOnlyCountInSeason > 0 && leagueOnlyCountInSeason !== filteredMatches.length
+                    ? ` · ${leagueOnlyCountInSeason} League`
+                    : ''
+                })`}
+                {`: ${wins}W-${draws}D-${losses}L`}
                 {filteredXgStats.count > 0
                   ? ` · xG ${filteredXgStats.totalXgFor.toFixed(2)}-${filteredXgStats.totalXgAgainst.toFixed(2)}${
                       filteredXgStats.count < filteredMatches.length
@@ -415,18 +691,26 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
               <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400 mr-1">
                 <Filter className="w-3.5 h-3.5" /> Comp:
               </span>
-              {(['ALL', 'League', 'Cup / Friendly'] as const).map((c) => (
+              {(
+                [
+                  { id: 'competitive', label: 'Competitive', count: seasonBucketCounts.competitive },
+                  { id: 'league', label: 'League', count: seasonBucketCounts.league },
+                  { id: 'cup', label: 'Cup', count: seasonBucketCounts.cup },
+                  { id: 'friendly', label: 'Friendlies', count: seasonBucketCounts.friendly },
+                  { id: 'all', label: 'All', count: seasonBucketCounts.all },
+                ] as const
+              ).map((c) => (
                 <button
-                  key={c}
+                  key={c.id}
                   type="button"
-                  onClick={() => setCompFilter(c)}
+                  onClick={() => setCompFilter(c.id)}
                   className={`rounded-lg px-2.5 py-1 text-xs font-semibold border transition ${
-                    compFilter === c
+                    activeCompFilter === c.id
                       ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
                       : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
                   }`}
                 >
-                  {c === 'ALL' ? 'All Comps' : c === 'Cup / Friendly' ? 'Cup / Other' : c}
+                  {c.label} <span className="font-mono text-[10px] opacity-75">({c.count})</span>
                 </button>
               ))}
             </div>
@@ -447,13 +731,13 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
           </div>
         ) : filteredMatches.length === 0 ? (
           <div className="py-10 text-center text-xs text-slate-400">
-            No matches found for <strong>{activeSeason}</strong> ({compFilter}). Try switching the competition or season filter above.
+            No matches found for <strong>{activeSeason}</strong> ({formatCompetitionFilterLabel(activeCompFilter)}). Try switching the competition or season filter above.
           </div>
         ) : (
           <div className="divide-y divide-slate-200 dark:divide-slate-800">
             {filteredMatches.map((m) => {
               const seasonLabel = getFootballSeasonLabel(m.date);
-              const compBucket = classifyCompetition(m.competition);
+              const compBucket = classifyMatchEntryBucket(m, seasonScopedMatches);
               const hasXg =
                 typeof m.xGFor === 'number' && typeof m.xGAgainst === 'number';
               const resultBadge =
@@ -484,9 +768,11 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                       </span>
                       <span
                         className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                          compBucket === 'League'
-                            ? 'bg-indigo-500/15 text-indigo-300'
-                            : 'bg-slate-800 text-slate-400'
+                          compBucket === 'league'
+                            ? 'bg-emerald-500/15 text-emerald-300'
+                            : compBucket === 'cup'
+                              ? 'bg-sky-500/15 text-sky-300'
+                              : 'bg-amber-500/15 text-amber-300'
                         }`}
                       >
                         {m.competition}

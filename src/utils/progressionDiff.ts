@@ -17,6 +17,211 @@ const PROGRESSION_IDB_STORE = 'archives';
 const PROGRESSION_IDB_KEY = 'default';
 
 /**
+ * Clean human-readable labels for all FM27 camelCase player attributes.
+ */
+const ATTRIBUTE_LABELS: Record<string, string> = {
+  // Physical
+  acceleration: 'Acceleration',
+  agility: 'Agility',
+  balance: 'Balance',
+  jumpingReach: 'Jumping Reach',
+  naturalFitness: 'Natural Fitness',
+  pace: 'Pace',
+  stamina: 'Stamina',
+  strength: 'Strength',
+  // Mental
+  aggression: 'Aggression',
+  anticipation: 'Anticipation',
+  bravery: 'Bravery',
+  composure: 'Composure',
+  concentration: 'Concentration',
+  decisions: 'Decisions',
+  determination: 'Determination',
+  flair: 'Flair',
+  leadership: 'Leadership',
+  offTheBall: 'Off the Ball',
+  positioning: 'Positioning',
+  teamwork: 'Teamwork',
+  vision: 'Vision',
+  workRate: 'Work Rate',
+  // Technical (Outfield)
+  corners: 'Corners',
+  crossing: 'Crossing',
+  dribbling: 'Dribbling',
+  finishing: 'Finishing',
+  firstTouch: 'First Touch',
+  freeKicks: 'Free Kicks',
+  heading: 'Heading',
+  longShots: 'Long Shots',
+  longThrows: 'Long Throws',
+  marking: 'Marking',
+  passing: 'Passing',
+  penalties: 'Penalties',
+  tackling: 'Tackling',
+  technique: 'Technique',
+  // Goalkeeping
+  aerialReach: 'Aerial Reach',
+  commandOfArea: 'Command of Area',
+  communication: 'Communication',
+  eccentricity: 'Eccentricity',
+  handling: 'Handling',
+  kicking: 'Kicking',
+  oneOnOnes: 'One on Ones',
+  punching: 'Punching',
+  reflexes: 'Reflexes',
+  rushingOut: 'Rushing Out',
+  throwing: 'Throwing',
+};
+
+const GK_ONLY_ATTRIBUTES = new Set([
+  'aerialReach',
+  'commandOfArea',
+  'communication',
+  'eccentricity',
+  'handling',
+  'kicking',
+  'oneOnOnes',
+  'punching',
+  'reflexes',
+  'rushingOut',
+  'throwing',
+]);
+
+const OUTFIELD_ONLY_NOISE_FOR_GK = new Set([
+  'corners',
+  'crossing',
+  'dribbling',
+  'finishing',
+  'flair',
+  'freeKicks',
+  'heading',
+  'longShots',
+  'longThrows',
+  'marking',
+  'offTheBall',
+  'penalties',
+  'tackling',
+  'technique',
+]);
+
+const UNIVERSAL_KEY_ATTRIBUTES = new Set([
+  'pace',
+  'acceleration',
+  'stamina',
+  'determination',
+  'decisions',
+  'composure',
+  'anticipation',
+  'workRate',
+]);
+
+export function formatAttributeLabel(attrKey: string): string {
+  if (ATTRIBUTE_LABELS[attrKey]) return ATTRIBUTE_LABELS[attrKey];
+  // Fallback humanizer for any future camelCase or snake_case attribute key
+  return attrKey
+    .replace(/_/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
+}
+
+export function isGoalkeeperPosition(position: string): boolean {
+  const upper = (position || '').toUpperCase().trim();
+  return upper === 'GK' || /\bGK\b/.test(upper);
+}
+
+/**
+ * Filters out goalkeeper-only attributes on outfield players and irrelevant
+ * outfield-only attributes (finishing, crossing, long throws, etc.) on goalkeepers.
+ */
+export function isAttributeRelevantForPosition(
+  attrKey: string,
+  position: string
+): boolean {
+  const isGk = isGoalkeeperPosition(position);
+  if (isGk) {
+    return !OUTFIELD_ONLY_NOISE_FOR_GK.has(attrKey);
+  }
+  return !GK_ONLY_ATTRIBUTES.has(attrKey);
+}
+
+/**
+ * Flags attributes that meaningfully impact match performance for a given position
+ * (physical engine + core mental + position-defining technical/GK skills).
+ */
+export function isKeyRoleAttribute(attrKey: string, position: string): boolean {
+  const pos = (position || '').toUpperCase();
+  if (isGoalkeeperPosition(pos)) {
+    return (
+      attrKey === 'reflexes' ||
+      attrKey === 'handling' ||
+      attrKey === 'aerialReach' ||
+      attrKey === 'oneOnOnes' ||
+      attrKey === 'commandOfArea' ||
+      attrKey === 'positioning' ||
+      attrKey === 'decisions' ||
+      attrKey === 'agility' ||
+      attrKey === 'kicking' ||
+      attrKey === 'concentration' ||
+      attrKey === 'determination'
+    );
+  }
+  if (UNIVERSAL_KEY_ATTRIBUTES.has(attrKey)) return true;
+  if (/\bST\b|\bSTC\b|\bCF\b/.test(pos)) {
+    return (
+      attrKey === 'finishing' ||
+      attrKey === 'offTheBall' ||
+      attrKey === 'firstTouch' ||
+      attrKey === 'dribbling' ||
+      attrKey === 'jumpingReach' ||
+      attrKey === 'strength'
+    );
+  }
+  if (/\bD\s*\([RLC]*C|\bDC\b|\bCB\b/.test(pos)) {
+    return (
+      attrKey === 'jumpingReach' ||
+      attrKey === 'tackling' ||
+      attrKey === 'marking' ||
+      attrKey === 'positioning' ||
+      attrKey === 'strength' ||
+      attrKey === 'concentration' ||
+      attrKey === 'heading'
+    );
+  }
+  if (/\b(D|WB)\s*\([RL]|\bDL\b|\bDR\b|\bWBL\b|\bWBR\b/.test(pos)) {
+    return (
+      attrKey === 'tackling' ||
+      attrKey === 'marking' ||
+      attrKey === 'positioning' ||
+      attrKey === 'crossing' ||
+      attrKey === 'dribbling' ||
+      attrKey === 'passing'
+    );
+  }
+  if (/\bDM\b|\bMC\b|\bCM\b|\bM\s*\(C/.test(pos)) {
+    return (
+      attrKey === 'passing' ||
+      attrKey === 'firstTouch' ||
+      attrKey === 'vision' ||
+      attrKey === 'tackling' ||
+      attrKey === 'positioning' ||
+      attrKey === 'technique'
+    );
+  }
+  // Wingers / Attacking Mids
+  return (
+    attrKey === 'dribbling' ||
+    attrKey === 'firstTouch' ||
+    attrKey === 'passing' ||
+    attrKey === 'crossing' ||
+    attrKey === 'offTheBall' ||
+    attrKey === 'finishing' ||
+    attrKey === 'vision' ||
+    attrKey === 'agility'
+  );
+}
+
+/**
  * Mirrors progression snapshots to IndexedDB (non-blocking) so multi-season
  * journeyman saves are preserved even if mobile localStorage hits quota limits.
  */
@@ -77,11 +282,15 @@ export async function loadProgressionArchiveFromIdb(): Promise<
         try {
           const db = req.result;
           const tx = db.transaction(PROGRESSION_IDB_STORE, 'readonly');
-          const getReq = tx.objectStore(PROGRESSION_IDB_STORE).get(PROGRESSION_IDB_KEY);
+          const getReq = tx
+            .objectStore(PROGRESSION_IDB_STORE)
+            .get(PROGRESSION_IDB_KEY);
           getReq.onsuccess = () => {
             const val = getReq.result;
             db.close();
-            resolve(Array.isArray(val) ? (val as ProgressionSnapshot[]) : null);
+            resolve(
+              Array.isArray(val) ? (val as ProgressionSnapshot[]) : null
+            );
           };
           getReq.onerror = () => {
             db.close();
@@ -121,12 +330,17 @@ export interface ProgressionSnapshot {
   players: Record<number, PlayerProgressionSnapshot>;
 }
 
+export type ProgressionImpactTier = 'major' | 'key' | 'minor';
+
 export interface AttributeDeltaEntry {
   uid: number;
   playerName: string;
   position: string;
   age: number;
   attributeName: string;
+  attributeLabel: string;
+  isKeyStat: boolean;
+  impactTier: ProgressionImpactTier;
   fromValue: number;
   toValue: number;
   delta: number;
@@ -140,6 +354,12 @@ export interface PlayerProgressionSummary {
   netDelta: number;
   totalRises: number;
   totalFalls: number;
+  majorCount: number;
+  keyCount: number;
+  minorCount: number;
+  impactScore: number;
+  meaningfulDeltas: AttributeDeltaEntry[];
+  minorDeltas: AttributeDeltaEntry[];
   deltas: AttributeDeltaEntry[];
 }
 
@@ -163,6 +383,8 @@ export interface ProgressionDiffReport {
   latestSaveDate: string;
   risers: AttributeDeltaEntry[];
   fallers: AttributeDeltaEntry[];
+  majorShiftsCount: number;
+  filteredIrrelevantCount: number;
   playerSummaries: PlayerProgressionSummary[];
   mentoringDeterminationJumps: AttributeDeltaEntry[];
   newgenRadar: YouthIntakeFlag[];
@@ -259,7 +481,10 @@ function estimateStarsFromVisibleAttributes(
   const rawAbility = Math.min(5, Math.max(1, 1.5 + (avg - 8) * 0.35));
   const abilityStars = Math.round(rawAbility * 2) / 2;
   const youthRoom = age <= 18 ? 1.5 : age <= 21 ? 1.0 : 0.5;
-  const potentialStars = Math.min(5, Math.max(abilityStars, abilityStars + youthRoom));
+  const potentialStars = Math.min(
+    5,
+    Math.max(abilityStars, abilityStars + youthRoom)
+  );
   return { abilityStars, potentialStars };
 }
 
@@ -333,8 +558,8 @@ export function loadProgressionArchive(
 }
 
 /**
- * Persists the rolling progression archive, capping at 30 entries and
- * automatically pruning the oldest entries if `QuotaExceededError` is thrown.
+ * Persists the rolling progression archive, capping at MAX_PROGRESSION_SNAPSHOTS
+ * and automatically pruning oldest entries if `QuotaExceededError` is thrown.
  */
 export function saveProgressionArchive(
   archive: ProgressionSnapshot[],
@@ -371,7 +596,7 @@ export function saveProgressionArchive(
 }
 
 /**
- * Captures a new snapshot into the 30-save rolling archive, deduplicating by
+ * Captures a new snapshot into the rolling archive, deduplicating by
  * `saveDate` and auto-pruning oldest entries on quota exhaustion.
  */
 export function captureProgressionSnapshot(
@@ -431,10 +656,14 @@ export function clearProgressionArchive(storage?: StorageLike | null): void {
   }
 }
 
+function tierRank(tier: ProgressionImpactTier): number {
+  return tier === 'major' ? 0 : tier === 'key' ? 1 : 2;
+}
+
 /**
- * Computes attribute risers/fallers, Mentoring Determination Jumps
- * (`attributeName === 'determination'` and `delta >= 2`), and Youth Intake /
- * Newgen Radar (brand-new `uid` entries since baseline, highlighting `age <= 18`).
+ * Computes position-filtered, humanized attribute risers/fallers, player-grouped
+ * impact summaries, Mentoring Determination Jumps (`delta >= 2`), and Youth Intake /
+ * Newgen Radar.
  */
 export function computeProgressionDiff(
   baseline: ProgressionSnapshot,
@@ -445,6 +674,8 @@ export function computeProgressionDiff(
   const mentoringDeterminationJumps: AttributeDeltaEntry[] = [];
   const playerSummaries: PlayerProgressionSummary[] = [];
   const newgenRadar: YouthIntakeFlag[] = [];
+  let filteredIrrelevantCount = 0;
+  let majorShiftsCount = 0;
 
   const baselinePlayers = baseline.players || {};
   const latestPlayers = latest.players || {};
@@ -498,6 +729,9 @@ export function computeProgressionDiff(
     const playerDeltas: AttributeDeltaEntry[] = [];
     let totalRises = 0;
     let totalFalls = 0;
+    let majorCount = 0;
+    let keyCount = 0;
+    let minorCount = 0;
 
     for (const [attrName, toVal] of Object.entries(latestPlayer.attributes)) {
       const fromVal = basePlayer.attributes[attrName];
@@ -505,12 +739,34 @@ export function computeProgressionDiff(
       const delta = toVal - fromVal;
       if (delta === 0) continue;
 
+      // Filter out irrelevant GK-only stats on outfielders (and outfield-only noise on GKs)
+      if (!isAttributeRelevantForPosition(attrName, latestPlayer.position)) {
+        filteredIrrelevantCount += 1;
+        continue;
+      }
+
+      const isKeyStat = isKeyRoleAttribute(attrName, latestPlayer.position);
+      const impactTier: ProgressionImpactTier =
+        Math.abs(delta) >= 2 ? 'major' : isKeyStat ? 'key' : 'minor';
+
+      if (impactTier === 'major') {
+        majorCount += 1;
+        majorShiftsCount += 1;
+      } else if (impactTier === 'key') {
+        keyCount += 1;
+      } else {
+        minorCount += 1;
+      }
+
       const entry: AttributeDeltaEntry = {
         uid,
         playerName: latestPlayer.name,
         position: latestPlayer.position,
         age: latestPlayer.age,
         attributeName: attrName,
+        attributeLabel: formatAttributeLabel(attrName),
+        isKeyStat,
+        impactTier,
         fromValue: fromVal,
         toValue: toVal,
         delta,
@@ -531,7 +787,24 @@ export function computeProgressionDiff(
     }
 
     if (playerDeltas.length > 0) {
-      playerDeltas.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+      playerDeltas.sort(
+        (a, b) =>
+          tierRank(a.impactTier) - tierRank(b.impactTier) ||
+          Math.abs(b.delta) - Math.abs(a.delta) ||
+          b.delta - a.delta ||
+          a.attributeLabel.localeCompare(b.attributeLabel)
+      );
+      const meaningfulDeltas = playerDeltas.filter(
+        (d) => d.impactTier === 'major' || d.impactTier === 'key'
+      );
+      const minorDeltas = playerDeltas.filter((d) => d.impactTier === 'minor');
+      // Impact score prioritizes major shifts (|Δ|>=2) first, then key role stats, then total magnitude
+      const impactScore =
+        majorCount * 10 +
+        keyCount * 3 +
+        Math.abs(totalRises - totalFalls) +
+        minorCount * 0.5;
+
       playerSummaries.push({
         uid,
         playerName: latestPlayer.name,
@@ -540,23 +813,37 @@ export function computeProgressionDiff(
         netDelta: totalRises - totalFalls,
         totalRises,
         totalFalls,
+        majorCount,
+        keyCount,
+        minorCount,
+        impactScore,
+        meaningfulDeltas,
+        minorDeltas,
         deltas: playerDeltas,
       });
     }
   }
 
   risers.sort(
-    (a, b) => b.delta - a.delta || a.playerName.localeCompare(b.playerName)
+    (a, b) =>
+      b.delta - a.delta ||
+      tierRank(a.impactTier) - tierRank(b.impactTier) ||
+      a.playerName.localeCompare(b.playerName)
   );
   fallers.sort(
-    (a, b) => a.delta - b.delta || a.playerName.localeCompare(b.playerName)
+    (a, b) =>
+      a.delta - b.delta ||
+      tierRank(a.impactTier) - tierRank(b.impactTier) ||
+      a.playerName.localeCompare(b.playerName)
   );
   mentoringDeterminationJumps.sort(
     (a, b) => b.delta - a.delta || a.playerName.localeCompare(b.playerName)
   );
   playerSummaries.sort(
     (a, b) =>
-      b.netDelta - a.netDelta || a.playerName.localeCompare(b.playerName)
+      b.impactScore - a.impactScore ||
+      b.netDelta - a.netDelta ||
+      a.playerName.localeCompare(b.playerName)
   );
   newgenRadar.sort(
     (a, b) =>
@@ -574,6 +861,8 @@ export function computeProgressionDiff(
     latestSaveDate: latest.saveDate,
     risers,
     fallers,
+    majorShiftsCount,
+    filteredIrrelevantCount,
     playerSummaries,
     mentoringDeterminationJumps,
     newgenRadar,
@@ -600,7 +889,11 @@ export function buildPlayerProgressionSeries(
   uid: number | undefined,
   archive: ProgressionSnapshot[]
 ): PlayerProgressionPoint[] {
-  if (typeof uid !== 'number' || !Number.isFinite(uid) || !Array.isArray(archive)) {
+  if (
+    typeof uid !== 'number' ||
+    !Number.isFinite(uid) ||
+    !Array.isArray(archive)
+  ) {
     return [];
   }
 
@@ -612,12 +905,18 @@ export function buildPlayerProgressionSeries(
     if (!entry) continue;
 
     const attrs = entry.attributes || {};
-    const values = Object.values(attrs).filter(
-      (v): v is number => typeof v === 'number' && Number.isFinite(v)
+    const relevantEntries = Object.entries(attrs).filter(
+      ([k, v]) =>
+        typeof v === 'number' &&
+        Number.isFinite(v) &&
+        isAttributeRelevantForPosition(k, entry.position)
     );
+    const values = relevantEntries.map(([, v]) => v);
     const avgCoreAttr =
       values.length > 0
-        ? Number((values.reduce((acc, v) => acc + v, 0) / values.length).toFixed(2))
+        ? Number(
+            (values.reduce((acc, v) => acc + v, 0) / values.length).toFixed(2)
+          )
         : 0;
 
     if (!baselineAttrs) {
@@ -625,7 +924,7 @@ export function buildPlayerProgressionSeries(
     }
 
     let netDeltaFromStart = 0;
-    for (const [k, v] of Object.entries(attrs)) {
+    for (const [k, v] of relevantEntries) {
       const base = baselineAttrs[k];
       if (typeof v === 'number' && typeof base === 'number') {
         netDeltaFromStart += v - base;
@@ -637,11 +936,13 @@ export function buildPlayerProgressionSeries(
       capturedAt: snap.capturedAt,
       age: entry.age,
       abilityStars:
-        typeof entry.abilityStars === 'number' && Number.isFinite(entry.abilityStars)
+        typeof entry.abilityStars === 'number' &&
+        Number.isFinite(entry.abilityStars)
           ? entry.abilityStars
           : null,
       potentialStars:
-        typeof entry.potentialStars === 'number' && Number.isFinite(entry.potentialStars)
+        typeof entry.potentialStars === 'number' &&
+        Number.isFinite(entry.potentialStars)
           ? entry.potentialStars
           : null,
       avgCoreAttr,
@@ -651,4 +952,3 @@ export function buildPlayerProgressionSeries(
 
   return points;
 }
-

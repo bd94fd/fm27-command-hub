@@ -907,9 +907,9 @@ export function computeMoneyballValueScore(params: {
 
   const costLabel =
     threeYearCostEur >= 1_000_000
-      ? `€${(threeYearCostEur / 1_000_000).toFixed(2)}M / 3y`
+      ? `£${(threeYearCostEur / 1_000_000).toFixed(2)}M / 3y`
       : threeYearCostEur > 0
-        ? `€${Math.round(threeYearCostEur / 1000)}k / 3y`
+        ? `£${Math.round(threeYearCostEur / 1000)}k / 3y`
         : 'Trial / Low Wage';
 
   const summary = `${tier} (${score}/100) · ${costLabel}`;

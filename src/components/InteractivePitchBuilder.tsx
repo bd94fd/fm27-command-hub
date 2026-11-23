@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -232,11 +232,46 @@ const PRESET_KEYS: FormationPresetKey[] = [
   '3-4-2-1',
 ];
 
+const EMPTY_SUSPENSIONS: ActiveSuspensionRecord[] = [];
+const EMPTY_SAVED_TACTICS: DeepTacticRecord[] = [];
+
+function formatCompactPitchRole(role: string): string {
+  if (!role) return '';
+  return role
+    .replace(/\bNo-Nonsense Goalkeeper\b/gi, 'No-Nonsense GK')
+    .replace(/\bBall-Playing Goalkeeper\b/gi, 'Ball-Playing GK')
+    .replace(/\bLine-Holding Keeper\b/gi, 'Line-Holding GK')
+    .replace(/\bSweeper Keeper\b/gi, 'Sweeper GK')
+    .replace(/\bBall-Playing Centre-Back\b/gi, 'Ball-Playing CB')
+    .replace(/\bWide Centre-Back\b/gi, 'Wide CB')
+    .replace(/\bStopping Centre-Back\b/gi, 'Stopping CB')
+    .replace(/\bCovering Centre-Back\b/gi, 'Covering CB')
+    .replace(/\bDefensive Midfielder\b/gi, 'Def. Midfielder')
+    .replace(/\bBox-to-Box Midfielder\b/gi, 'Box-to-Box CM')
+    .replace(/\bChannel Midfielder\b/gi, 'Channel CM')
+    .replace(/\bDeep-Lying Playmaker\b/gi, 'Deep Playmaker')
+    .replace(/\bAdvanced Playmaker\b/gi, 'Adv. Playmaker')
+    .replace(/\bPressing Central Midfielder\b/gi, 'Pressing CM')
+    .replace(/\bScreening Central Midfielder\b/gi, 'Screening CM')
+    .replace(/\bScreening Defensive Midfielder\b/gi, 'Screening DM')
+    .replace(/\bDropping Defensive Midfielder\b/gi, 'Dropping DM')
+    .replace(/\bChannel Forward\b/gi, 'Channel Fwd')
+    .replace(/\bCentral Outlet Centre Forward\b/gi, 'Central Outlet CF')
+    .replace(/\bDeep-Lying Forward\b/gi, 'Deep-Lying Fwd')
+    .replace(/\bTracking Centre Forward\b/gi, 'Tracking CF')
+    .replace(/\bTracking Attacking Midfielder\b/gi, 'Tracking AM')
+    .replace(/\bTracking Wide Midfielder\b/gi, 'Tracking WM')
+    .replace(/\bInverted Full-Back\b/gi, 'Inverted FB')
+    .replace(/\bInverted Wing-Back\b/gi, 'Inverted WB')
+    .replace(/\bHolding Full-Back\b/gi, 'Holding FB')
+    .replace(/\bHolding Wing-Back\b/gi, 'Holding WB');
+}
+
 export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = ({
   players,
-  activeSuspensions = [],
+  activeSuspensions = EMPTY_SUSPENSIONS,
   nextCompetitionName = null,
-  savedTactics = [],
+  savedTactics = EMPTY_SAVED_TACTICS,
   activeShape,
   customSlots,
   applyToAnalystOnly,
@@ -327,11 +362,23 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
     });
   }, [solved, effectiveLineupMode, savedTacticLineup, players, customSlots]);
 
+  const onSolvedLineupChangeRef = useRef(onSolvedLineupChange);
+  onSolvedLineupChangeRef.current = onSolvedLineupChange;
+  const lastEmittedLineupSigRef = useRef<string>('');
+
   useEffect(() => {
-    if (onSolvedLineupChange && effectiveLineupMode !== 'bteam') {
-      onSolvedLineupChange(activeSlots);
-    }
-  }, [activeSlots, effectiveLineupMode, onSolvedLineupChange]);
+    const callback = onSolvedLineupChangeRef.current;
+    if (!callback || effectiveLineupMode === 'bteam') return;
+    const sig = activeSlots
+      .map(
+        (s) =>
+          `${s.slotId}:${s.player?.id ?? ''}:${s.ipRole}:${s.oopRole}:${s.combinedFitPct}`
+      )
+      .join('|');
+    if (sig === lastEmittedLineupSigRef.current) return;
+    lastEmittedLineupSigRef.current = sig;
+    callback(activeSlots);
+  }, [activeSlots, effectiveLineupMode]);
 
   const guardrails = useMemo(
     () =>
@@ -651,7 +698,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Visual Pitch */}
         <div className="lg:col-span-7 space-y-2.5">
-          <div className="relative rounded-xl overflow-hidden border border-emerald-700/40 bg-gradient-to-b from-emerald-950 via-emerald-900 to-emerald-950 min-h-[430px] select-none">
+          <div className="relative rounded-xl overflow-hidden border border-emerald-700/40 bg-gradient-to-b from-emerald-950 via-emerald-900 to-emerald-950 min-h-[470px] sm:min-h-[450px] select-none">
             {/* Pitch Markings */}
             <div className="absolute inset-3 border border-emerald-400/25 rounded-lg pointer-events-none">
               <div className="absolute top-1/2 left-0 right-0 h-px bg-emerald-400/25" />
@@ -731,13 +778,25 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                         : ''
                   : '';
 
+              const rawNodeRole =
+                pitchPhaseMode === 'oop'
+                  ? slot.oopRole
+                  : pitchPhaseMode === 'rest-defense' && restNode
+                    ? restNode.categoryLabel
+                    : slot.ipRole;
+
               return (
                 <button
                   key={slot.slotId}
                   type="button"
+                  title={
+                    slot.player
+                      ? `${slot.label}: ${slot.player.name} — ${rawNodeRole}`
+                      : `${slot.label}: ${rawNodeRole}`
+                  }
                   onClick={() => setSelectedSlotId(slot.slotId)}
                   style={{ left: `${displayX}%`, top: `${displayY}%` }}
-                  className={`absolute -translate-x-1/2 -translate-y-1/2 px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-lg text-center transition-all duration-300 w-[72px] sm:w-auto sm:max-w-[116px] border ${categoryRing} ${
+                  className={`absolute -translate-x-1/2 -translate-y-1/2 px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-lg text-center transition-all duration-300 min-w-[76px] max-w-[104px] sm:w-auto sm:max-w-[126px] border ${categoryRing} ${
                     isSelected
                       ? 'bg-emerald-500 text-slate-950 border-white shadow-lg scale-105 z-20'
                       : hasWarning
@@ -745,21 +804,17 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                         : 'bg-slate-950/85 text-slate-100 border-emerald-400/40 hover:border-emerald-300 z-10'
                   }`}
                 >
-                  <div className="text-[9px] sm:text-[10px] font-mono font-bold leading-tight truncate">
+                  <div className="text-[9px] sm:text-[10px] font-mono font-bold leading-tight whitespace-nowrap">
                     {slot.label}{' '}
                     {slot.player ? `· ${slot.combinedFitPct}%` : '· --'}
                   </div>
-                  <div className="text-[10px] sm:text-[11px] font-semibold truncate">
+                  <div className="text-[10px] sm:text-[11px] font-semibold leading-tight truncate">
                     {slot.player
                       ? slot.player.name.split(' ').slice(-1)[0]
                       : 'Empty'}
                   </div>
-                  <div className="text-[8px] sm:text-[9px] opacity-80 truncate">
-                    {pitchPhaseMode === 'oop'
-                      ? slot.oopRole
-                      : pitchPhaseMode === 'rest-defense' && restNode
-                        ? restNode.categoryLabel
-                        : slot.ipRole}
+                  <div className="text-[8px] sm:text-[9px] leading-tight opacity-85 truncate">
+                    {formatCompactPitchRole(rawNodeRole)}
                   </div>
                 </button>
               );

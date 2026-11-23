@@ -22,9 +22,11 @@ import {
   ShortlistRecord,
 } from '../types/fm27';
 import {
+  ClubGovernanceState,
   CompetitionRegistrationRules,
   DivisionBenchmarks,
   FinancialRunway,
+  LastMatchTacticBlueprint,
   RecruitmentTarget,
   TransferWindowInfo,
 } from '../types/fmSave';
@@ -35,6 +37,8 @@ import {
 } from '../utils/transferAudit';
 import { buildMultiPlayerComparison } from '../utils/playerComparisonEngine';
 import { MultiPlayerComparisonChart } from './FootballAnalyticsCharts';
+import { evaluateScoutTargetCard } from '../utils/cardIntelligenceEngine';
+import { ScoutTargetDetailModal } from './ScoutTargetDetailModal';
 import {
   buildScoutTargetPlayerRecord,
   buildTargetVsStarterComparison,
@@ -79,6 +83,8 @@ interface RecruitmentWorkspaceProps {
   transferWindows?: TransferWindowInfo | null;
   competitionRules?: CompetitionRegistrationRules | null;
   divisionBenchmarks?: DivisionBenchmarks | null;
+  governance?: ClubGovernanceState | null;
+  lastMatchTactic?: LastMatchTacticBlueprint | null;
   scoutedTargets?: RecruitmentTarget[];
   trackedTargets?: RecruitmentTarget[];
   onToggleTrackTarget?: (target: RecruitmentTarget) => boolean;
@@ -142,6 +148,8 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
   transferWindows = null,
   competitionRules = null,
   divisionBenchmarks = null,
+  governance = null,
+  lastMatchTactic = null,
   scoutedTargets = [],
   trackedTargets: controlledTrackedTargets,
   onToggleTrackTarget,
@@ -180,6 +188,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
   );
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [compareTarget, setCompareTarget] = useState<RecruitmentTarget | null>(null);
+  const [deepScoutTarget, setDeepScoutTarget] = useState<RecruitmentTarget | null>(null);
   const [compareTrayTargets, setCompareTrayTargets] = useState<RecruitmentTarget[]>([]);
   const [isMultiCompareOpen, setIsMultiCompareOpen] = useState<boolean>(false);
 
@@ -213,7 +222,13 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
   };
 
   const firstTeamPlayers = useMemo(
-    () => players.filter((p) => p.teamSlot === undefined || p.teamSlot === 0),
+    () =>
+      players.filter(
+        (p) =>
+          (p.teamSlot === undefined || p.teamSlot === 0) &&
+          !p.onLoan &&
+          p.status !== 'Youth'
+      ),
     [players]
   );
   const youthReservesCount = players.length - firstTeamPlayers.length;
@@ -290,7 +305,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
   };
 
   const handleOpenTargetCard = (target: RecruitmentTarget) => {
-    onSelectPlayer(buildScoutTargetPlayerRecord(target));
+    setDeepScoutTarget(target);
   };
 
   const handleAskAnalystCompareShortlist = () => {
@@ -380,19 +395,31 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
     deferredSearch,
   ]);
 
+  // Always audit the full club roster so Senior / Youth / Out-on-Loan splits and U21 successor paths stay unified.
   const audit = useMemo(
     () =>
       buildSquadTransferAudit(
-        auditPlayers,
+        players,
         saveDate,
         {
           ...finances,
           balanceLabel: balance,
           wageSpendLabel: wageSpend,
+          monthlyBurnRate:
+            finances?.monthlyBurnRate ?? financialRunway?.monthlyBurnRate ?? null,
         },
         divisionBenchmarks
       ),
-    [auditPlayers, saveDate, finances, balance, wageSpend, divisionBenchmarks]
+    [players, saveDate, finances, balance, wageSpend, financialRunway, divisionBenchmarks]
+  );
+
+  // Scoped advice list respects the Senior First Team vs All Club toggle without hiding youth successors from Depth
+  const scopedPlayerAdvice = useMemo(
+    () =>
+      includeYouthInAudit || audit.squadTierCounts.senior === 0
+        ? audit.playerAdvice
+        : audit.playerAdvice.filter((item) => item.squadTier === 'senior'),
+    [audit.playerAdvice, audit.squadTierCounts.senior, includeYouthInAudit]
   );
 
   const registrationCheck = useMemo(() => {
@@ -422,7 +449,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
 
   const filteredAdvice = useMemo(() => {
     const q = deferredSearch.trim().toLowerCase();
-    return audit.playerAdvice.filter((item) => {
+    return scopedPlayerAdvice.filter((item) => {
       if (verdictFilter !== 'ALL' && item.verdict !== verdictFilter) {
         return false;
       }
@@ -435,28 +462,36 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
         item.tags.some((t) => t.toLowerCase().includes(q))
       );
     });
-  }, [audit.playerAdvice, verdictFilter, deferredSearch]);
+  }, [scopedPlayerAdvice, verdictFilter, deferredSearch]);
 
-  const expiringAdvice = useMemo(
-    () =>
-      audit.playerAdvice.filter(
-        (item) => item.monthsLeft !== null && item.monthsLeft <= 12
-      ),
-    [audit.playerAdvice]
-  );
+  const scopedCountsByVerdict = useMemo(() => {
+    const counts: Record<TransferActionVerdict, number> = {
+      'Renew Now': 0,
+      'Protect Youth Asset': 0,
+      'Sell / Transfer List': 0,
+      'Replace Before Selling': 0,
+      'Loan Out': 0,
+      'Let Expire': 0,
+      Hold: 0,
+    };
+    for (const item of scopedPlayerAdvice) {
+      counts[item.verdict] += 1;
+    }
+    return counts;
+  }, [scopedPlayerAdvice]);
 
   // Phase 2.3 (v3.0): 4-Tier Contract Horizon & Wage Risk Monitor (6m / 12m / 18m / 18m+)
   const contractHorizonSummary = useMemo(() => {
-    const critical6m = audit.playerAdvice.filter(
+    const critical6m = scopedPlayerAdvice.filter(
       (i) => i.monthsLeft !== null && i.monthsLeft <= 6
     );
-    const warning12m = audit.playerAdvice.filter(
+    const warning12m = scopedPlayerAdvice.filter(
       (i) => i.monthsLeft !== null && i.monthsLeft > 6 && i.monthsLeft <= 12
     );
-    const watch18m = audit.playerAdvice.filter(
+    const watch18m = scopedPlayerAdvice.filter(
       (i) => i.monthsLeft !== null && i.monthsLeft > 12 && i.monthsLeft <= 18
     );
-    const secure18mPlus = audit.playerAdvice.filter(
+    const secure18mPlus = scopedPlayerAdvice.filter(
       (i) => i.monthsLeft === null || i.monthsLeft > 18
     );
 
@@ -499,10 +534,25 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
       projectedWageFreed,
       activeList,
     };
-  }, [audit.playerAdvice, contractHorizonTier]);
+  }, [scopedPlayerAdvice, contractHorizonTier]);
 
   const thinPositions = useMemo(
     () => audit.positionalNeeds.filter((b) => b.status === 'Need Signing'),
+    [audit.positionalNeeds]
+  );
+
+  const promoteInternalPositions = useMemo(
+    () => audit.positionalNeeds.filter((b) => b.status === 'Promote Internal'),
+    [audit.positionalNeeds]
+  );
+
+  const successionGapPositions = useMemo(
+    () => audit.positionalNeeds.filter((b) => b.hasSuccessionGap),
+    [audit.positionalNeeds]
+  );
+
+  const overstockedPositions = useMemo(
+    () => audit.positionalNeeds.filter((b) => b.status === 'Overstocked'),
     [audit.positionalNeeds]
   );
 
@@ -564,7 +614,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
             )}
             {financialRunway && (
               <span
-                className={`rounded-md border px-2 py-0.5 text-[11px] font-mono font-semibold ${
+                className={`rounded-md border px-2 py-0.5 text-[11px] font-mono font-semibold tabular-nums ${
                   financialRunway.status === 'Critical'
                     ? 'bg-rose-500/15 text-rose-300 border-rose-500/40'
                     : financialRunway.status === 'Warning'
@@ -572,7 +622,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                       : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
                 }`}
               >
-                Runway: {financialRunway.status} ({financialRunway.runwayMonths}m · Burn £{Math.round(financialRunway.monthlyBurnRate).toLocaleString()}/mo)
+                Runway: {financialRunway.status} ({financialRunway.runwayMonths < 999 ? `${financialRunway.runwayMonths}m` : 'Pos'} · Burn £{Math.round(financialRunway.monthlyBurnRate).toLocaleString()}/mo)
               </span>
             )}
           </div>
@@ -584,7 +634,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
             className={`rounded-xl border p-3 space-y-1.5 ${
               clubProfile.isInDebt
                 ? 'border-rose-500/40 bg-rose-950/25'
-                : clubProfile.isOverWageBudget
+                : clubProfile.isMateriallyOverWageBudget
                   ? 'border-amber-500/40 bg-amber-950/20'
                   : 'border-emerald-500/30 bg-emerald-950/20'
             }`}
@@ -597,7 +647,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                 className={
                   clubProfile.isInDebt
                     ? 'text-rose-300'
-                    : clubProfile.isOverWageBudget
+                    : clubProfile.isMateriallyOverWageBudget
                       ? 'text-amber-300'
                       : 'text-emerald-300'
                 }
@@ -666,56 +716,61 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
           </div>
         )}
 
-        {/* 4 Compact Financial & Action KPIs */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-          <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
-            <div className="text-[11px] text-slate-400">Balance &amp; Wages</div>
+        {/* 4 Compact Financial & Action KPIs (Single Canonical Financial Source of Truth) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+          <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 min-w-0">
+            <div className="text-[11px] text-slate-400">Bank Balance &amp; Wage Cap</div>
             <div
-              className={`text-xs sm:text-sm font-bold font-mono mt-0.5 truncate ${
+              className={`text-sm sm:text-base font-bold font-mono tabular-nums mt-0.5 ${
                 clubProfile.isInDebt ? 'text-rose-400' : 'text-emerald-400'
               }`}
             >
-              {balance}
+              {clubProfile.balanceLabel}
             </div>
-            <div className="text-[10px] text-slate-400 mt-0.5 truncate">
-              {wageSpend}
+            <div className="text-[11px] font-mono tabular-nums text-slate-300 mt-0.5 break-words">
+              {clubProfile.wageComplianceLabel}
             </div>
           </div>
-          <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
-            <div className="text-[11px] text-slate-400">Renew / Youth Lock</div>
-            <div className="text-sm sm:text-base font-bold font-mono text-emerald-400 mt-0.5">
+          <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 min-w-0">
+            <div className="text-[11px] text-slate-400">Renew / Youth Protection</div>
+            <div className="text-sm sm:text-base font-bold font-mono tabular-nums text-emerald-400 mt-0.5">
               {players.length > 0
                 ? `${audit.countsByVerdict['Renew Now'] + audit.countsByVerdict['Protect Youth Asset']} Players`
                 : '--'}
             </div>
-            <div className="text-[10px] text-slate-400 mt-0.5">
-              {audit.countsByVerdict['Protect Youth Asset']} U21 assets ·{' '}
+            <div className="text-[11px] text-slate-400 mt-0.5">
+              {audit.countsByVerdict['Protect Youth Asset']} U21 protected ·{' '}
               {audit.expiringWithin12mCount} exp &le;12m
             </div>
           </div>
-          <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
-            <div className="text-[11px] text-slate-400">Wage Savings Pool</div>
-            <div className="text-sm sm:text-base font-bold font-mono text-amber-300 mt-0.5">
+          <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 min-w-0">
+            <div className="text-[11px] text-slate-400">Projected Savings (Unbanked)</div>
+            <div className="text-sm sm:text-base font-bold font-mono tabular-nums text-amber-300 mt-0.5">
               {players.length > 0
-                ? `£${audit.potentialWeeklySavings.toLocaleString()}/wk`
+                ? `£${audit.projectedWeeklySavings.toLocaleString()}/wk`
                 : '--'}
             </div>
-            <div className="text-[10px] text-slate-400 mt-0.5">
+            <div className="text-[11px] text-slate-400 mt-0.5">
+              Banked: £{audit.actualBankedWeeklySavings.toLocaleString()}/wk ·{' '}
               {audit.countsByVerdict['Sell / Transfer List'] +
                 audit.countsByVerdict['Replace Before Selling']}{' '}
-              sell · {audit.countsByVerdict['Let Expire']} exit ·{' '}
-              {audit.countsByVerdict['Loan Out']} loan
+              sell · {audit.countsByVerdict['Let Expire']} exit
             </div>
           </div>
-          <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
-            <div className="text-[11px] text-slate-400">Transfer Priorities</div>
-            <div className="text-sm sm:text-base font-bold font-mono text-sky-300 mt-0.5 truncate">
+          <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 min-w-0">
+            <div className="text-[11px] text-slate-400">Senior Depth &amp; Succession</div>
+            <div className="text-sm sm:text-base font-bold font-mono text-sky-300 mt-0.5 break-words">
               {players.length > 0
-                ? thinPositions.map((b) => b.code).join(', ') || 'Balanced'
+                ? thinPositions.length > 0
+                  ? thinPositions.map((b) => b.code).join(', ')
+                  : successionGapPositions.length > 0
+                    ? `U23: ${successionGapPositions.map((b) => b.code).join(', ')}`
+                    : 'Balanced'
                 : '--'}
             </div>
-            <div className="text-[10px] text-slate-400 mt-0.5">
-              4-3-3 depth scan
+            <div className="text-[11px] text-slate-400 mt-0.5">
+              {audit.squadTierCounts.senior} Senior · {audit.squadTierCounts.youthReserve} U21/Res
+              {audit.squadTierCounts.onLoan > 0 ? ` · ${audit.squadTierCounts.onLoan} Loan` : ''}
             </div>
           </div>
         </div>
@@ -726,7 +781,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
             [
               {
                 id: 'advice',
-                label: `Squad Advice (${auditPlayers.length})`,
+                label: `Squad Advice (${scopedPlayerAdvice.length})`,
                 icon: Sparkles,
               },
               {
@@ -740,7 +795,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
               },
               {
                 id: 'depth',
-                label: `Needs (${thinPositions.length})`,
+                label: `Needs (${audit.actionableNeedsCount})`,
                 icon: Layers,
               },
               {
@@ -761,14 +816,14 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                 key={t.id}
                 type="button"
                 onClick={() => setView(t.id)}
-                className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-2 text-xs font-semibold transition cursor-pointer ${
+                className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-2.5 min-h-[42px] text-xs font-semibold transition cursor-pointer ${
                   view === t.id
                     ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                     : 'bg-slate-950/70 text-slate-400 border border-slate-800 hover:text-slate-200'
                 }`}
               >
                 <Icon className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">{t.label}</span>
+                <span className="whitespace-nowrap">{t.label}</span>
               </button>
             );
           })}
@@ -794,34 +849,34 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                 <div className="flex flex-wrap gap-1.5">
                   {(
                     [
-                      { id: 'ALL', label: `All (${auditPlayers.length})` },
+                      { id: 'ALL', label: `All (${scopedPlayerAdvice.length})` },
                       {
                         id: 'Protect Youth Asset',
-                        label: `Youth (${audit.countsByVerdict['Protect Youth Asset']})`,
+                        label: `Youth (${scopedCountsByVerdict['Protect Youth Asset']})`,
                       },
                       {
                         id: 'Renew Now',
-                        label: `Renew (${audit.countsByVerdict['Renew Now']})`,
+                        label: `Renew (${scopedCountsByVerdict['Renew Now']})`,
                       },
                       {
                         id: 'Sell / Transfer List',
-                        label: `Sell (${audit.countsByVerdict['Sell / Transfer List']})`,
+                        label: `Sell (${scopedCountsByVerdict['Sell / Transfer List']})`,
                       },
                       {
                         id: 'Replace Before Selling',
-                        label: `Replace 1st (${audit.countsByVerdict['Replace Before Selling']})`,
+                        label: `Replace 1st (${scopedCountsByVerdict['Replace Before Selling']})`,
                       },
                       {
                         id: 'Let Expire',
-                        label: `Let Expire (${audit.countsByVerdict['Let Expire']})`,
+                        label: `Let Expire (${scopedCountsByVerdict['Let Expire']})`,
                       },
                       {
                         id: 'Loan Out',
-                        label: `Loan (${audit.countsByVerdict['Loan Out']})`,
+                        label: `Loan (${scopedCountsByVerdict['Loan Out']})`,
                       },
                       {
                         id: 'Hold',
-                        label: `Hold (${audit.countsByVerdict['Hold']})`,
+                        label: `Hold (${scopedCountsByVerdict['Hold']})`,
                       },
                     ] as const
                   ).map((pill) => (
@@ -918,31 +973,50 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                         </div>
                       </div>
 
-                      {item.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {item.tags.map((tag, idx) => {
-                            const isBannedTag = tag.startsWith('BANNED');
-                            const isOptionTag = tag.startsWith('Club Option');
-                            const isClauseTag = tag.startsWith('Release Clause');
-                            return (
-                              <span
-                                key={idx}
-                                className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${
-                                  isBannedTag
-                                    ? 'bg-rose-500/20 border-rose-500/50 text-rose-300 font-bold'
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span
+                          className={`rounded-md border px-2 py-0.5 text-[10px] font-bold ${
+                            item.abilityReadinessTier === 'squad_star'
+                              ? 'bg-amber-500/20 border-amber-500/50 text-amber-200'
+                              : item.abilityReadinessTier === 'starter_level'
+                                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                                : item.abilityReadinessTier === 'rotation_ready'
+                                  ? 'bg-teal-500/15 border-teal-500/40 text-teal-300'
+                                  : item.abilityReadinessTier === 'developing_prospect'
+                                    ? 'bg-sky-500/10 border-sky-500/30 text-sky-300'
+                                    : 'bg-purple-500/15 border-purple-500/35 text-purple-300'
+                          }`}
+                        >
+                          {item.abilityReadinessLabel}
+                        </span>
+                        {item.tags.map((tag, idx) => {
+                          const isBannedTag = tag.startsWith('BANNED');
+                          const isOptionTag = tag.startsWith('Club Option');
+                          const isClauseTag = tag.startsWith('Release Clause');
+                          const isPromoteTag =
+                            tag === 'Promote to First Team' ||
+                            tag.startsWith('Promote to Backup') ||
+                            tag === 'U21 · First-Team Ready';
+                          return (
+                            <span
+                              key={idx}
+                              className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${
+                                isBannedTag
+                                  ? 'bg-rose-500/20 border-rose-500/50 text-rose-300 font-bold'
+                                  : isPromoteTag
+                                    ? 'bg-teal-500/20 border-teal-500/50 text-teal-200 font-semibold'
                                     : isOptionTag
                                       ? 'bg-sky-500/15 border-sky-500/40 text-sky-300'
                                       : isClauseTag
                                         ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
                                         : 'bg-slate-800/90 border-slate-700/80 text-slate-300'
-                                }`}
-                              >
-                                {tag}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      )}
+                              }`}
+                            >
+                              {tag}
+                            </span>
+                          );
+                        })}
+                      </div>
 
                       <div className="text-xs font-semibold text-slate-100">
                         {item.headline}
@@ -1121,98 +1195,362 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
             </div>
           )}
 
-          {/* VIEW 3: 4-3-3 POSITIONAL DEPTH & SCOUTING PROFILES */}
+          {/* VIEW 3: 4-3-3 POSITIONAL DEPTH — SENIOR PRIMARY VS VERSATILITY COVER VS U21/YOUTH VS ON LOAN */}
           {view === 'depth' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {audit.positionalNeeds.map((b) => {
-                const isThin = b.status === 'Need Signing';
-                const isOver = b.status === 'Overstocked';
-                const isSuccessionGap = b.hasSuccessionGap;
-                return (
-                  <div
-                    key={b.code}
-                    className={`rounded-2xl border p-4 space-y-2.5 ${
-                      isThin
-                        ? 'border-rose-500/40 bg-rose-950/20'
-                        : isSuccessionGap
-                          ? 'border-purple-500/45 bg-purple-950/20'
-                          : isOver
-                            ? 'border-amber-500/40 bg-amber-950/15'
-                            : 'border-slate-800 bg-slate-900/60'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5">
-                        <h4 className="text-xs font-bold text-white">{b.label}</h4>
-                        {isSuccessionGap && (
-                          <span className="rounded bg-purple-500/25 border border-purple-500/50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-purple-200">
-                            Succession Gap
-                          </span>
+            <div className="space-y-3">
+              {/* Squad Depth Audit Summary Bar */}
+              <div className="rounded-xl border border-slate-800 bg-slate-900/70 px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex flex-wrap items-center gap-2 text-slate-300">
+                  <span className="font-semibold text-white">
+                    Squad-Relative Primary Depth
+                  </span>
+                  <span className="text-slate-500">·</span>
+                  <span>
+                    First-Team Ready U21s (≥{' '}
+                    <strong className="font-mono text-teal-300">
+                      {audit.tierBenchmarks.firstTeamRotationFloor.toFixed(1)}★
+                    </strong>
+                    , Starter ≥{' '}
+                    <strong className="font-mono text-emerald-300">
+                      {audit.tierBenchmarks.firstTeamStarterFloor.toFixed(1)}★
+                    </strong>
+                    ) are separated from raw Academy prospects so 3.5★ ready players are never mixed with 1.0★ teenagers.
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-mono tabular-nums">
+                  <span className="rounded bg-rose-500/15 border border-rose-500/35 px-2 py-0.5 text-rose-300">
+                    Need Signing: {thinPositions.length}
+                  </span>
+                  <span className="rounded bg-teal-500/15 border border-teal-500/35 px-2 py-0.5 text-teal-300">
+                    Promote Internal: {promoteInternalPositions.length}
+                  </span>
+                  <span className="rounded bg-purple-500/15 border border-purple-500/35 px-2 py-0.5 text-purple-300">
+                    Succession: {successionGapPositions.length}
+                  </span>
+                  <span className="rounded bg-amber-500/15 border border-amber-500/35 px-2 py-0.5 text-amber-300">
+                    Overstocked: {overstockedPositions.length}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {audit.positionalNeeds.map((b) => {
+                  const isThin = b.status === 'Need Signing';
+                  const isPromoteInternal = b.status === 'Promote Internal';
+                  const isOver = b.status === 'Overstocked';
+                  const isSuccessionGap = b.hasSuccessionGap;
+                  const readyYouthCount = b.firstTeamReadyYouthPlayers.length;
+                  return (
+                    <div
+                      key={b.code}
+                      className={`rounded-2xl border p-4 space-y-3 flex flex-col ${
+                        isThin
+                          ? 'border-rose-500/40 bg-rose-950/20'
+                          : isPromoteInternal
+                            ? 'border-teal-500/45 bg-teal-950/15'
+                            : isSuccessionGap
+                              ? 'border-purple-500/45 bg-purple-950/20'
+                              : isOver
+                                ? 'border-amber-500/40 bg-amber-950/15'
+                                : 'border-slate-800 bg-slate-900/60'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                          <h4 className="text-sm font-bold text-white">{b.label}</h4>
+                          {isPromoteInternal && (
+                            <span className="rounded bg-teal-500/20 border border-teal-500/50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-teal-200">
+                              Promote Internal
+                            </span>
+                          )}
+                          {isSuccessionGap && (
+                            <span className="rounded bg-purple-500/25 border border-purple-500/50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-purple-200">
+                              Succession Gap
+                            </span>
+                          )}
+                        </div>
+                        <span
+                          className={`text-[11px] font-mono tabular-nums font-bold px-2 py-0.5 rounded-md shrink-0 ${
+                            isThin
+                              ? 'bg-rose-500/20 text-rose-300'
+                              : isPromoteInternal
+                                ? 'bg-teal-500/20 text-teal-200'
+                                : isOver
+                                  ? 'bg-amber-500/20 text-amber-300'
+                                  : 'bg-emerald-500/15 text-emerald-300'
+                          }`}
+                        >
+                          {b.currentCount} Senior
+                          {readyYouthCount > 0 ? ` + ${readyYouthCount} Ready` : ''} (Ideal {b.idealMin}–{b.idealMax})
+                        </span>
+                      </div>
+
+                      {isSuccessionGap && (
+                        <div className="rounded-lg border border-purple-500/35 bg-purple-950/40 p-2.5 text-[11px] text-purple-200 leading-snug">
+                          All senior primary options are <strong>28+</strong> with <strong>no U23 cover</strong> — scout a U23 successor.
+                        </div>
+                      )}
+
+                      {isPromoteInternal && (
+                        <div className="rounded-lg border border-teal-500/35 bg-teal-950/35 p-2.5 text-[11px] text-teal-100 space-y-1">
+                          <div className="font-bold flex items-center gap-1 text-teal-300">
+                            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                            <span>
+                              No External Signing Needed — Promote {readyYouthCount} First-Team Ready U21 Option{readyYouthCount === 1 ? '' : 's'}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-300 leading-snug">
+                            {b.firstTeamReadyYouthPlayers
+                              .map((p) => `${p.name} (Age ${p.age}, ${p.ability.toFixed(1)}★)`)
+                              .join(', ')}{' '}
+                            already meet your {audit.tierBenchmarks.firstTeamRotationFloor.toFixed(1)}★ First-Team standard.
+                          </div>
+                        </div>
+                      )}
+
+                      {isThin && (
+                        <div className="rounded-lg border border-rose-500/30 bg-rose-950/40 p-2.5 text-[11px] text-rose-200 space-y-1">
+                          <div className="font-bold flex items-center gap-1 text-rose-300">
+                            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                            <span>
+                              First-Team Primary Gap ({b.effectiveReadyCount}/{b.idealMin} ready
+                              {b.secondaryCoverPlayers.length > 0
+                                ? `, ${b.secondaryCoverPlayers.length} versatile cover`
+                                : ''}
+                              )
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-300 leading-snug">
+                            {b.scoutProfile}
+                          </div>
+                        </div>
+                      )}
+
+                      {isOver && (
+                        <div className="text-[11px] text-amber-300 leading-snug">
+                          Senior primary depth is overstocked ({b.currentCount} vs ideal {b.idealMin}–{b.idealMax}) — review paid backups before adding wages.
+                        </div>
+                      )}
+
+                      {/* 1. Senior Primary Players (All rows shown cleanly, zero mid-row clipping) */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-slate-400">
+                          <span>Senior First Team (Primary)</span>
+                          <span>{b.seniorPrimaryPlayers.length}</span>
+                        </div>
+                        {b.seniorPrimaryPlayers.length === 0 ? (
+                          <div className="text-[11px] text-slate-500 italic px-1">
+                            {readyYouthCount > 0
+                              ? '0 assigned to Senior slot — promote Ready U21 below'
+                              : 'No senior primary options'}
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            {b.seniorPrimaryPlayers.map((p) => {
+                              const isSurplus =
+                                p.status === 'Surplus' ||
+                                /surplus/i.test(
+                                  p.contractDetails?.promisedPlayingTime || ''
+                                );
+                              const isTeenStarter =
+                                p.age <= 20 &&
+                                p.ability >= audit.tierBenchmarks.firstTeamStarterFloor;
+                              return (
+                                <button
+                                  key={p.id}
+                                  type="button"
+                                  onClick={() => onSelectPlayer(p)}
+                                  className="w-full flex items-center justify-between gap-2 rounded-lg bg-slate-950/75 border border-slate-800/80 px-2.5 py-2 text-xs hover:border-emerald-500/40 transition text-left cursor-pointer"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <div className="font-medium text-slate-100 break-words leading-tight">
+                                      {p.name}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 mt-0.5 flex flex-wrap items-center gap-1.5">
+                                      <span>Age {p.age}</span>
+                                      <span>·</span>
+                                      <span className="font-mono tabular-nums">
+                                        £{p.wagePw.toLocaleString()}/wk
+                                      </span>
+                                      {isTeenStarter && (
+                                        <span className="rounded bg-emerald-500/20 px-1 text-[9px] font-bold text-emerald-300">
+                                          Young Starter
+                                        </span>
+                                      )}
+                                      {isSurplus && (
+                                        <span className="rounded bg-rose-500/20 px-1 text-[9px] font-bold text-rose-300">
+                                          Surplus
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <span className="font-mono tabular-nums text-amber-300 font-semibold text-[11px] shrink-0">
+                                    {p.ability.toFixed(1)}★/{p.potential.toFixed(1)}★
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
                         )}
                       </div>
-                      <span
-                        className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
-                          isThin
-                            ? 'bg-rose-500/20 text-rose-300'
-                            : isOver
-                              ? 'bg-amber-500/20 text-amber-300'
-                              : 'bg-emerald-500/15 text-emerald-300'
-                        }`}
-                      >
-                        {b.currentCount} (Ideal {b.idealMin}–{b.idealMax})
-                      </span>
-                    </div>
 
-                    {isSuccessionGap && (
-                      <div className="rounded-lg border border-purple-500/35 bg-purple-950/40 p-2 text-[11px] text-purple-200">
-                        All first-team options are <strong>28+</strong> with <strong>no U23 cover</strong> — scout a U23 successor.
-                      </div>
-                    )}
-
-                    {isThin && (
-                      <div className="rounded-lg border border-rose-500/30 bg-rose-950/40 p-2 text-[11px] text-rose-200 space-y-1">
-                        <div className="font-bold flex items-center gap-1 text-rose-300">
-                          <AlertTriangle className="h-3 w-3 shrink-0" />
-                          Priority Signing Target
+                      {/* 2. First-Team Ready U21 / Reserve Players (Meet squad rotation/starter CA floor — Promote Now) */}
+                      {b.firstTeamReadyYouthPlayers.length > 0 && (
+                        <div className="space-y-1.5 pt-2 border-t border-slate-800/70">
+                          <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-teal-300">
+                            <span>First-Team Ready (U21 / Reserve — Promote)</span>
+                            <span>{b.firstTeamReadyYouthPlayers.length}</span>
+                          </div>
+                          <div className="space-y-1">
+                            {b.firstTeamReadyYouthPlayers.map((p) => {
+                              const isStarterQual =
+                                p.ability >= audit.tierBenchmarks.firstTeamStarterFloor;
+                              return (
+                                <button
+                                  key={`rdy-${p.id}`}
+                                  type="button"
+                                  onClick={() => onSelectPlayer(p)}
+                                  className="w-full flex items-center justify-between gap-2 rounded-lg bg-teal-950/30 border border-teal-500/35 px-2.5 py-1.5 text-[11px] hover:border-teal-400/70 transition text-left cursor-pointer"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <span className="text-teal-50 font-semibold break-words">
+                                      {p.name}{' '}
+                                      <span className="text-[10px] font-normal text-teal-200/80">
+                                        (Age {p.age})
+                                      </span>
+                                    </span>
+                                    <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                                      <span
+                                        className={`rounded px-1.5 py-0.2 text-[9px] font-bold ${
+                                          isStarterQual
+                                            ? 'bg-emerald-500/20 text-emerald-300'
+                                            : 'bg-teal-500/20 text-teal-200'
+                                        }`}
+                                      >
+                                        {isStarterQual ? 'Starter Level' : 'Rotation Ready'}
+                                      </span>
+                                      <span className="text-[9px] font-mono text-slate-400">
+                                        £{p.wagePw.toLocaleString()}/wk
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <span className="font-mono tabular-nums text-amber-300 font-semibold shrink-0">
+                                    {p.ability.toFixed(1)}★/{p.potential.toFixed(1)}★
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
-                        <div className="text-[10px] text-slate-300 leading-snug">
-                          {b.scoutProfile}
-                        </div>
-                      </div>
-                    )}
+                      )}
 
-                    {isOver && (
-                      <div className="text-[11px] text-amber-300">
-                        Overstocked — loan or sell surplus depth to cut wages.
-                      </div>
-                    )}
-
-                    <div className="space-y-1">
-                      {b.players.length === 0 ? (
-                        <div className="text-[11px] text-slate-500 italic">
-                          No natural/accomplished cover
+                      {/* 3. Secondary Versatility / Cover (Marked clearly as cover, NOT counted as separate bodies) */}
+                      {b.secondaryCoverPlayers.length > 0 && (
+                        <div className="space-y-1.5 pt-2 border-t border-slate-800/70">
+                          <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-sky-400/90">
+                            <span>Versatility / Cover (Secondary)</span>
+                            <span>+{b.secondaryCoverPlayers.length}</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {b.secondaryCoverPlayers.map((p) => (
+                              <button
+                                key={`cov-${p.id}`}
+                                type="button"
+                                onClick={() => onSelectPlayer(p)}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500/10 border border-sky-500/25 px-2 py-1 text-[11px] text-sky-200 hover:border-sky-400 transition cursor-pointer"
+                              >
+                                <span className="font-medium">{p.name}</span>
+                                <span className="text-[10px] font-mono text-sky-300/80">
+                                  ({p.position.split(',')[0].trim()})
+                                </span>
+                              </button>
+                            ))}
+                          </div>
                         </div>
-                      ) : (
-                        b.players.slice(0, 6).map((p) => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => onSelectPlayer(p)}
-                            className="w-full flex items-center justify-between rounded-lg bg-slate-950/70 border border-slate-800/80 px-2.5 py-1.5 text-[11px] hover:border-emerald-500/40 transition"
-                          >
-                            <span className="truncate text-slate-200 font-medium">
-                              {p.name}
-                            </span>
-                            <span className="font-mono text-amber-300 shrink-0 ml-2">
-                              {p.ability.toFixed(1)}★/{p.potential.toFixed(1)}★
-                            </span>
-                          </button>
-                        ))
+                      )}
+
+                      {/* 4. Academy / Developing Prospects (Below First-Team CA floor — long-term pipeline) */}
+                      {b.academyProspectPlayers.length > 0 && (
+                        <div className="space-y-1.5 pt-2 border-t border-slate-800/70">
+                          <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-purple-300/90">
+                            <span>Academy / Developing (Not Senior-Ready Yet)</span>
+                            <span>{b.academyProspectPlayers.length}</span>
+                          </div>
+                          <div className="space-y-1">
+                            {b.academyProspectPlayers.map((p) => {
+                              const isDeveloping =
+                                p.ability >=
+                                Math.max(2.0, audit.tierBenchmarks.firstTeamRotationFloor - 1.0);
+                              const isHighCeiling = p.potential >= 4.0;
+                              return (
+                                <button
+                                  key={`yth-${p.id}`}
+                                  type="button"
+                                  onClick={() => onSelectPlayer(p)}
+                                  className="w-full flex items-center justify-between gap-2 rounded-lg bg-purple-950/20 border border-purple-500/20 px-2.5 py-1.5 text-[11px] hover:border-purple-400/50 transition text-left cursor-pointer"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <span className="text-purple-100/90 font-medium break-words">
+                                      {p.name}{' '}
+                                      <span className="text-[10px] text-purple-300/70">
+                                        (Age {p.age})
+                                      </span>
+                                    </span>
+                                    <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                                      <span
+                                        className={`rounded px-1.5 py-0.2 text-[9px] font-semibold ${
+                                          isDeveloping
+                                            ? 'bg-sky-500/15 text-sky-300'
+                                            : 'bg-slate-800 text-slate-400'
+                                        }`}
+                                      >
+                                        {isDeveloping ? 'Developing U21' : 'Raw Academy'}
+                                      </span>
+                                      {isHighCeiling && (
+                                        <span className="rounded bg-amber-500/15 px-1.5 py-0.2 text-[9px] font-semibold text-amber-300">
+                                          High Ceiling
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <span className="font-mono tabular-nums text-amber-300/85 shrink-0">
+                                    {p.ability.toFixed(1)}★/{p.potential.toFixed(1)}★
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 4. Out on Loan */}
+                      {b.onLoanPlayers.length > 0 && (
+                        <div className="space-y-1.5 pt-2 border-t border-slate-800/70">
+                          <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-indigo-300">
+                            <span>Out on Loan</span>
+                            <span>{b.onLoanPlayers.length}</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {b.onLoanPlayers.map((p) => (
+                              <button
+                                key={`loan-${p.id}`}
+                                type="button"
+                                onClick={() => onSelectPlayer(p)}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/30 px-2 py-1 text-[11px] text-indigo-200 hover:border-indigo-400 transition cursor-pointer"
+                              >
+                                <span>{p.name}</span>
+                                <span className="font-mono text-[10px] text-amber-300">
+                                  {p.ability.toFixed(1)}★/{p.potential.toFixed(1)}★
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       )}
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           )}
 
@@ -1628,6 +1966,37 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                                 </div>
                               )}
 
+                              {/* Inline FM27 Scout Card Verdict Strip */}
+                              {(() => {
+                                const intel = evaluateScoutTargetCard(target, players, {
+                                  divisionBenchmarks,
+                                  activeTactic: lastMatchTactic,
+                                  governance,
+                                });
+                                const toneCls =
+                                  intel.tone === 'emerald'
+                                    ? 'text-emerald-300'
+                                    : intel.tone === 'sky'
+                                      ? 'text-sky-300'
+                                      : intel.tone === 'amber'
+                                        ? 'text-amber-300'
+                                        : intel.tone === 'rose'
+                                          ? 'text-rose-300'
+                                          : 'text-slate-300';
+                                return (
+                                  <div className="rounded-lg border border-slate-800/90 bg-slate-950/75 px-2.5 py-1.5 text-[11px] flex flex-wrap items-center justify-between gap-2">
+                                    <span className="truncate text-slate-300">
+                                      <strong className={toneCls}>{intel.verdictLabel}</strong>
+                                      <span className="text-slate-500"> · </span>
+                                      <span>{intel.inlineRationale}</span>
+                                    </span>
+                                    <span className="font-mono text-[10px] text-slate-400 shrink-0">
+                                      {intel.cost3YrLabel} · Tap for Deep Dossier
+                                    </span>
+                                  </div>
+                                );
+                              })()}
+
                               <div className="flex flex-wrap items-center justify-between pt-1.5 border-t border-slate-800/80 text-[11px] gap-2">
                                 {depth.isGenuineGap ? (
                                   <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40">
@@ -1820,6 +2189,37 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                             </div>
                           ))}
                         </div>
+
+                        {/* Inline FM27 Shortlist Card Verdict Strip */}
+                        {(() => {
+                          const intel = evaluateScoutTargetCard(target, players, {
+                            divisionBenchmarks,
+                            activeTactic: lastMatchTactic,
+                            governance,
+                          });
+                          const toneCls =
+                            intel.tone === 'emerald'
+                              ? 'text-emerald-300'
+                              : intel.tone === 'sky'
+                                ? 'text-sky-300'
+                                : intel.tone === 'amber'
+                                  ? 'text-amber-300'
+                                  : intel.tone === 'rose'
+                                    ? 'text-rose-300'
+                                    : 'text-slate-300';
+                          return (
+                            <div className="rounded-lg border border-slate-800/90 bg-slate-950/75 px-2.5 py-1.5 text-[11px] flex flex-wrap items-center justify-between gap-2">
+                              <span className="truncate text-slate-300">
+                                <strong className={toneCls}>{intel.verdictLabel}</strong>
+                                <span className="text-slate-500"> · </span>
+                                <span>{intel.inlineRationale}</span>
+                              </span>
+                              <span className="font-mono text-[10px] text-slate-400 shrink-0">
+                                {intel.cost3YrLabel}
+                              </span>
+                            </div>
+                          );
+                        })()}
 
                         <div className="flex flex-wrap items-center justify-between pt-1.5 border-t border-slate-800/80 text-[11px] gap-1.5">
                           <span className="text-[10px] text-slate-400">
@@ -2227,6 +2627,23 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
           </div>
         </div>
       )}
+
+      {/* Deep Scout Target Analysis Modal (Percentile Pizza + Starter Radar + FM27 Fit) */}
+      <ScoutTargetDetailModal
+        target={deepScoutTarget}
+        squadPlayers={players}
+        divisionBenchmarks={divisionBenchmarks}
+        lastMatchTactic={lastMatchTactic}
+        governance={governance}
+        isTracked={
+          deepScoutTarget
+            ? isScoutTargetTracked(trackedTargets, deepScoutTarget)
+            : false
+        }
+        onToggleTrack={handleToggleTrack}
+        onAskAnalyst={onAskAnalyst}
+        onClose={() => setDeepScoutTarget(null)}
+      />
     </div>
   );
 };

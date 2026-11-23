@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef, Suspense, lazy, useCallback } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy, useCallback, useMemo } from 'react';
 import {
   BookOpen,
   Briefcase,
@@ -48,6 +48,7 @@ import {
 } from './components/AutoSyncWorkspace';
 import { applyAnalystPlayerUpdates } from './utils/tacticalAnalystContext';
 import { LiveFmSaveProofCard } from './components/LiveFmSaveProofCard';
+import { ClubGovernanceBanner } from './components/ClubGovernanceBanner';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
 import {
   loadPersistedFmState,
@@ -69,9 +70,24 @@ import {
   clearProgressionArchive,
 } from './utils/progressionDiff';
 import {
+  buildDeepJourneyReport,
+  clearAllSaveCache,
   createSaveHistoryPoint,
+  DeepJourneyReport,
+  listSaveHistoryPoints,
   putSaveHistoryPoint,
 } from './services/saveCache';
+import {
+  buildClubGovernanceState,
+  buildLastMatchTacticBlueprint,
+} from './utils/clubGovernanceAndTactics';
+import {
+  loadFm27BinaryDictionary,
+  type CompactBinaryDiffSnapshot,
+} from './utils/fm27BinaryDictionary';
+import { loadTacticRoleOverrides } from './utils/fm27TacticRoleInference';
+import { filterMeaningfulInstructions } from './utils/squadPlannerHelper';
+import type { CalibrationLabTab } from './components/Fm27BinaryCalibrationLab';
 
 const TacticalWarRoom = lazy(() =>
   import('./components/TacticalWarRoom').then((m) => ({
@@ -118,6 +134,11 @@ const CommandPaletteModal = lazy(() =>
     default: m.CommandPaletteModal,
   }))
 );
+const Fm27BinaryCalibrationLab = lazy(() =>
+  import('./components/Fm27BinaryCalibrationLab').then((m) => ({
+    default: m.Fm27BinaryCalibrationLab,
+  }))
+);
 
 const LazyTabFallback: React.FC<{ label: string }> = ({ label }) => (
   <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-500 dark:text-slate-400">
@@ -161,6 +182,9 @@ export default function App() {
   const [hydratedFmSave, setHydratedFmSave] = useState<HydratedSaveState | null>(
     null
   );
+  const [latestJourneyReport, setLatestJourneyReport] =
+    useState<DeepJourneyReport | null>(null);
+  const [snapshotResetNonce, setSnapshotResetNonce] = useState<number>(0);
   const [isRestoredFromMemory, setIsRestoredFromMemory] =
     useState<boolean>(false);
   const [confirmResetPending, setConfirmResetPending] =
@@ -171,7 +195,45 @@ export default function App() {
   const [selectedStaff, setSelectedStaff] = useState<StaffRecord | null>(null);
   const [showKnowledgeBase, setShowKnowledgeBase] = useState<boolean>(false);
   const [showCommandPalette, setShowCommandPalette] = useState<boolean>(false);
+  const [calibrationLabOpen, setCalibrationLabOpen] = useState<boolean>(false);
+  const [calibrationLabTab, setCalibrationLabTab] = useState<CalibrationLabTab>('roles');
+  const [dictionaryVersion, setDictionaryVersion] = useState<number>(0);
   const [appToast, setAppToast] = useState<string | null>(null);
+
+  const handleOpenCalibrationLab = useCallback((tab: CalibrationLabTab = 'roles') => {
+    setCalibrationLabTab(tab);
+    setCalibrationLabOpen(true);
+  }, []);
+
+  const liveGovernance = useMemo(() => {
+    if (!hydratedFmSave) return null;
+    if (hydratedFmSave.decodedPayload) {
+      return buildClubGovernanceState(
+        hydratedFmSave.decodedPayload,
+        players,
+        loadFm27BinaryDictionary()
+      );
+    }
+    return hydratedFmSave.governance ?? null;
+  }, [hydratedFmSave, players, dictionaryVersion]);
+
+  const liveLastMatchTactic = useMemo(() => {
+    if (!hydratedFmSave) return null;
+    if (hydratedFmSave.decodedPayload) {
+      return (
+        buildLastMatchTacticBlueprint(
+          hydratedFmSave.decodedPayload,
+          players,
+          0,
+          loadTacticRoleOverrides(),
+          loadFm27BinaryDictionary()
+        ) ??
+        hydratedFmSave.lastMatchTactic ??
+        null
+      );
+    }
+    return hydratedFmSave.lastMatchTactic ?? null;
+  }, [hydratedFmSave, players, dictionaryVersion]);
   const [backgroundSyncStatus, setBackgroundSyncStatus] = useState<{
     label: string;
     clubCoreReady: boolean;
@@ -184,6 +246,9 @@ export default function App() {
     players: PlayerRecord[];
     matches: MatchLogEntry[];
   } | null>(null);
+  const latestJourneyPromiseRef = useRef<Promise<DeepJourneyReport | null> | null>(
+    null
+  );
 
   const showGlobalToast = useCallback((msg: string) => {
     setAppToast(msg);
@@ -266,6 +331,10 @@ export default function App() {
     handleSelectTab('sync');
   };
 
+  const handleClearPendingPrompt = useCallback(() => {
+    setPendingAnalystPrompt(null);
+  }, []);
+
   const clubName =
     hydratedFmSave?.decodedPayload.meta.clubName || 'FM27 Command Hub';
   const managerName =
@@ -318,6 +387,20 @@ export default function App() {
         setIsRestoredFromMemory(true);
       }
     });
+
+    // Hydrate Save-to-Save Journey Report immediately on boot so Analyst Chat always has it
+    void listSaveHistoryPoints().then((items) => {
+      if (items.length >= 2) {
+        const initialMatches = saved?.matches ?? [];
+        const report = buildDeepJourneyReport(
+          items[1],
+          items[0],
+          items,
+          initialMatches
+        );
+        setLatestJourneyReport(report);
+      }
+    });
   }, []);
 
   // Automatically persist non-empty state across browser refreshes & sessions
@@ -365,9 +448,9 @@ export default function App() {
     applyToAnalystOnly,
   ]);
 
-  const summary = computeCompetitiveSummary(matches);
+  const summary = computeCompetitiveSummary(matches, saveDate);
 
-  const handleClearMemory = () => {
+  const handleClearMemory = async () => {
     if (!confirmResetPending) {
       setConfirmResetPending(true);
       window.setTimeout(() => setConfirmResetPending(false), 5000);
@@ -377,11 +460,15 @@ export default function App() {
     setConfirmResetPending(false);
     clearPersistedFmState();
     clearProgressionArchive();
+    await clearAllSaveCache();
     setPlayers([]);
     setMatches([]);
     setStaff([]);
     setRecruitmentCases([]);
     setShortlists([]);
+    setTrackedTargets([]);
+    latestJourneyPromiseRef.current = null;
+    setLatestJourneyReport(null);
     setSaveDate(EMPTY_CLUB_META.saveDate);
     setNextFixture(EMPTY_CLUB_META.nextFixture);
     setLeagueStandingSub('--');
@@ -391,7 +478,8 @@ export default function App() {
     setIsRestoredFromMemory(false);
     setSelectedPlayer(null);
     setSelectedStaff(null);
-    showGlobalToast('Local cache cleared — returned to Awaiting .fm Save');
+    setSnapshotResetNonce((n) => n + 1);
+    showGlobalToast('All saved state, cached saves & snapshots cleared — ready to test fresh');
   };
 
   const handleExportBackup = () => {
@@ -506,15 +594,69 @@ export default function App() {
       const parsedPos = Number(
         (hydrated.leagueStandingLabel || '').match(/^(\d+)/)?.[1] ?? ''
       );
+      const standing = decoded.leagueStanding;
+      const promisesAtRisk =
+        hydrated.governance?.playerPromiseAudits.filter(
+          (p) => p.status === 'breached' || p.status === 'at_risk'
+        ).length ?? null;
+      const binaryDiffSnapshot: CompactBinaryDiffSnapshot | null =
+        decoded.tactics?.length || decoded.binaryForensics
+          ? {
+              label: `${hydrated.saveDateLabel} · ${decoded.meta.fileName || decoded.meta.clubName || 'FM27 Save'}`,
+              inGameDate: hydrated.saveDateLabel,
+              fmBuild: decoded.binaryForensics?.fmBuild || decoded.meta.build || undefined,
+              tactics: decoded.tactics || [],
+              binaryForensics: decoded.binaryForensics ?? null,
+            }
+          : null;
       const snapshotPoint = createSaveHistoryPoint({
         saveName: decoded.meta.fileName || decoded.meta.saveName || 'fm27-save',
         inGameDate: hydrated.saveDateLabel,
         clubName: decoded.meta.clubName || 'Managed Club',
         players: hydrated.updatedSquad,
+        matches: hydrated.updatedMatches,
         balance: hydrated.balanceLabel || undefined,
-        leaguePosition: Number.isFinite(parsedPos) && parsedPos > 0 ? parsedPos : null,
+        balanceNum: hydrated.canonicalBalanceNum ?? decoded.finances?.balance ?? null,
+        monthlyBurnRate: hydrated.financialRunway?.monthlyBurnRate ?? null,
+        wageBudgetWeekly: decoded.finances?.wageBudgetWeekly ?? null,
+        leaguePosition:
+          standing?.position ?? (Number.isFinite(parsedPos) && parsedPos > 0 ? parsedPos : null),
+        played: standing?.played ?? null,
+        won: standing?.won ?? null,
+        drawn: standing?.drawn ?? null,
+        lost: standing?.lost ?? null,
+        points: standing?.points ?? null,
+        goalsFor: standing?.goalsFor ?? null,
+        goalsAgainst: standing?.goalsAgainst ?? null,
+        tacticName: hydrated.lastMatchTactic?.tacticName ?? null,
+        tacticFormation: hydrated.lastMatchTactic?.inPossessionFormation ?? null,
+        tacticMentality: hydrated.lastMatchTactic?.mentality ?? null,
+        activeInjuriesCount: decoded.activeInjuries?.length ?? 0,
+        activeSuspensionsCount: hydrated.activeSuspensions?.length ?? 0,
+        promisesAtRiskCount: promisesAtRisk,
+        managerExpires: hydrated.governance?.managerContract.expires ?? null,
+        boardGrade: hydrated.governance?.boardConfidence.grade ?? null,
+        supporterGrade: hydrated.governance?.supporterConfidence.grade ?? null,
+        binaryDiffSnapshot,
       });
-      void putSaveHistoryPoint(snapshotPoint);
+      latestJourneyPromiseRef.current = putSaveHistoryPoint(snapshotPoint).then(
+        async () => {
+          const items = await listSaveHistoryPoints();
+          setSnapshotResetNonce((n) => n + 1);
+          if (items.length >= 2) {
+            const report = buildDeepJourneyReport(
+              items[1],
+              items[0],
+              items,
+              hydrated.updatedMatches
+            );
+            setLatestJourneyReport(report);
+            return report;
+          }
+          setLatestJourneyReport(null);
+          return null;
+        }
+      );
     }
 
     setHydratedFmSave(hydrated);
@@ -971,8 +1113,16 @@ export default function App() {
             </div>
           </section>
 
-          {/* Live .fm Save Verification Receipt */}
+          {/* Live .fm Save Verification Receipt & Club Governance Banner */}
           {hydratedFmSave && <LiveFmSaveProofCard hydrated={hydratedFmSave} />}
+          {hydratedFmSave && liveGovernance && (
+            <ClubGovernanceBanner
+              governance={liveGovernance}
+              extractionManifest={hydratedFmSave.decodedPayload.extractionManifest ?? null}
+              onAskAnalyst={handleAskAnalystPrompt}
+              onOpenCalibrationLab={handleOpenCalibrationLab}
+            />
+          )}
         </div>
         )}
 
@@ -984,6 +1134,16 @@ export default function App() {
               players={players}
               staff={staff}
               recruitmentCases={recruitmentCases}
+              trackedTargets={trackedTargets}
+              latestJourneyReport={latestJourneyReport}
+              onJourneyReportChange={setLatestJourneyReport}
+              getLatestJourneyReportAsync={async () => {
+                if (latestJourneyPromiseRef.current) {
+                  return latestJourneyPromiseRef.current;
+                }
+                return latestJourneyReport;
+              }}
+              snapshotResetNonce={snapshotResetNonce}
               currentSaveDate={saveDate}
               clubName={hydratedFmSave?.decodedPayload.meta.clubName}
               managerName={managerName}
@@ -1002,7 +1162,7 @@ export default function App() {
               onApplyDecodedFmSave={handleApplyDecodedFmSave}
               onBackgroundSyncStatusChange={handleBackgroundSyncStatusChange}
               pendingPrompt={pendingAnalystPrompt}
-              onClearPendingPrompt={() => setPendingAnalystPrompt(null)}
+              onClearPendingPrompt={handleClearPendingPrompt}
             />
           </AppErrorBoundary>
         </div>
@@ -1015,7 +1175,7 @@ export default function App() {
                 saveDate={saveDate}
                 nextFixture={nextFixture}
                 clubName={clubName}
-                activeSuspensions={hydratedFmSave?.activeSuspensions ?? []}
+                activeSuspensions={hydratedFmSave?.activeSuspensions}
                 competitionRules={hydratedFmSave?.competitionRules ?? null}
                 hydratedFmSave={hydratedFmSave}
                 activeShape={activeShape}
@@ -1025,6 +1185,9 @@ export default function App() {
                 onChangeShape={setActiveShape}
                 onChangeCustomSlots={setCustomSlots}
                 onChangeApplyToAnalystOnly={setApplyToAnalystOnly}
+                onAskAnalyst={handleAskAnalystPrompt}
+                dictionaryVersion={dictionaryVersion}
+                onOpenCalibrationLab={handleOpenCalibrationLab}
               />
             </Suspense>
           </AppErrorBoundary>
@@ -1035,10 +1198,20 @@ export default function App() {
             <Suspense fallback={<LazyTabFallback label="Squad Analytics" />}>
               <SquadAnalyticsTable
                 players={players}
+                matches={matches}
                 clubName={hydratedFmSave?.decodedPayload.meta.clubName}
+                saveDate={saveDate}
+                divisionBenchmarks={hydratedFmSave?.divisionBenchmarks ?? null}
+                governance={liveGovernance ?? hydratedFmSave?.governance ?? null}
+                lastMatchTactic={liveLastMatchTactic ?? hydratedFmSave?.lastMatchTactic ?? null}
+                squadPlanner={hydratedFmSave?.squadPlanner ?? null}
                 nextCompetitionName={
                   hydratedFmSave?.decodedPayload?.upcomingFixtures?.[0]?.competition ??
                   null
+                }
+                isFastSync={Boolean(hydratedFmSave?.fastSync)}
+                playedMatchesCount={
+                  hydratedFmSave?.decodedPayload.playedMatches.length ?? matches.length
                 }
                 onSelectPlayer={setSelectedPlayer}
               />
@@ -1054,20 +1227,28 @@ export default function App() {
                 shortlists={shortlists}
                 players={players}
                 saveDate={saveDate}
-                wageSpend={wageSpend}
-                balance={balance}
+                wageSpend={hydratedFmSave?.wageComplianceLabel || wageSpend}
+                balance={hydratedFmSave?.balanceLabel || balance}
                 clubName={hydratedFmSave?.decodedPayload.meta.clubName}
                 finances={
-                  hydratedFmSave?.decodedPayload.finances
+                  hydratedFmSave?.decodedPayload.finances ||
+                  hydratedFmSave?.canonicalBalanceNum !== null
                     ? {
-                        balanceNum: hydratedFmSave.decodedPayload.finances.balance,
+                        balanceNum:
+                          hydratedFmSave?.canonicalBalanceNum ??
+                          hydratedFmSave?.decodedPayload.finances?.balance ??
+                          null,
                         wagePayrollWeekly:
-                          hydratedFmSave.decodedPayload.finances.wagePayrollWeekly,
+                          hydratedFmSave?.decodedPayload.finances
+                            ?.wagePayrollWeekly ?? null,
                         wageBudgetWeekly:
-                          hydratedFmSave.decodedPayload.finances.wageBudgetWeekly,
+                          hydratedFmSave?.decodedPayload.finances
+                            ?.wageBudgetWeekly ?? null,
                         transferBudgetRemaining:
-                          hydratedFmSave.decodedPayload.finances
-                            .transferBudgetRemaining,
+                          hydratedFmSave?.decodedPayload.finances
+                            ?.transferBudgetRemaining ?? null,
+                        monthlyBurnRate:
+                          hydratedFmSave?.financialRunway?.monthlyBurnRate ?? null,
                       }
                     : null
                 }
@@ -1075,6 +1256,8 @@ export default function App() {
                 transferWindows={hydratedFmSave?.decodedPayload.transferWindows ?? null}
                 competitionRules={hydratedFmSave?.competitionRules ?? null}
                 divisionBenchmarks={hydratedFmSave?.divisionBenchmarks ?? null}
+                governance={liveGovernance ?? hydratedFmSave?.governance ?? null}
+                lastMatchTactic={liveLastMatchTactic ?? hydratedFmSave?.lastMatchTactic ?? null}
                 scoutedTargets={
                   hydratedFmSave?.recruitmentTargets ??
                   hydratedFmSave?.decodedPayload.recruitmentTargets ??
@@ -1123,19 +1306,33 @@ export default function App() {
                 clubName={hydratedFmSave?.decodedPayload.meta.clubName}
                 saveDate={saveDate}
                 activeShape={
+                  liveLastMatchTactic?.inPossessionFormation ||
                   hydratedFmSave?.decodedPayload.tactics?.[0]?.inPossessionFormation ||
                   activeShape
                 }
                 activeTacticSummary={(() => {
-                  const t0 = hydratedFmSave?.decodedPayload.tactics?.[0];
-                  if (t0?.slots && t0.slots.length > 0) {
-                    const slotList = t0.slots
-                      .map(
-                        (s) =>
-                          `${s.position}${s.inPossessionRole ? ` (${s.inPossessionRole} IP / ${s.outOfPossessionRole || s.inPossessionRole} OOP)` : ''}`
-                      )
+                  if (liveLastMatchTactic && liveLastMatchTactic.starters.length > 0) {
+                    const slotList = liveLastMatchTactic.starters
+                      .map((s) => {
+                        const posStr =
+                          s.outOfPossessionPosition &&
+                          s.outOfPossessionPosition !== s.position
+                            ? `${s.position}->${s.outOfPossessionPosition}`
+                            : s.position;
+                        const ip = s.inPossessionRole || s.ipRole || 'Std';
+                        const oop = s.outOfPossessionRole || s.oopRole || ip;
+                        return `${posStr} (${ip} IP / ${oop} OOP)`;
+                      })
                       .join(', ');
-                    return `${t0.name} (${t0.mentality}, IP ${t0.inPossessionFormation || activeShape} / OOP ${t0.outOfPossessionFormation || t0.inPossessionFormation || activeShape}): ${slotList}`;
+                    const ti = liveLastMatchTactic.teamInstructions;
+                    const tiParts = [
+                      ...filterMeaningfulInstructions(ti.inPossession),
+                      ...filterMeaningfulInstructions(ti.inTransition),
+                      ...filterMeaningfulInstructions(ti.outOfPossession),
+                    ];
+                    const tiSuffix =
+                      tiParts.length > 0 ? ` | TI: ${tiParts.slice(0, 8).join(', ')}` : '';
+                    return `${liveLastMatchTactic.tacticName} (${liveLastMatchTactic.mentality}, IP ${liveLastMatchTactic.inPossessionFormation} / OOP ${liveLastMatchTactic.outOfPossessionFormation}): ${slotList}${tiSuffix}`;
                   }
                   if (customSlots.length > 0) {
                     return `${activeShape}: ${customSlots.map((c) => `${c.slotId} (${c.ipRole} IP / ${c.oopRole} OOP)`).join(', ')}`;
@@ -1214,9 +1411,15 @@ export default function App() {
             player={selectedPlayer}
             squadPlayers={players}
             divisionBenchmarks={hydratedFmSave?.divisionBenchmarks ?? null}
+            governance={liveGovernance ?? hydratedFmSave?.governance ?? null}
+            lastMatchTactic={liveLastMatchTactic ?? hydratedFmSave?.lastMatchTactic ?? null}
             nextCompetitionName={
               hydratedFmSave?.decodedPayload?.upcomingFixtures?.[0]?.competition ??
               null
+            }
+            isFastSync={Boolean(hydratedFmSave?.fastSync)}
+            playedMatchesCount={
+              hydratedFmSave?.decodedPayload.playedMatches.length ?? matches.length
             }
             shortlists={shortlists}
             isManagedClubPlayer={Boolean(
@@ -1277,6 +1480,19 @@ export default function App() {
               showGlobalToast(`Switched active formation to ${shape}`);
             }}
             onOpenKnowledgeBase={() => setShowKnowledgeBase(true)}
+          />
+        </Suspense>
+      )}
+
+      {calibrationLabOpen && (
+        <Suspense fallback={null}>
+          <Fm27BinaryCalibrationLab
+            isOpen={calibrationLabOpen}
+            initialTab={calibrationLabTab}
+            decodedPayload={hydratedFmSave?.decodedPayload ?? null}
+            players={players}
+            onClose={() => setCalibrationLabOpen(false)}
+            onDictionaryChanged={() => setDictionaryVersion((v) => v + 1)}
           />
         </Suspense>
       )}

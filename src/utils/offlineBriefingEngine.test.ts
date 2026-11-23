@@ -108,4 +108,98 @@ describe('offlineBriefingEngine', () => {
     assert.doesNotMatch(res.analysisMarkdown, /\bCA\s*[:=]|\bPA\s*[:=]/i);
     assert.ok(res.immediateClicks.length > 0);
   });
+
+  it('separates current-season League/Cup/Friendlies and excludes other-competition bans from next-match suspensions', () => {
+    const squad: PlayerRecord[] = [
+      makePlayer({ id: 'gk', name: 'Rene GK', position: 'GK', positionRatings: { GK: 20 } }),
+      makePlayer({
+        id: 'st-cup-ban',
+        uid: 901,
+        name: 'Cup Banned Striker',
+        position: 'ST',
+        positionRatings: { ST: 20 },
+        activeSuspensions: [
+          {
+            playerUid: 901,
+            playerName: 'Cup Banned Striker',
+            competitionName: 'Croky Cup',
+            scope: 'cup',
+            reason: 'Red Card',
+            matchesRemaining: 1,
+          },
+        ],
+      }),
+    ];
+
+    const res = buildOfflineTacticalBriefing({
+      clubName: 'KVV Zelzate',
+      saveDate: '15/09/2027',
+      nextFixture: '18/09/2027 vs KVK Ninove (H)',
+      leagueStandingSub: '#6',
+      wageSpend: '£9,000/wk',
+      balance: '-£700K',
+      players: squad,
+      matches: [
+        {
+          id: 'm-lge',
+          eventNumber: 1,
+          date: '12/09/2027',
+          competition: 'Eerste Nationale VV',
+          opponent: 'KVK Ninove',
+          venue: 'H',
+          result: 'W',
+          score: '2 - 0',
+          xGFor: 1.8,
+          xGAgainst: 0.5,
+          possession: 55,
+          passCompletion: 82,
+          shotsFor: '12 (6)',
+          shotsAgainst: '5 (2)',
+          cccFor: 2,
+          cccAgainst: 0,
+          goalTimeline: '',
+          potm: '',
+          defensiveWatchpoints: '',
+          tacticalAudit: '',
+        },
+        {
+          id: 'm-frd',
+          eventNumber: 2,
+          date: '20/07/2027',
+          competition: 'Friendly',
+          opponent: 'Amateur XI',
+          venue: 'H',
+          result: 'W',
+          score: '5 - 0',
+          xGFor: 4.0,
+          xGAgainst: 0.2,
+          possession: 65,
+          passCompletion: 88,
+          shotsFor: '20 (10)',
+          shotsAgainst: '2 (1)',
+          cccFor: 5,
+          cccAgainst: 0,
+          goalTimeline: '',
+          potm: '',
+          defensiveWatchpoints: '',
+          tacticalAudit: '',
+        },
+      ],
+      hydratedFmSave: {
+        decodedPayload: {
+          meta: { clubName: 'KVV Zelzate', managerName: 'Bobby Dean', gameDateDmy: '15/09/2027', gameDateIso: '2027-09-15', saveName: 'test.fm' },
+          players: [],
+          staff: [],
+          playedMatches: [],
+          upcomingFixtures: [{ dateDmy: '18/09/2027', competition: 'Eerste Nationale VV', opponent: 'KVK Ninove', venue: 'H' }],
+        },
+      } as never,
+    });
+
+    assert.match(res.analysisMarkdown, /Competitive Record \(2027\/28\):\*\* League: 1 GP \(1W-0D-0L/);
+    assert.match(res.analysisMarkdown, /Friendlies \(excluded\): 1GP/);
+    assert.match(res.analysisMarkdown, /Suspended for Next Match \(0\):\*\* None/);
+    assert.match(res.analysisMarkdown, /Other-Comp Bans Only \(Eligible Next Match\): Cup Banned Striker/);
+    assert.doesNotMatch(res.analysisMarkdown, /\bCA\s*[:=]|\bPA\s*[:=]/i);
+  });
 });

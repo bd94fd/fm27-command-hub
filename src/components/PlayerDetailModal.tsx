@@ -14,7 +14,12 @@ import {
   Zap,
 } from 'lucide-react';
 import { PlayerRecord, ShortlistRecord } from '../types/fm27';
-import { DivisionBenchmarks } from '../types/fmSave';
+import {
+  ClubGovernanceState,
+  DivisionBenchmarks,
+  LastMatchTacticBlueprint,
+} from '../types/fmSave';
+import { evaluateSquadPlayerCard } from '../utils/cardIntelligenceEngine';
 import {
   FM27_ROLES,
   FM27_ROLE_ATTR_MAP,
@@ -34,6 +39,7 @@ import {
 import { isSuspensionActiveForCompetition } from '../utils/bestXiSolver';
 import {
   AttributeRadarChart,
+  PercentilePizzaChart,
   PlayerProgressionSparkline,
   RolePercentilePizzaChart,
   formatDynamicCurrency,
@@ -49,7 +55,11 @@ interface PlayerDetailModalProps {
   player: PlayerRecord | null;
   squadPlayers?: PlayerRecord[];
   divisionBenchmarks?: DivisionBenchmarks | null;
+  governance?: ClubGovernanceState | null;
+  lastMatchTactic?: LastMatchTacticBlueprint | null;
   nextCompetitionName?: string | null;
+  isFastSync?: boolean;
+  playedMatchesCount?: number;
   shortlists: ShortlistRecord[];
   isManagedClubPlayer?: boolean;
   isTracked?: boolean;
@@ -127,7 +137,11 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
   player,
   squadPlayers = [],
   divisionBenchmarks = null,
+  governance = null,
+  lastMatchTactic = null,
   nextCompetitionName = null,
+  isFastSync = false,
+  playedMatchesCount,
   shortlists,
   isManagedClubPlayer = false,
   isTracked = false,
@@ -152,8 +166,26 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
   }, [player?.id]);
 
   const analysis = useMemo(
-    () => (player ? analyzePlayerCard(player, squadPlayers, divisionBenchmarks) : null),
-    [player, squadPlayers, divisionBenchmarks]
+    () =>
+      player
+        ? analyzePlayerCard(player, squadPlayers, divisionBenchmarks, {
+            isFastSync,
+            playedMatchesCount,
+          })
+        : null,
+    [player, squadPlayers, divisionBenchmarks, isFastSync, playedMatchesCount]
+  );
+
+  const cardIntel = useMemo(
+    () =>
+      player
+        ? evaluateSquadPlayerCard(player, squadPlayers, {
+            divisionBenchmarks,
+            activeTactic: lastMatchTactic,
+            governance,
+          })
+        : null,
+    [player, squadPlayers, divisionBenchmarks, lastMatchTactic, governance]
   );
 
   const naturalDefaults = useMemo(
@@ -797,6 +829,42 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                 </p>
               </div>
 
+              {/* FM27 Intelligence Profile: 8-Spoke Percentile Pizza + Active Tactic & Promise Audit */}
+              {cardIntel && (
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center rounded-xl border border-slate-800 bg-slate-950/60 p-3.5">
+                  <div className="md:col-span-6 flex justify-center">
+                    <PercentilePizzaChart
+                      slices={cardIntel.pizzaSlices}
+                      playerName={player.name}
+                      subtitle={`Club DNA ${cardIntel.dnaFitPct}% · ${cardIntel.valueTag}`}
+                      size={238}
+                    />
+                  </div>
+                  <div className="md:col-span-6 space-y-2.5 text-xs">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
+                        Card Intelligence Verdict
+                      </div>
+                      <div className="text-sm font-bold text-white mt-0.5">
+                        {cardIntel.verdictLabel}
+                      </div>
+                      <p className="text-slate-300 mt-1 leading-relaxed">
+                        {cardIntel.inlineRationale}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5 space-y-1">
+                      <div className="text-[10px] uppercase tracking-wider text-sky-400 font-semibold">
+                        Active Tactic &amp; Promise Alignment
+                      </div>
+                      <p className="text-[11px] text-slate-200">{cardIntel.tacticalFitNote}</p>
+                      <p className="text-[11px] text-amber-300">
+                        {cardIntel.promiseTag || 'Playing-time promise currently aligned with minutes'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Strengths & Watchpoints */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2.5">
@@ -1401,11 +1469,25 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
             <div className="space-y-4">
               {analysis.seasonProduction.mode === 'fast_sync_missing' && (
                 <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
-                  <strong>Season match stats not in this snapshot:</strong> Player goals,
-                  assists, xG and match ratings weren&apos;t included (Fast Sync or partial
-                  checkpoint). Re-import your <span className="font-mono">.fm</span> save
-                  with <strong>Full Sync</strong> in the <strong>Hub</strong> tab to fill
-                  all player match stats.
+                  <strong>Fast Sync mode active:</strong> Player goals, assists, xG and
+                  match ratings were skipped for speed. Uncheck <strong>Fast Sync</strong>{' '}
+                  and re-import your <span className="font-mono">.fm</span> save in the{' '}
+                  <strong>Hub</strong> tab to populate all player match stats.
+                </div>
+              )}
+              {analysis.seasonProduction.mode === 'preseason_no_matches' && (
+                <div className="rounded-xl border border-sky-500/35 bg-sky-950/25 px-4 py-3 text-xs text-sky-200">
+                  <strong>Pre-season snapshot (0 competitive matches played):</strong>{' '}
+                  Season stats will populate automatically after your first competitive
+                  match in this save.
+                </div>
+              )}
+              {analysis.seasonProduction.mode === 'stats_unavailable' && (
+                <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
+                  <strong>Season match stats unavailable in this snapshot:</strong>{' '}
+                  Full Sync ran, but per-player season stats were not populated (partial
+                  checkpoint recovery or table timeout). Re-import in the{' '}
+                  <strong>Hub</strong> tab or check Save Reader Info in Club KPIs.
                 </div>
               )}
 
@@ -1426,7 +1508,9 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     <p className="text-xs text-slate-400 py-3">
                       {analysis.seasonProduction.mode === 'fast_sync_missing'
                         ? 'Awaiting Full Sync to populate appearances, goals, assists and ratings.'
-                        : 'No competitive appearances recorded yet this season.'}
+                        : analysis.seasonProduction.mode === 'stats_unavailable'
+                          ? 'Season stats were not populated for this snapshot.'
+                          : 'No competitive appearances recorded yet this season.'}
                     </p>
                   ) : (
                     <>

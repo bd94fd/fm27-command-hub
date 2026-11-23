@@ -47,7 +47,7 @@ try:
 except Exception:
     _layout_patcher = None  # type: ignore[assignment]
 
-MAPPER_CACHE_BUSTER = "?v=17"
+MAPPER_CACHE_BUSTER = "?v=21"
 
 # Detect native server Python vs browser Pyodide (emscripten) for realistic budgets
 _IS_PYODIDE = sys.platform == "emscripten"
@@ -74,6 +74,7 @@ _STATE: dict[str, Any] = {
     "game_db_cm": None,
     "meta": None,
     "club_uid": None,
+    "club_unique_id": None,
     "club_name": None,
     "club_reputation": None,
     "club_division_id": None,
@@ -114,6 +115,8 @@ _STATE: dict[str, Any] = {
     "active_injuries": [],
     "active_suspensions": [],
     "tactics": [],
+    "governance": None,
+    "binary_forensics": None,
     "mentoring": [],
     "facilities": {},
     "sponsorships": [],
@@ -839,6 +842,9 @@ def step_close() -> None:
     _STATE["active_injuries"] = []
     _STATE["active_suspensions"] = []
     _STATE["tactics"] = []
+    _STATE["governance"] = None
+    _STATE["binary_forensics"] = None
+    _STATE["club_unique_id"] = None
     _STATE["mentoring"] = []
     _STATE["facilities"] = {}
     _STATE["sponsorships"] = []
@@ -1037,9 +1043,10 @@ def step_open(
         None,
     )
 
-    # Scan clubs() to index team_id -> club_name, capture first_team_id, and resolve club reputation/division
+    # Scan clubs() to index team_id -> club_name, capture first_team_id, club_unique_id, and resolve club reputation/division
     club_name_by_team_id: dict[int, str] = {}
     first_team_id: int | None = None
+    club_unique_id: int | None = None
     try:
         for c in save.clubs():
             cid = getattr(c, "uid", None)
@@ -1053,6 +1060,8 @@ def step_open(
                 club_uid = cid
                 club_name = cname
             if club_uid is not None and cid == club_uid:
+                if club_unique_id is None:
+                    club_unique_id = _int(getattr(c, "unique_id", None), None)
                 if club_rep is None:
                     club_rep = _int(_first_attr(c, ("reputation", "world_reputation")), None)
                 if club_div_id is None:
@@ -1070,6 +1079,7 @@ def step_open(
         _STATE["warnings"].append(f"clubs: {type(exc).__name__}")
 
     _STATE["club_name_by_team_id"] = club_name_by_team_id
+    _STATE["club_unique_id"] = club_unique_id
     if first_team_id is not None:
         _STATE["first_team_id"] = first_team_id
 
@@ -1108,6 +1118,186 @@ def step_open(
         "fmsaveVersion": fmsave.__version__,
         "importScope": _STATE["import_scope"],
         "fastSync": _STATE["fast_sync"],
+    }
+
+    # Probe managed club & save for any exposed governance fields (board/supporter confidence,
+    # objectives, club vision, job security, manager contract, promises — strictly auto-read, never fabricated).
+    probed_fields: list[str] = []
+
+    def _probe_attr(obj: Any, names: tuple[str, ...]) -> tuple[str | None, Any]:
+        if obj is None:
+            return None, None
+        for nm in names:
+            try:
+                val = getattr(obj, nm, None)
+            except Exception:
+                val = None
+            if val is not None and val != "" and val != [] and val != {}:
+                return nm, val
+        return None, None
+
+    def _extract_confidence(raw_val: Any) -> dict[str, Any]:
+        if raw_val is None:
+            return {"available": False, "grade": None, "score": None, "summary": None}
+        if isinstance(raw_val, dict):
+            grade = _label(raw_val.get("grade") or raw_val.get("rating") or raw_val.get("label"))
+            score = _int(raw_val.get("score") or raw_val.get("value") or raw_val.get("percentage"), None)
+            summary = _label(raw_val.get("summary") or raw_val.get("description") or raw_val.get("status"))
+            return {"available": bool(grade or score is not None or summary), "grade": grade, "score": score, "summary": summary}
+        if isinstance(raw_val, (int, float)):
+            return {"available": True, "grade": None, "score": int(round(raw_val)), "summary": None}
+        grade = _label(_first_attr(raw_val, ("grade", "letter_grade", "rating_grade", "label")))
+        score = _int(_first_attr(raw_val, ("score", "rating", "percentage", "confidence", "value")), None)
+        summary = _label(_first_attr(raw_val, ("summary", "status", "description", "mood")))
+        if not grade and score is None and not summary:
+            txt = _label(raw_val)
+            if txt:
+                grade = txt if len(txt) <= 4 else None
+                summary = txt if len(txt) > 4 else None
+        return {"available": bool(grade or score is not None or summary), "grade": grade, "score": score, "summary": summary}
+
+    board_key, board_raw = _probe_attr(
+        target_club,
+        ("board_confidence", "board_rating", "board_grade", "confidence_board", "board_satisfaction"),
+    )
+    if board_key:
+        probed_fields.append(f"managed_club.{board_key}")
+    supp_key, supp_raw = _probe_attr(
+        target_club,
+        ("supporter_confidence", "supporters_confidence", "supporter_rating", "fan_confidence", "supporters_rating", "supporter_grade"),
+    )
+    if supp_key:
+        probed_fields.append(f"managed_club.{supp_key}")
+    sec_key, job_sec_raw = _probe_attr(
+        target_club,
+        ("job_security", "manager_job_security", "security", "status"),
+    )
+    if sec_key:
+        probed_fields.append(f"managed_club.{sec_key}")
+
+    board_objectives_out: list[dict[str, Any]] = []
+    club_promises_out: list[dict[str, Any]] = []
+
+    def _collect_objectives(raw_items: Any, source_label: str) -> None:
+        if raw_items is None:
+            return
+        try:
+            items = list(raw_items) if not isinstance(raw_items, (str, bytes, dict)) else ([raw_items] if isinstance(raw_items, dict) else [])
+        except Exception:
+            items = []
+        for idx_obj, item in enumerate(items[:16]):
+            if isinstance(item, dict):
+                title = _label(item.get("title") or item.get("competition") or item.get("name") or item.get("category"))
+                target = _label(item.get("target") or item.get("expectation") or item.get("description") or item.get("goal"))
+                imp = _label(item.get("importance") or item.get("priority"))
+            else:
+                title = _label(_first_attr(item, ("title", "competition_name", "competition", "name", "category", "type")))
+                target = _label(_first_attr(item, ("target", "expectation", "description", "goal", "requirement", "label")))
+                imp = _label(_first_attr(item, ("importance", "priority", "weight")))
+            if title or target:
+                board_objectives_out.append({
+                    "id": f"obj_{source_label}_{idx_obj}",
+                    "category": "club_vision" if "vision" in source_label else "competition",
+                    "title": title or "Board Objective",
+                    "target": target or title or "Meet expectation",
+                    "importance": imp,
+                    "status": "info",
+                    "source": "save_binary",
+                })
+
+    def _collect_promises(raw_items: Any, source_label: str) -> None:
+        if raw_items is None:
+            return
+        try:
+            items = list(raw_items) if not isinstance(raw_items, (str, bytes, dict)) else ([raw_items] if isinstance(raw_items, dict) else [])
+        except Exception:
+            items = []
+        for idx_pr, item in enumerate(items[:20]):
+            if isinstance(item, dict):
+                subj = _label(item.get("subject") or item.get("type") or item.get("category") or "Club Promise")
+                target_nm = _label(item.get("player_name") or item.get("person_name") or item.get("target"))
+                summ = _label(item.get("description") or item.get("summary") or item.get("promise"))
+                due = _dmy(item.get("due_date") or item.get("expiry") or item.get("deadline"))
+                st = (_label(item.get("status")) or "active").lower()
+            else:
+                subj = _label(_first_attr(item, ("subject", "type", "promise_type", "category"))) or "Club Promise"
+                target_nm = _label(_first_attr(item, ("player_name", "person_name", "recipient_name", "target")))
+                summ = _label(_first_attr(item, ("description", "summary", "text", "label"))) or subj
+                due = _dmy(_first_attr(item, ("due_date", "expiry", "deadline", "end_date")))
+                st = (_label(_first_attr(item, ("status", "state"))) or "active").lower()
+            norm_st = "breached" if "fail" in st or "brok" in st or "breach" in st else (
+                "at_risk" if "risk" in st or "unhappy" in st or "concern" in st else (
+                    "met" if "met" in st or "fulfill" in st or "complete" in st else "active"
+                )
+            )
+            if summ:
+                club_promises_out.append({
+                    "id": f"prom_{source_label}_{idx_pr}",
+                    "subject": subj,
+                    "targetName": target_nm,
+                    "summary": summ,
+                    "dueDate": due,
+                    "status": norm_st,
+                    "source": "save_binary",
+                })
+
+    for attr_nm in ("board_objectives", "objectives", "expectations", "club_vision", "vision", "board_expectations"):
+        val = getattr(target_club, attr_nm, None) if target_club is not None else None
+        if val:
+            probed_fields.append(f"managed_club.{attr_nm}")
+            _collect_objectives(val, attr_nm)
+
+    for attr_nm in ("promises", "active_promises", "manager_promises"):
+        val = getattr(target_club, attr_nm, None) if target_club is not None else None
+        if val:
+            probed_fields.append(f"managed_club.{attr_nm}")
+            _collect_promises(val, attr_nm)
+
+    # Probe optional top-level fmsave table methods if present in newer fmsave versions
+    for tbl_nm in ("board_confidence", "board_expectations", "club_vision", "objectives", "supporter_confidence", "promises", "manager_contracts"):
+        fn = getattr(save, tbl_nm, None)
+        if callable(fn):
+            probed_fields.append(f"save.{tbl_nm}()")
+            try:
+                rows = _safe_call(fn, tbl_nm, default=()) or ()
+                scoped_rows = [
+                    r for r in rows
+                    if club_uid is None or getattr(r, "club_uid", club_uid) == club_uid
+                ]
+                if "promise" in tbl_nm:
+                    _collect_promises(scoped_rows, tbl_nm)
+                elif "expect" in tbl_nm or "vision" in tbl_nm or "objective" in tbl_nm:
+                    _collect_objectives(scoped_rows, tbl_nm)
+                elif "board" in tbl_nm and scoped_rows and board_raw is None:
+                    board_raw = scoped_rows[0]
+                elif "supporter" in tbl_nm and scoped_rows and supp_raw is None:
+                    supp_raw = scoped_rows[0]
+            except Exception:
+                pass
+
+    mgr_contract_obj = getattr(target_club, "manager_contract", None) if target_club is not None else None
+    mgr_wage = _int(getattr(mgr_contract_obj, "wage", None), None) if mgr_contract_obj is not None else _int(_first_attr(target_club, ("manager_wage",)), None)
+    mgr_end = getattr(mgr_contract_obj, "end", None) if mgr_contract_obj is not None else _first_attr(target_club, ("manager_contract_end", "contract_end"))
+    mgr_exp_dmy = _dmy(mgr_end) if mgr_end is not None else None
+    mgr_exp_months = _months_until(mgr_end, game_date) if mgr_end is not None else None
+
+    _STATE["governance"] = {
+        "managerContract": {
+            "available": bool(mgr_wage is not None or mgr_exp_dmy is not None or job_sec_raw is not None),
+            "managerName": manager_name or "Manager",
+            "staffUid": manager_staff_uid,
+            "wagePw": mgr_wage,
+            "expires": mgr_exp_dmy,
+            "contractExpiryMonths": mgr_exp_months,
+            "age": None,
+            "nation": None,
+            "jobSecurity": _label(job_sec_raw),
+        },
+        "boardConfidence": _extract_confidence(board_raw),
+        "supporterConfidence": _extract_confidence(supp_raw),
+        "boardObjectives": board_objectives_out,
+        "clubPromises": club_promises_out,
+        "binaryProbedFields": probed_fields,
     }
 
     _STATE["meta"] = meta
@@ -3391,10 +3581,52 @@ def step_3_2_staff() -> str:
             club_name = (_STATE.get("meta") or {}).get("clubName", "")
             staff_nation_lookup = _build_nation_lookup(save)
 
+            FM27_STAFF_JOB_CODE_LABELS: dict[int, str] = {
+                22: "Set Piece Coach",
+                26: "Fitness Coach",
+                38: "Chief Doctor",
+                44: "Chief Scout",
+                46: "Doctor",
+                58: "Recruitment Analyst",
+                62: "Head Performance Analyst",
+                66: "Owner",
+                70: "President",
+                86: "Loan Manager",
+            }
+            mgr_uid_target = _STATE.get("manager_staff_uid")
+            mgr_name_fallback = str((_STATE.get("meta") or {}).get("managerName") or "").strip() or "Manager"
+
+            def _resolve_staff_role_label(s_obj: Any, is_human_mgr: bool) -> str:
+                raw_role_obj = getattr(s_obj, "role", None) or getattr(s_obj, "job", None)
+                lbl = _label(raw_role_obj)
+                if lbl and lbl.lower() not in ("unknown", "none"):
+                    return lbl
+                raw_code = _int(getattr(raw_role_obj, "code", None), None)
+                if raw_code is None:
+                    raw_code = _int(getattr(raw_role_obj, "raw", None), None)
+                if raw_code is None:
+                    raw_code = _int(getattr(s_obj, "job_code", None), None)
+                if raw_code is None:
+                    s_unk = getattr(s_obj, "unknown", None)
+                    if hasattr(s_unk, "get"):
+                        raw_code = _int(s_unk.get("job_code") or s_unk.get("role_code"), None)
+                if raw_code is not None and raw_code in FM27_STAFF_JOB_CODE_LABELS:
+                    return FM27_STAFF_JOB_CODE_LABELS[raw_code]
+                if is_human_mgr:
+                    return "Manager"
+                return "Coach"
+
             def _append_staff_row(s: Any) -> None:
+                s_uid = _int(getattr(s, "uid", None), 0) or 0
+                is_human_mgr = mgr_uid_target is not None and s_uid == mgr_uid_target
                 s_name = getattr(s, "name", None)
-                if not s_name:
-                    return
+                if not s_name or not str(s_name).strip():
+                    if is_human_mgr:
+                        # fmsave#41: human manager staff record often has empty name string;
+                        # match by managed_club.manager_staff_uid so contract wage & expiry are recovered.
+                        s_name = mgr_name_fallback
+                    else:
+                        return
                 s_attrs = getattr(s, "attributes", None)
                 if s_attrs is not None and callable(getattr(s_attrs, "to_display_scale", None)):
                     try:
@@ -3410,9 +3642,9 @@ def step_3_2_staff() -> str:
                 s_jpa = _clamp_attr(_first_attr(s_attrs, ("judging_player_ability", "judging_ability")) if s_attrs else _first_attr(s, ("judging_player_ability", "judging_ability")), 10)
                 s_jpp = _clamp_attr(_first_attr(s_attrs, ("judging_player_potential", "judging_potential")) if s_attrs else _first_attr(s, ("judging_player_potential", "judging_potential")), 10)
                 staff_out.append({
-                    "uid": _int(getattr(s, "uid", None), 0) or 0,
-                    "name": s_name,
-                    "role": _label(getattr(s, "role", None) or getattr(s, "job", None)) or "Coach",
+                    "uid": s_uid,
+                    "name": str(s_name).strip(),
+                    "role": _resolve_staff_role_label(s, is_human_mgr),
                     "age": _int(getattr(s, "age", None), 35),
                     "nation": _resolve_player_nationality(s, staff_nation_lookup, default="N/A"),
                     "club": club_name,
@@ -3499,6 +3731,54 @@ def step_3_2_staff() -> str:
                 _STATE["warnings"].append(warning_msg)
 
     _STATE["staff_out"] = staff_out
+
+    # Enrich manager contract from matched staff record (human manager staff UID / name / Manager role)
+    gov = _STATE.get("governance")
+    if isinstance(gov, dict):
+        mgr_uid = _STATE.get("manager_staff_uid")
+        mgr_name_lower = str((_STATE.get("meta") or {}).get("managerName") or "").strip().lower()
+        matched_mgr = None
+        for st in staff_out:
+            st_uid = _int(st.get("uid"), None)
+            st_name = str(st.get("name") or "").strip().lower()
+            st_role = str(st.get("role") or "").strip().lower()
+            if mgr_uid is not None and st_uid == mgr_uid:
+                matched_mgr = st
+                break
+            if mgr_name_lower and mgr_name_lower != "manager" and st_name == mgr_name_lower:
+                matched_mgr = st
+                break
+            if matched_mgr is None and st_role in ("manager", "head coach", "first team manager"):
+                matched_mgr = st
+        if matched_mgr is not None:
+            mc = gov.get("managerContract") or {}
+            wage_pw = _int(matched_mgr.get("wagePw"), None)
+            exp_str = matched_mgr.get("expires")
+            has_exp = bool(exp_str and str(exp_str) not in ("N/A", "--", ""))
+            exp_months = mc.get("contractExpiryMonths")
+            if has_exp and exp_months is None:
+                try:
+                    parts = str(exp_str).split("/")
+                    if len(parts) == 3 and _STATE.get("game_date") is not None:
+                        from datetime import date as _dt_date
+                        exp_dt = _dt_date(int(parts[2]), int(parts[1]), int(parts[0]))
+                        exp_months = _months_until(exp_dt, _STATE.get("game_date"))
+                except Exception:
+                    pass
+            mc["available"] = bool(mc.get("available") or (wage_pw is not None and wage_pw > 0) or has_exp)
+            mc["staffUid"] = mc.get("staffUid") or matched_mgr.get("uid")
+            if wage_pw is not None and wage_pw > 0:
+                mc["wagePw"] = wage_pw
+            if has_exp:
+                mc["expires"] = str(exp_str)
+            if exp_months is not None:
+                mc["contractExpiryMonths"] = exp_months
+            mc["age"] = matched_mgr.get("age")
+            mc["nation"] = matched_mgr.get("nation")
+            gov["managerContract"] = mc
+            if "staff.manager_contract" not in (gov.get("binaryProbedFields") or []):
+                gov.setdefault("binaryProbedFields", []).append("staff.manager_contract")
+
     elapsed_ms = _record_step_timing("step_3_2_staff", t0)
     return json.dumps({
         "staff": len(staff_out),
@@ -3778,6 +4058,427 @@ def step_3_3_tactics_and_mentoring() -> str:
                 continue
             if getattr(t, "team_slot", None) not in (None, 0):
                 continue
+            def _humanize_tactic_key(raw_key: Any) -> str:
+                txt = str(raw_key or "").strip()
+                if not txt:
+                    return ""
+                if txt.isdigit():
+                    return f"Instruction #{txt}"
+                return " ".join(w.capitalize() for w in txt.replace("-", "_").split("_") if w)
+
+            def _decode_setting_list(raw_list: Any, default_phase: str) -> tuple[list[str], list[dict[str, str]]]:
+                labels: list[str] = []
+                structured: list[dict[str, str]] = []
+                if raw_list is None:
+                    return labels, structured
+                seq = raw_list.items() if isinstance(raw_list, dict) else (
+                    raw_list if isinstance(raw_list, (list, tuple, set)) else []
+                )
+                for idx_s, entry in enumerate(seq):
+                    if len(structured) >= 32:
+                        break
+                    k_str = ""
+                    v_str = ""
+                    if isinstance(raw_list, dict):
+                        k_raw, v_raw = entry
+                        k_str = str(k_raw)
+                        v_str = _label(v_raw) or (str(v_raw) if v_raw is not None else "")
+                    elif isinstance(entry, (list, tuple)) and len(entry) >= 2:
+                        k_str = str(entry[0])
+                        v_str = _label(entry[1]) or (str(entry[1]) if entry[1] is not None else "")
+                    elif isinstance(entry, (str, int, float, bool)):
+                        if isinstance(entry, (int, float, bool)) and not isinstance(entry, str):
+                            # Raw numeric/boolean flags without an exposed instruction name are counted
+                            # via settingCountIp/settingCountOop; never fabricate "Setting 1" noise.
+                            continue
+                        k_str = ""
+                        v_str = _label(entry) or str(entry)
+                    else:
+                        k_raw = _first_attr(entry, ("name", "instruction", "key", "setting", "label", "kind", "option", "description", "type"))
+                        v_raw = _first_attr(entry, ("value_name", "value_label", "value", "level", "enabled", "state", "amount"))
+                        k_str = _label(k_raw) or (str(k_raw) if isinstance(k_raw, str) else "")
+                        if isinstance(v_raw, bool):
+                            if not v_raw:
+                                continue
+                            v_str = "Active"
+                        else:
+                            v_str = _label(v_raw) or (str(v_raw) if isinstance(v_raw, str) else "")
+                    human_k = _humanize_tactic_key(k_str) if k_str else ""
+                    if not human_k and not v_str:
+                        continue
+                    if human_k.startswith("Setting ") or human_k.startswith("Instruction #"):
+                        continue
+                    if v_str.lower() in ("false", "none", "0", "off", "default", "neutral"):
+                        continue
+                    if v_str and v_str.lower() not in ("true", "active", "1", "on", human_k.lower()):
+                        display = f"{human_k}: {v_str}" if human_k else v_str
+                    else:
+                        display = human_k or v_str
+                    if not display or display.isdigit() or display.lower().startswith("setting "):
+                        continue
+                    if display not in labels:
+                        labels.append(display)
+                    structured.append({
+                        "key": k_str or display,
+                        "label": human_k or display,
+                        "value": v_str or "Active",
+                        "phase": default_phase,
+                    })
+                return labels, structured
+
+            def _extract_team_instructions(tac_obj: Any, mentality_lbl: str, style_lbl: str) -> dict[str, Any]:
+                ip_list: list[str] = []
+                tr_list: list[str] = []
+                oop_list: list[str] = []
+                raw_all: list[dict[str, str]] = []
+
+                named_ip_attrs = (
+                    ("passing_directness", "Passing Directness"),
+                    ("tempo", "Tempo"),
+                    ("attacking_width", "Attacking Width"),
+                    ("width", "Width"),
+                    ("build_up", "Build-Up"),
+                    ("play_out_of_defence", "Play Out Of Defence"),
+                    ("creative_freedom", "Creative Freedom"),
+                    ("final_third", "Final Third"),
+                    ("crossing", "Crossing"),
+                    ("dribbling", "Dribbling"),
+                    ("focus_play", "Focus Play"),
+                )
+                named_tr_attrs = (
+                    ("counter_press", "Counter-Press"),
+                    ("counter_attack", "Counter-Attack"),
+                    ("transition_when_possession_lost", "When Possession Lost"),
+                    ("transition_when_possession_won", "When Possession Won"),
+                    ("gk_distribution", "GK Distribution"),
+                    ("goalkeeper_distribution", "GK Distribution"),
+                    ("distribution_speed", "Distribution Tempo"),
+                )
+                named_oop_attrs = (
+                    ("defensive_line", "Defensive Line"),
+                    ("line_of_engagement", "Line of Engagement"),
+                    ("pressing_intensity", "Trigger Press"),
+                    ("trigger_press", "Trigger Press"),
+                    ("pressing_trap", "Pressing Trap"),
+                    ("tackling", "Tackling"),
+                    ("marking", "Marking"),
+                    ("step_up", "Step Up More"),
+                    ("prevent_short_gk_distribution", "Prevent Short GK Distribution"),
+                )
+
+                for attr_nm, disp_lbl in named_ip_attrs:
+                    val = getattr(tac_obj, attr_nm, None)
+                    if val is True:
+                        ip_list.append(disp_lbl)
+                        raw_all.append({"key": attr_nm, "label": disp_lbl, "value": "On", "phase": "in_possession"})
+                    elif val is not None and val is not False:
+                        lbl = _label(val)
+                        if lbl:
+                            ip_list.append(f"{disp_lbl}: {lbl}")
+                            raw_all.append({"key": attr_nm, "label": disp_lbl, "value": lbl, "phase": "in_possession"})
+
+                for attr_nm, disp_lbl in named_tr_attrs:
+                    val = getattr(tac_obj, attr_nm, None)
+                    if val is True:
+                        tr_list.append(disp_lbl)
+                        raw_all.append({"key": attr_nm, "label": disp_lbl, "value": "On", "phase": "in_transition"})
+                    elif val is not None and val is not False:
+                        lbl = _label(val)
+                        if lbl:
+                            tr_list.append(f"{disp_lbl}: {lbl}")
+                            raw_all.append({"key": attr_nm, "label": disp_lbl, "value": lbl, "phase": "in_transition"})
+
+                for attr_nm, disp_lbl in named_oop_attrs:
+                    val = getattr(tac_obj, attr_nm, None)
+                    if val is True:
+                        oop_list.append(disp_lbl)
+                        raw_all.append({"key": attr_nm, "label": disp_lbl, "value": "On", "phase": "out_of_possession"})
+                    elif val is not None and val is not False:
+                        lbl = _label(val)
+                        if lbl:
+                            oop_list.append(f"{disp_lbl}: {lbl}")
+                            raw_all.append({"key": attr_nm, "label": disp_lbl, "value": lbl, "phase": "out_of_possession"})
+
+                for attr_nm, phase_nm, target_list in (
+                    ("in_possession_instructions", "in_possession", ip_list),
+                    ("in_possession_settings", "in_possession", ip_list),
+                    ("ip_instructions", "in_possession", ip_list),
+                    ("transition_instructions", "in_transition", tr_list),
+                    ("in_transition_instructions", "in_transition", tr_list),
+                    ("out_of_possession_instructions", "out_of_possession", oop_list),
+                    ("out_of_possession_settings", "out_of_possession", oop_list),
+                    ("oop_instructions", "out_of_possession", oop_list),
+                    ("team_instructions", "general", ip_list),
+                    ("instructions", "general", ip_list),
+                    ("settings", "general", ip_list),
+                ):
+                    raw_val = getattr(tac_obj, attr_nm, None)
+                    if raw_val:
+                        lbls, structs = _decode_setting_list(raw_val, phase_nm)
+                        for l_item in lbls:
+                            if l_item not in target_list:
+                                target_list.append(l_item)
+                        raw_all.extend(structs)
+
+                raw_ti_bytes: list[int] = []
+                style_code_val: int | None = None
+                t_unknown = getattr(tac_obj, "unknown", None)
+                if hasattr(t_unknown, "get"):
+                    for ti_idx in range(19):
+                        b_val = t_unknown.get(f"team_instruction_{ti_idx:02d}")
+                        if isinstance(b_val, int):
+                            raw_ti_bytes.append(b_val & 0xFF)
+                    sc_raw = t_unknown.get("style_code")
+                    if isinstance(sc_raw, int):
+                        style_code_val = sc_raw
+
+                # Native deterministic FM27 19-byte Team Instructions & FourCC style decoder
+                decoded_passing: str | None = _label(getattr(tac_obj, "passing_directness", None))
+                decoded_tempo: str | None = _label(getattr(tac_obj, "tempo", None))
+                decoded_width: str | None = _label(_first_attr(tac_obj, ("attacking_width", "width")))
+                decoded_def_line: str | None = _label(getattr(tac_obj, "defensive_line", None))
+                decoded_loe: str | None = _label(getattr(tac_obj, "line_of_engagement", None))
+                decoded_press: str | None = _label(_first_attr(tac_obj, ("pressing_intensity", "trigger_press")))
+                decoded_mentality: str = mentality_lbl
+                decoded_style: str | None = style_lbl or None
+
+                if not decoded_style and isinstance(style_code_val, int) and style_code_val > 0:
+                    u32 = style_code_val & 0xFFFFFFFF
+                    sc_bytes = (u32 & 0xFF, (u32 >> 8) & 0xFF, (u32 >> 16) & 0xFF, (u32 >> 24) & 0xFF)
+                    if all(32 <= c <= 126 for c in sc_bytes):
+                        le_tag = "".join(chr(c) for c in sc_bytes).upper()
+                        be_tag = "".join(chr(c) for c in reversed(sc_bytes)).upper()
+                        _fourcc_styles = {
+                            "GEGE": "Gegenpress",
+                            "CONT": "Control Possession",
+                            "TIKI": "Tiki-Taka",
+                            "VERT": "Vertical Tiki-Taka",
+                            "FLUI": "Fluid Counter-Attack",
+                            "DIRE": "Direct Counter-Attack",
+                            "WING": "Wing Play",
+                            "ROUT": "Route One",
+                            "CATE": "Catenaccio",
+                            "PARK": "Park The Bus",
+                            "CUST": "Custom",
+                            "NULL": "Custom",
+                        }
+                        decoded_style = _fourcc_styles.get(be_tag) or _fourcc_styles.get(le_tag)
+
+                if len(raw_ti_bytes) > 2:
+                    _ment_map = {
+                        1: "Very Defensive",
+                        2: "Defensive",
+                        3: "Cautious",
+                        4: "Balanced",
+                        5: "Positive",
+                        6: "Attacking",
+                        7: "Very Attacking",
+                    }
+                    if not decoded_mentality or decoded_mentality == "Balanced":
+                        decoded_mentality = _ment_map.get(raw_ti_bytes[2], decoded_mentality or "Balanced")
+
+                def _push_unique(target: list[str], item: str | None) -> None:
+                    if item and item not in target:
+                        target.append(item)
+
+                if len(raw_ti_bytes) >= 17:
+                    b6, b7, b8, b9, b10, b11, b12, b13, b14, b15, b16 = raw_ti_bytes[6:17]
+                    # In Possession
+                    p_code = b6 & 0x1E
+                    p_lbl = {0x10: "Much Shorter Passing", 0x08: "Shorter Passing", 0x04: "More Direct Passing", 0x02: "Much More Direct Passing"}.get(p_code)
+                    if p_lbl:
+                        decoded_passing = decoded_passing or p_lbl
+                        _push_unique(ip_list, p_lbl)
+                    _push_unique(ip_list, {0x20: "Pass Into Space", 0x40: "Pass To Feet"}.get(b6 & 0x60))
+                    _push_unique(ip_list, {0x0100: "Bypass Press", 0x0080: "Play Through Press"}.get((b6 & 0x80) | ((b7 & 0x01) << 8)))
+                    _push_unique(ip_list, {0x40: "Dribble Less", 0x20: "Run At Defence"}.get(b7 & 0x60))
+                    _push_unique(ip_list, {0x04: "Floated Crosses", 0x10: "Low Crosses", 0x08: "Whipped Crosses"}.get(b7 & 0x1C))
+                    _push_unique(ip_list, {0x0200: "Hit Early Crosses", 0x0002: "Work Ball Into Box"}.get(((b7 & 0x02) << 8) | (b8 & 0x02)))
+                    _push_unique(ip_list, {0x0100: "Discourage Long Shots", 0x0080: "Shoot On Sight"}.get((b7 & 0x80) | ((b8 & 0x01) << 8)))
+                    if (b8 & 0x04) == 0x04:
+                        _push_unique(ip_list, "Play For Set Pieces")
+                    _push_unique(ip_list, {0x0100: "Focus Play Down Both Flanks", 0x0020: "Focus Play Down Left", 0x0080: "Focus Play Through Middle", 0x0040: "Focus Play Down Right"}.get((b8 & 0xE0) | ((b9 & 0x01) << 8)))
+                    _push_unique(ip_list, {0x10: "Overlap Both Flanks", 0x20: "Overlap Left", 0x40: "Overlap Right"}.get(b9 & 0x70))
+                    t_lbl = {0x0200: "Much Lower Tempo", 0x0100: "Lower Tempo", 0x0080: "Higher Tempo", 0x0040: "Much Higher Tempo"}.get((b11 & 0xC0) | ((b12 & 0x03) << 8))
+                    if t_lbl:
+                        decoded_tempo = decoded_tempo or t_lbl
+                        _push_unique(ip_list, t_lbl)
+                    w_lbl = "Narrower" if (b12 & 0xFC) == 0x50 else {0x20: "Much Narrower", 0x80: "Narrower", 0x08: "Wider", 0x04: "Much Wider"}.get(b12 & 0xAC)
+                    if w_lbl:
+                        decoded_width = decoded_width or w_lbl
+                        _push_unique(ip_list, f"Width: {w_lbl}")
+                    _push_unique(ip_list, {0x40: "Be More Expressive", 0x10: "Be More Disciplined"}.get(b12 & 0x50))
+                    _push_unique(ip_list, {0x80: "Waste Time Less Often", 0x40: "Waste Time More Often"}.get(b15 & 0xC0))
+                    # In Transition
+                    if b8 == 0x01:
+                        _push_unique(tr_list, "Counter-Attack")
+                    else:
+                        _push_unique(tr_list, {0x08: "Counter-Attack", 0x10: "Hold Shape"}.get(b8 & 0x18))
+                    _push_unique(tr_list, {0x40: "Counter-Press", 0x80: "Regroup"}.get(b14 & 0xC0))
+                    _push_unique(tr_list, {0x0008: "Distribute to Centre-Backs", 0x0010: "Distribute to Full-Backs", 0x0020: "Distribute to Flanks", 0x0080: "Distribute to Playmaker", 0x0100: "Distribute to Target Forward"}.get((b10 & 0xB8) | ((b11 & 0x01) << 8)))
+                    _push_unique(tr_list, {0x04: "Distribute Quickly", 0x08: "Slow Pace Down"}.get(b11 & 0x0C))
+                    _push_unique(tr_list, {0x10: "Short Goal Kicks", 0x20: "Long Goal Kicks"}.get(b11 & 0x30))
+                    # Out of Possession
+                    loe_lbl = {0x20: "High Press", 0x40: "Mid Block", 0x80: "Low Block"}.get(b13 & 0xE0)
+                    if loe_lbl:
+                        decoded_loe = decoded_loe or loe_lbl
+                        _push_unique(oop_list, loe_lbl)
+                    dl_lbl = {0x01: "Much Higher Defensive Line", 0x02: "Higher Defensive Line", 0x04: "Lower Defensive Line", 0x08: "Much Lower Defensive Line"}.get(b13 & 0x0F)
+                    if dl_lbl:
+                        decoded_def_line = decoded_def_line or dl_lbl
+                        _push_unique(oop_list, dl_lbl)
+                    pr_lbl = {0x10: "Trigger Press Much Less Often", 0x08: "Trigger Press Less Often", 0x04: "Trigger Press More Often", 0x02: "Trigger Press Much More Often"}.get(b14 & 0x1E)
+                    if pr_lbl:
+                        decoded_press = decoded_press or pr_lbl
+                        _push_unique(oop_list, pr_lbl)
+                    if (b14 & 0x20) == 0x20:
+                        _push_unique(oop_list, "Prevent Short GK Distribution")
+                    _push_unique(oop_list, {0x20: "Drop Off More", 0x10: "Step Up More"}.get(b15 & 0x30))
+                    _push_unique(oop_list, {0x01: "Get Stuck In", 0x02: "Stay On Feet"}.get(b15 & 0x03))
+                    _push_unique(oop_list, {0x08: "Invite Crosses", 0x04: "Stop Crosses"}.get(b16 & 0x0C))
+                    _push_unique(oop_list, {0x01: "Trap Inside", 0x02: "Trap Outside"}.get(b16 & 0x03))
+
+                return {
+                    "inPossession": ip_list[:24],
+                    "inTransition": tr_list[:16],
+                    "outOfPossession": oop_list[:24],
+                    "mentality": decoded_mentality,
+                    "styleName": decoded_style,
+                    "passingDirectness": decoded_passing,
+                    "tempo": decoded_tempo,
+                    "width": decoded_width,
+                    "defensiveLine": decoded_def_line,
+                    "lineOfEngagement": decoded_loe,
+                    "pressingIntensity": decoded_press,
+                    "rawSettings": raw_all[:48],
+                    "rawTeamInstructionBytes": raw_ti_bytes,
+                    "styleCode": style_code_val,
+                }
+
+            # Native 64-bit FM27 (27.1.0) IP & OOP Role Decoder (verified 18/18 against rhiever/fmsave#122)
+            _FM27_ROLE_DUTY_MASK = 0x200000 | 0x400000 | 0x800000 | 0x2000000 | 0x4000000 | 0x400000000
+            _FM27_IP_ROLE_BY_BIT: dict[int, str] = {
+                0: "Goalkeeper", 1: "Centre-Back", 2: "Full-Back", 3: "Wing-Back",
+                4: "Defensive Midfielder", 5: "Central Midfielder", 6: "Wide Midfielder", 7: "Winger",
+                9: "Attacking Midfielder", 10: "Deep-Lying Forward", 11: "Centre Forward",
+                12: "Ball-Playing Goalkeeper", 14: "Advanced Centre-Back", 15: "Deep-Lying Playmaker",
+                16: "Box-to-Box Midfielder", 17: "Advanced Playmaker", 18: "Target Forward",
+                19: "Poacher", 20: "Complete Forward", 24: "Ball-Playing Centre-Back",
+                27: "Inside Forward", 28: "Ball-Winning Midfielder", 29: "No-Nonsense Centre-Back",
+                30: "Defensive Winger", 31: "Channel Forward", 32: "Free Role", 33: "Anchor",
+                35: "Half-Back", 36: "No-Nonsense Full-Back", 37: "Enganche", 38: "Advanced Wing-Back",
+                39: "Regista", 40: "False Nine", 41: "Second Striker", 42: "Wide Target Forward",
+                43: "Playmaking Winger", 44: "Inside Wing-Back", 45: "Wide Forward",
+                46: "Box-to-Box Playmaker", 47: "Mezzala", 48: "Wide Central Midfielder",
+                49: "Inside Winger", 50: "Segundo Volante", 51: "Wide Centre-Back",
+                52: "Inside Full-Back", 53: "No-Nonsense Goalkeeper", 54: "Overlapping Centre-Back",
+                55: "Playmaking Wing-Back", 56: "Channel Midfielder", 57: "Midfield Playmaker",
+            }
+            _FM27_OOP_ROLE_BY_BIT: dict[int, str] = {
+                0: "Goalkeeper", 1: "Sweeper Keeper", 2: "Line-Holding Keeper",
+                3: "Centre-Back", 4: "Stopping Centre-Back", 5: "Covering Centre-Back",
+                6: "Wide Centre-Back", 7: "Stopping Wide Centre-Back", 8: "Covering Wide Centre-Back",
+                9: "Full-Back", 10: "Pressing Full-Back", 11: "Holding Full-Back",
+                12: "Wing-Back", 13: "Pressing Wing-Back", 14: "Holding Wing-Back",
+                15: "Defensive Midfielder", 16: "Dropping Defensive Midfielder",
+                17: "Pressing Defensive Midfielder", 18: "Screening Defensive Midfielder",
+                19: "Wide Covering Defensive Midfielder", 20: "Central Midfielder",
+                27: "Pressing Central Midfielder", 28: "Screening Central Midfielder",
+                29: "Wide Covering Central Midfielder", 30: "Attacking Midfielder",
+                31: "Tracking Attacking Midfielder", 32: "Central Outlet Attacking Midfielder",
+                33: "Splitting Outlet Attacking Midfielder", 35: "Wide Midfielder",
+                36: "Tracking Wide Midfielder", 37: "Wide Outlet Wide Midfielder",
+                38: "Winger", 39: "Tracking Winger", 40: "Inside Outlet Winger",
+                41: "Wide Outlet Winger", 42: "Centre Forward", 43: "Tracking Centre Forward",
+                44: "Central Outlet Centre Forward", 45: "Splitting Outlet Centre Forward",
+            }
+
+            def _decode_fm27_native_role(phase: str, raw_units_list: list[dict[str, Any]], trail_bits_val: Any) -> str | None:
+                table = _FM27_IP_ROLE_BY_BIT if phase == "ip" else _FM27_OOP_ROLE_BY_BIT
+                high32 = (int(trail_bits_val) & 0xFFFFFFFF) if isinstance(trail_bits_val, int) and trail_bits_val >= 0 else 0
+                candidates_low: list[int] = []
+                if raw_units_list:
+                    for u_item in reversed(raw_units_list):
+                        sh = u_item.get("secondHigh")
+                        if isinstance(sh, int) and sh >= 0:
+                            candidates_low.append(sh & 0xFFFFFFFF)
+                if not candidates_low and high32 > 0:
+                    candidates_low.append(0)
+                for low32 in candidates_low:
+                    mask64 = (high32 << 32) | low32
+                    role_only = mask64 & ~_FM27_ROLE_DUTY_MASK
+                    if role_only <= 0:
+                        continue
+                    if (role_only & (role_only - 1)) == 0:
+                        bit_idx = role_only.bit_length() - 1
+                        if bit_idx in table:
+                            return table[bit_idx]
+                    matched_bit = None
+                    for b_idx in table:
+                        if role_only & (1 << b_idx):
+                            if matched_bit is None or b_idx > matched_bit:
+                                matched_bit = b_idx
+                    if matched_bit is not None:
+                        return table[matched_bit]
+                return None
+
+            def _extract_setting_units_raw(raw_units: Any) -> list[dict[str, Any]]:
+                out_units: list[dict[str, Any]] = []
+                if not isinstance(raw_units, (list, tuple)):
+                    return out_units
+                for u_idx, u in enumerate(raw_units[:24]):
+                    hb = getattr(u, "head_byte", None)
+                    fb = getattr(u, "first_bits", None)
+                    sl_w = getattr(u, "second_bits_low", None)
+                    sm_w = getattr(u, "second_bits_middle", None)
+                    sh_w = getattr(u, "second_bits_high", None)
+                    if all(isinstance(x, int) for x in (hb, fb, sl_w, sm_w, sh_w)):
+                        sig = f"{hb:02x}.{fb:x}.{sl_w:x}.{sm_w:x}.{sh_w:x}"
+                        out_units.append({
+                            "index": u_idx,
+                            "headHex": f"0x{hb:02x}",
+                            "firstBits": fb,
+                            "secondLow": sl_w,
+                            "secondMid": sm_w,
+                            "secondHigh": sh_w,
+                            "signature": sig,
+                        })
+                return out_units
+
+            def _build_role_core_signature(role_bits_val: Any, trail_bits_val: Any) -> str | None:
+                parts: list[str] = []
+                if isinstance(role_bits_val, int):
+                    parts.append(f"r:{role_bits_val:x}")
+                if isinstance(trail_bits_val, int):
+                    parts.append(f"t:{trail_bits_val:x}")
+                return "|".join(parts) if parts else None
+
+            def _setting_units_fingerprint(role_bits_val: Any, trail_bits_val: Any, raw_units: Any) -> str | None:
+                parts: list[str] = []
+                if isinstance(role_bits_val, int):
+                    parts.append(f"r:{role_bits_val:x}")
+                if isinstance(trail_bits_val, int):
+                    parts.append(f"t:{trail_bits_val:x}")
+                unit_sigs: list[str] = []
+                if isinstance(raw_units, (list, tuple)):
+                    for u in raw_units:
+                        hb = getattr(u, "head_byte", None)
+                        fb = getattr(u, "first_bits", None)
+                        sl_w = getattr(u, "second_bits_low", None)
+                        sm_w = getattr(u, "second_bits_middle", None)
+                        sh_w = getattr(u, "second_bits_high", None)
+                        if all(isinstance(x, int) for x in (hb, fb, sl_w, sm_w, sh_w)):
+                            unit_sigs.append(f"{hb:02x}.{fb:x}.{sl_w:x}.{sm_w:x}.{sh_w:x}")
+                if not parts and not unit_sigs:
+                    return None
+                unit_sigs.sort()
+                joined = "|".join(parts + unit_sigs)
+                # Compact deterministic 32-bit FNV-1a hex fingerprint (matches across saves & slots)
+                h = 0x811C9DC5
+                for ch in joined.encode("utf-8"):
+                    h = ((h ^ ch) * 0x01000193) & 0xFFFFFFFF
+                return f"{h:08x}-{len(unit_sigs)}u"
+
             ip_form = _label(_first_attr(t, ("in_possession_formation", "ip_formation", "formation", "formation_name"))) or None
             oop_form = _label(_first_attr(t, ("out_of_possession_formation", "oop_formation"))) or None
             raw_slots = _first_attr(t, ("slots", "positions", "lineup", "players", "roles"))
@@ -3786,6 +4487,21 @@ def step_3_3_tactics_and_mentoring() -> str:
             oop_pos_codes: list[str] = []
             if isinstance(raw_slots, (list, tuple)):
                 slot_seq = list(raw_slots[:11])
+                # fmsave#119: out_of_possession_position_index may live on sl OR sl.unknown and forms a 0..10 permutation
+                raw_oop_indices: list[int | None] = []
+                for sl_item in slot_seq:
+                    idx_val = _int(getattr(sl_item, "out_of_possession_position_index", None), None)
+                    if idx_val is None:
+                        sl_u = getattr(sl_item, "unknown", None)
+                        if hasattr(sl_u, "get"):
+                            idx_val = _int(sl_u.get("out_of_possession_position_index"), None)
+                    raw_oop_indices.append(idx_val)
+                valid_oop_perm = (
+                    len(slot_seq) == 11
+                    and all(isinstance(v, int) and 0 <= v < 11 for v in raw_oop_indices)
+                    and len(set(raw_oop_indices)) == 11
+                )
+
                 for s_idx, sl in enumerate(slot_seq):
                     explicit_pos = _label(_first_attr(sl, ("position", "slot_position", "pos")))
                     decoded_ip_pos = _decode_tactic_slot_position(
@@ -3795,7 +4511,11 @@ def step_3_3_tactics_and_mentoring() -> str:
                     sl_pos = explicit_pos or decoded_ip_pos or f"Slot {s_idx + 1}"
                     ip_pos_codes.append(sl_pos)
 
-                    oop_idx = _int(getattr(sl, "out_of_possession_position_index", None), s_idx)
+                    oop_idx = raw_oop_indices[s_idx] if valid_oop_perm else (
+                        raw_oop_indices[s_idx]
+                        if raw_oop_indices[s_idx] is not None and 0 <= raw_oop_indices[s_idx] < len(slot_seq)
+                        else s_idx
+                    )
                     oop_ref = (
                         slot_seq[oop_idx]
                         if oop_idx is not None and 0 <= oop_idx < len(slot_seq)
@@ -3810,8 +4530,6 @@ def step_3_3_tactics_and_mentoring() -> str:
                     )
                     oop_pos_codes.append(sl_oop_pos)
 
-                    sl_ip = _label(_first_attr(sl, ("in_possession_role", "ip_role", "role", "role_name")))
-                    sl_oop = _label(_first_attr(sl, ("out_of_possession_role", "oop_role")))
                     starter_sel = starters_by_zero_idx.get(s_idx) or {}
                     sl_puid = _int(_first_attr(sl, ("player_uid", "person_uid")), None)
                     if sl_puid is None:
@@ -3821,8 +4539,33 @@ def step_3_3_tactics_and_mentoring() -> str:
                         or starter_sel.get("playerName")
                         or (player_name_lookup.get(sl_puid) if sl_puid is not None else None)
                     )
-                    ip_settings = getattr(sl, "in_possession_settings", None)
-                    oop_settings = getattr(sl, "out_of_possession_settings", None)
+                    ip_settings = _first_attr(sl, ("in_possession_settings", "in_possession_instructions", "ip_instructions"))
+                    oop_settings = _first_attr(oop_ref, ("out_of_possession_settings", "out_of_possession_instructions", "oop_instructions"))
+                    ip_pi_labels, ip_pi_raw = _decode_setting_list(ip_settings, "in_possession")
+                    oop_pi_labels, oop_pi_raw = _decode_setting_list(oop_settings, "out_of_possession")
+
+                    sl_unk = getattr(sl, "unknown", None)
+                    oop_unk = getattr(oop_ref, "unknown", None)
+                    ip_rb = sl_unk.get("in_possession_role_bits") if hasattr(sl_unk, "get") else None
+                    ip_tb = sl_unk.get("in_possession_trail_bits") if hasattr(sl_unk, "get") else None
+                    oop_rb = oop_unk.get("out_of_possession_role_bits") if hasattr(oop_unk, "get") else None
+                    oop_tb = oop_unk.get("out_of_possession_trail_bits") if hasattr(oop_unk, "get") else None
+                    ip_fp = _setting_units_fingerprint(ip_rb, ip_tb, ip_settings)
+                    oop_fp = _setting_units_fingerprint(oop_rb, oop_tb, oop_settings)
+                    ip_core_sig = _build_role_core_signature(ip_rb, ip_tb)
+                    oop_core_sig = _build_role_core_signature(oop_rb, oop_tb)
+                    ip_units_raw = _extract_setting_units_raw(ip_settings)
+                    oop_units_raw = _extract_setting_units_raw(oop_settings)
+
+                    sl_ip = (
+                        _label(_first_attr(sl, ("in_possession_role", "ip_role", "role", "role_name")))
+                        or _decode_fm27_native_role("ip", ip_units_raw, ip_tb)
+                    )
+                    sl_oop = (
+                        _label(_first_attr(oop_ref, ("out_of_possession_role", "oop_role")))
+                        or _decode_fm27_native_role("oop", oop_units_raw, oop_tb)
+                    )
+
                     slots_out.append({
                         "slotIndex": s_idx,
                         "position": sl_pos,
@@ -3830,22 +4573,43 @@ def step_3_3_tactics_and_mentoring() -> str:
                         "outOfPossessionPositionIndex": oop_idx,
                         "inPossessionRole": sl_ip,
                         "outOfPossessionRole": sl_oop,
+                        "ipRoleBits": f"0x{ip_rb:x}" if isinstance(ip_rb, int) else None,
+                        "oopRoleBits": f"0x{oop_rb:x}" if isinstance(oop_rb, int) else None,
+                        "ipTrailBits": f"0x{ip_tb:x}" if isinstance(ip_tb, int) else None,
+                        "oopTrailBits": f"0x{oop_tb:x}" if isinstance(oop_tb, int) else None,
+                        "ipRoleCoreSignature": ip_core_sig,
+                        "oopRoleCoreSignature": oop_core_sig,
+                        "ipBinaryFingerprint": ip_fp,
+                        "oopBinaryFingerprint": oop_fp,
+                        "ipSettingUnits": ip_units_raw,
+                        "oopSettingUnits": oop_units_raw,
                         "playerUid": sl_puid,
                         "playerName": sl_pname,
-                        "settingCountIp": len(ip_settings) if isinstance(ip_settings, (list, tuple)) else 0,
-                        "settingCountOop": len(oop_settings) if isinstance(oop_settings, (list, tuple)) else 0,
+                        "settingCountIp": len(ip_settings) if isinstance(ip_settings, (list, tuple, dict)) else len(ip_pi_raw),
+                        "settingCountOop": len(oop_settings) if isinstance(oop_settings, (list, tuple, dict)) else len(oop_pi_raw),
+                        "inPossessionInstructions": ip_pi_labels,
+                        "outOfPossessionInstructions": oop_pi_labels,
+                        "rawIpSettings": ip_pi_raw,
+                        "rawOopSettings": oop_pi_raw,
                     })
             if ip_form is None:
                 ip_form = _derive_formation_from_positions(ip_pos_codes)
             if oop_form is None:
                 oop_form = _derive_formation_from_positions(oop_pos_codes)
+            mentality_lbl = _label(getattr(t, "mentality", None)) or "Balanced"
+            style_lbl = getattr(t, "style_name", "") or ""
+            team_instr = _extract_team_instructions(t, mentality_lbl, style_lbl)
+            final_style = style_lbl or team_instr.get("styleName") or ""
+            final_mentality = team_instr.get("mentality") or mentality_lbl
             tactics_out.append({
                 "index": int(getattr(t, "index", len(tactics_out))),
                 "name": getattr(t, "name", None) or f"Tactic {len(tactics_out) + 1}",
-                "styleName": getattr(t, "style_name", "") or "",
-                "mentality": _label(getattr(t, "mentality", None)) or "Standard",
+                "styleName": final_style,
+                "mentality": final_mentality,
                 "inPossessionFormation": ip_form,
                 "outOfPossessionFormation": oop_form,
+                "isActive": len(tactics_out) == 0,
+                "teamInstructions": team_instr,
                 "slots": slots_out,
             })
             if len(tactics_out) >= 3:
@@ -3928,6 +4692,14 @@ def step_3_3_tactics_and_mentoring() -> str:
 
     _STATE["tactics"] = tactics_out[:3]
     _STATE["mentoring"] = mentoring_out[:5]
+
+    # 3. Bounded Deep .fm Binary Forensics Scan (section inventory, anchored governance probes,
+    #    human manager contract recovery, and binary promise candidates — strictly <= 1.5s, ZERO CA/PA).
+    try:
+        _run_binary_forensics_scan(save, player_name_lookup)
+    except Exception as exc:
+        _STATE["warnings"].append(f"binary_forensics: {type(exc).__name__}")
+
     del player_name_lookup
     elapsed_ms = _record_step_timing("step_3_3_tactics_mentoring", t0)
     return json.dumps({
@@ -3935,6 +4707,349 @@ def step_3_3_tactics_and_mentoring() -> str:
         "mentoring": len(_STATE["mentoring"]),
         "elapsedMs": elapsed_ms,
     })
+
+
+def _run_binary_forensics_scan(save: Any, player_name_lookup: dict[int, str]) -> None:
+    """Bounded forensic scan of .fm archive sections (humans, save_game_summary, and any
+    governance/board/vision/promise sections) to unlock manager contracts, anchored
+    governance probe windows for diff-calibration, and binary promise candidates."""
+    t_start = time.monotonic()
+    budget_sec = 1.5
+    ctx = getattr(save, "_context", None)
+    meta = _STATE.get("meta") or {}
+    fm_build = str(meta.get("build") or "unknown")
+    fmsave_ver = str(meta.get("fmsaveVersion") or getattr(fmsave, "__version__", "unknown"))
+
+    sections_out: list[dict[str, Any]] = []
+    gov_probes_out: list[dict[str, Any]] = []
+    promise_candidates_out: list[dict[str, Any]] = []
+    mgr_contract_probes_out: list[dict[str, Any]] = []
+
+    if ctx is None:
+        _STATE["binary_forensics"] = {
+            "fmBuild": fm_build,
+            "fmsaveVersion": fmsave_ver,
+            "sections": [],
+            "governanceProbes": [],
+            "promiseCandidates": [],
+            "managerContractProbes": [],
+            "scanMs": 0,
+        }
+        return
+
+    try:
+        from fmsave._scan import decode_date as _fm_decode_date
+    except Exception:
+        _fm_decode_date = None
+
+    info = getattr(ctx, "info", None)
+    section_schemas = getattr(info, "section_schemas", None) or {}
+    game_date = _STATE.get("game_date")
+    club_uid = _STATE.get("club_uid")
+    club_unique_id = _STATE.get("club_unique_id")
+    first_team_id = _STATE.get("first_team_id")
+    manager_name = str(meta.get("managerName") or "").strip()
+    manager_staff_uid = _STATE.get("manager_staff_uid")
+    squad_uids = set(_STATE.get("squad_uids") or ())
+
+    # 1. Section Schema Inventory
+    interesting_section_names: list[str] = []
+    for sec_name, sec_schema in section_schemas.items():
+        sec_str = str(sec_name)
+        sec_schema_int = int(sec_schema) if isinstance(sec_schema, int) else None
+        sections_out.append({
+            "name": sec_str,
+            "schema": sec_schema_int,
+            "sizeBytes": None,
+        })
+        low = sec_str.lower()
+        if sec_str in ("humans", "save_game_summary") or any(
+            kw in low
+            for kw in (
+                "board",
+                "vision",
+                "promise",
+                "confidence",
+                "human",
+                "expect",
+                "supporter",
+                "contract",
+                "club_culture",
+                "governance",
+            )
+        ):
+            if sec_str != "game_db":
+                interesting_section_names.append(sec_str)
+
+    sections_out.sort(key=lambda x: x["name"])
+    sec_entry_by_name = {s["name"]: s for s in sections_out}
+
+    def _capture_probe_window(
+        sec_name: str,
+        buf: bytes,
+        anchor_label: str,
+        anchor_offset: int,
+        before_bytes: int = 32,
+        after_bytes: int = 96,
+    ) -> dict[str, Any]:
+        win_start = max(0, anchor_offset - before_bytes)
+        win_end = min(len(buf), anchor_offset + after_bytes)
+        chunk = bytes(buf[win_start:win_end])
+        cand_dates: list[dict[str, Any]] = []
+        cand_uids: list[dict[str, Any]] = []
+        if _fm_decode_date is not None and len(chunk) >= 4:
+            for rel in range(0, len(chunk) - 3, 2):
+                try:
+                    dt = _fm_decode_date(chunk, rel)
+                except Exception:
+                    dt = None
+                if dt is not None and 2020 <= dt.year <= 2055:
+                    dmy = _dmy(dt)
+                    if dmy:
+                        cand_dates.append({"relOffset": rel, "dmy": dmy})
+                        if len(cand_dates) >= 8:
+                            break
+        if len(chunk) >= 4:
+            known_uid_labels: dict[int, str] = {}
+            if isinstance(club_uid, int) and club_uid > 0:
+                known_uid_labels[club_uid] = "club_uid"
+            if isinstance(club_unique_id, int) and club_unique_id > 0:
+                known_uid_labels[club_unique_id] = "club_unique_id"
+            if isinstance(first_team_id, int) and first_team_id > 0:
+                known_uid_labels[first_team_id] = "first_team_id"
+            if isinstance(manager_staff_uid, int) and manager_staff_uid > 0:
+                known_uid_labels[manager_staff_uid] = "manager_staff_uid"
+            for rel in range(0, len(chunk) - 3):
+                val = struct.unpack_from("<I", chunk, rel)[0]
+                if val in known_uid_labels:
+                    cand_uids.append({
+                        "relOffset": rel,
+                        "uid": val,
+                        "label": known_uid_labels[val],
+                    })
+                elif val in squad_uids:
+                    cand_uids.append({
+                        "relOffset": rel,
+                        "uid": val,
+                        "label": player_name_lookup.get(val, f"Player #{val}"),
+                    })
+                if len(cand_uids) >= 8:
+                    break
+
+        return {
+            "id": f"{sec_name}:{anchor_label}@{anchor_offset}",
+            "section": sec_name,
+            "anchorLabel": anchor_label,
+            "anchorOffset": anchor_offset,
+            "windowStart": win_start,
+            "bytesHex": chunk.hex(),
+            "u8Values": list(chunk),
+            "candidateDates": cand_dates,
+            "candidateUidHits": cand_uids,
+        }
+
+    # 2. Check already-extracted staff list for human manager contract first
+    mgr_lower = manager_name.lower()
+    for st in _STATE.get("staff_out") or []:
+        st_name = str(st.get("name") or "").strip().lower()
+        st_uid = _int(st.get("uid"), None)
+        if (manager_staff_uid is not None and st_uid == manager_staff_uid) or (
+            mgr_lower and mgr_lower != "manager" and st_name == mgr_lower
+        ):
+            w_pw = _int(st.get("wagePw"), None)
+            exp_dmy = st.get("expires") if st.get("expires") not in (None, "", "N/A", "--") else None
+            if w_pw or exp_dmy:
+                mgr_contract_probes_out.append({
+                    "source": "staff_table_match",
+                    "wagePw": w_pw,
+                    "expiresDmy": exp_dmy,
+                    "contractExpiryMonths": _int(st.get("contractExpiryMonths"), None),
+                    "staffUid": st_uid,
+                    "confidence": "high",
+                })
+                break
+
+    # 3. Scan humans and governance-related non-game_db sections
+    gov_state = _STATE.get("governance") or {}
+    probed_fields = list(gov_state.get("binaryProbedFields") or [])
+    seen_probe_labels: set[str] = set()
+    seen_promise_keys: set[str] = set()
+
+    for sec_name in interesting_section_names[:8]:
+        if (time.monotonic() - t_start) >= budget_sec:
+            break
+        try:
+            with ctx.section(sec_name) as raw_buf:
+                buf_len = len(raw_buf)
+                if sec_name in sec_entry_by_name:
+                    sec_entry_by_name[sec_name]["sizeBytes"] = buf_len
+                # Skip unexpectedly huge sections (> 24 MB) to protect mobile RAM & latency
+                if buf_len <= 0 or buf_len > 24 * 1024 * 1024:
+                    continue
+                buf_bytes = bytes(raw_buf)
+        except Exception:
+            continue
+
+        # Define high-signal anchors inside this section
+        anchor_needles: list[tuple[str, bytes]] = []
+        if manager_name and manager_name.lower() != "manager" and len(manager_name) >= 3:
+            anchor_needles.append(("manager_name_utf16", manager_name.encode("utf-16-le", errors="ignore")))
+            anchor_needles.append(("manager_name_utf8", manager_name.encode("utf-8", errors="ignore")))
+        if sec_name == "humans":
+            anchor_needles.append(("scouting_planner_anchor", b"\x0f\x2d\x07\x64"))
+        if isinstance(club_uid, int) and club_uid > 0:
+            anchor_needles.append(("club_uid_u32", struct.pack("<I", club_uid)))
+        if isinstance(club_unique_id, int) and club_unique_id > 0 and club_unique_id != club_uid:
+            anchor_needles.append(("club_unique_id_u32", struct.pack("<I", club_unique_id)))
+        if isinstance(first_team_id, int) and first_team_id > 0:
+            anchor_needles.append(("first_team_id_u32", struct.pack("<I", first_team_id)))
+
+        for base_lbl, needle in anchor_needles:
+            if not needle or len(gov_probes_out) >= 16:
+                continue
+            if (time.monotonic() - t_start) >= budget_sec:
+                break
+            pos = buf_bytes.find(needle)
+            hit_num = 0
+            while pos >= 0 and hit_num < 3 and len(gov_probes_out) < 16:
+                lbl = f"{base_lbl}_{hit_num}" if hit_num > 0 else base_lbl
+                pk = f"{sec_name}::{lbl}"
+                if pk not in seen_probe_labels:
+                    seen_probe_labels.add(pk)
+                    probe_win = _capture_probe_window(sec_name, buf_bytes, lbl, pos)
+                    gov_probes_out.append(probe_win)
+                    probed_fields.append(f"{sec_name}.{lbl}@{pos}")
+
+                    # Manager contract date + wage probe near manager_name in humans
+                    if (
+                        sec_name == "humans"
+                        and base_lbl.startswith("manager_name")
+                        and game_date is not None
+                        and _fm_decode_date is not None
+                        and len(mgr_contract_probes_out) < 4
+                    ):
+                        scan_lo = max(0, pos - 96)
+                        scan_hi = min(len(buf_bytes), pos + 192)
+                        sub = buf_bytes[scan_lo:scan_hi]
+                        found_exp = None
+                        for rel in range(0, max(0, len(sub) - 3), 2):
+                            try:
+                                dt = _fm_decode_date(sub, rel)
+                            except Exception:
+                                dt = None
+                            if (
+                                dt is not None
+                                and dt > game_date
+                                and dt.year <= game_date.year + 8
+                                and dt.month in (5, 6, 7, 11, 12)
+                                and dt.day in (30, 31)
+                            ):
+                                found_exp = dt
+                                break
+                        if found_exp is not None:
+                            found_wage = None
+                            for rel in range(0, max(0, len(sub) - 3), 2):
+                                cand_w = struct.unpack_from("<I", sub, rel)[0]
+                                if 50 <= cand_w <= 150000 and cand_w % 5 == 0:
+                                    found_wage = cand_w
+                                    break
+                            mgr_contract_probes_out.append({
+                                "source": f"{sec_name}.{lbl}",
+                                "wagePw": found_wage,
+                                "expiresDmy": _dmy(found_exp),
+                                "contractExpiryMonths": _months_until(found_exp, game_date),
+                                "staffUid": manager_staff_uid,
+                                "confidence": "medium" if found_wage else "probe",
+                            })
+                hit_num += 1
+                pos = buf_bytes.find(needle, pos + len(needle))
+
+        # Scan humans / promise sections for squad player_uid paired with valid FM promise due date
+        if (
+            (sec_name == "humans" or "promise" in sec_name.lower() or "vision" in sec_name.lower())
+            and _fm_decode_date is not None
+            and game_date is not None
+            and squad_uids
+            and len(promise_candidates_out) < 24
+        ):
+            for p_uid in list(squad_uids)[:50]:
+                if (time.monotonic() - t_start) >= budget_sec or len(promise_candidates_out) >= 24:
+                    break
+                if not isinstance(p_uid, int) or p_uid <= 0:
+                    continue
+                p_needle = struct.pack("<I", p_uid)
+                p_pos = buf_bytes.find(p_needle)
+                hits_for_player = 0
+                while p_pos >= 0 and hits_for_player < 2 and len(promise_candidates_out) < 24:
+                    w_lo = max(0, p_pos - 24)
+                    w_hi = min(len(buf_bytes), p_pos + 40)
+                    w_slice = buf_bytes[w_lo:w_hi]
+                    matched_due = None
+                    for rel in range(0, max(0, len(w_slice) - 3), 2):
+                        try:
+                            dt = _fm_decode_date(w_slice, rel)
+                        except Exception:
+                            dt = None
+                        if dt is not None:
+                            delta_days = (dt - game_date).days
+                            if -30 <= delta_days <= 730:
+                                matched_due = dt
+                                break
+                    if matched_due is not None:
+                        due_dmy = _dmy(matched_due)
+                        type_byte = buf_bytes[p_pos + 4] if p_pos + 4 < len(buf_bytes) else None
+                        status_byte = buf_bytes[p_pos + 5] if p_pos + 5 < len(buf_bytes) else None
+                        pkey = f"{sec_name}::{p_uid}::{due_dmy}::{type_byte}"
+                        if pkey not in seen_promise_keys:
+                            seen_promise_keys.add(pkey)
+                            promise_candidates_out.append({
+                                "id": f"bprom_{len(promise_candidates_out)}_{p_uid}",
+                                "section": sec_name,
+                                "anchorOffset": p_pos,
+                                "playerUid": p_uid,
+                                "playerName": player_name_lookup.get(p_uid, f"Player #{p_uid}"),
+                                "dueDateDmy": due_dmy,
+                                "typeCode": type_byte,
+                                "statusCode": status_byte,
+                                "rawHex": w_slice[:32].hex(),
+                            })
+                        hits_for_player += 1
+                    p_pos = buf_bytes.find(p_needle, p_pos + 4)
+
+    # Promote high-confidence manager contract match into governance state if not already populated
+    if gov_state and isinstance(gov_state.get("managerContract"), dict):
+        mc = gov_state["managerContract"]
+        if not mc.get("available"):
+            best_probe = next(
+                (p for p in mgr_contract_probes_out if p.get("confidence") == "high"),
+                None,
+            ) or next(
+                (p for p in mgr_contract_probes_out if p.get("confidence") == "medium"),
+                None,
+            )
+            if best_probe is not None:
+                mc["available"] = True
+                if mc.get("wagePw") is None and best_probe.get("wagePw") is not None:
+                    mc["wagePw"] = best_probe["wagePw"]
+                if mc.get("expires") is None and best_probe.get("expiresDmy") is not None:
+                    mc["expires"] = best_probe["expiresDmy"]
+                if (
+                    mc.get("contractExpiryMonths") is None
+                    and best_probe.get("contractExpiryMonths") is not None
+                ):
+                    mc["contractExpiryMonths"] = best_probe["contractExpiryMonths"]
+        gov_state["binaryProbedFields"] = probed_fields[:40]
+        _STATE["governance"] = gov_state
+
+    _STATE["binary_forensics"] = {
+        "fmBuild": fm_build,
+        "fmsaveVersion": fmsave_ver,
+        "sections": sections_out,
+        "governanceProbes": gov_probes_out,
+        "promiseCandidates": promise_candidates_out,
+        "managerContractProbes": mgr_contract_probes_out,
+        "scanMs": int(round((time.monotonic() - t_start) * 1000)),
+    }
 
 
 def _extract_club_injuries_fast(
@@ -4440,10 +5555,20 @@ def _extract_typed_team_training(
         return {}
 
 
+_SQUAD_PLANNER_SLOT_CODES: dict[int, str] = {
+    1: "GK", 2: "SW",
+    3: "DR", 4: "DCR", 5: "DC", 6: "DCL", 7: "DL",
+    8: "WBR", 9: "DMR", 10: "DM", 11: "DML", 12: "WBL",
+    13: "MR", 14: "MCR", 15: "MC", 16: "MCL", 17: "ML",
+    18: "AMR", 19: "AMCR", 20: "AMC", 21: "AMCL", 22: "AML",
+    23: "STCR", 24: "STC", 25: "STCL",
+}
+
+
 def _extract_squad_planner(
     save: Any, player_name_lookup: dict[int, str]
 ) -> list[dict[str, Any]]:
-    """Extract multi-season squad planner slots (seasons 0..2, slots 0..26) with resolved player names."""
+    """Extract multi-season squad planner slots (seasons 0..2, slots 0..26) with resolved player names & FM27 position codes."""
     sp_fn = getattr(save, "squad_planner", None)
     if not callable(sp_fn):
         return []
@@ -4459,9 +5584,11 @@ def _extract_squad_planner(
                 player_name_lookup.get(u) or f"UID {u}"
                 for u in p_uids
             ]
+            slot_num = _int(getattr(item, "slot", None), 0) or 0
             out.append({
                 "seasonOffset": _int(getattr(item, "season_offset", None), 0) or 0,
-                "slot": _int(getattr(item, "slot", None), 0) or 0,
+                "slot": slot_num,
+                "positionCode": _SQUAD_PLANNER_SLOT_CODES.get(slot_num),
                 "playerUids": p_uids,
                 "playerNames": p_names,
             })
@@ -5997,6 +7124,14 @@ def step_fixtures(fast_sync: bool | None = None) -> str:
         opp_name = f.away_club_name if is_home else f.home_club_name
         comp_id = _int(getattr(f, "competition_id", None))
         comp_name = getattr(f, "competition_name", None) or (comp_map.get(comp_id) if comp_id else None)
+        is_friendly_flag = bool(getattr(f, "is_friendly", False))
+        if not comp_name:
+            if is_friendly_flag or comp_id is None or comp_id == 0:
+                fallback_comp = "Friendly"
+            else:
+                fallback_comp = "Unclassified Match"
+        else:
+            fallback_comp = comp_name
         if f.played and f.home_goals is not None and f.away_goals is not None and (game_date is None or f.date is None or f.date <= game_date):
             gf = int(f.home_goals if is_home else f.away_goals)
             ga = int(f.away_goals if is_home else f.home_goals)
@@ -6020,7 +7155,7 @@ def step_fixtures(fast_sync: bool | None = None) -> str:
                 "dateIso": date_iso,
                 "dateDmy": _dmy(f.date),
                 "competitionId": comp_id,
-                "competition": comp_name or "League / Cup",
+                "competition": fallback_comp,
                 "opponent": opp_name or "Opponent",
                 "venue": "H" if is_home else "A",
                 "result": res_char,
@@ -6041,7 +7176,7 @@ def step_fixtures(fast_sync: bool | None = None) -> str:
                     "dateIso": _iso(f.date),
                     "dateDmy": _dmy(f.date),
                     "competitionId": comp_id,
-                    "competition": comp_name or "League / Cup",
+                    "competition": fallback_comp,
                     "opponent": opp_name or "Opponent",
                     "venue": "H" if is_home else "A",
                 })
@@ -6562,6 +7697,28 @@ def _build_current_payload() -> dict[str, Any]:
         else:
             senior_count += 1
 
+    tactics_list = _STATE.get("tactics") or []
+    tactic_instr_count = 0
+    for tac in tactics_list:
+        if isinstance(tac, dict):
+            ti = tac.get("teamInstructions") or {}
+            tactic_instr_count += (
+                len(ti.get("inPossession") or [])
+                + len(ti.get("inTransition") or [])
+                + len(ti.get("outOfPossession") or [])
+            )
+            for sl in tac.get("slots") or []:
+                if isinstance(sl, dict):
+                    tactic_instr_count += len(sl.get("inPossessionInstructions") or []) + len(sl.get("outOfPossessionInstructions") or [])
+
+    gov_state = _STATE.get("governance") or {}
+    set_pieces_obj = _STATE.get("set_pieces") or {}
+    set_piece_count = (
+        len(set_pieces_obj.get("routines") or [])
+        if isinstance(set_pieces_obj, dict)
+        else (len(set_pieces_obj) if isinstance(set_pieces_obj, list) else 0)
+    )
+
     extraction_manifest = {
         "seniorSquad": senior_count,
         "youthReserves": youth_reserve_count,
@@ -6575,9 +7732,19 @@ def _build_current_payload() -> dict[str, Any]:
         "playerMatchStats": len(_STATE.get("player_match_stats") or {}),
         "playerSeasonHistory": len(_STATE.get("player_season_history") or {}),
         "teamMatchStats": len(_STATE.get("team_match_stats") or {}),
-        "tactics": len(_STATE.get("tactics") or []),
+        "tactics": len(tactics_list),
+        "tacticInstructionsCount": tactic_instr_count,
+        "squadPlannerSlots": len(_STATE.get("squad_planner") or []),
+        "setPieceRoutines": set_piece_count,
+        "mentoringGroups": len(_STATE.get("mentoring") or []),
+        "sponsorships": len(_STATE.get("sponsorships") or []),
         "hasFinances": _STATE.get("finances") is not None,
         "hasLeagueStanding": _STATE.get("league_standing") is not None,
+        "hasManagerContract": bool((gov_state.get("managerContract") or {}).get("available")),
+        "hasBoardConfidence": bool((gov_state.get("boardConfidence") or {}).get("available")),
+        "hasSupporterConfidence": bool((gov_state.get("supporterConfidence") or {}).get("available")),
+        "hasBoardObjectives": len(gov_state.get("boardObjectives") or []) > 0,
+        "promisesCount": len(gov_state.get("clubPromises") or []),
         "warningsCount": len(_STATE.get("warnings") or []),
         "fastSync": bool(_STATE.get("fast_sync", False)),
     }
@@ -6596,6 +7763,8 @@ def _build_current_payload() -> dict[str, Any]:
         "activeSuspensions": _STATE["active_suspensions"],
         "divisionBenchmarks": _STATE["division_benchmarks"],
         "tactics": _STATE["tactics"],
+        "governance": _STATE.get("governance"),
+        "binaryForensics": _STATE.get("binary_forensics"),
         "mentoring": _STATE["mentoring"],
         # Pass 0 Groups 2–4 extended blocks
         "playerMatchStats": _STATE["player_match_stats"],
@@ -6914,13 +8083,48 @@ def step_league_table() -> str:
         if isinstance(_STATE.get("competition_rules"), dict) and not _STATE["competition_rules"].get("competitionName"):
             _STATE["competition_rules"]["competitionName"] = league_comp_name
 
-        if league_comp_id is not None:
-            for m in _STATE["played_matches"]:
-                if m.get("competition") == "League / Cup":
-                    m["competition"] = league_comp_name if m.get("competitionId") == league_comp_id else "Cup / Friendly"
-            for uf in _STATE["upcoming_fixtures"]:
-                if uf.get("competition") == "League / Cup":
-                    uf["competition"] = league_comp_name if uf.get("competitionId") == league_comp_id else "Cup / Friendly"
+        ambiguous_labels = ("League / Cup", "Unclassified Match", "Cup / Friendly")
+        # Group unclassified non-league competition IDs to distinguish friendlies from knockout cups.
+        losses_by_comp_id: dict[Any, int] = {}
+        first_league_date_iso: Optional[str] = None
+        for m in _STATE["played_matches"]:
+            cid = m.get("competitionId")
+            if league_comp_id is not None and cid == league_comp_id:
+                d_iso = m.get("dateIso")
+                if d_iso and (first_league_date_iso is None or d_iso < first_league_date_iso):
+                    first_league_date_iso = d_iso
+            elif cid is not None and m.get("result") == "L":
+                losses_by_comp_id[cid] = losses_by_comp_id.get(cid, 0) + 1
+
+        for m in _STATE["played_matches"]:
+            if m.get("competition") in ambiguous_labels:
+                cid = m.get("competitionId")
+                if league_comp_id is not None and cid == league_comp_id:
+                    m["competition"] = league_comp_name
+                elif cid is None or cid == 0:
+                    m["competition"] = "Friendly"
+                else:
+                    d_iso = m.get("dateIso") or ""
+                    is_preseason_date = False
+                    if len(d_iso) >= 10:
+                        mm_dd = d_iso[5:10]
+                        is_preseason_date = ("06-15" <= mm_dd <= "08-15")
+                    # A single-elimination domestic cup cannot have 2+ losses in one season.
+                    if losses_by_comp_id.get(cid, 0) >= 2 or (
+                        is_preseason_date and first_league_date_iso and d_iso < first_league_date_iso
+                    ):
+                        m["competition"] = "Friendly"
+                    else:
+                        m["competition"] = "Domestic Cup"
+        for uf in _STATE["upcoming_fixtures"]:
+            if uf.get("competition") in ambiguous_labels:
+                cid = uf.get("competitionId")
+                if league_comp_id is not None and cid == league_comp_id:
+                    uf["competition"] = league_comp_name
+                elif cid is None or cid == 0:
+                    uf["competition"] = "Friendly"
+                else:
+                    uf["competition"] = "Domestic Cup"
 
     # Free heavy span fixtures reference now that fixtures, league table, and rules are complete
     _STATE["span_kept_fixtures"] = None

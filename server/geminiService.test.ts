@@ -35,6 +35,22 @@ describe('server/config', () => {
     assert.equal(cfg.geminiApiKey, 'server-secret-key');
     assert.equal(cfg.geminiModelOverride, 'gemini-3.5-flash');
   });
+
+  it('binds dev server to port 3000 even when container PORT collides with NGINX_PORT=8080', () => {
+    const devCfg = loadServerConfig({
+      NODE_ENV: 'development',
+      PORT: '8080',
+      NGINX_PORT: '8080',
+      DEFAULT_APP_PORT: '3000',
+    } as NodeJS.ProcessEnv);
+    assert.equal(devCfg.port, 3000);
+
+    const prodCfg = loadServerConfig({
+      NODE_ENV: 'production',
+      PORT: '8080',
+    } as NodeJS.ProcessEnv);
+    assert.equal(prodCfg.port, 8080);
+  });
 });
 
 describe('server/geminiService', () => {

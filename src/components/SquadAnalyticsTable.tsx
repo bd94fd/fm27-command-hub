@@ -11,18 +11,32 @@ import {
   Search,
   Sparkles,
   Table2,
+  Trash2,
   TrendingUp,
   Users,
   X,
 } from 'lucide-react';
-import { PlayerRecord } from '../types/fm27';
+import { MatchLogEntry, PlayerRecord } from '../types/fm27';
+import type {
+  ClubGovernanceState,
+  DivisionBenchmarks,
+  LastMatchTacticBlueprint,
+  SquadPlannerSlot,
+} from '../types/fmSave';
+import { evaluateSquadPlayerCard } from '../utils/cardIntelligenceEngine';
+import { buildSquadTransferAudit } from '../utils/transferAudit';
 import {
+  clearProgressionArchive,
   computeProgressionDiff,
   loadProgressionArchive,
 } from '../utils/progressionDiff';
+import { clearAllSaveCache } from '../services/saveCache';
 import {
   AttributeRadarChart,
-  SquadAgeValueScatterPlot,
+  InteractiveScatterExplorer,
+  MatchXgMomentumChart,
+  PercentilePizzaChart,
+  SquadDepthAndPlannerChart,
 } from './FootballAnalyticsCharts';
 import {
   ALL_CUSTOMISABLE_COLUMNS,
@@ -51,8 +65,16 @@ import {
 
 interface SquadAnalyticsTableProps {
   players: PlayerRecord[];
+  matches?: MatchLogEntry[];
   clubName?: string;
+  saveDate?: string;
+  divisionBenchmarks?: DivisionBenchmarks | null;
+  governance?: ClubGovernanceState | null;
+  lastMatchTactic?: LastMatchTacticBlueprint | null;
+  squadPlanner?: SquadPlannerSlot[] | null;
   nextCompetitionName?: string | null;
+  isFastSync?: boolean;
+  playedMatchesCount?: number;
   onSelectPlayer?: (player: PlayerRecord) => void;
 }
 
@@ -450,8 +472,16 @@ function renderColumnValue(row: EnrichedSquadRow, colId: SquadColumnId): React.R
 
 export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
   players,
+  matches = [],
   clubName,
+  saveDate = '--',
+  divisionBenchmarks = null,
+  governance = null,
+  lastMatchTactic = null,
+  squadPlanner = null,
   nextCompetitionName = null,
+  isFastSync = false,
+  playedMatchesCount,
   onSelectPlayer,
 }) => {
   const [viewMode, setViewMode] = useState<SquadViewMode>('table');
@@ -481,6 +511,14 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
   const [compareAId, setCompareAId] = useState<string>('');
   const [compareBId, setCompareBId] = useState<string>('');
   const [baselineIdx, setBaselineIdx] = useState<number>(0);
+  const [showMinorProgressionShifts, setShowMinorProgressionShifts] =
+    useState<boolean>(false);
+  const [progressionDirection, setProgressionDirection] = useState<
+    'ALL' | 'RISERS' | 'FALLERS'
+  >('ALL');
+  const [expandedMinorUids, setExpandedMinorUids] = useState<Record<number, boolean>>({});
+  const [progressionRefreshNonce, setProgressionRefreshNonce] = useState<number>(0);
+  const [confirmClearProgression, setConfirmClearProgression] = useState<boolean>(false);
 
   useEffect(() => {
     if (displayManuallySet || typeof window === 'undefined') return;
@@ -620,7 +658,39 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
     setSearch('');
   };
 
-  const progressionArchive = useMemo(() => loadProgressionArchive(), [players]);
+  const handleClearProgressionSnapshots = async () => {
+    if (!confirmClearProgression) {
+      setConfirmClearProgression(true);
+      window.setTimeout(() => setConfirmClearProgression(false), 5000);
+      return;
+    }
+    setConfirmClearProgression(false);
+    clearProgressionArchive();
+    await clearAllSaveCache();
+    setBaselineIdx(0);
+    setProgressionRefreshNonce((n) => n + 1);
+  };
+
+  const progressionArchive = useMemo(
+    () => loadProgressionArchive(),
+    [players, progressionRefreshNonce]
+  );
+
+  const squadTransferAudit = useMemo(
+    () => buildSquadTransferAudit(players, saveDate, undefined, divisionBenchmarks),
+    [players, saveDate, divisionBenchmarks]
+  );
+
+  const transferVerdictById = useMemo(
+    () =>
+      new Map(
+        squadTransferAudit.playerAdvice.map((item) => [
+          item.player.id,
+          item.verdict,
+        ])
+      ),
+    [squadTransferAudit]
+  );
 
   const progressionDiff = useMemo(() => {
     if (progressionArchive.length < 2) return null;
@@ -652,8 +722,13 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
     );
   }, [players, compareBId, comparePlayerA]);
 
-  const showFastSyncNotice =
+  const showStatsNotice =
     missingMatchStats && (activePresetId === 'stats' || STATS_SORT_KEYS.has(sortBy));
+  const statsNoticeMode: 'fast_sync' | 'preseason' | 'unavailable' = isFastSync
+    ? 'fast_sync'
+    : typeof playedMatchesCount === 'number' && playedMatchesCount === 0
+      ? 'preseason'
+      : 'unavailable';
 
   return (
     <div className="space-y-4">
@@ -709,17 +784,23 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
             </p>
           </div>
         ) : viewMode === 'analytics' ? (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 mt-4">
-            <div className="lg:col-span-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 p-4 space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                  6-Axis Attribute Radar
-                </span>
+          <div className="space-y-4 mt-4">
+            {/* Row 1: Radar + 8-Spoke Percentile Pizza + Verdict */}
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <span className="text-xs font-semibold text-white">
+                    Player Radar &amp; Position Percentile Pizza
+                  </span>
+                  <p className="text-[11px] text-slate-400">
+                    Compare attributes and division-benchmarked percentiles side-by-side
+                  </p>
+                </div>
                 <select
                   aria-label="Select player for attribute radar"
                   value={activeRadarPlayer?.id || ''}
                   onChange={(e) => setRadarPlayerId(e.target.value)}
-                  className="px-2.5 py-1 text-xs bg-slate-900 border border-slate-700 rounded-lg text-slate-200 max-w-[200px]"
+                  className="min-h-[38px] px-3 py-1.5 text-xs bg-slate-950 border border-slate-700 rounded-lg text-slate-200 max-w-[240px]"
                 >
                   {players.map((p) => (
                     <option key={p.id} value={p.id}>
@@ -728,21 +809,72 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
                   ))}
                 </select>
               </div>
-              {activeRadarPlayer && (
-                <AttributeRadarChart player={activeRadarPlayer} size={270} />
-              )}
+
+              {activeRadarPlayer && (() => {
+                const radarIntel = evaluateSquadPlayerCard(activeRadarPlayer, players, {
+                  divisionBenchmarks,
+                  activeTactic: lastMatchTactic,
+                  governance,
+                  transferVerdict: transferVerdictById.get(activeRadarPlayer.id) ?? null,
+                });
+                return (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-center">
+                      <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 flex justify-center">
+                        <AttributeRadarChart player={activeRadarPlayer} size={265} />
+                      </div>
+                      <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 flex justify-center">
+                        <PercentilePizzaChart
+                          slices={radarIntel.pizzaSlices}
+                          playerName={activeRadarPlayer.name}
+                          subtitle={`Club DNA ${radarIntel.dnaFitPct}% · ${radarIntel.verdictLabel}`}
+                          size={265}
+                        />
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <span className="text-slate-200">
+                        <strong className="text-emerald-300">{radarIntel.verdictLabel}:</strong>{' '}
+                        {radarIntel.inlineRationale}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => onSelectPlayer?.(activeRadarPlayer)}
+                        className="text-[11px] font-semibold text-sky-300 hover:text-sky-200 shrink-0"
+                      >
+                        Open Deep Profile →
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
-            <div className="lg:col-span-7 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 p-4">
-              <SquadAgeValueScatterPlot
-                players={players}
-                selectedPlayerId={activeRadarPlayer?.id || null}
-                onSelectPlayer={(p) => {
-                  setRadarPlayerId(p.id);
-                  onSelectPlayer?.(p);
-                }}
+            {/* Row 2: Interactive Multi-Preset Scatter Explorer */}
+            <InteractiveScatterExplorer
+              players={players}
+              selectedPlayerId={activeRadarPlayer?.id || null}
+              onSelectPlayer={(p) => {
+                setRadarPlayerId(p.id);
+                onSelectPlayer?.(p);
+              }}
+            />
+
+            {/* Row 3: Match xG Momentum & Finishing Trends */}
+            {matches.length >= 2 && (
+              <MatchXgMomentumChart
+                matches={matches}
+                saveDate={saveDate}
+                title="Season xG Momentum & Finishing Variance"
               />
-            </div>
+            )}
+
+            {/* Row 4: Primary Positional Depth + FM27 Squad Planner */}
+            <SquadDepthAndPlannerChart
+              positionalNeeds={squadTransferAudit.positionalNeeds}
+              squadPlanner={squadPlanner}
+              lastMatchTactic={lastMatchTactic}
+            />
           </div>
         ) : viewMode === 'compare' ? (
           <div className="mt-4 space-y-5">
@@ -853,7 +985,7 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
         ) : viewMode === 'progression' ? (
           <div className="pt-4 space-y-5">
             {progressionArchive.length < 2 || !progressionDiff ? (
-              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 p-6 text-center space-y-2">
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 p-6 text-center space-y-3">
                 <TrendingUp className="w-6 h-6 text-emerald-500 mx-auto" />
                 <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                   Awaiting Multi-Save Progression Baseline
@@ -863,6 +995,20 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
                     ? `1 snapshot captured (${progressionArchive[0].saveDate}). Sync a second .fm save from a later in-game date to unlock attribute risers/fallers, Mentoring Determination Jumps, and Youth Intake Radar.`
                     : 'Sync at least two .fm saves from different in-game dates to track rolling 30-save progression diffs.'}
                 </p>
+                {progressionArchive.length === 1 && (
+                  <button
+                    type="button"
+                    onClick={() => void handleClearProgressionSnapshots()}
+                    className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      confirmClearProgression
+                        ? 'border-rose-500/60 bg-rose-950/80 text-rose-200 hover:bg-rose-900/80'
+                        : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-rose-500/40 hover:text-rose-400'
+                    }`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    {confirmClearProgression ? 'Tap Again to Clear Snapshot' : 'Clear Stored Snapshot'}
+                  </button>
+                )}
               </div>
             ) : (
               <>
@@ -878,119 +1024,325 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
                     </span>{' '}
                     ({progressionArchive.length}/30 archived saves)
                   </div>
-                  <label className="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
-                    <span>Baseline:</span>
-                    <select
-                      aria-label="Baseline snapshot"
-                      value={Math.min(baselineIdx, progressionArchive.length - 2)}
-                      onChange={(e) => setBaselineIdx(Number(e.target.value))}
-                      className="px-2.5 py-1 text-xs font-mono bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100"
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
+                      <span>Baseline:</span>
+                      <select
+                        aria-label="Baseline snapshot"
+                        value={Math.min(baselineIdx, progressionArchive.length - 2)}
+                        onChange={(e) => setBaselineIdx(Number(e.target.value))}
+                        className="px-2.5 py-1 text-xs font-mono bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100"
+                      >
+                        {progressionArchive.slice(0, -1).map((snap, idx) => (
+                          <option key={snap.saveDate} value={idx}>
+                            {snap.saveDate} ({Object.keys(snap.players).length} players)
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => void handleClearProgressionSnapshots()}
+                      className={`min-h-[34px] inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors ${
+                        confirmClearProgression
+                          ? 'border-rose-500/60 bg-rose-950/80 text-rose-200 hover:bg-rose-900/80'
+                          : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-300 hover:border-rose-500/40 hover:text-rose-400'
+                      }`}
                     >
-                      {progressionArchive.slice(0, -1).map((snap, idx) => (
-                        <option key={snap.saveDate} value={idx}>
-                          {snap.saveDate} ({Object.keys(snap.players).length} players)
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                      <Trash2 className="w-3.5 h-3.5" />
+                      {confirmClearProgression ? 'Confirm Clear?' : 'Clear Snapshots'}
+                    </button>
+                  </div>
                 </div>
 
-                {/* Mentoring Determination Jumps */}
-                <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-amber-500 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5" />
-                      Mentoring Determination Jumps (+2 or more)
-                    </h3>
-                    <span className="text-xs font-mono text-amber-400">
-                      {progressionDiff.mentoringDeterminationJumps.length}
-                    </span>
-                  </div>
-                  {progressionDiff.mentoringDeterminationJumps.length === 0 ? (
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      No Determination jumps of +2 or more between these saves.
-                    </p>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {progressionDiff.mentoringDeterminationJumps.map((j) => (
-                        <span
-                          key={`${j.uid}-${j.attributeName}`}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30"
+                {/* Progression Signal Summary & Filter Controls */}
+                {(() => {
+                  const totalPlayersChanged = progressionDiff.playerSummaries.length;
+                  const netPositivePlayers = progressionDiff.playerSummaries.filter(
+                    (s) => s.netDelta > 0
+                  ).length;
+                  const filteredSummaries = progressionDiff.playerSummaries.filter((s) => {
+                    if (progressionDirection === 'RISERS' && s.netDelta <= 0) return false;
+                    if (progressionDirection === 'FALLERS' && s.netDelta >= 0) return false;
+                    if (!showMinorProgressionShifts && s.meaningfulDeltas.length === 0) {
+                      return false;
+                    }
+                    return true;
+                  });
+                  const hiddenMinorOnlyPlayers =
+                    !showMinorProgressionShifts
+                      ? progressionDiff.playerSummaries.filter(
+                          (s) => s.meaningfulDeltas.length === 0
+                        ).length
+                      : 0;
+
+                  return (
+                    <div className="space-y-4">
+                      {/* Compact Progression KPI Strip */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 p-3">
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Players Developing
+                          </div>
+                          <div className="text-base font-bold font-mono tabular-nums text-emerald-500 mt-0.5">
+                            {netPositivePlayers} / {totalPlayersChanged}
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-0.5">
+                            Net positive attribute shift
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 p-3">
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Major Shifts (|&Delta;| &ge; 2)
+                          </div>
+                          <div className="text-base font-bold font-mono tabular-nums text-sky-400 mt-0.5">
+                            {progressionDiff.majorShiftsCount}
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-0.5">
+                            High-impact growth/decline
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 p-3">
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Mentoring Det Jumps
+                          </div>
+                          <div className="text-base font-bold font-mono tabular-nums text-amber-400 mt-0.5">
+                            {progressionDiff.mentoringDeterminationJumps.length}
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-0.5">
+                            Determination +2 or higher
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 p-3">
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Noise Filtered Out
+                          </div>
+                          <div className="text-base font-bold font-mono tabular-nums text-slate-300 mt-0.5">
+                            {progressionDiff.filteredIrrelevantCount}
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-0.5">
+                            Irrelevant GK/outfield stats
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Mentoring Determination Jumps */}
+                      {progressionDiff.mentoringDeterminationJumps.length > 0 && (
+                        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3.5 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <h3 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                              Mentoring Determination Jumps (+2 or more)
+                            </h3>
+                            <span className="text-xs font-mono tabular-nums text-amber-400">
+                              {progressionDiff.mentoringDeterminationJumps.length}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {progressionDiff.mentoringDeterminationJumps.map((j) => (
+                              <span
+                                key={`${j.uid}-${j.attributeName}`}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-amber-500/15 text-amber-200 border border-amber-500/30"
+                              >
+                                <span>{j.playerName}</span>
+                                <span className="font-mono tabular-nums font-bold">
+                                  {j.fromValue}&rarr;{j.toValue} (+{j.delta})
+                                </span>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Player-Grouped Progression Controls */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 px-3 py-2.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {(
+                            [
+                              { id: 'ALL', label: 'All Players' },
+                              { id: 'RISERS', label: 'Net Risers' },
+                              { id: 'FALLERS', label: 'Net Decliners' },
+                            ] as const
+                          ).map((opt) => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => setProgressionDirection(opt.id)}
+                              className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold border transition cursor-pointer ${
+                                progressionDirection === opt.id
+                                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                  : 'bg-slate-900/70 text-slate-400 border-slate-800 hover:text-slate-200'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowMinorProgressionShifts((prev) => !prev)
+                          }
+                          className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold border transition cursor-pointer ${
+                            showMinorProgressionShifts
+                              ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                              : 'bg-slate-900/70 text-slate-300 border-slate-700 hover:border-slate-600'
+                          }`}
                         >
-                          <span>{j.playerName}</span>
-                          <span className="font-mono font-bold">
-                            {j.fromValue}&rarr;{j.toValue} (+{j.delta})
-                          </span>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                          {showMinorProgressionShifts
+                            ? 'Showing All Relevant Shifts (incl. minor ±1)'
+                            : `Meaningful Shifts First${hiddenMinorOnlyPlayers > 0 ? ` (+${hiddenMinorOnlyPlayers} minor-only hidden)` : ''}`}
+                        </button>
+                      </div>
 
-                {/* Risers & Fallers */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-500">
-                        Top Attribute Risers
-                      </h3>
-                      <span className="text-xs font-mono text-emerald-400">
-                        {progressionDiff.risers.length}
-                      </span>
-                    </div>
-                    {progressionDiff.risers.length === 0 ? (
-                      <p className="text-xs text-slate-500">No attribute rises recorded.</p>
-                    ) : (
-                      <ul className="divide-y divide-slate-200 dark:divide-slate-800 text-xs">
-                        {progressionDiff.risers.slice(0, 12).map((r) => (
-                          <li
-                            key={`${r.uid}-${r.attributeName}`}
-                            className="py-1.5 flex items-center justify-between gap-2"
-                          >
-                            <span className="truncate text-slate-900 dark:text-slate-100">
-                              {r.playerName}{' '}
-                              <span className="text-slate-500">({r.attributeName})</span>
-                            </span>
-                            <span className="font-mono font-semibold text-emerald-500 shrink-0">
-                              {r.fromValue}&rarr;{r.toValue} (+{r.delta})
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
+                      {/* Player-Grouped Impact Cards */}
+                      {filteredSummaries.length === 0 ? (
+                        <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-6 text-center space-y-2">
+                          <p className="text-xs text-slate-400">
+                            {totalPlayersChanged === 0
+                              ? 'No relevant attribute changes recorded between these two saves.'
+                              : 'No players match this filter with meaningful shifts (|Δ| ≥ 2 or key role attributes).'}
+                          </p>
+                          {!showMinorProgressionShifts && totalPlayersChanged > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setShowMinorProgressionShifts(true)}
+                              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-emerald-300 border border-slate-700 cursor-pointer"
+                            >
+                              Show All {totalPlayersChanged} Players (Including Minor ±1 Shifts)
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {filteredSummaries.map((summary) => {
+                            const matchedPlayer = players.find(
+                              (p) => p.uid === summary.uid
+                            );
+                            const isExpanded = Boolean(
+                              expandedMinorUids[summary.uid]
+                            );
+                            const visibleDeltas =
+                              showMinorProgressionShifts || isExpanded
+                                ? summary.deltas
+                                : summary.meaningfulDeltas;
+                            const hiddenMinorCount =
+                              !showMinorProgressionShifts && !isExpanded
+                                ? summary.minorDeltas.length
+                                : 0;
 
-                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-rose-400">
-                        Attribute Fallers
-                      </h3>
-                      <span className="text-xs font-mono text-rose-400">
-                        {progressionDiff.fallers.length}
-                      </span>
+                            return (
+                              <div
+                                key={summary.uid}
+                                className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/75 p-3.5 space-y-2.5"
+                              >
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      matchedPlayer &&
+                                      onSelectPlayer?.(matchedPlayer)
+                                    }
+                                    className={`text-left min-w-0 flex-1 ${
+                                      matchedPlayer && onSelectPlayer
+                                        ? 'cursor-pointer group'
+                                        : ''
+                                    }`}
+                                  >
+                                    <div className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-emerald-400 transition break-words">
+                                      {summary.playerName}
+                                    </div>
+                                    <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">
+                                      {summary.position} · Age {summary.age}
+                                      {summary.majorCount > 0
+                                        ? ` · ${summary.majorCount} major shift${summary.majorCount === 1 ? '' : 's'}`
+                                        : ''}
+                                    </div>
+                                  </button>
+
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <span
+                                      className={`rounded-md border px-2 py-0.5 text-xs font-mono tabular-nums font-bold ${
+                                        summary.netDelta > 0
+                                          ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35'
+                                          : summary.netDelta < 0
+                                            ? 'bg-rose-500/15 text-rose-300 border-rose-500/35'
+                                            : 'bg-slate-800 text-slate-300 border-slate-700'
+                                      }`}
+                                    >
+                                      Net {summary.netDelta > 0 ? `+${summary.netDelta}` : summary.netDelta}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Humanized Attribute Delta Chips */}
+                                <div className="flex flex-wrap gap-1.5">
+                                  {visibleDeltas.map((d) => {
+                                    const isMajor = d.impactTier === 'major';
+                                    const isRise = d.delta > 0;
+                                    return (
+                                      <span
+                                        key={`${summary.uid}-${d.attributeName}`}
+                                        className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] ${
+                                          isRise
+                                            ? isMajor
+                                              ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-200 font-semibold'
+                                              : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                                            : isMajor
+                                              ? 'bg-rose-500/20 border-rose-400/50 text-rose-200 font-semibold'
+                                              : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                                        }`}
+                                      >
+                                        <span>{d.attributeLabel}</span>
+                                        <span className="font-mono tabular-nums font-bold">
+                                          {d.fromValue}&rarr;{d.toValue} (
+                                          {d.delta > 0 ? `+${d.delta}` : d.delta})
+                                        </span>
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+
+                                {hiddenMinorCount > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setExpandedMinorUids((prev) => ({
+                                        ...prev,
+                                        [summary.uid]: true,
+                                      }))
+                                    }
+                                    className="text-[11px] font-medium text-slate-400 hover:text-emerald-300 cursor-pointer"
+                                  >
+                                    + Show {hiddenMinorCount} minor &plusmn;1 shift
+                                    {hiddenMinorCount === 1 ? '' : 's'}
+                                  </button>
+                                )}
+                                {!showMinorProgressionShifts &&
+                                  isExpanded &&
+                                  summary.minorDeltas.length > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setExpandedMinorUids((prev) => ({
+                                          ...prev,
+                                          [summary.uid]: false,
+                                        }))
+                                      }
+                                      className="text-[11px] font-medium text-slate-400 hover:text-slate-200 cursor-pointer"
+                                    >
+                                      Hide minor &plusmn;1 shifts
+                                    </button>
+                                  )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                    {progressionDiff.fallers.length === 0 ? (
-                      <p className="text-xs text-slate-500">No attribute declines recorded.</p>
-                    ) : (
-                      <ul className="divide-y divide-slate-200 dark:divide-slate-800 text-xs">
-                        {progressionDiff.fallers.slice(0, 12).map((f) => (
-                          <li
-                            key={`${f.uid}-${f.attributeName}`}
-                            className="py-1.5 flex items-center justify-between gap-2"
-                          >
-                            <span className="truncate text-slate-900 dark:text-slate-100">
-                              {f.playerName}{' '}
-                              <span className="text-slate-500">({f.attributeName})</span>
-                            </span>
-                            <span className="font-mono font-semibold text-rose-400 shrink-0">
-                              {f.fromValue}&rarr;{f.toValue} ({f.delta})
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </div>
+                  );
+                })()}
 
                 {/* Youth Intake / Newgen Radar */}
                 <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 space-y-2.5">
@@ -1095,11 +1447,11 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
                 </div>
               )}
 
-              {/* View Preset Pills (horizontally scrollable on mobile) */}
+              {/* View Preset Pills (wrap cleanly on mobile so Overview is never clipped) */}
               <div
                 role="tablist"
                 aria-label="Squad view presets"
-                className="flex items-center gap-1 overflow-x-auto pb-0.5 -mx-1 px-1"
+                className="flex flex-wrap items-center gap-1.5"
               >
                 {SQUAD_VIEW_PRESETS.map((preset) => {
                   const isActive = preset.id === activePresetId;
@@ -1461,13 +1813,39 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
               </div>
             </div>
 
-            {/* Fast Sync Season Stats Notice (shown only when viewing/sorting by stats) */}
-            {showFastSyncNotice && (
-              <div className="rounded-lg border border-amber-500/35 bg-amber-950/25 px-3 py-2 text-xs text-amber-200">
-                <strong>Season match stats not in this snapshot:</strong> This save was
-                loaded with Fast Sync, which skips match-by-match stats to stay fast on
-                mobile. Re-import with <strong>Full Sync</strong> in the{' '}
-                <strong>Hub</strong> tab to populate appearances, ratings, goals, and xG.
+            {/* Context-Aware Season Stats Notice (shown only when viewing/sorting by stats) */}
+            {showStatsNotice && (
+              <div
+                className={`rounded-lg border px-3 py-2 text-xs leading-relaxed ${
+                  statsNoticeMode === 'preseason'
+                    ? 'border-sky-500/30 bg-sky-950/25 text-sky-200'
+                    : 'border-amber-500/35 bg-amber-950/25 text-amber-200'
+                }`}
+              >
+                {statsNoticeMode === 'fast_sync' ? (
+                  <>
+                    <strong>Fast Sync mode active:</strong> Season match stats were
+                    skipped to keep mobile decoding fast. Uncheck{' '}
+                    <strong>Fast Sync</strong> and re-import in the{' '}
+                    <strong>Hub</strong> tab to populate appearances, ratings, goals,
+                    and xG.
+                  </>
+                ) : statsNoticeMode === 'preseason' ? (
+                  <>
+                    <strong>Pre-season snapshot (0 competitive matches played):</strong>{' '}
+                    This save was loaded with Full Sync, and no competitive fixtures
+                    have been played yet this season. Appearances, ratings, goals, and
+                    xG will populate automatically after your first competitive match.
+                  </>
+                ) : (
+                  <>
+                    <strong>Season match stats unavailable in this snapshot:</strong>{' '}
+                    Your save was loaded with Full Sync, but per-player season stats
+                    were not populated (partial checkpoint recovery or table timeout).
+                    Re-import in the <strong>Hub</strong> tab or check{' '}
+                    <strong>Save Reader Info</strong> in Club KPIs for details.
+                  </>
+                )}
               </div>
             )}
 
@@ -1562,6 +1940,40 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
                         </div>
                       )}
 
+                      {/* Inline FM27 Card Analysis Strip */}
+                      {(() => {
+                        const cardEval = evaluateSquadPlayerCard(p, players, {
+                          divisionBenchmarks,
+                          activeTactic: lastMatchTactic,
+                          governance,
+                          transferVerdict: transferVerdictById.get(p.id) ?? null,
+                        });
+                        const toneText =
+                          cardEval.tone === 'emerald'
+                            ? 'text-emerald-400'
+                            : cardEval.tone === 'sky'
+                              ? 'text-sky-300'
+                              : cardEval.tone === 'amber'
+                                ? 'text-amber-300'
+                                : cardEval.tone === 'rose'
+                                  ? 'text-rose-400'
+                                  : 'text-slate-300';
+                        return (
+                          <div className="mt-2 flex items-center justify-between gap-2 text-[11px] pt-1.5 border-t border-slate-800/70">
+                            <span className="truncate text-slate-300">
+                              <strong className={toneText}>{cardEval.verdictLabel}</strong>
+                              <span className="text-slate-500"> · </span>
+                              <span className="text-slate-400">{cardEval.inlineRationale}</span>
+                            </span>
+                            {cardEval.promiseTag && (
+                              <span className="font-mono text-[10px] text-amber-300 shrink-0">
+                                {cardEval.promiseTag}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
+
                       {/* Preset Metric Chips */}
                       <div
                         className={`mt-2.5 pt-2 border-t border-slate-200/70 dark:border-slate-800/80 grid gap-2 ${
@@ -1590,11 +2002,16 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
               </div>
             ) : (
               /* ── FROZEN-COLUMN TABLE VIEW ── */
+              <div className="space-y-1.5">
+                <div className="md:hidden flex items-center justify-between text-[10px] font-mono text-slate-400 px-0.5">
+                  <span>Showing {activePreset.label} ({activeColumns.length} cols)</span>
+                  <span>← Swipe horizontally →</span>
+                </div>
               <div className="overflow-x-auto -mx-1 px-1 rounded-lg border border-slate-200 dark:border-slate-800">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                      <th className="sticky left-0 z-20 bg-slate-50 dark:bg-slate-950 py-2.5 pl-3 pr-3 border-r border-slate-200 dark:border-slate-800 min-w-[170px] max-w-[240px]">
+                      <th className="sticky left-0 z-20 bg-slate-50 dark:bg-slate-950 py-2.5 pl-2.5 pr-2 sm:pl-3 sm:pr-3 border-r border-slate-200 dark:border-slate-800 min-w-[136px] max-w-[158px] sm:min-w-[170px] sm:max-w-[240px]">
                         <button
                           type="button"
                           onClick={() => handleHeaderSortClick('name')}
@@ -1654,7 +2071,7 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
                             onSelectPlayer ? 'cursor-pointer' : ''
                           }`}
                         >
-                          <td className="sticky left-0 z-10 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800 py-2.5 pl-3 pr-3 border-r border-slate-200 dark:border-slate-800 min-w-[170px] max-w-[240px]">
+                          <td className="sticky left-0 z-10 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800 py-2.5 pl-2.5 pr-2 sm:pl-3 sm:pr-3 border-r border-slate-200 dark:border-slate-800 min-w-[136px] max-w-[158px] sm:min-w-[170px] sm:max-w-[240px]">
                             <div className="flex items-center gap-1.5 flex-wrap">
                               {row.shirtNumber !== null && (
                                 <span className="font-mono text-[10px] text-slate-400">
@@ -1692,13 +2109,13 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
                               )}
                             </div>
                             {showRolesSubline && (p.ipRole || p.oopRole) && (
-                              <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                              <div className="text-[11px] leading-snug text-slate-500 dark:text-slate-400 truncate mt-0.5 pb-0.5">
                                 {p.ipRole}
                                 {p.oopRole ? ` / ${p.oopRole}` : ''}
                               </div>
                             )}
                             {row.cleanNote && (
-                              <div className="text-[10px] text-slate-400 truncate">
+                              <div className="text-[10px] leading-snug text-slate-400 truncate">
                                 {row.cleanNote}
                               </div>
                             )}
@@ -1721,6 +2138,7 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
                     })}
                   </tbody>
                 </table>
+              </div>
               </div>
             )}
 

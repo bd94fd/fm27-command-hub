@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Send,
   Upload,
@@ -6,6 +6,7 @@ import {
   X,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   RefreshCw,
   ShieldCheck,
   Zap,
@@ -28,6 +29,8 @@ import {
 import { verifyFm27Accuracy } from '../data/fm27KnowledgeBase';
 import { buildOfflineTacticalBriefing } from '../utils/offlineBriefingEngine';
 import { SaveSnapshotDiffPanel } from './SaveSnapshotDiffPanel';
+import type { DeepJourneyReport } from '../services/saveCache';
+import type { RecruitmentTarget } from '../types/fmSave';
 import {
   parseFmStructuredExport,
   ParsedFmExportResult,
@@ -52,6 +55,8 @@ import {
   buildConversationTranscript,
   buildLiveTacticalAnalystContext,
   ExtendedPlayerAutoUpdate,
+  PreFlightPayloadValidationResult,
+  runPreFlightAnalystValidation,
 } from '../utils/tacticalAnalystContext';
 import { FormationPresetKey } from '../utils/bestXiSolver';
 import { PersistedCustomSlot } from '../services/fmStorage';
@@ -93,6 +98,11 @@ interface AutoSyncWorkspaceProps {
   players: PlayerRecord[];
   staff?: StaffRecord[];
   recruitmentCases?: RecruitmentCase[];
+  trackedTargets?: RecruitmentTarget[];
+  latestJourneyReport?: DeepJourneyReport | null;
+  onJourneyReportChange?: (report: DeepJourneyReport | null) => void;
+  getLatestJourneyReportAsync?: () => Promise<DeepJourneyReport | null>;
+  snapshotResetNonce?: number;
   currentSaveDate: string;
   clubName?: string;
   managerName?: string;
@@ -124,6 +134,11 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   players,
   staff = [],
   recruitmentCases = [],
+  trackedTargets = [],
+  latestJourneyReport = null,
+  onJourneyReportChange,
+  getLatestJourneyReportAsync,
+  snapshotResetNonce = 0,
   currentSaveDate: saveDateProp,
   clubName,
   managerName,
@@ -161,6 +176,10 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   const [extractionWarnings, setExtractionWarnings] = useState<string[]>([]);
   const [showSyncDetails, setShowSyncDetails] = useState<boolean>(false);
   const [lastStepTimingsMs, setLastStepTimingsMs] = useState<Record<string, number>>({});
+  const [preFlightDispatchValidation, setPreFlightDispatchValidation] =
+    useState<PreFlightPayloadValidationResult | null>(null);
+  const [dismissedPreFlightSignature, setDismissedPreFlightSignature] =
+    useState<string | null>(null);
   const [reasoningMode, setReasoningMode] =
     useState<AnalystReasoningMode>('deep_high');
   const [messageInput, setMessageInput] = useState('');
@@ -180,6 +199,55 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   const feedEndRef = useRef<HTMLDivElement | null>(null);
 
   const hasLoadedSave = players.length > 0 || Boolean(hydratedFmSave);
+
+  const livePreFlightValidation = useMemo<PreFlightPayloadValidationResult | null>(() => {
+    if (!hasLoadedSave) return null;
+    const { validation } = runPreFlightAnalystValidation({
+      clubName: clubName && clubName !== '--' ? clubName : '--',
+      managerName: managerName && managerName !== '--' ? managerName : '--',
+      saveDate: currentSaveDate,
+      nextFixture,
+      leagueStandingSub,
+      wageSpend,
+      balance,
+      players,
+      matches,
+      hydratedFmSave,
+      staff,
+      recruitmentCases,
+      trackedTargets,
+      latestJourneyReport,
+      activeShape,
+      customSlots,
+      applyToAnalystOnly,
+    });
+    return validation;
+  }, [
+    hasLoadedSave,
+    clubName,
+    managerName,
+    currentSaveDate,
+    nextFixture,
+    leagueStandingSub,
+    wageSpend,
+    balance,
+    players,
+    matches,
+    hydratedFmSave,
+    staff,
+    recruitmentCases,
+    trackedTargets,
+    latestJourneyReport,
+    activeShape,
+    customSlots,
+    applyToAnalystOnly,
+  ]);
+
+  // Reset stale dispatch override when a new save or squad state is imported
+  useEffect(() => {
+    setPreFlightDispatchValidation(null);
+    setDismissedPreFlightSignature(null);
+  }, [hydratedFmSave, players.length, currentSaveDate]);
 
   useEffect(() => {
     if (pendingPrompt) {
@@ -227,8 +295,14 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     promptText: string;
     imagesToSend: Array<{ base64: string; mimeType: string; name: string }>;
     fmFilesToSend: AttachedFmFile[];
+    journeyReportOverride?: DeepJourneyReport | null;
   }) => {
-    const { promptText, imagesToSend, fmFilesToSend } = params;
+    const {
+      promptText,
+      imagesToSend,
+      fmFilesToSend,
+      journeyReportOverride,
+    } = params;
 
     const bulkMergedDiffSummaries: string[] = [];
     const bulkUpdatedPlayerNames: string[] = [];
@@ -279,8 +353,8 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     }
     const rawFileContext = combinedFileContextParts.join('\n\n---\n\n');
     const importedFileContext =
-      rawFileContext.length > 60000
-        ? `${rawFileContext.slice(0, 60000)}\n...[truncated to keep request fast]`
+      rawFileContext.length > 17500
+        ? `${rawFileContext.slice(0, 17500)}\n...[trimmed to server context cap]`
         : rawFileContext;
 
     const attachedNames = [
@@ -302,46 +376,67 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     setTurns((prev) => [...prev, userTurn]);
     setIsSending(true);
 
+    const newlyAttachedHydratedSave =
+      fmFilesToSend.find((f) => f.hydratedSave)?.hydratedSave ?? null;
+    const latestHydratedSave = newlyAttachedHydratedSave || hydratedFmSave;
+
+    // Only override live React squad/matches when a brand-new .fm save is attached on THIS turn;
+    // on subsequent turns keep live `players`/`matches` so Analyst updates, CSV merges & match logs persist.
+    const effectivePlayers =
+      newlyAttachedHydratedSave && newlyAttachedHydratedSave.updatedSquad.length > 0
+        ? newlyAttachedHydratedSave.updatedSquad
+        : players.length > 0
+          ? players
+          : latestHydratedSave?.updatedSquad || [];
+
+    const effectiveMatches =
+      newlyAttachedHydratedSave && newlyAttachedHydratedSave.updatedMatches.length > 0
+        ? newlyAttachedHydratedSave.updatedMatches
+        : matches.length > 0
+          ? matches
+          : latestHydratedSave?.updatedMatches || [];
+
+    const effectiveClubName =
+      latestHydratedSave?.decodedPayload.meta.clubName ||
+      (clubName && clubName !== '--' ? clubName : '--');
+
+    const effectiveManagerName =
+      latestHydratedSave?.decodedPayload.meta.managerName ||
+      (managerName && managerName !== '--' ? managerName : '--');
+
+    const effectiveSaveDate =
+      detectedExportDate ||
+      newlyAttachedHydratedSave?.saveDateLabel ||
+      currentSaveDate ||
+      latestHydratedSave?.saveDateLabel ||
+      '--';
+
+    const effectiveNextFixture =
+      newlyAttachedHydratedSave?.nextFixtureLabel ||
+      nextFixture ||
+      latestHydratedSave?.nextFixtureLabel ||
+      '--';
+
+    const effectiveStandingSub =
+      newlyAttachedHydratedSave?.leagueStandingLabel ||
+      leagueStandingSub ||
+      latestHydratedSave?.leagueStandingLabel ||
+      '--';
+
+    const effectiveWageSpend =
+      newlyAttachedHydratedSave?.wageComplianceLabel ||
+      wageSpend ||
+      latestHydratedSave?.wageComplianceLabel ||
+      '--';
+
+    const effectiveBalance =
+      newlyAttachedHydratedSave?.balanceLabel ||
+      balance ||
+      latestHydratedSave?.balanceLabel ||
+      '--';
+
     try {
-      const latestHydratedSave =
-        fmFilesToSend.find((f) => f.hydratedSave)?.hydratedSave ||
-        hydratedFmSave;
-
-      const effectivePlayers =
-        latestHydratedSave && latestHydratedSave.updatedSquad.length > 0
-          ? latestHydratedSave.updatedSquad
-          : players;
-
-      const effectiveMatches =
-        latestHydratedSave && latestHydratedSave.updatedMatches.length > 0
-          ? latestHydratedSave.updatedMatches
-          : matches;
-
-      const effectiveClubName =
-        latestHydratedSave?.decodedPayload.meta.clubName ||
-        (clubName && clubName !== '--' ? clubName : '--');
-
-      const effectiveManagerName =
-        latestHydratedSave?.decodedPayload.meta.managerName ||
-        (managerName && managerName !== '--' ? managerName : '--');
-
-      const effectiveSaveDate =
-        detectedExportDate ||
-        latestHydratedSave?.saveDateLabel ||
-        currentSaveDate;
-
-      const effectiveNextFixture =
-        latestHydratedSave?.nextFixtureLabel || nextFixture;
-
-      const effectiveStandingSub =
-        latestHydratedSave?.leagueStandingLabel || leagueStandingSub;
-
-      const effectiveWageSpend =
-        latestHydratedSave?.wageComplianceLabel || wageSpend;
-
-      const effectiveBalance = latestHydratedSave?.balanceLabel || balance;
-
-      const liveAppContext = buildLiveTacticalAnalystContext({
+      const contextInput = {
         clubName: effectiveClubName,
         managerName: effectiveManagerName,
         saveDate: effectiveSaveDate,
@@ -354,36 +449,78 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         hydratedFmSave: latestHydratedSave,
         staff,
         recruitmentCases,
+        trackedTargets,
+        latestJourneyReport:
+          journeyReportOverride !== undefined
+            ? journeyReportOverride
+            : latestJourneyReport,
         userQuery: finalPrompt,
         activeShape,
         customSlots,
         applyToAnalystOnly,
-      });
+      };
+      const liveAppContext = buildLiveTacticalAnalystContext(contextInput);
 
       const historyForApi = buildConversationTranscript(turns, 6);
 
-      const res = await fetch('/api/fm27/tactical-chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: finalPrompt,
-          history: historyForApi,
-          images: imagesToSend,
-          importedFileContext: importedFileContext || undefined,
-          liveAppContext,
-          reasoningMode,
-          nextEventNumber: nextEventNum,
-          currentSaveDate: effectiveSaveDate,
-          clubName:
-            effectiveClubName !== '--' ? effectiveClubName : undefined,
-        }),
-      });
+      const requestPayload = {
+        message: finalPrompt,
+        history: historyForApi,
+        images: imagesToSend,
+        importedFileContext: importedFileContext || undefined,
+        liveAppContext,
+        reasoningMode,
+        nextEventNumber: nextEventNum,
+        currentSaveDate: effectiveSaveDate,
+        clubName:
+          effectiveClubName !== '--' ? effectiveClubName : undefined,
+      };
+
+      const { validation: preFlightValidation } = runPreFlightAnalystValidation(
+        contextInput,
+        {
+          ...requestPayload,
+          liveAppContextOverride: liveAppContext,
+        },
+        { logToConsole: true }
+      );
+      if (effectivePlayers.length > 0 || Boolean(latestHydratedSave)) {
+        setPreFlightDispatchValidation(preFlightValidation);
+        if (!preFlightValidation.valid) {
+          setDismissedPreFlightSignature(null);
+        }
+      }
+
+      const postTacticalChat = async () => {
+        const response = await fetch('/api/fm27/tactical-chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestPayload),
+        });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return parseJsonApiResponse<any>(
+          response,
+          'Failed to get Tactical Analyst response'
+        );
+      };
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const data = await parseJsonApiResponse<any>(
-        res,
-        'Failed to get Tactical Analyst response'
-      );
+      let data: any;
+      try {
+        data = await postTacticalChat();
+      } catch (firstErr) {
+        const firstMsg =
+          firstErr instanceof Error ? firstErr.message : String(firstErr);
+        const isTransientGatewayOrHtml =
+          /unexpected non-JSON|502|503|504|Failed to fetch|NetworkError/i.test(
+            firstMsg
+          );
+        if (!isTransientGatewayOrHtml) {
+          throw firstErr;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 900));
+        data = await postTacticalChat();
+      }
 
       const assignedEventNum = nextEventNum;
 
@@ -477,14 +614,15 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
 
       if (isOfflineOrKeyMissing) {
         const offlineData = buildOfflineTacticalBriefing({
-          clubName: clubName || '--',
-          saveDate: currentSaveDate,
-          nextFixture: hydratedFmSave?.nextFixtureLabel || nextFixture,
-          leagueStandingSub: hydratedFmSave?.leagueStandingLabel || leagueStandingSub,
-          wageSpend,
-          balance: hydratedFmSave?.balanceLabel || balance,
-          players,
-          matches,
+          clubName: effectiveClubName,
+          saveDate: effectiveSaveDate,
+          nextFixture: effectiveNextFixture,
+          leagueStandingSub: effectiveStandingSub,
+          wageSpend: effectiveWageSpend,
+          balance: effectiveBalance,
+          players: effectivePlayers,
+          matches: effectiveMatches,
+          hydratedFmSave: latestHydratedSave,
           userQuery: finalPrompt,
           activeShape,
           customSlots,
@@ -670,6 +808,11 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             : undefined;
           onBackgroundSyncStatusChange?.(null);
 
+          // Wait for snapshot persistence & Save-to-Save Journey diff BEFORE dispatching to Analyst
+          const freshJourney = getLatestJourneyReportAsync
+            ? await getLatestJourneyReportAsync()
+            : latestJourneyReport;
+
           const decodedEntry: AttachedFmFile = {
             id: `fm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             name: file.name,
@@ -681,10 +824,14 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           };
 
           if (!messageInput.trim()) {
+            const syncPrompt = freshJourney
+              ? `I just imported my live .fm save file ${file.name} (${decoded.meta.clubName} · ${decoded.meta.gameDateDmy || 'Live'}). Compare this save against my previous checkpoint (${freshJourney.fromDate} [${freshJourney.fromSeason}] -> ${freshJourney.toDate} [${freshJourney.toSeason}]) — summarize my Save-to-Save Career Journey (what improved, what worsened, League vs Cup vs Friendlies progression separately, squad/finances, governance/promises) and give me our next-match plan.`
+              : `I just imported my live .fm save file ${file.name} (${decoded.meta.clubName} · ${decoded.meta.gameDateDmy || 'Live'}). Give me a concise tactical audit of our squad, League vs Cup vs Friendlies results separately, finances, governance/promises, and next-match plan.`;
             await dispatchToAnalyst({
-              promptText: `I just imported my live .fm save file ${file.name} (${decoded.meta.clubName} · ${decoded.meta.gameDateDmy || 'Live'}). Give me a concise tactical audit of our squad, recent results, finances, and next-match plan.`,
+              promptText: syncPrompt,
               imagesToSend: [],
               fmFilesToSend: [decodedEntry],
+              journeyReportOverride: freshJourney,
             });
           } else {
             setAttachedFmFiles((prev) => [...prev, decodedEntry]);
@@ -930,6 +1077,18 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   const cleanedNotes = sanitizeReaderNotes(extractionWarnings);
   const hasTimingOrNotes =
     Object.keys(lastStepTimingsMs).length > 0 || cleanedNotes.length > 0;
+  const activePreFlightValidation = hasLoadedSave
+    ? preFlightDispatchValidation ?? livePreFlightValidation
+    : null;
+  const preFlightSignature = activePreFlightValidation
+    ? `${activePreFlightValidation.missingFields.join(',')}:${currentSaveDate}:${players.length}`
+    : null;
+  const showPreFlightWarningBanner = Boolean(
+    activePreFlightValidation &&
+      !activePreFlightValidation.valid &&
+      dismissedPreFlightSignature !== preFlightSignature
+  );
+  const showSyncStatusControl = hasLoadedSave || hasTimingOrNotes;
 
   return (
     <div
@@ -1065,15 +1224,29 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               <option value="fast_lite">Fast Co-Pilot</option>
             </select>
 
-            {hasTimingOrNotes && (
+            {showSyncStatusControl && (
               <button
                 type="button"
                 onClick={() => setShowSyncDetails((v) => !v)}
-                className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-slate-400 hover:text-slate-200 bg-slate-900 border border-slate-800 rounded-lg cursor-pointer"
+                className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-lg border cursor-pointer transition ${
+                  activePreFlightValidation && !activePreFlightValidation.valid
+                    ? 'text-amber-300 hover:text-amber-200 bg-amber-500/15 border-amber-500/40'
+                    : 'text-slate-400 hover:text-slate-200 bg-slate-900 border-slate-800'
+                }`}
               >
-                <Clock className="w-3 h-3 text-emerald-400" />
+                {activePreFlightValidation && !activePreFlightValidation.valid ? (
+                  <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
+                ) : activePreFlightValidation?.valid ? (
+                  <ShieldCheck className="w-3 h-3 text-emerald-400 shrink-0" />
+                ) : (
+                  <Clock className="w-3 h-3 text-emerald-400 shrink-0" />
+                )}
                 <span>
-                  Sync Info{cleanedNotes.length > 0 ? ` (${cleanedNotes.length})` : ''}
+                  {activePreFlightValidation && !activePreFlightValidation.valid
+                    ? `Sync Status · ${activePreFlightValidation.missingFields.length} Missing`
+                    : activePreFlightValidation?.valid
+                      ? `Sync Status · OK${cleanedNotes.length > 0 ? ` (${cleanedNotes.length})` : ''}`
+                      : `Sync Status${cleanedNotes.length > 0 ? ` (${cleanedNotes.length})` : ''}`}
                 </span>
                 {showSyncDetails ? (
                   <ChevronUp className="w-3 h-3" />
@@ -1119,9 +1292,119 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         </div>
       )}
 
-      {/* COLLAPSIBLE SYNC TIMING & READER NOTES (hidden by default to keep mobile clean) */}
-      {showSyncDetails && hasTimingOrNotes && (
-        <div className="px-4 py-3 border-b border-slate-800 bg-slate-950/80 space-y-2 text-[11px]">
+      {/* PRE-FLIGHT SYNC STATUS WARNING BANNER */}
+      {showPreFlightWarningBanner && activePreFlightValidation && (
+        <div
+          role="alert"
+          className="px-4 py-3 border-b border-amber-500/35 bg-amber-950/35 text-xs space-y-2.5"
+        >
+          <div className="flex items-start justify-between gap-2.5">
+            <div className="flex items-start gap-2 min-w-0">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-1 min-w-0">
+                <div className="font-bold text-amber-200 leading-snug">
+                  Sync Status Warning · {activePreFlightValidation.warningTitle}
+                </div>
+                <p className="text-[11px] text-amber-100/90 leading-relaxed">
+                  {activePreFlightValidation.warningMessage}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <label
+                htmlFor="chat-multi-file-upload"
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg cursor-pointer transition"
+              >
+                <Upload className="w-3 h-3" />
+                <span>Re-import .fm</span>
+              </label>
+              <button
+                type="button"
+                aria-label="Dismiss sync status warning"
+                onClick={() => setDismissedPreFlightSignature(preFlightSignature)}
+                className="p-1 text-amber-300/70 hover:text-amber-100 rounded cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+            {Object.values(activePreFlightValidation.fields).map((field) => (
+              <div
+                key={field.key}
+                className={`px-2 py-1 rounded-lg border text-[10px] flex items-center gap-1.5 min-w-0 ${
+                  field.present
+                    ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
+                    : 'bg-amber-950/60 border-amber-500/45 text-amber-200 font-semibold'
+                }`}
+              >
+                {field.present ? (
+                  <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-3 h-3 text-amber-400 shrink-0" />
+                )}
+                <span className="truncate">{field.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* COLLAPSIBLE SYNC STATUS, PRE-FLIGHT CHECKLIST & READER NOTES */}
+      {showSyncDetails && showSyncStatusControl && (
+        <div className="px-4 py-3 border-b border-slate-800 bg-slate-950/80 space-y-2.5 text-[11px]">
+          {activePreFlightValidation && (
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span
+                  className={`font-mono font-semibold ${
+                    activePreFlightValidation.valid
+                      ? 'text-emerald-400'
+                      : 'text-amber-300'
+                  }`}
+                >
+                  Pre-Flight Payload Check:{' '}
+                  {activePreFlightValidation.valid
+                    ? 'All 4 Required Fields Mapped'
+                    : `${activePreFlightValidation.missingFields.length}/4 Failed Extraction`}
+                </span>
+                {activePreFlightValidation.needsReimport && (
+                  <label
+                    htmlFor="chat-multi-file-upload"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-amber-200 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 rounded cursor-pointer transition"
+                  >
+                    <Upload className="w-3 h-3" />
+                    Re-import .fm Save
+                  </label>
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                {Object.values(activePreFlightValidation.fields).map((field) => (
+                  <div
+                    key={field.key}
+                    className={`px-2.5 py-1.5 rounded-lg border flex items-center justify-between gap-2 ${
+                      field.present
+                        ? 'bg-slate-900/90 border-slate-800 text-slate-300'
+                        : 'bg-amber-950/40 border-amber-500/40 text-amber-200'
+                    }`}
+                  >
+                    <span className="inline-flex items-center gap-1.5 font-medium shrink-0">
+                      {field.present ? (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      ) : (
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      )}
+                      {field.label}
+                    </span>
+                    <span className="font-mono text-[10px] text-slate-400 truncate">
+                      {field.detail}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {Object.keys(lastStepTimingsMs).length > 0 && (
             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
               <span className="font-mono font-semibold text-emerald-400">
@@ -1563,8 +1846,18 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                 <Zap className="w-3 h-3 text-amber-400" />
                 <span>Fast Sync on next .fm upload</span>
               </label>
-              <span>
-                {serverDecodeAvailable ? 'Server Sync Ready' : 'Local Reader Ready'}
+              <span
+                className={
+                  activePreFlightValidation && !activePreFlightValidation.valid
+                    ? 'text-amber-300 font-medium'
+                    : undefined
+                }
+              >
+                {activePreFlightValidation && !activePreFlightValidation.valid
+                  ? `Sync Status: ${activePreFlightValidation.missingFields.length} field(s) missing — re-import advised`
+                  : serverDecodeAvailable
+                    ? 'Server Sync Ready'
+                    : 'Local Reader Ready'}
               </span>
             </div>
           )}
@@ -1572,7 +1865,16 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       </div>
 
       <SaveSnapshotDiffPanel
-        refreshToken={`${hydratedFmSave?.saveDateLabel || ''}-${players.length}`}
+        refreshToken={`${hydratedFmSave?.saveDateLabel || ''}-${players.length}-${snapshotResetNonce ?? 0}`}
+        liveMatches={matches}
+        onJourneyReportChange={onJourneyReportChange}
+        onAskAnalyst={(prompt) => {
+          void dispatchToAnalyst({
+            promptText: prompt,
+            imagesToSend: [],
+            fmFilesToSend: [],
+          });
+        }}
       />
     </div>
   );

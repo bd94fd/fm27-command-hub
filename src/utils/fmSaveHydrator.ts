@@ -1,7 +1,14 @@
 import { MatchLogEntry, PlayerRecord, StaffRecord } from '../types/fm27';
 import {
+  formatClubMoney,
+  formatWageComplianceSummary,
+  resolveCanonicalBalanceNum,
+} from './clubFinances';
+import {
   ActiveSuspensionRecord,
+  BinaryForensicsSnapshot,
   ClubFacilitiesSummary,
+  ClubGovernanceState,
   CompetitionRegistrationRules,
   ContractDetails,
   DeepTacticRecord,
@@ -12,6 +19,7 @@ import {
   HydratedSquadPlayer,
   InternalReliabilityFlags,
   JobVacancyEntry,
+  LastMatchTacticBlueprint,
   LeagueTableRow,
   MonthlyFinance,
   Pass0ExtractionPayload,
@@ -21,6 +29,7 @@ import {
   ScoutBadge,
   SeasonHistoryEntry,
   SponsorshipDeal,
+  SquadPlannerSlot,
   TeamMatchStat,
   TransferWindowInfo,
   clampAttributeValue,
@@ -29,8 +38,16 @@ import {
 import { normalizePlayerName } from './fmFileImporter';
 import { inferFm27Roles } from './fm27RoleMatcher';
 import { isSuspensionActiveForCompetition } from './bestXiSolver';
+import {
+  buildClubGovernanceState,
+  buildLastMatchTacticBlueprint,
+} from './clubGovernanceAndTactics';
+import {
+  classifyMatchCompetitionBucket,
+  deriveFootballSeasonLabel,
+} from './matchScopeHelpers';
 
-export const WORKER_CACHE_BUSTER = '?v=17';
+export const WORKER_CACHE_BUSTER = '?v=21';
 
 export function resolveSquadUnit(
   teamSlot?: number | null
@@ -133,17 +150,27 @@ export function calculateLast5Form(ratings: PlayerMatchRating[]): FormTrend {
 }
 
 export function calculateFinancialRunway(
-  finances: MonthlyFinance[]
+  finances: MonthlyFinance[],
+  canonicalBalanceOverride?: number | null
 ): FinancialRunway {
   if (!finances || finances.length === 0) {
+    const fallbackBal =
+      typeof canonicalBalanceOverride === 'number' &&
+      Number.isFinite(canonicalBalanceOverride)
+        ? canonicalBalanceOverride
+        : 0;
     return {
-      currentBalance: 0,
+      currentBalance: fallbackBal,
       monthlyBurnRate: 0,
       runwayMonths: 0,
       status: 'Critical',
     };
   }
-  const currentBalance = finances[finances.length - 1].balance;
+  const currentBalance =
+    typeof canonicalBalanceOverride === 'number' &&
+    Number.isFinite(canonicalBalanceOverride)
+      ? canonicalBalanceOverride
+      : finances[finances.length - 1].balance;
   const negativeCashflows = finances
     .map((f) => f.netCashflow)
     .filter((cashflow) => cashflow < 0);
@@ -340,6 +367,7 @@ export function hydrateAndMatchSquad(
 export interface DecodedFmSavePlayer {
   uid: number;
   name: string;
+  shirtNumber?: number | null;
   position: string;
   primaryPosition?: string;
   secondaryPositions?: string[];
@@ -528,6 +556,8 @@ export interface DecodedFmSavePayload {
       mentality: string;
     }
   >;
+  governance?: Partial<ClubGovernanceState> | null;
+  binaryForensics?: BinaryForensicsSnapshot | null;
   mentoring: Array<{
     groupNumber: number;
     label: string;
@@ -576,11 +606,15 @@ export interface HydratedSaveState {
   tacticSubLabel: string | null;
   wageComplianceLabel: string | null;
   balanceLabel: string | null;
+  canonicalBalanceNum: number | null;
   financialRunway: FinancialRunway | null;
   recruitmentTargets: RecruitmentTarget[];
   activeSuspensions: ActiveSuspensionRecord[];
   competitionRules: CompetitionRegistrationRules | null;
   divisionBenchmarks: DivisionBenchmarks | null;
+  governance?: ClubGovernanceState | null;
+  lastMatchTactic?: LastMatchTacticBlueprint | null;
+  squadPlanner?: SquadPlannerSlot[];
   extractionWarnings: string[];
   fastSync: boolean;
   stepTimingsMs: Record<string, number>;
@@ -589,17 +623,7 @@ export interface HydratedSaveState {
 }
 
 function formatMoney(amount: number | null | undefined): string {
-  if (amount === null || amount === undefined || !Number.isFinite(amount)) {
-    return '--';
-  }
-  const abs = Math.abs(amount);
-  const formatted =
-    abs >= 1_000_000
-      ? `£${(abs / 1_000_000).toFixed(2)}M`
-      : abs >= 1_000
-        ? `£${Math.round(abs / 1_000)}K`
-        : `£${Math.round(abs).toLocaleString()}`;
-  return amount < 0 ? `-${formatted}` : formatted;
+  return formatClubMoney(amount, '£');
 }
 
 function inferPersonalityLabel(dp: DecodedFmSavePlayer): string {
@@ -834,9 +858,15 @@ export function hydrateAppFromDecodedFmSave(
       (Boolean(p.apps) && p.apps !== '0') ||
       (p.rating !== null && p.rating !== undefined && p.rating > 0)
   );
-  // Only fall back to recent-match aggregates when Fast Sync skipped stage 4.8 Season Stats.
-  // On a Full Sync pre-season save (0 competitive matches played), players must stay at 0 / null.
-  const allowRecentFallback = Boolean(decoded.meta.fastSync) && !squadHasSeasonStats;
+  // Allow recent-match fallback when season_stats was skipped (Fast Sync) OR empty
+  // despite competitive matches already being played in the save.
+  // On a true pre-season save (0 competitive matches played), players stay at 0 / null.
+  const hasPlayedCompetitiveMatches =
+    (decoded.playedMatches?.length ?? 0) > 0 ||
+    (decoded.leagueStanding?.played ?? 0) > 0;
+  const allowRecentFallback =
+    !squadHasSeasonStats &&
+    (Boolean(decoded.meta.fastSync) || hasPlayedCompetitiveMatches);
 
   for (const existing of currentSquad) {
     const existingUid = extractUidFromPlayerRecord(existing);
@@ -1043,11 +1073,9 @@ export function hydrateAppFromDecodedFmSave(
     mergedSquad.push(next);
   }
 
-  // Add any newly signed / promoted first-team players from the .fm save not in baseline
-  let nextNum = currentSquad.length === 0 ? 1 : 40;
+  // Add any newly signed / promoted players from the .fm save not in baseline
   for (const dp of decoded.players) {
     if (matchedSaveUids.has(dp.uid)) continue;
-    if (currentSquad.length > 0 && dp.teamSlot !== 0 && dp.minutes === 0) continue;
     const clampedAttrs: PlayerRecord['attributes'] = dp.attributes
       ? clampPlayerAttributesRecord(dp.attributes)
       : {
@@ -1097,10 +1125,18 @@ export function hydrateAppFromDecodedFmSave(
         ? aggregateRecentMatchProduction(pRatings)
         : null;
 
+    const realShirtNum =
+      typeof dp.shirtNumber === 'number' &&
+      Number.isFinite(dp.shirtNumber) &&
+      dp.shirtNumber >= 1 &&
+      dp.shirtNumber <= 99
+        ? Math.round(dp.shirtNumber)
+        : 0;
+
     mergedSquad.push({
       id: `fm-uid-${dp.uid}`,
       uid: dp.uid,
-      number: nextNum++,
+      number: realShirtNum,
       name: dp.name || 'Unknown Player',
       position: dp.position || dp.primaryPosition || 'UTL',
       secondaryPositions: dp.secondaryPositions || [],
@@ -1237,11 +1273,29 @@ export function hydrateAppFromDecodedFmSave(
           : String(tms.shots)
         : '—');
 
+    const isGenericCompetitionLabel = (label?: string | null): boolean =>
+      !label ||
+      /^(league\s*\/\s*cup|cup\s*\/\s*friendly|unclassified(?:\s+match)?|domestic\s+league|unknown)$/i.test(
+        label.trim()
+      );
+    const decodedComp = (pm.competition || '').trim();
+    const resolvedCompetition =
+      decodedComp && !isGenericCompetitionLabel(decodedComp)
+        ? decodedComp
+        : decodedComp || 'Friendly';
+
     const existing = findExistingMatchDetails(pm);
     if (existing) {
+      const nextComp =
+        !isGenericCompetitionLabel(decodedComp)
+          ? decodedComp
+          : isGenericCompetitionLabel(existing.competition)
+            ? resolvedCompetition
+            : existing.competition;
       fmHydratedMatches.push({
         ...existing,
         date: dateKey,
+        competition: nextComp,
         score: safeScore,
         result: pm.result,
         xGFor: existing.xGFor ?? enrichedXgFor,
@@ -1260,7 +1314,7 @@ export function hydrateAppFromDecodedFmSave(
       id: `fm-match-${dateKey}-${oppKey}`,
       eventNumber: maxEventNum,
       date: dateKey,
-      competition: pm.competition || 'Domestic League',
+      competition: resolvedCompetition,
       opponent: safeOpp,
       venue: pm.venue,
       result: pm.result,
@@ -1344,15 +1398,21 @@ export function hydrateAppFromDecodedFmSave(
       const gfPerGame = (ls.goalsFor / ls.played).toFixed(2);
       const gaPerGame = (ls.goalsAgainst / ls.played).toFixed(2);
       squadOutputLabel = `${ls.goalsFor} GF / ${ls.goalsAgainst} GA (${gdStr} GD)`;
+      const currentSeasonLabel = deriveFootballSeasonLabel(saveDateLabel);
       const leagueXgMatches = updatedMatches.filter((m) => {
-        const comp = (m.competition || '').toLowerCase();
-        return (
-          typeof m.xGFor === 'number' &&
-          typeof m.xGAgainst === 'number' &&
-          !comp.includes('friendly') &&
-          !comp.includes('cup') &&
-          !comp.includes('beker')
-        );
+        if (typeof m.xGFor !== 'number' || typeof m.xGAgainst !== 'number') {
+          return false;
+        }
+        if (classifyMatchCompetitionBucket(m.competition) !== 'league') {
+          return false;
+        }
+        if (currentSeasonLabel !== 'Unknown Season') {
+          const matchSeason = deriveFootballSeasonLabel(m.date);
+          if (matchSeason !== 'Unknown Season' && matchSeason !== currentSeasonLabel) {
+            return false;
+          }
+        }
+        return true;
       });
       if (!hasPlayerProduction && leagueXgMatches.length > 0) {
         const sumXgFor = leagueXgMatches.reduce((s, m) => s + (m.xGFor ?? 0), 0);
@@ -1401,32 +1461,30 @@ export function hydrateAppFromDecodedFmSave(
   }
 
   let wageComplianceLabel: string | null = null;
-  let balanceLabel: string | null = null;
+  const canonicalBalanceNum = resolveCanonicalBalanceNum({
+    financesBalance: decoded.finances?.balance ?? null,
+    metaBalance: decoded.meta.balance ?? null,
+    monthlyFinances: decoded.monthlyFinances ?? null,
+  });
+  const balanceLabel: string | null =
+    canonicalBalanceNum !== null ? formatMoney(canonicalBalanceNum) : null;
+
   if (decoded.finances) {
     if (
       decoded.finances.wagePayrollWeekly !== null &&
       decoded.finances.wageBudgetWeekly !== null
     ) {
-      const diff =
-        decoded.finances.wageBudgetWeekly - decoded.finances.wagePayrollWeekly;
-      const diffStr =
-        diff >= 0
-          ? `+£${diff.toLocaleString()} p/w`
-          : `-£${Math.abs(diff).toLocaleString()} p/w`;
-      wageComplianceLabel = `£${decoded.finances.wagePayrollWeekly.toLocaleString()} / £${decoded.finances.wageBudgetWeekly.toLocaleString()} p/w (${diffStr})`;
+      wageComplianceLabel = formatWageComplianceSummary(
+        decoded.finances.wagePayrollWeekly,
+        decoded.finances.wageBudgetWeekly,
+        '£'
+      );
     }
-    if (decoded.meta.balance !== null && decoded.meta.balance !== undefined) {
-      balanceLabel = formatMoney(decoded.meta.balance);
-    } else if (decoded.finances.balance !== null) {
-      balanceLabel = formatMoney(decoded.finances.balance);
-    }
-  } else if (decoded.meta.balance !== null && decoded.meta.balance !== undefined) {
-    balanceLabel = formatMoney(decoded.meta.balance);
   }
 
   const financialRunway =
     decoded.monthlyFinances && decoded.monthlyFinances.length > 0
-      ? calculateFinancialRunway(decoded.monthlyFinances)
+      ? calculateFinancialRunway(decoded.monthlyFinances, canonicalBalanceNum)
       : null;
 
   // Group 4: Sanitized recruitment targets (zero raw CA/PA)
@@ -1756,7 +1814,13 @@ ANALYST MISSION FOR THIS .FM SAVE DROP:
    - Exact Starting XI + Bench + 62m/75m substitution plan for the very next fixture (${nextFixtureLabel || 'next scheduled match'}), obeying Playbook v2.0 & Club Rules #1–#6 (Tracking Wingers OOP, 3-man midfield late, never pull both CBs, <=125m Double-GW cap).
    - Multi-match rotation & training schedule plan across the upcoming fixtures listed above.
    - Wage/contract/recruitment/mentoring actions to click before hitting Continue.
-4. Populate the structured JSON fields (docEventBulletBlock, sheetRowValues, inGameDate="${saveDateLabel}") so Bobby can push this full save checkpoint straight to his Google Sheet & Google Doc in one click.`;
+4. Populate the structured JSON fields (docEventBulletBlock, sheetRowValues, inGameDate="${saveDateLabel}") so ${decoded.meta.managerName || 'the manager'} can push this full save checkpoint straight to their Google Sheet & Google Doc in one click.`;
+
+  const governance = buildClubGovernanceState(decoded, finalSquad);
+  const lastMatchTactic = buildLastMatchTacticBlueprint(decoded, finalSquad, 0);
+  const squadPlanner: SquadPlannerSlot[] = Array.isArray(decoded.squadPlanner)
+    ? decoded.squadPlanner
+    : [];
 
   return {
     updatedSquad: finalSquad,
@@ -1775,11 +1839,15 @@ ANALYST MISSION FOR THIS .FM SAVE DROP:
     tacticSubLabel,
     wageComplianceLabel,
     balanceLabel,
+    canonicalBalanceNum,
     financialRunway,
     recruitmentTargets,
     activeSuspensions: activeSuspensionsList,
     competitionRules: typedRules,
     divisionBenchmarks,
+    governance,
+    lastMatchTactic,
+    squadPlanner,
     extractionWarnings: mergedWarnings,
     fastSync: usedFastSync,
     stepTimingsMs:

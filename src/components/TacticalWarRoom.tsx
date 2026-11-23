@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   BookOpen,
@@ -22,6 +22,7 @@ import {
 } from '../utils/bestXiSolver';
 import { PersistedCustomSlot } from '../services/fmStorage';
 import { InteractivePitchBuilder } from './InteractivePitchBuilder';
+import { LastMatchTacticBlueprintCard } from './LastMatchTacticBlueprintCard';
 import { MatchPrepCard } from './MatchPrepCard';
 import { MatchdayCompanionView } from './MatchdayCompanionView';
 import { SetPiecesAndTraining } from './SetPiecesAndTraining';
@@ -44,14 +45,19 @@ interface TacticalWarRoomProps {
   onChangeCustomSlots?: (slots: PersistedCustomSlot[]) => void;
   onChangeApplyToAnalystOnly?: (val: boolean) => void;
   onSolvedLineupChange?: (slots: SolvedSlot[]) => void;
+  dictionaryVersion?: number;
+  onOpenCalibrationLab?: (tab?: 'roles' | 'instructions' | 'diff' | 'governance') => void;
+  onAskAnalyst?: (prompt: string) => void;
 }
+
+const EMPTY_SUSPENSIONS: ActiveSuspensionRecord[] = [];
 
 export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
   players,
   saveDate,
   nextFixture,
   clubName,
-  activeSuspensions = [],
+  activeSuspensions = EMPTY_SUSPENSIONS,
   competitionRules = null,
   hydratedFmSave = null,
   activeShape: controlledShape,
@@ -62,6 +68,9 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
   onChangeCustomSlots,
   onChangeApplyToAnalystOnly,
   onSolvedLineupChange,
+  dictionaryVersion = 0,
+  onOpenCalibrationLab,
+  onAskAnalyst,
 }) => {
   const [subTab, setSubTab] = useState<TacticsSubTab>(initialSubTab);
   useEffect(() => {
@@ -78,31 +87,47 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
   const customSlots = controlledCustomSlots ?? localCustomSlots;
   const applyToAnalystOnly = controlledApplyOnly ?? localApplyOnly;
 
-  const handleShapeChange = (shape: FormationPresetKey) => {
-    setLocalShape(shape);
-    onChangeShape?.(shape);
-  };
-  const handleCustomSlotsChange = (slots: PersistedCustomSlot[]) => {
-    setLocalCustomSlots(slots);
-    onChangeCustomSlots?.(slots);
-  };
-  const handleApplyOnlyChange = (val: boolean) => {
-    setLocalApplyOnly(val);
-    onChangeApplyToAnalystOnly?.(val);
-  };
-  const handleSolvedLineupChange = (slots: SolvedSlot[]) => {
-    setSolvedSlots(slots);
-    onSolvedLineupChange?.(slots);
-  };
+  const handleShapeChange = useCallback(
+    (shape: FormationPresetKey) => {
+      setLocalShape(shape);
+      onChangeShape?.(shape);
+    },
+    [onChangeShape]
+  );
+  const handleCustomSlotsChange = useCallback(
+    (slots: PersistedCustomSlot[]) => {
+      setLocalCustomSlots(slots);
+      onChangeCustomSlots?.(slots);
+    },
+    [onChangeCustomSlots]
+  );
+  const handleApplyOnlyChange = useCallback(
+    (val: boolean) => {
+      setLocalApplyOnly(val);
+      onChangeApplyToAnalystOnly?.(val);
+    },
+    [onChangeApplyToAnalystOnly]
+  );
+  const handleSolvedLineupChange = useCallback(
+    (slots: SolvedSlot[]) => {
+      setSolvedSlots(slots);
+      onSolvedLineupChange?.(slots);
+    },
+    [onSolvedLineupChange]
+  );
 
-  const firstTeamPlayers = players.filter(
-    (p) => p.teamSlot === undefined || p.teamSlot === 0
+  const firstTeamPlayers = useMemo(
+    () => players.filter((p) => p.teamSlot === undefined || p.teamSlot === 0),
+    [players]
   );
   const youthReservesCount = players.length - firstTeamPlayers.length;
-  const scopedPlayers =
-    includeYouthInWarRoom || firstTeamPlayers.length === 0
-      ? players
-      : firstTeamPlayers;
+  const scopedPlayers = useMemo(
+    () =>
+      includeYouthInWarRoom || firstTeamPlayers.length === 0
+        ? players
+        : firstTeamPlayers,
+    [includeYouthInWarRoom, firstTeamPlayers, players]
+  );
 
   const hasSquad = players.length > 0;
   const displayClub =
@@ -110,10 +135,13 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
       ? clubName
       : 'Managed Club';
 
-  const combinedSuspensions: ActiveSuspensionRecord[] =
-    activeSuspensions.length > 0
-      ? activeSuspensions
-      : scopedPlayers.flatMap((p) => p.activeSuspensions || []);
+  const combinedSuspensions: ActiveSuspensionRecord[] = useMemo(
+    () =>
+      activeSuspensions.length > 0
+        ? activeSuspensions
+        : scopedPlayers.flatMap((p) => p.activeSuspensions || []),
+    [activeSuspensions, scopedPlayers]
+  );
 
   const effectiveSolvedSlots = useMemo(() => {
     if (solvedSlots.length > 0) return solvedSlots;
@@ -290,6 +318,17 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
                 </div>
               );
             })()}
+
+            {hydratedFmSave && (hydratedFmSave.lastMatchTactic || (hydratedFmSave.decodedPayload?.tactics?.length ?? 0) > 0) && (
+              <LastMatchTacticBlueprintCard
+                decodedPayload={hydratedFmSave.decodedPayload}
+                defaultBlueprint={hydratedFmSave.lastMatchTactic ?? null}
+                players={players}
+                dictionaryVersion={dictionaryVersion}
+                onOpenCalibrationLab={onOpenCalibrationLab}
+                onAskAnalyst={onAskAnalyst}
+              />
+            )}
 
             <InteractivePitchBuilder
               players={scopedPlayers}

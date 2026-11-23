@@ -210,7 +210,7 @@ export const TACTICAL_CHAT_SCHEMA: Schema = {
           },
           status: {
             type: Type.STRING,
-            description: 'Updated squad status if changed: Starter, Rotation, Youth, or Injured',
+            description: 'Updated squad status if changed: Starter, Rotation, Youth, Surplus, or Injured',
           },
           condition: {
             type: Type.NUMBER,
@@ -296,4 +296,60 @@ export const MATCH_DEBRIEF_SCHEMA: Schema = {
     'inGameAdjustmentRecommendations',
   ],
 };
+
+export const JOURNEY_REPORT_SCHEMA: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    headline: {
+      type: Type.STRING,
+      description: 'Sharp 1-sentence executive headline summarizing the save-to-save journey arc',
+    },
+    journeyArc: {
+      type: Type.STRING,
+      description:
+        'Concise executive paragraph capturing how the club evolved between the two save dates across results, xG, finances, squad, and tactics',
+    },
+    whatImproved: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description: '3-5 concrete improvements backed by exact numbers/player names from the snapshot delta',
+    },
+    whatWorsened: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description: '2-4 concrete regressions, warning signs, or dips backed by exact numbers/player names',
+    },
+    thingsToNote: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description: '3-4 notable tactical shifts, contract cliffs, squad turnover, or breakout trends',
+    },
+    tacticalEvolution: {
+      type: Type.STRING,
+      description:
+        'FM27 Patch 27.1.0 Dual-Phase IP/OOP tactical reflection referencing the club tactic, formation, xG trend, and role balance',
+    },
+    governanceAndPromisesAudit: {
+      type: Type.STRING,
+      description:
+        'Assessment of manager contract tenure, board/supporter standing (only if exposed), objectives, and active playing-time promises',
+    },
+    priorityNextActions: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description: '3-4 prioritized in-game actions to take next based on the journey trajectory',
+    },
+  },
+  required: [
+    'headline',
+    'journeyArc',
+    'whatImproved',
+    'whatWorsened',
+    'thingsToNote',
+    'tacticalEvolution',
+    'governanceAndPromisesAudit',
+    'priorityNextActions',
+  ],
+};
+
 

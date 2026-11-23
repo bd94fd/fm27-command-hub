@@ -6,17 +6,20 @@ import {
   FAST_MODEL_ID,
   formatFriendlyGeminiError,
   GeminiService,
+  isRetiredGeminiModel,
   isTransientOverloadError,
   type ReasoningMode,
 } from '../geminiService.ts';
 import {
   buildAnalyzeScreenshotSystemPrompt,
+  buildJourneyReportSystemPrompt,
   buildMatchDebriefSystemPrompt,
   buildTacticalChatSystemPrompt,
   normalizePersona,
 } from '../prompts.ts';
 import {
   ANALYZE_SCREENSHOT_SCHEMA,
+  JOURNEY_REPORT_SCHEMA,
   MATCH_DEBRIEF_SCHEMA,
   TACTICAL_CHAT_SCHEMA,
 } from '../schemas.ts';
@@ -42,11 +45,15 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
     });
 
   router.get('/health', (_req, res) => {
+    const activeModel =
+      config.geminiModelOverride && !isRetiredGeminiModel(config.geminiModelOverride)
+        ? config.geminiModelOverride
+        : DEEP_MODEL_ID;
     res.json({
       status: 'ok',
       app: 'fm27-command-hub',
       hasGeminiKey: gemini.hasApiKey(),
-      model: config.geminiModelOverride || DEEP_MODEL_ID,
+      model: activeModel,
       fastModel: FAST_MODEL_ID,
       fallbackModel: config.fallbackModel,
       analystTimeoutMs: config.aiTimeoutMs,
@@ -343,6 +350,86 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
     }
   });
 
+  router.post('/fm27/journey-report', guard, async (req, res) => {
+    try {
+      const body = req.body as {
+        clubName?: string;
+        journeySummary?: Record<string, unknown>;
+        journeyData?: Record<string, unknown>;
+      };
+      const journeySummary = body.journeySummary ?? body.journeyData;
+      const clubName =
+        body.clubName ??
+        (typeof journeySummary?.clubName === 'string'
+          ? journeySummary.clubName
+          : undefined);
+
+      if (!gemini.hasApiKey()) {
+        return res.status(500).json({
+          error:
+            'GEMINI_API_KEY is missing. Set GEMINI_API_KEY in your environment variables.',
+        });
+      }
+
+      if (!journeySummary || typeof journeySummary !== 'object') {
+        return res.status(400).json({
+          error: 'journeySummary object is required to generate an AI Journey Briefing.',
+        });
+      }
+
+      const targetClub =
+        clubName && clubName !== '--' ? clubName : 'the managed club';
+      const systemPrompt = buildJourneyReportSystemPrompt(targetClub);
+      const compactPayload = JSON.stringify(journeySummary).slice(0, 14000);
+
+      const response = await gemini.generateContent(
+        {
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                {
+                  text: `Generate a structured FM27 Patch 27.1.0 Executive Save-to-Save Journey Briefing from this verified career diff payload:\n${compactPayload}`,
+                },
+              ],
+            },
+          ],
+          config: {
+            systemInstruction: systemPrompt,
+            responseMimeType: 'application/json',
+            responseSchema: JOURNEY_REPORT_SCHEMA,
+          },
+        },
+        {
+          reasoningMode: 'deep_high',
+        }
+      );
+
+      const rawText = (response.text ?? '{}').trim();
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(rawText) as Record<string, unknown>;
+      } catch {
+        return res.status(502).json({
+          error: 'The Tactical Analyst returned malformed Journey Briefing JSON.',
+        });
+      }
+      return res.json({
+        ...parsed,
+        briefing: parsed,
+      });
+    } catch (error: unknown) {
+      if (error instanceof AnalystTimeoutError) {
+        return res.status(504).json({ error: error.message });
+      }
+      if (error instanceof AnalystOverloadError || isTransientOverloadError(error)) {
+        return res.status(503).json({ error: formatFriendlyGeminiError(error) });
+      }
+      return res.status(500).json({ error: formatFriendlyGeminiError(error) });
+    }
+  });
+
   return router;
 }
+
 

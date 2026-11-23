@@ -54,10 +54,35 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
       : d.extractionWarnings || d.warnings || [];
   const warningsList = sanitizeReaderNotes(rawWarningsList);
 
+  const isPreSeasonSnapshot =
+    !hydrated.fastSync &&
+    d.playedMatches.length === 0 &&
+    (d.leagueStanding?.played ?? 0) === 0;
+
   const healthChecks = [
     { label: 'Squad', ok: d.players.length > 0, detail: `${d.players.length}` },
-    { label: 'Season Stats', ok: playersWithSeasonStats > 0, detail: `${playersWithSeasonStats}` },
-    { label: 'Results', ok: d.playedMatches.length > 0, detail: `${d.playedMatches.length}` },
+    {
+      label: 'Season Stats',
+      ok: playersWithSeasonStats > 0 || isPreSeasonSnapshot,
+      detail:
+        playersWithSeasonStats > 0
+          ? `${playersWithSeasonStats}`
+          : isPreSeasonSnapshot
+            ? 'Pre-season (0 GP)'
+            : hydrated.fastSync
+              ? 'Skipped (Fast Sync)'
+              : '0',
+    },
+    {
+      label: 'Results',
+      ok: d.playedMatches.length > 0 || isPreSeasonSnapshot,
+      detail:
+        d.playedMatches.length > 0
+          ? `${d.playedMatches.length}`
+          : isPreSeasonSnapshot
+            ? '0 GP'
+            : '0',
+    },
     { label: 'Staff', ok: staffCount > 0, detail: `${staffCount}` },
     { label: 'Finances', ok: Boolean(runway || d.finances), detail: runway ? runway.status : d.finances ? 'OK' : '—' },
     { label: 'Recruitment', ok: targetsCount > 0, detail: targetsCount > 0 ? `${targetsCount}` : '0' },

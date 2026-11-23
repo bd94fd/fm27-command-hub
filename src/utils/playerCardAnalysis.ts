@@ -72,10 +72,20 @@ export interface DevelopmentAdvice {
 }
 
 export interface SeasonProductionState {
-  mode: 'fast_sync_missing' | 'no_appearances' | 'has_stats';
+  mode:
+    | 'fast_sync_missing'
+    | 'preseason_no_matches'
+    | 'stats_unavailable'
+    | 'no_appearances'
+    | 'has_stats';
   hasPlayed: boolean;
   finishingNote: string | null;
   creationNote: string | null;
+}
+
+export interface SeasonStatsContextOptions {
+  isFastSync?: boolean;
+  playedMatchesCount?: number;
 }
 
 export interface ContractStandingInsight {
@@ -502,7 +512,8 @@ export function evaluatePhysicalVerdict(
 
 export function evaluateSeasonProduction(
   player: PlayerRecord,
-  squadPlayers: PlayerRecord[] = []
+  squadPlayers: PlayerRecord[] = [],
+  options?: SeasonStatsContextOptions
 ): SeasonProductionState {
   const hasPlayed =
     (player.minutes || 0) > 0 ||
@@ -518,8 +529,22 @@ export function evaluateSeasonProduction(
         (p.goals || 0) > 0 ||
         (p.assists || 0) > 0
     );
+    let mode: SeasonProductionState['mode'] = 'no_appearances';
+    if (squadPlayers.length > 0 && !squadHasAnyStats) {
+      if (options?.isFastSync === true) {
+        mode = 'fast_sync_missing';
+      } else if (options?.isFastSync === false) {
+        mode =
+          typeof options.playedMatchesCount === 'number' &&
+          options.playedMatchesCount === 0
+            ? 'preseason_no_matches'
+            : 'stats_unavailable';
+      } else {
+        mode = 'fast_sync_missing';
+      }
+    }
     return {
-      mode: squadPlayers.length > 0 && !squadHasAnyStats ? 'fast_sync_missing' : 'no_appearances',
+      mode,
       hasPlayed: false,
       finishingNote: null,
       creationNote: null,
@@ -672,7 +697,8 @@ export function evaluateDevelopmentAdvice(
 export function analyzePlayerCard(
   player: PlayerRecord,
   squadPlayers: PlayerRecord[] = [],
-  divisionBenchmarks?: DivisionBenchmarks | null
+  divisionBenchmarks?: DivisionBenchmarks | null,
+  seasonStatsContext?: SeasonStatsContextOptions
 ): PlayerCardAnalysis {
   const topIpRoles = rankRolesForPlayer(player, 'In Possession');
   const topOopRoles = rankRolesForPlayer(player, 'Out of Possession');
@@ -724,7 +750,11 @@ export function analyzePlayerCard(
   );
   const squadDepth = evaluateSquadDepth(player, squadPlayers);
   const development = evaluateDevelopmentAdvice(player, bestIpRole);
-  const seasonProduction = evaluateSeasonProduction(player, squadPlayers);
+  const seasonProduction = evaluateSeasonProduction(
+    player,
+    squadPlayers,
+    seasonStatsContext
+  );
   const contractStanding = evaluateContractStanding(player);
 
   // Build concise, plain-English scouting verdict

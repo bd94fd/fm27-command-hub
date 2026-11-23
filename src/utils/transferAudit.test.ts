@@ -530,6 +530,242 @@ test('Squad Advice enforces Surplus To Requirements -> Sell and reconciles promo
   assert.ok(byId['st-ndefe'].tags.some((t) => t.startsWith('Promote to Backup')));
 });
 
+test('Regression: Never tag a player Promote to Backup while also advising Sell / Transfer List, and report full cleared wage on existing-payroll promotions', () => {
+  const squad: PlayerRecord[] = [
+    makePlayer({
+      id: 'st-starter',
+      name: 'Mbey Epolo',
+      position: 'ST (C)',
+      age: 24,
+      ability: 4.0,
+      potential: 4.5,
+      minutes: 340,
+      expires: '30/06/2029',
+      wagePw: 420,
+      status: 'Starter',
+      positionRatings: { ST: 20 },
+    }),
+    // Exact screenshot profile: #2 ST backup, Age 22, £383/wk, 129 mins in early season
+    makePlayer({
+      id: 'st-dubrovnyi',
+      name: 'Mykhailo Dubrovnyi',
+      position: 'ST (C)',
+      age: 22,
+      ability: 3.5,
+      potential: 4.0,
+      minutes: 129,
+      expires: '30/06/2030',
+      wagePw: 383,
+      status: 'Rotation',
+      positionRatings: { ST: 20 },
+    }),
+    // Exact screenshot profile: Surplus To Requirements #4 ST, £541/wk
+    makePlayer({
+      id: 'st-ackx',
+      name: 'Wolf Ackx',
+      position: 'ST (C), AM (L)',
+      age: 25,
+      ability: 3.5,
+      potential: 5.0,
+      minutes: 54,
+      expires: '30/06/2029',
+      wagePw: 541,
+      status: 'Surplus',
+      contractDetails: {
+        promisedPlayingTime: 'Surplus To Requirements',
+        optionalExtensionYears: 0,
+        releaseClauses: [],
+        bonuses: {},
+        loanWageContributionPct: null,
+      },
+      positionRatings: { ST: 20, AML: 18 },
+    }),
+    makePlayer({
+      id: 'gk-low',
+      name: 'Cheap Keeper',
+      position: 'GK',
+      age: 23,
+      ability: 3.5,
+      potential: 4.0,
+      minutes: 360,
+      expires: '30/06/2029',
+      wagePw: 180,
+      status: 'Starter',
+      positionRatings: { GK: 20 },
+    }),
+  ];
+
+  const audit = buildSquadTransferAudit(squad, '15/09/2027', {
+    balanceLabel: '-£749K',
+    wagePayrollWeekly: 8090,
+    wageBudgetWeekly: 8000,
+  });
+
+  const byId = Object.fromEntries(audit.playerAdvice.map((a) => [a.player.id, a]));
+
+  // Ackx is Surplus -> Sell / Transfer List, and reports full £541/wk cleared (not £158/wk!)
+  assert.equal(byId['st-ackx'].verdict, 'Sell / Transfer List');
+  assert.match(byId['st-ackx'].recommendedMove, /clear £541\/wk/i);
+  assert.doesNotMatch(byId['st-ackx'].recommendedMove, /£158\/wk/);
+  assert.equal(audit.projectedWeeklySavings, 541);
+
+  // Dubrovnyi (#2 ST, Age 22, 129 mins) must NEVER be told Sell / Transfer List!
+  assert.equal(byId['st-dubrovnyi'].verdict, 'Hold');
+  assert.ok(byId['st-dubrovnyi'].tags.includes('Promote to Backup (Wolf Ackx)'));
+
+  // Global invariant: NO player with Promote to Backup tag may EVER have an exit verdict
+  for (const item of audit.playerAdvice) {
+    if (item.tags.some((t) => t.startsWith('Promote to Backup'))) {
+      assert.notEqual(item.verdict, 'Sell / Transfer List');
+      assert.notEqual(item.verdict, 'Replace Before Selling');
+      assert.notEqual(item.verdict, 'Let Expire');
+      assert.notEqual(item.verdict, 'Loan Out');
+    }
+  }
+});
+
+test('Squad-relative Current Ability: 18yo best player is treated as Core Starter, 22yo 3.5★ U21 is separated from 16yo 1.0★ Academy, and ready U21 LBs trigger Promote Internal', () => {
+  const squad: PlayerRecord[] = [
+    // 18-year-old wonderkid who is ALREADY our best player (4.5★) sitting in U21 slot!
+    makePlayer({
+      id: 'cm-18-best',
+      name: 'Phenom Teen CM',
+      position: 'M (C)',
+      age: 18,
+      ability: 4.5,
+      potential: 5.0,
+      teamSlot: 1,
+      status: 'Youth',
+      wagePw: 120,
+      expires: '30/06/2030',
+      positionRatings: { MC: 20 },
+    }),
+    makePlayer({
+      id: 'cm-senior-avg',
+      name: 'Average Senior CM',
+      position: 'M (C)',
+      age: 26,
+      ability: 3.5,
+      potential: 3.5,
+      teamSlot: 0,
+      status: 'Starter',
+      wagePw: 320,
+      expires: '30/06/2029',
+      positionRatings: { MC: 20 },
+    }),
+    // Left-Backs: 0 Senior, 2 First-Team Ready U21s + 1 raw academy teen -> Promote Internal (NOT Need Signing!)
+    makePlayer({
+      id: 'lb-ready-1',
+      name: 'Lazarus Nkemdirim',
+      position: 'D (L)',
+      age: 22,
+      ability: 3.5,
+      potential: 4.5,
+      teamSlot: 1,
+      status: 'Youth',
+      wagePw: 0,
+      expires: '30/06/2029',
+      positionRatings: { DL: 20 },
+    }),
+    makePlayer({
+      id: 'lb-ready-2',
+      name: 'Bjerre Verlinden',
+      position: 'D (L)',
+      age: 19,
+      ability: 3.0,
+      potential: 3.5,
+      teamSlot: 1,
+      status: 'Youth',
+      wagePw: 0,
+      expires: '30/06/2029',
+      positionRatings: { DL: 20 },
+    }),
+    makePlayer({
+      id: 'lb-acad-1',
+      name: 'Ronald Brasseur',
+      position: 'D (L)',
+      age: 15,
+      ability: 1.0,
+      potential: 2.5,
+      teamSlot: 2,
+      status: 'Youth',
+      wagePw: 0,
+      expires: '30/06/2029',
+      positionRatings: { DL: 20 },
+    }),
+    // Wingers: First-Team Ready 22yo 3.5★ vs raw Academy 16yo 1.0★/5.0★
+    makePlayer({
+      id: 'w-sen-1',
+      name: 'Nathan Kaninda',
+      position: 'AM (R)',
+      age: 23,
+      ability: 4.5,
+      potential: 5.0,
+      teamSlot: 0,
+      status: 'Starter',
+      wagePw: 625,
+      expires: '30/06/2029',
+      positionRatings: { AMR: 20 },
+    }),
+    makePlayer({
+      id: 'w-ready-u21',
+      name: 'Mauricio Jr Ndefe',
+      position: 'AM (L)',
+      age: 22,
+      ability: 3.5,
+      potential: 4.5,
+      teamSlot: 1,
+      status: 'Youth',
+      wagePw: 0,
+      expires: '30/06/2029',
+      positionRatings: { AML: 20 },
+    }),
+    makePlayer({
+      id: 'w-acad-16',
+      name: 'Viktor Aerts',
+      position: 'AM (L)',
+      age: 16,
+      ability: 1.0,
+      potential: 5.0,
+      teamSlot: 2,
+      status: 'Youth',
+      wagePw: 0,
+      expires: '30/06/2029',
+      positionRatings: { AML: 20 },
+    }),
+  ];
+
+  const audit = buildSquadTransferAudit(squad, '15/09/2027', {
+    balanceLabel: '-£749K',
+    wagePayrollWeekly: 7987,
+    wageBudgetWeekly: 10203,
+  });
+
+  const byId = Object.fromEntries(audit.playerAdvice.map((a) => [a.player.id, a]));
+
+  assert.equal(byId['cm-18-best'].abilityReadinessTier, 'squad_star');
+  assert.equal(byId['cm-18-best'].clubWidePositionRank, 1);
+  assert.equal(byId['cm-18-best'].verdict, 'Hold');
+  assert.equal(byId['cm-18-best'].priority, 'High');
+  assert.match(byId['cm-18-best'].headline, /Promote to Starting XI immediately/i);
+
+  const lbBucket = audit.positionalNeeds.find((b) => b.code === 'LB');
+  assert.ok(lbBucket);
+  assert.equal(lbBucket.status, 'Promote Internal');
+  assert.equal(lbBucket.firstTeamReadyYouthPlayers.length, 2);
+  assert.equal(lbBucket.academyProspectPlayers.length, 1);
+  assert.equal(lbBucket.academyProspectPlayers[0].id, 'lb-acad-1');
+
+  const wBucket = audit.positionalNeeds.find((b) => b.code === 'W');
+  assert.ok(wBucket);
+  assert.ok(wBucket.firstTeamReadyYouthPlayers.some((p) => p.id === 'w-ready-u21'));
+  assert.equal(wBucket.firstTeamReadyYouthPlayers.some((p) => p.id === 'w-acad-16'), false);
+  assert.ok(wBucket.academyProspectPlayers.some((p) => p.id === 'w-acad-16'));
+  assert.equal(byId['w-acad-16'].abilityReadinessTier, 'academy_raw');
+  assert.equal(byId['w-ready-u21'].abilityReadinessTier, 'starter_level');
+});
+
+
 
 
 
