@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Check,
+  Copy,
   Download,
   FileCode2,
   GitCompare,
+  Info,
   Layers,
   RotateCcw,
   Shield,
@@ -15,6 +17,7 @@ import {
 import { PlayerRecord } from '../types/fm27';
 import {
   DeepTacticRecord,
+  PatchCompatibilitySectionStatus,
   RawTacticSettingUnit,
   TacticSlotAssignment,
 } from '../types/fmSave';
@@ -55,6 +58,11 @@ import {
 } from '../utils/fm27NativeBinaryDecoder';
 import { listSaveHistoryPoints, SaveHistoryPoint } from '../services/saveCache';
 import { decodeFmSaveFile } from '../services/fmSaveReader';
+import {
+  buildPatchDiagnosticReport,
+  describePatchLayout,
+  isNewFm27BuildDetected,
+} from '../utils/fm27PatchDiagnostics';
 
 export type CalibrationLabTab = 'roles' | 'instructions' | 'diff' | 'governance';
 
@@ -84,6 +92,36 @@ function formatBytes(n?: number | null): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+const PATCH_SECTION_CHIP_STYLES: Record<PatchCompatibilitySectionStatus, string> = {
+  clean: 'border-emerald-500/35 bg-emerald-500/10 text-emerald-300',
+  patched: 'border-sky-500/35 bg-sky-500/10 text-sky-300',
+  fallback: 'border-amber-500/35 bg-amber-500/10 text-amber-300',
+  unavailable: 'border-slate-700 bg-slate-900 text-slate-400',
+};
+
+function copyTextToClipboard(text: string): Promise<void> {
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text);
+  }
+  return new Promise<void>((resolve, reject) => {
+    try {
+      const area = document.createElement('textarea');
+      area.value = text;
+      area.setAttribute('readonly', 'true');
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      document.body.appendChild(area);
+      area.select();
+      const copied = document.execCommand('copy');
+      document.body.removeChild(area);
+      if (copied) resolve();
+      else reject(new Error('Clipboard copy was rejected.'));
+    } catch (err) {
+      reject(err instanceof Error ? err : new Error('Clipboard copy failed.'));
+    }
+  });
 }
 
 export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> = ({
@@ -149,11 +187,19 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
   const activeTactic = tactics[selectedTacticIdx] || tactics[0] || null;
   const forensics = decodedPayload?.binaryForensics || null;
   const mappingCounts = useMemo(() => countDictionaryMappings(dict), [dict]);
+  const patchCompat = decodedPayload?.meta?.patchCompatibility ?? null;
+  const newBuildDetected = isNewFm27BuildDetected(patchCompat);
 
   const notifySaved = (nextDict: Fm27BinaryDictionary, msg: string) => {
     setDict(nextDict);
     setStatusNotice(msg);
     onDictionaryChanged();
+  };
+
+  const handleCopyPatchDiagnosticReport = () => {
+    copyTextToClipboard(buildPatchDiagnosticReport(decodedPayload))
+      .then(() => setStatusNotice('Patch diagnostic report copied to clipboard.'))
+      .catch(() => setStatusNotice('Could not copy the patch diagnostic report automatically.'));
   };
 
   // Current active save as a CompactBinaryDiffSnapshot
@@ -401,6 +447,16 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
+              onClick={handleCopyPatchDiagnosticReport}
+              disabled={!decodedPayload}
+              title="Copy a compact patch diagnostic summary for adapting the layout to a new FM27 build"
+              aria-label="Copy Patch Diagnostic Report"
+              className="min-h-[38px] inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-3 text-xs font-medium text-slate-200 hover:border-sky-500/50 hover:text-white transition-colors whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Copy className="h-3.5 w-3.5 text-sky-400" /> Copy Patch Diagnostic Report
+            </button>
+            <button
+              type="button"
               onClick={() =>
                 downloadTextFile(
                   `fm27-binary-dictionary-${(decodedPayload?.meta?.build || '27.1.0').replace(/[^a-z0-9.+-]/gi, '_')}.json`,
@@ -491,6 +547,25 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
           <div className="px-4 sm:px-6 py-2 bg-emerald-500/10 border-b border-emerald-500/30 text-xs text-emerald-300 flex items-center gap-2">
             <Check className="h-3.5 w-3.5 shrink-0" />
             <span>{statusNotice}</span>
+          </div>
+        )}
+
+        {/* Calm future-patch notice — informational, never blocks extraction */}
+        {newBuildDetected && patchCompat && (
+          <div className="px-4 sm:px-6 py-2.5 bg-sky-500/10 border-b border-sky-500/30 text-xs text-sky-200 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <Info className="h-3.5 w-3.5 shrink-0 text-sky-300" />
+            <span className="font-semibold text-sky-100">New FM27 Build Detected</span>
+            <span className="text-sky-200/80">
+              {patchCompat.detectedBuild} · {describePatchLayout(patchCompat)} · extraction
+              continued with dynamic layout inheritance
+            </span>
+            <button
+              type="button"
+              onClick={handleCopyPatchDiagnosticReport}
+              className="min-h-[26px] inline-flex items-center gap-1 rounded border border-sky-500/40 bg-sky-500/10 px-2 text-[11px] font-medium text-sky-100 hover:border-sky-400/60 hover:bg-sky-500/20"
+            >
+              <Copy className="h-3 w-3" /> Copy Patch Diagnostic Report
+            </button>
           </div>
         )}
 
@@ -1339,6 +1414,58 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
           {/* TAB 4: GOVERNANCE PROBES, .FM SECTION INVENTORY & SHAREABLE JSON DICTIONARY */}
           {activeTab === 'governance' && (
             <div className="space-y-6">
+              {/* Patch Compatibility Self-Diagnostics */}
+              <div className="space-y-2 rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">
+                      Patch Compatibility Self-Diagnostics
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Detects future FM27 builds and shows which sections decoded cleanly versus
+                      through a runtime fallback.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyPatchDiagnosticReport}
+                    disabled={!decodedPayload}
+                    className="min-h-[32px] inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-2.5 text-[11px] font-medium text-slate-200 hover:border-sky-500/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Copy className="h-3.5 w-3.5 text-sky-400" /> Copy Patch Diagnostic Report
+                  </button>
+                </div>
+                {patchCompat ? (
+                  <>
+                    <p className="text-xs font-mono tabular-nums text-slate-300">
+                      {patchCompat.summary}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {patchCompat.sections.map((section) => (
+                        <span
+                          key={section.id}
+                          className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-mono ${
+                            PATCH_SECTION_CHIP_STYLES[section.status] ??
+                            PATCH_SECTION_CHIP_STYLES.unavailable
+                          }`}
+                        >
+                          <span>{section.label}:</span>
+                          <strong className="font-semibold text-white">{section.status}</strong>
+                          {section.fallbacks ? <span>({section.fallbacks})</span> : null}
+                        </span>
+                      ))}
+                    </div>
+                    {patchCompat.advisory && (
+                      <p className="text-xs text-sky-300">{patchCompat.advisory}</p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-xs text-slate-400">
+                    No patch diagnostics yet — import a live .fm save to populate this panel.
+                  </p>
+                )}
+              </div>
+
               {/* Shareable JSON Dictionary Manager */}
               <div className="space-y-3 pb-5 border-b border-slate-800">
                 <div className="flex flex-wrap items-center justify-between gap-2">

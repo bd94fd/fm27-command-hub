@@ -254,6 +254,36 @@ export interface BinaryManagerContractProbe {
   confidence: 'high' | 'medium' | 'probe';
 }
 
+export type PatchCompatibilitySectionStatus =
+  | 'clean'
+  | 'patched'
+  | 'fallback'
+  | 'unavailable';
+
+export interface PatchCompatibilitySection {
+  id: string;
+  label: string;
+  status: PatchCompatibilitySectionStatus;
+  fallbacks?: number;
+  detail?: string | null;
+}
+
+export type PatchLayoutStatus = 'known' | 'dynamic' | 'unknown' | 'not-fm27';
+
+export interface PatchCompatibilitySummary {
+  detectedBuild: string;
+  isFm27: boolean;
+  layoutStatus: PatchLayoutStatus;
+  layoutBase: string | null;
+  isUntestedBuild: boolean;
+  runtimePatchesApplied: boolean;
+  dynamicBuildRegistered: boolean;
+  sections: PatchCompatibilitySection[];
+  summary: string;
+  advisory?: string | null;
+  generatedAtIso?: string | null;
+}
+
 export interface BinaryForensicsSnapshot {
   fmBuild: string;
   fmsaveVersion?: string;

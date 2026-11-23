@@ -25,6 +25,7 @@ import {
   Pass0ExtractionPayload,
   PlayerAttributes,
   PlayerMatchRating,
+  PatchCompatibilitySummary,
   RecruitmentTarget,
   ScoutBadge,
   SeasonHistoryEntry,
@@ -47,7 +48,7 @@ import {
   deriveFootballSeasonLabel,
 } from './matchScopeHelpers';
 
-export const WORKER_CACHE_BUSTER = '?v=21';
+export const WORKER_CACHE_BUSTER = '?v=22';
 
 export function resolveSquadUnit(
   teamSlot?: number | null
@@ -487,6 +488,7 @@ export interface DecodedFmSavePayload {
     importScope?: string;
     fastSync?: boolean;
     mountMode?: string;
+    patchCompatibility?: PatchCompatibilitySummary | null;
   };
   clubUid?: number | null;
   players: DecodedFmSavePlayer[];

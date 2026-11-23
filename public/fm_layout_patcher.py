@@ -13,11 +13,14 @@ fmsave._layouts and fmsave.readers in-memory at runtime:
    club's editor unique_id rather than the shifted game_db Club.uid.
 4. Dynamic synthetic _BuildModule registration for 27.1.0+2505117 and future
    FM27 27.x.y+z builds so known_build=True and layouts resolve cleanly.
+5. Future-patch self-diagnostics: classify unseen 27.x builds, track which runtime
+   fallbacks fired, and emit a structured patchCompatibility summary for the UI.
 """
 
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import datetime, timezone
 import struct
 from typing import Any
 
@@ -26,6 +29,186 @@ _REGISTERED_SYNTHETIC_BUILDS: set[str] = set()
 _U32 = struct.Struct("<I")
 _U16 = struct.Struct("<H")
 _U8 = struct.Struct("<B")
+
+# Exact 27.x builds whose layouts ship verified with this patcher. Populated from
+# fmsave's upstream KNOWN_BUILDS when available, otherwise from these version cores.
+_VERIFIED_FM27_BUILD_CORES = ("27.0.0", "27.1.0")
+_TESTED_FM27_BUILDS: set[str] = set()
+
+# Runtime sections the patcher can recover with a bounded structural fallback.
+_PATCH_SECTION_LABELS: dict[str, str] = {
+    "tactics_set_piece": "Tactics & set-piece takers",
+    "squad_planner": "Squad planner selectors",
+    "managed_club": "Managed club summary",
+    "scouting_budget": "Scouting budget",
+    "club_table": "Club table finance tail",
+}
+
+_EXTRACTION_SECTION_LABELS: dict[str, str] = {
+    "players": "Squad & player attributes",
+    "staff": "Club staff",
+    "finances": "Finances & cash runway",
+    "tactics": "Tactics & mentoring",
+    "selections": "Selections",
+    "set_pieces": "Set pieces",
+    "season_stats": "Season & match stats",
+    "fixtures": "Fixtures & results",
+    "league_table": "League table",
+    "governance": "Board & governance",
+    "binary_forensics": "Binary forensics",
+}
+
+_PATCH_TELEMETRY: dict[str, Any] = {
+    "patchesApplied": False,
+    "dynamicBuilds": [],
+    "fallbacks": {},
+}
+
+
+def _note_fallback(section: str) -> None:
+    fallbacks = _PATCH_TELEMETRY["fallbacks"]
+    fallbacks[section] = int(fallbacks.get(section, 0)) + 1
+
+
+def _fallback_count(section: str) -> int:
+    return int(_PATCH_TELEMETRY["fallbacks"].get(section, 0))
+
+
+def _build_core(build_str: str) -> str:
+    return str(build_str or "").split("+", 1)[0].strip()
+
+
+def _layout_base_for_build(build_str: str) -> str | None:
+    normalized = str(build_str or "").strip()
+    if not normalized.startswith("27."):
+        return None
+    return "27.0" if normalized.startswith("27.0.") else "27.1"
+
+
+def is_tested_fm27_build(build_str: str) -> bool:
+    """True only for 27.x builds whose layout family is verified for this patcher."""
+    normalized = str(build_str or "").strip()
+    if not normalized.startswith("27."):
+        return False
+    if normalized in _TESTED_FM27_BUILDS:
+        return True
+    if _TESTED_FM27_BUILDS:
+        return False
+    return _build_core(normalized) in _VERIFIED_FM27_BUILD_CORES
+
+
+def _layout_status(build_str: str) -> str:
+    normalized = str(build_str or "").strip()
+    if not normalized.startswith("27."):
+        return "not-fm27"
+    if normalized in _REGISTERED_SYNTHETIC_BUILDS:
+        return "dynamic"
+    if is_tested_fm27_build(normalized):
+        return "known"
+    return "unknown"
+
+
+def get_patch_telemetry() -> dict[str, Any]:
+    """Snapshot runtime patch telemetry for diagnostics (no save data included)."""
+    return {
+        "patchesApplied": bool(_PATCH_TELEMETRY["patchesApplied"]),
+        "dynamicBuilds": list(_PATCH_TELEMETRY["dynamicBuilds"]),
+        "fallbacks": dict(_PATCH_TELEMETRY["fallbacks"]),
+        "testedBuilds": sorted(_TESTED_FM27_BUILDS),
+    }
+
+
+def build_patch_compatibility_summary(
+    build_str: str,
+    extracted: dict[str, bool] | None = None,
+) -> dict[str, Any]:
+    """Structured, non-fatal patch compatibility summary for a loaded save build.
+
+    `extracted` maps mapper section ids to whether rows were decoded, so the UI can
+    show clean sections next to any runtime fallbacks.
+    """
+    normalized = str(build_str or "unknown").strip() or "unknown"
+    is_fm27 = normalized.startswith("27.")
+    layout_status = _layout_status(normalized)
+    is_untested = is_fm27 and not is_tested_fm27_build(normalized)
+    patches_applied = bool(_PATCH_TELEMETRY["patchesApplied"])
+    sections: list[dict[str, Any]] = []
+
+    for section_id, label in _PATCH_SECTION_LABELS.items():
+        count = _fallback_count(section_id)
+        if not is_fm27:
+            status, detail = "clean", "FM27 runtime overlay not required"
+        elif count > 0:
+            status, detail = "fallback", f"{count} bounded structural fallback(s) used"
+        elif patches_applied:
+            status, detail = "patched", "Runtime layout overlay active, decoded cleanly"
+        else:
+            status, detail = "clean", "Decoded without runtime overlay"
+        sections.append(
+            {
+                "id": section_id,
+                "label": label,
+                "status": status,
+                "fallbacks": count,
+                "detail": detail,
+            }
+        )
+
+    for section_id, ok in (extracted or {}).items():
+        if section_id in _PATCH_SECTION_LABELS:
+            continue
+        sections.append(
+            {
+                "id": section_id,
+                "label": _EXTRACTION_SECTION_LABELS.get(
+                    section_id, section_id.replace("_", " ").title()
+                ),
+                "status": "clean" if ok else "unavailable",
+                "fallbacks": _fallback_count(section_id),
+                "detail": "Extracted" if ok else "No rows decoded for this save",
+            }
+        )
+
+    clean_count = sum(1 for s in sections if s["status"] in ("clean", "patched"))
+    fallback_count = sum(1 for s in sections if s["status"] == "fallback")
+    unavailable_count = sum(1 for s in sections if s["status"] == "unavailable")
+
+    layout_descriptor = {
+        "known": "known layout",
+        "dynamic": f"dynamic layout ({_layout_base_for_build(normalized)} base)",
+        "unknown": "unverified layout",
+        "not-fm27": "non-FM27 build",
+    }[layout_status]
+
+    if is_untested:
+        advisory = (
+            "New FM27 build detected. Layouts were inherited dynamically so extraction could "
+            "continue; review fallback sections before trusting edge-case fields."
+        )
+    elif fallback_count:
+        advisory = (
+            "Runtime fallbacks covered this save; sections marked fallback may need "
+            "layout calibration."
+        )
+    else:
+        advisory = None
+
+    return {
+        "detectedBuild": normalized,
+        "isFm27": is_fm27,
+        "layoutStatus": layout_status,
+        "layoutBase": _layout_base_for_build(normalized),
+        "isUntestedBuild": is_untested,
+        "runtimePatchesApplied": patches_applied,
+        "dynamicBuildRegistered": normalized in _REGISTERED_SYNTHETIC_BUILDS,
+        "sections": sections,
+        "summary": (
+            f"{normalized} · {layout_descriptor} · {clean_count} clean, "
+            f"{fallback_count} fallback, {unavailable_count} unavailable"
+        ),
+        "advisory": advisory,
+        "generatedAtIso": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
 
 
 class SyntheticFM27BuildModule:
@@ -64,6 +247,18 @@ def apply_fmsave_runtime_patches() -> bool:
     except Exception:
         # Running under unit-test fmsave stub without internal submodules
         return False
+
+    # Capture the exact 27.x builds fmsave already understands before we extend KNOWN_BUILDS
+    try:
+        _TESTED_FM27_BUILDS.update(
+            str(b) for b in layouts_mod.known_builds() if str(b).startswith("27.")
+        )
+    except Exception:
+        pass
+    for _base_mod in (fm27_27_0_0, fm27_27_1_0):
+        _base_build = str(getattr(_base_mod, "BUILD", "") or "")
+        if _base_build.startswith("27."):
+            _TESTED_FM27_BUILDS.add(_base_build)
 
     # ── 1. Patch TACTICS layout taker_markers (0x01..0x3f + 0x05 0x02) ──────────
     expanded_taker_markers = tuple(bytes((b, 5, 2)) for b in range(1, 64))
@@ -107,6 +302,7 @@ def apply_fmsave_runtime_patches() -> bool:
         except Exception as orig_exc:
             if "set-piece marker" not in str(orig_exc):
                 raise
+            _note_fallback("tactics_set_piece")
             # Bounded structural fallback: locate dynamic 3-byte taker marker before 10 selector lists
             cursor = block_start + _U32.size + len(layout.block_marker)
             label_txt, cursor = tactics_reader._read_text(
@@ -182,6 +378,7 @@ def apply_fmsave_runtime_patches() -> bool:
                     found_start = marker_at + 31
                 hit = humans.find(core_lead_tail_needle, hit + 1)
             if found_start is not None:
+                _note_fallback("squad_planner")
                 return found_start
             raise
 
@@ -197,6 +394,7 @@ def apply_fmsave_runtime_patches() -> bool:
                 humans, search_start, layout, scouting_marker, file_name
             )
         except Exception:
+            planner_fallbacks_before = _fallback_count("squad_planner")
             offset = _patched_planner_start(humans, search_start, layout, file_name)
             groups: list[tuple[tuple[int, ...], ...]] = []
             for group in range(4):
@@ -219,6 +417,8 @@ def apply_fmsave_runtime_patches() -> bool:
                         groups.append(tuple(slots))
             if not humans.startswith(layout.footer_marker, offset + 26):
                 raise
+            if _fallback_count("squad_planner") == planner_fallbacks_before:
+                _note_fallback("squad_planner")
             return tuple(groups)
 
     planner_reader._planner_start = _patched_planner_start
@@ -284,6 +484,8 @@ def apply_fmsave_runtime_patches() -> bool:
                 fallback_links.append(managed_reader._SummaryLink(c_obj, mgr_name))
                 seen_uids.add(c_obj.uid)
             prev_str = cur_str
+        if len(fallback_links) > len(links):
+            _note_fallback("managed_club")
         return fallback_links if fallback_links else links
 
     def _patched_scouting_budget(humans: bytes, layout: Any) -> tuple[int, int] | None:
@@ -299,6 +501,7 @@ def apply_fmsave_runtime_patches() -> bool:
                     budget = _U32.unpack_from(humans, hit + 4)[0]
                     remaining = struct.unpack_from("<i", humans, hit + 8)[0]
                     if 0 < budget <= max_budget and -max_budget <= remaining <= budget:
+                        _note_fallback("scouting_budget")
                         return (budget, max(0, remaining))
             hit = humans.find(core_lead_tail_needle, hit + 1)
         return None
@@ -321,6 +524,7 @@ def apply_fmsave_runtime_patches() -> bool:
                 if layouts.table is fm27_27_1_0.CLUB_TABLE
                 else fm27_27_1_0.CLUB_TABLE
             )
+            _note_fallback("club_table")
             return replace(layouts, fallback_table=alt_table)
         return layouts
 
@@ -342,6 +546,7 @@ def apply_fmsave_runtime_patches() -> bool:
     layouts_mod._synthetic_modules_registry = synthetic_modules
 
     _PATCH_APPLIED = True
+    _PATCH_TELEMETRY["patchesApplied"] = True
     return True
 
 
@@ -373,5 +578,7 @@ def register_dynamic_fm27_build(build_str: str) -> bool:
     if isinstance(registry, list):
         registry.append(mod)
         _REGISTERED_SYNTHETIC_BUILDS.add(build_str)
+        if build_str not in _PATCH_TELEMETRY["dynamicBuilds"]:
+            _PATCH_TELEMETRY["dynamicBuilds"].append(build_str)
         return True
     return False
