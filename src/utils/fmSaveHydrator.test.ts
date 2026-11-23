@@ -2896,3 +2896,122 @@ test('Server Decode Parallel Upload & Progressive Checkpoint: uploads chunks con
 
 
 
+
+test('Large .fm hardening: Render OOM 507 fallback, orphan sweep, hidden-tab watchdog, MEMFS guard, filter row reset, and runtime asset caching', async () => {
+  const decodeRouterSrc = fs.readFileSync(
+    path.resolve(process.cwd(), 'server/routes/fmDecodeRoutes.ts'),
+    'utf8'
+  );
+  const saveReaderSrc = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/services/fmSaveReader.ts'),
+    'utf8'
+  );
+  const clientSrc = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/workers/fmSaveWorkerClient.ts'),
+    'utf8'
+  );
+  const workerSrc = fs.readFileSync(
+    path.resolve(process.cwd(), 'public/fm-save-worker.js'),
+    'utf8'
+  );
+  const mapperSrc = fs.readFileSync(
+    path.resolve(process.cwd(), 'public/fm-save-mapper.py'),
+    'utf8'
+  );
+  const squadTableSrc = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/components/SquadAnalyticsTable.tsx'),
+    'utf8'
+  );
+  const viteSrc = fs.readFileSync(path.resolve(process.cwd(), 'vite.config.ts'), 'utf8');
+
+  // 1. Server: SIGKILL/137 -> 507 + immediate temp cleanup + startup orphan sweep
+  assert.match(decodeRouterSrc, /code === 137 \|\| signal === 'SIGKILL'/);
+  assert.match(decodeRouterSrc, /job\.httpStatus = 507/);
+  assert.match(decodeRouterSrc, /SERVER_OOM/);
+  assert.match(decodeRouterSrc, /export async function sweepOrphanedTempUploads/);
+  assert.match(decodeRouterSrc, /void sweepOrphanedTempUploads\(\)/);
+  assert.match(saveReaderSrc, /jobRes\.status === 507/);
+
+  // 2. Hidden tabs pause and extend both watchdogs; listeners detach on every path
+  for (const src of [clientSrc, saveReaderSrc]) {
+    assert.match(src, /visibilitychange/);
+    assert.match(src, /ceilingDeadlineMs \+= hiddenMs/);
+    assert.match(src, /document\.removeEventListener\('visibilitychange'/);
+  }
+  assert.match(clientSrc, /this\.visibilityCleanup\?\.\(\)/);
+  assert.match(clientSrc, /this\.visibilityCleanup = null/);
+
+  // 3. Zero-copy WORKERFS stays primary; large MEMFS buffer copies are refused
+  assert.match(workerSrc, /MAX_MEMFS_BUFFER_BYTES = 64 \* 1024 \* 1024/);
+  assert.match(workerSrc, /bufferBytes > MAX_MEMFS_BUFFER_BYTES/);
+
+  // 4. Mapper: a 0-minute row can never overwrite active season stats
+  assert.match(mapperSrc, /if new_mins < 1 and old_mins >= 1:/);
+  assert.match(mapperSrc, /return deep_scrub_ca_pa\(raw_payload\)/);
+
+  // 5. Squad table resets the mobile DOM cap whenever search/filters change
+  assert.match(squadTableSrc, /setVisibleRowLimit\(35\)/);
+
+  // 6. Workbox: worker/mapper/patcher are not precached and use NetworkFirst
+  assert.match(viteSrc, /globIgnores/);
+  assert.ok(viteSrc.includes('fm-save-worker\\.js'));
+  assert.ok(viteSrc.includes('fm-save-mapper\\.py'));
+  assert.ok(viteSrc.includes('fm_layout_patcher\\.py'));
+  assert.match(viteSrc, /handler: 'NetworkFirst'/);
+
+  // 7. HTTP 507 from the job poll triggers an immediate browser fallback
+  const mockUploadId = '33333333-4444-4555-8666-777777777777';
+  const mockJobId = 'cccccccc-dddd-4eee-8fff-000000000000';
+  let fallbackInvoked = false;
+  const fetchOom = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    const json = (body: unknown, status: number) =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    if (url === '/api/fm27/decode-status') {
+      return json({ serverDecodeAvailable: true }, 200);
+    }
+    if (url === '/api/fm27/decode-save/init') {
+      return json({ uploadId: mockUploadId }, 200);
+    }
+    if (url === '/api/fm27/decode-save/chunk') {
+      return json({ ok: true, bytesReceived: 3 }, 200);
+    }
+    if (url === '/api/fm27/decode-save/finish') {
+      return json({ jobId: mockJobId }, 200);
+    }
+    if (url === `/api/fm27/decode-save/job/${mockJobId}`) {
+      return json(
+        {
+          status: 'error',
+          error: 'Server ran out of memory while decoding this .fm save.',
+          errorCode: 'SERVER_OOM',
+          serverDecodeAvailable: false,
+        },
+        507
+      );
+    }
+    return new Response('Not Found', { status: 404 });
+  }) as typeof fetch;
+
+  const oomResult = await decodeFmSaveWithServerFirst(
+    new Blob([new Uint8Array([1, 2, 3])]),
+    undefined,
+    { fileName: 'huge.fm', pollIntervalMs: 10 },
+    {
+      fetchImpl: fetchOom,
+      browserFallback: async () => {
+        fallbackInvoked = true;
+        return {
+          meta: { saveName: 'fallback.fm' },
+        } as unknown as DecodedFmSavePayload;
+      },
+    }
+  );
+
+  assert.equal(fallbackInvoked, true, 'Expected immediate browser fallback on HTTP 507');
+  assert.equal(oomResult.meta.saveName, 'fallback.fm');
+});
+

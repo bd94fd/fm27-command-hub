@@ -6338,6 +6338,10 @@ def step_4_1_season_stats(fast_sync: bool | None = None) -> str:
 
         ex_year, ex_priority, ex_row = existing
         old_mins = int(getattr(ex_row, "minutes", 0) or 0)
+        # A zero-minute row (e.g. a fallback stream entry) must never clobber
+        # active stats; require at least one minute played to replace them.
+        if new_mins < 1 and old_mins >= 1:
+            return
         if row_year > ex_year:
             best_by_uid[p_uid] = (row_year, kind_priority, row)
         elif row_year == ex_year:

@@ -26,6 +26,9 @@ const MAX_PENDING_UPLOADS = 24;
 const MAX_TRACKED_JOBS = 40;
 const STRICT_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const TMP_UPLOAD_FILE_RE = /^fm27-save-[0-9a-f-]{36}\.fm$/i;
+const TMP_CHECKPOINT_FILE_RE = /^fm27-cp-[0-9a-f-]{36}\.json(?:\.tmp)?$/i;
+const ORPHAN_SWEEP_MIN_AGE_MS = PENDING_UPLOAD_TTL_MS;
 
 interface PendingUploadEntry {
   filePath: string;
@@ -44,6 +47,8 @@ interface DecodeJobEntry {
   checkpointPayload?: unknown;
   checkpointDelivered?: boolean;
   error?: string;
+  errorCode?: string;
+  httpStatus?: number;
   createdAt: number;
   updatedAt: number;
   finishedAt?: number;
@@ -51,6 +56,7 @@ interface DecodeJobEntry {
 
 const pendingUploads = new Map<string, PendingUploadEntry>();
 const decodeJobs = new Map<string, DecodeJobEntry>();
+const activeTempPaths = new Set<string>();
 let cachedPythonRuntime: ServerPythonRuntime | null = null;
 
 function isValidUuid(val: unknown): val is string {
@@ -105,8 +111,58 @@ export async function cleanupAllPendingUploadsAndJobs(): Promise<void> {
   }
 }
 
+/**
+ * Removes temp .fm uploads and checkpoint files left behind by a crash or an
+ * interrupted mobile upload. Only files older than ORPHAN_SWEEP_MIN_AGE_MS are
+ * touched so a concurrent process's in-flight upload is never deleted.
+ */
+export async function sweepOrphanedTempUploads(
+  maxAgeMs: number = ORPHAN_SWEEP_MIN_AGE_MS
+): Promise<number> {
+  const tmpDir = path.resolve(os.tmpdir());
+  const activePaths = new Set<string>();
+  for (const entry of pendingUploads.values()) {
+    activePaths.add(path.resolve(entry.filePath));
+  }
+
+  let names: string[];
+  try {
+    names = await fs.promises.readdir(tmpDir);
+  } catch {
+    return 0;
+  }
+
+  const now = Date.now();
+  let removed = 0;
+  await Promise.all(
+    names.map(async (name) => {
+      if (!TMP_UPLOAD_FILE_RE.test(name) && !TMP_CHECKPOINT_FILE_RE.test(name)) {
+        return;
+      }
+      const fullPath = path.resolve(tmpDir, name);
+      if (activePaths.has(fullPath) || activeTempPaths.has(fullPath)) return;
+      try {
+        const stat = await fs.promises.stat(fullPath);
+        if (!stat.isFile() || now - stat.mtimeMs < maxAgeMs) return;
+        await fs.promises.unlink(fullPath);
+        removed += 1;
+      } catch {
+        // Already removed or inaccessible; ignore
+      }
+    })
+  );
+  return removed;
+}
+
+void sweepOrphanedTempUploads().catch(() => {
+  // Startup sweep is best-effort
+});
+
 const cleanupInterval = setInterval(() => {
   void pruneExpiredUploadsAndJobs();
+  void sweepOrphanedTempUploads().catch(() => {
+    // Orphan sweep is best-effort
+  });
 }, 60_000);
 cleanupInterval.unref();
 
@@ -263,6 +319,9 @@ function startAsyncNativeFmDecodeJob(
   const cleanupTempFile = () => {
     if (cleanedUp) return;
     cleanedUp = true;
+    activeTempPaths.delete(tmpSavePath);
+    activeTempPaths.delete(tmpCheckpointPath);
+    activeTempPaths.delete(`${tmpCheckpointPath}.tmp`);
     void fs.promises.unlink(tmpSavePath).catch(() => {
       // ignore if already removed
     });
@@ -273,6 +332,10 @@ function startAsyncNativeFmDecodeJob(
       // ignore if already removed
     });
   };
+
+  activeTempPaths.add(tmpSavePath);
+  activeTempPaths.add(tmpCheckpointPath);
+  activeTempPaths.add(`${tmpCheckpointPath}.tmp`);
 
   let child: ReturnType<typeof spawn>;
   try {
@@ -384,7 +447,7 @@ function startAsyncNativeFmDecodeJob(
     finalizeError(err.message);
   });
 
-  child.on('close', (code) => {
+  child.on('close', (code, signal) => {
     if (stderrLineBuf.trim()) {
       stderrHistory.push(stderrLineBuf.trim());
     }
@@ -396,7 +459,18 @@ function startAsyncNativeFmDecodeJob(
     cleanupTempFile();
     settled = true;
 
-    if (code === 0) {
+    // Render free tier is capped at 512 MB. The kernel SIGKILLs the Python child
+    // when the cgroup limit is hit; surface that as a 507 so the client falls
+    // back to Pyodide/Fast Sync immediately instead of polling to the timeout.
+    const wasOomKilled = code === 137 || signal === 'SIGKILL';
+    if (wasOomKilled) {
+      job.status = 'error';
+      job.progress = 'Server memory limit reached';
+      job.errorCode = 'SERVER_OOM';
+      job.httpStatus = 507;
+      job.error =
+        'The server ran out of memory (512 MB Render free tier) while decoding this .fm save. Switching automatically to the local browser decoder — enable "Fast Sync" for very large saves.';
+    } else if (code === 0) {
       const rawJson = Buffer.concat(stdoutChunks).toString('utf8').trim();
       stdoutChunks.length = 0;
       if (!rawJson) {
@@ -735,10 +809,14 @@ export function createFmDecodeRouter(options?: {
     }
 
     if (job.status === 'error') {
-      return res.json({
+      return res.status(job.httpStatus ?? 200).json({
         status: 'error',
         progress: job.progress,
         error: job.error || 'Server .fm decode failed.',
+        ...(job.errorCode ? { errorCode: job.errorCode } : {}),
+        ...(job.errorCode === 'SERVER_OOM'
+          ? { serverDecodeAvailable: false }
+          : {}),
       });
     }
 

@@ -20,9 +20,30 @@ export default defineConfig(() => {
           skipWaiting: true,
           clientsClaim: true,
           globPatterns: ['**/*.{js,css,html,svg,woff2,json}'],
+          // Keep the worker + Python runtime scripts out of the precache: they are
+          // fetched with a manual ?v= cache buster and must match the deployed
+          // mapper/patcher on every release.
+          globIgnores: [
+            '**/fm-save-worker.js',
+            '**/fm-save-mapper.py',
+            '**/fm_layout_patcher.py',
+          ],
           navigateFallback: '/index.html',
           navigateFallbackDenylist: [/^\/api\//],
           runtimeCaching: [
+            {
+              urlPattern:
+                /\/(fm-save-worker\.js|fm-save-mapper\.py|fm_layout_patcher\.py)(\?.*)?$/i,
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'fm-runtime-assets',
+                networkTimeoutSeconds: 5,
+                expiration: {
+                  maxEntries: 8,
+                  maxAgeSeconds: 60 * 60 * 24 * 7,
+                },
+              },
+            },
             {
               urlPattern: /\/api\/.*/i,
               handler: 'NetworkOnly',

@@ -601,6 +601,21 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
 
   const [visibleRowLimit, setVisibleRowLimit] = useState<number>(35);
 
+  // Keep the mobile DOM cap effective: a new search/filter/sort starts from the
+  // first page of results instead of retaining an expanded "Show All" limit.
+  useEffect(() => {
+    setVisibleRowLimit(35);
+  }, [
+    search,
+    effectiveUnitFilter,
+    posFilter,
+    statusFilter,
+    expiryYearFilter,
+    availabilityFilter,
+    sortBy,
+    sortDir,
+  ]);
+
   const visibleRows = useMemo(
     () => filteredRows.slice(0, visibleRowLimit),
     [filteredRows, visibleRowLimit]

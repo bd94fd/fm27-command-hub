@@ -144,6 +144,7 @@ export class FmSaveWorkerClient {
   private hardCeilingTimer: ReturnType<typeof setTimeout> | null = null;
   private isJobActive: boolean = false;
   private activeReject: ((err: Error) => void) | null = null;
+  private visibilityCleanup: (() => void) | null = null;
   private workerFactory: (url: string) => WorkerLike;
   private inactivityTimeoutMs: number;
   private hardCeilingMs: number;
@@ -174,6 +175,8 @@ export class FmSaveWorkerClient {
 
   public cancelActiveJob(reason: string = 'Superseded by new save drop') {
     this.clearWatchdogs();
+    this.visibilityCleanup?.();
+    this.visibilityCleanup = null;
     if (this.worker && this.isJobActive) {
       this.worker.terminate();
       this.worker = null;
@@ -221,6 +224,7 @@ export class FmSaveWorkerClient {
 
       const terminateStuckWorker = () => {
         detachVisibilityListener();
+        this.visibilityCleanup = null;
         this.clearWatchdogs();
         this.activeReject = null;
         if (this.worker) {
@@ -275,7 +279,10 @@ export class FmSaveWorkerClient {
         );
       };
 
-      const resetInactivityWatchdog = () => {
+      let hiddenAtMs: number | null = null;
+      let ceilingDeadlineMs = 0;
+
+      const scheduleInactivity = () => {
         if (this.inactivityTimer !== null) {
           clearTimeout(this.inactivityTimer);
         }
@@ -285,15 +292,60 @@ export class FmSaveWorkerClient {
         );
       };
 
+      const scheduleCeiling = () => {
+        if (this.hardCeilingTimer !== null) {
+          clearTimeout(this.hardCeilingTimer);
+        }
+        const remainingMs = Math.max(0, ceilingDeadlineMs - Date.now());
+        this.hardCeilingTimer = setTimeout(
+          () => failWithTimeout('ceiling', this.hardCeilingMs),
+          remainingMs
+        );
+      };
+
+      const resetInactivityWatchdog = () => {
+        // Background tabs are throttled, so hidden time must not count as a stall.
+        if (hiddenAtMs !== null) {
+          if (this.inactivityTimer !== null) {
+            clearTimeout(this.inactivityTimer);
+            this.inactivityTimer = null;
+          }
+          return;
+        }
+        scheduleInactivity();
+      };
+
       const handleVisibilityChange = () => {
         if (
-          typeof document !== 'undefined' &&
-          document.visibilityState === 'visible' &&
-          this.activeRequestId === requestId &&
-          this.isJobActive
+          typeof document === 'undefined' ||
+          this.activeRequestId !== requestId
         ) {
-          resetInactivityWatchdog();
+          return;
         }
+        if (document.visibilityState === 'hidden') {
+          if (hiddenAtMs === null) {
+            hiddenAtMs = Date.now();
+            if (this.inactivityTimer !== null) {
+              clearTimeout(this.inactivityTimer);
+              this.inactivityTimer = null;
+            }
+            if (this.hardCeilingTimer !== null) {
+              clearTimeout(this.hardCeilingTimer);
+              this.hardCeilingTimer = null;
+            }
+          }
+          return;
+        }
+        if (document.visibilityState !== 'visible' || hiddenAtMs === null) {
+          return;
+        }
+        const hiddenMs = Math.max(0, Date.now() - hiddenAtMs);
+        hiddenAtMs = null;
+        // Extend the hard ceiling by exactly the time spent suspended.
+        ceilingDeadlineMs += hiddenMs;
+        if (!this.isJobActive) return;
+        scheduleCeiling();
+        scheduleInactivity();
       };
       detachVisibilityListener = () => {
         if (typeof document !== 'undefined' && typeof document.removeEventListener === 'function') {
@@ -302,17 +354,22 @@ export class FmSaveWorkerClient {
       };
       if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
         document.addEventListener('visibilitychange', handleVisibilityChange);
+        if (document.visibilityState === 'hidden') {
+          hiddenAtMs = Date.now();
+        }
       }
+      this.visibilityCleanup = detachVisibilityListener;
 
       this.activeReject = (err: Error) => {
         detachVisibilityListener();
+        this.visibilityCleanup = null;
         reject(err);
       };
-      resetInactivityWatchdog();
-      this.hardCeilingTimer = setTimeout(
-        () => failWithTimeout('ceiling', this.hardCeilingMs),
-        this.hardCeilingMs
-      );
+      ceilingDeadlineMs = Date.now() + this.hardCeilingMs;
+      if (hiddenAtMs === null) {
+        resetInactivityWatchdog();
+        scheduleCeiling();
+      }
 
       this.worker!.onmessage = (event: MessageEvent) => {
         if (this.activeRequestId !== requestId) return;
@@ -352,6 +409,7 @@ export class FmSaveWorkerClient {
 
         if (data.success || data.type === 'result') {
           detachVisibilityListener();
+          this.visibilityCleanup = null;
           this.clearWatchdogs();
           this.isJobActive = false;
           this.activeReject = null;
@@ -360,6 +418,7 @@ export class FmSaveWorkerClient {
         }
 
         detachVisibilityListener();
+        this.visibilityCleanup = null;
         recoverOrReject(
           'error',
           data.error || data.message || 'Unknown worker extraction error.'
