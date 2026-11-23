@@ -61,6 +61,10 @@ import {
 } from '../utils/tacticalAnalystContext';
 import { FormationPresetKey } from '../utils/bestXiSolver';
 import { PersistedCustomSlot } from '../services/fmStorage';
+import type {
+  ClubGovernanceState,
+  LastMatchTacticBlueprint,
+} from '../types/fmSave';
 import {
   ApiResponseError,
   describeApiFailure,
@@ -119,6 +123,8 @@ interface AutoSyncWorkspaceProps {
   activeShape?: FormationPresetKey;
   customSlots?: PersistedCustomSlot[];
   applyToAnalystOnly?: boolean;
+  liveGovernance?: ClubGovernanceState | null;
+  liveLastMatchTactic?: LastMatchTacticBlueprint | null;
   onUpdateSaveDate?: (date: string) => void;
   onAddMatch: (match: MatchLogEntry) => void;
   onApplyPlayerUpdates?: (updates: PlayerAutoUpdate[]) => void;
@@ -155,6 +161,8 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   activeShape = '4-3-3 DM Wide',
   customSlots = [],
   applyToAnalystOnly = false,
+  liveGovernance = null,
+  liveLastMatchTactic = null,
   onUpdateSaveDate,
   onAddMatch,
   onApplyPlayerUpdates,
@@ -228,6 +236,8 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       activeShape,
       customSlots,
       applyToAnalystOnly,
+      liveGovernance,
+      liveLastMatchTactic,
     });
     return validation;
   }, [
@@ -249,6 +259,8 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     activeShape,
     customSlots,
     applyToAnalystOnly,
+    liveGovernance,
+    liveLastMatchTactic,
   ]);
 
   // Reset stale dispatch override when a new save or squad state is imported
@@ -500,6 +512,8 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         activeShape,
         customSlots,
         applyToAnalystOnly,
+        liveGovernance,
+        liveLastMatchTactic,
       };
       const liveAppContext = buildLiveTacticalAnalystContext(contextInput);
 
