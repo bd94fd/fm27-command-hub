@@ -17,8 +17,13 @@ FROM node:22-slim AS runtime
 WORKDIR /app
 
 COPY --from=uv-bin /uv /usr/local/bin/uv
-RUN uv venv /opt/fmsave-venv --python 3.14 && \
+# uv installs managed Pythons under /root by default, which the non-root `node`
+# runtime user cannot traverse. Keep the interpreter in a world-readable path.
+ENV UV_PYTHON_INSTALL_DIR=/opt/uv-python
+RUN mkdir -p /opt/uv-python && \
+    uv venv /opt/fmsave-venv --python 3.14 && \
     uv pip install --python /opt/fmsave-venv/bin/python fmsave==0.14.3 && \
+    chmod -R a+rX /opt/uv-python /opt/fmsave-venv && \
     rm -rf /root/.cache/uv
 
 COPY --from=builder --chown=node:node /app/package.json /app/package-lock.json ./
