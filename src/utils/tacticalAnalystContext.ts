@@ -8,7 +8,12 @@ import {
   buildDynamicSetPieceRoutines,
   computeCompetitiveSummary,
 } from './fmSyncEngine';
-import { Pass0ExtractionPayload, RecruitmentTarget } from '../types/fmSave';
+import {
+  ClubGovernanceState,
+  LastMatchTacticBlueprint,
+  Pass0ExtractionPayload,
+  RecruitmentTarget,
+} from '../types/fmSave';
 import {
   calculateFinancialRunway,
   HydratedSaveState,
@@ -189,6 +194,10 @@ export interface LiveAnalystStateInput {
   customSlots?: CustomSlotOverride[];
   applyToAnalystOnly?: boolean;
   activeLineupOverride?: ActiveLineupOverride | null;
+  // Live recomputed governance / last-match tactic (Calibration Lab overrides) take
+  // precedence over values re-derived from the decoded payload.
+  liveGovernance?: ClubGovernanceState | null;
+  liveLastMatchTactic?: LastMatchTacticBlueprint | null;
 }
 
 export const FM27_ENGINE_KNOWLEDGE_BASE = `=== FOOTBALL MANAGER 27 (PATCH 27.1.0) MATCH ENGINE & BOBBY DEAN PLAYBOOK v2.0 MASTER CODEX ===
@@ -427,9 +436,11 @@ export function buildLiveTacticalAnalystContext(
   // 2b. Governance, Manager Contract, Board/Supporter Confidence, Objectives & Playing-Time Promises
   // Live-evaluate against the latest FM27 Binary Dictionary so newly calibrated offset rules appear immediately
   const liveDict = loadFm27BinaryDictionary();
-  const gov = hydratedFmSave?.decodedPayload
-    ? buildClubGovernanceState(hydratedFmSave.decodedPayload, players, liveDict)
-    : hydratedFmSave?.governance;
+  const gov =
+    state.liveGovernance ??
+    (hydratedFmSave?.decodedPayload
+      ? buildClubGovernanceState(hydratedFmSave.decodedPayload, players, liveDict)
+      : hydratedFmSave?.governance);
   if (gov) {
     const govLines: string[] = ['=== CLUB GOVERNANCE, MANAGER CONTRACT, BOARD TARGETS & PROMISES ==='];
     const mc = gov.managerContract;
@@ -481,15 +492,17 @@ export function buildLiveTacticalAnalystContext(
 
   // 2c. Last Match / Active FM27 Save Tactic Blueprint (Full IP/OOP Roles + Instructions + Patch 27.1.0 Audit)
   const roleOverrides = loadTacticRoleOverrides();
-  const lastTactic = hydratedFmSave?.decodedPayload
-    ? buildLastMatchTacticBlueprint(
-        hydratedFmSave.decodedPayload,
-        players,
-        0,
-        roleOverrides,
-        liveDict
-      ) ?? hydratedFmSave?.lastMatchTactic
-    : hydratedFmSave?.lastMatchTactic;
+  const lastTactic =
+    state.liveLastMatchTactic ??
+    (hydratedFmSave?.decodedPayload
+      ? buildLastMatchTacticBlueprint(
+          hydratedFmSave.decodedPayload,
+          players,
+          0,
+          roleOverrides,
+          liveDict
+        ) ?? hydratedFmSave?.lastMatchTactic
+      : hydratedFmSave?.lastMatchTactic);
   if (lastTactic) {
     const tacLines: string[] = [
       `=== LAST GAME / ACTIVE SAVE TACTIC BLUEPRINT (${lastTactic.tacticName}) ===`,
@@ -1775,7 +1788,9 @@ export function diagnoseTacticalAnalystPayload(
   }
 
   const expectedTacticInSave = Boolean(
-    (decoded?.tactics && decoded.tactics.length > 0) || state.hydratedFmSave?.lastMatchTactic
+    (decoded?.tactics && decoded.tactics.length > 0) ||
+      state.hydratedFmSave?.lastMatchTactic ||
+      state.liveLastMatchTactic
   );
   const squadRoleFitsOk =
     state.players.length === 0 ||
@@ -1798,9 +1813,11 @@ export function diagnoseTacticalAnalystPayload(
 
   // 5. Board Promises & Governance Audit
   const liveDict = loadFm27BinaryDictionary();
-  const gov = decoded
-    ? buildClubGovernanceState(decoded, state.players, liveDict)
-    : state.hydratedFmSave?.governance ?? null;
+  const gov =
+    state.liveGovernance ??
+    (decoded
+      ? buildClubGovernanceState(decoded, state.players, liveDict)
+      : state.hydratedFmSave?.governance ?? null);
   const governanceSectionPresent = liveAppContext.includes(
     '=== CLUB GOVERNANCE, MANAGER CONTRACT, BOARD TARGETS & PROMISES ==='
   );

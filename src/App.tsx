@@ -62,7 +62,9 @@ import {
   loadTrackedScoutTargets,
   toggleTrackedScoutTarget,
   PersistedCustomSlot,
+  FmHubPersistedState,
 } from './services/fmStorage';
+import { isIndexedDbSnapshotNewer, hasPersistedContent } from './utils/persistedStateRecency';
 import { FormationPresetKey } from './utils/bestXiSolver';
 import { RecruitmentTarget } from './types/fmSave';
 import {
@@ -154,6 +156,8 @@ type ActiveTab =
   | 'staff'
   | 'setpieces'
   | 'matches';
+
+const DEFAULT_ACTIVE_SHAPE: FormationPresetKey = '4-3-3 DM Wide';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('sync');
@@ -249,13 +253,37 @@ export default function App() {
   const latestJourneyPromiseRef = useRef<Promise<DeepJourneyReport | null> | null>(
     null
   );
+  const toastTimeoutRef = useRef<number | null>(null);
+  const resetConfirmTimeoutRef = useRef<number | null>(null);
+  const idbRestoreCancelledRef = useRef<boolean>(false);
+  const isResettingRef = useRef<boolean>(false);
+  const skipNextAutosaveRef = useRef<boolean>(true);
 
   const showGlobalToast = useCallback((msg: string) => {
+    if (toastTimeoutRef.current !== null) {
+      window.clearTimeout(toastTimeoutRef.current);
+    }
     setAppToast(msg);
-    window.setTimeout(() => {
+    toastTimeoutRef.current = window.setTimeout(() => {
+      toastTimeoutRef.current = null;
       setAppToast((prev) => (prev === msg ? null : prev));
     }, 3200);
   }, []);
+
+  useEffect(
+    () => () => {
+      if (toastTimeoutRef.current !== null) {
+        window.clearTimeout(toastTimeoutRef.current);
+        toastTimeoutRef.current = null;
+      }
+      if (resetConfirmTimeoutRef.current !== null) {
+        window.clearTimeout(resetConfirmTimeoutRef.current);
+        resetConfirmTimeoutRef.current = null;
+      }
+      idbRestoreCancelledRef.current = true;
+    },
+    []
+  );
 
   useEffect(() => {
     const onGlobalKeyDown = (e: KeyboardEvent) => {
@@ -300,7 +328,7 @@ export default function App() {
   const handleToggleTrackPlayerFromModal = (player: PlayerRecord) => {
     const scoutPool =
       hydratedFmSave?.recruitmentTargets ??
-      hydratedFmSave?.decodedPayload.recruitmentTargets ??
+      hydratedFmSave?.decodedPayload?.recruitmentTargets ??
       [];
     const matched = scoutPool.find(
       (t) =>
@@ -336,60 +364,55 @@ export default function App() {
   }, []);
 
   const clubName =
-    hydratedFmSave?.decodedPayload.meta.clubName || 'FM27 Command Hub';
+    hydratedFmSave?.decodedPayload?.meta?.clubName || 'FM27 Command Hub';
   const managerName =
-    hydratedFmSave?.decodedPayload.meta.managerName || '--';
+    hydratedFmSave?.decodedPayload?.meta?.managerName || '--';
 
   const [activeShape, setActiveShape] =
-    useState<FormationPresetKey>('4-3-3 DM Wide');
+    useState<FormationPresetKey>(DEFAULT_ACTIVE_SHAPE);
   const [customSlots, setCustomSlots] = useState<PersistedCustomSlot[]>([]);
   const [applyToAnalystOnly, setApplyToAnalystOnly] = useState<boolean>(false);
+
+  // Applies a complete persisted snapshot (localStorage or IndexedDB) without dropping fields
+  const applyPersistedSnapshot = useCallback((saved: FmHubPersistedState) => {
+    if (Array.isArray(saved.players)) setPlayers(saved.players);
+    if (Array.isArray(saved.matches)) setMatches(saved.matches);
+    if (saved.staff) setStaff(saved.staff);
+    if (saved.recruitmentCases) setRecruitmentCases(saved.recruitmentCases);
+    if (saved.shortlists) setShortlists(saved.shortlists);
+    if (saved.saveDate) setSaveDate(saved.saveDate);
+    if (saved.nextFixture) setNextFixture(saved.nextFixture);
+    if (saved.leagueStandingSub) setLeagueStandingSub(saved.leagueStandingSub);
+    if (saved.wageSpend) setWageSpend(saved.wageSpend);
+    if (saved.balance) setBalance(saved.balance);
+    if (saved.hydratedFmSave) setHydratedFmSave(saved.hydratedFmSave);
+    if (saved.activeShape) setActiveShape(saved.activeShape);
+    if (saved.customSlots) setCustomSlots(saved.customSlots);
+    if (typeof saved.applyToAnalystOnly === 'boolean') {
+      setApplyToAnalystOnly(saved.applyToAnalystOnly);
+    }
+    setIsRestoredFromMemory(true);
+  }, []);
 
   // Restore saved state from previous session on initial mount
   useEffect(() => {
     const saved = loadPersistedFmState();
-    if (
-      saved &&
-      (saved.players.length > 0 ||
-        saved.matches.length > 0 ||
-        (saved.recruitmentCases && saved.recruitmentCases.length > 0) ||
-        (saved.shortlists && saved.shortlists.length > 0))
-    ) {
-      setPlayers(saved.players);
-      setMatches(saved.matches);
-      if (saved.staff) setStaff(saved.staff);
-      if (saved.recruitmentCases) setRecruitmentCases(saved.recruitmentCases);
-      if (saved.shortlists) setShortlists(saved.shortlists);
-      if (saved.saveDate) setSaveDate(saved.saveDate);
-      if (saved.nextFixture) setNextFixture(saved.nextFixture);
-      if (saved.leagueStandingSub) setLeagueStandingSub(saved.leagueStandingSub);
-      if (saved.wageSpend) setWageSpend(saved.wageSpend);
-      if (saved.balance) setBalance(saved.balance);
-      if (saved.hydratedFmSave) setHydratedFmSave(saved.hydratedFmSave);
-      if (saved.activeShape) setActiveShape(saved.activeShape);
-      if (saved.customSlots) setCustomSlots(saved.customSlots);
-      if (typeof saved.applyToAnalystOnly === 'boolean') {
-        setApplyToAnalystOnly(saved.applyToAnalystOnly);
-      }
-      setIsRestoredFromMemory(true);
+    if (saved && hasPersistedContent(saved)) {
+      applyPersistedSnapshot(saved);
     }
 
     void loadPersistedFmStateFromIndexedDb().then((idbSaved) => {
-      if (!idbSaved) return;
-      const idbTargetCount =
-        idbSaved.hydratedFmSave?.recruitmentTargets?.length ?? 0;
-      const localTargetCount =
-        saved?.hydratedFmSave?.recruitmentTargets?.length ?? 0;
-      if (!saved || idbTargetCount > localTargetCount) {
-        if (idbSaved.players.length > 0) setPlayers(idbSaved.players);
-        if (idbSaved.matches.length > 0) setMatches(idbSaved.matches);
-        if (idbSaved.hydratedFmSave) setHydratedFmSave(idbSaved.hydratedFmSave);
-        setIsRestoredFromMemory(true);
-      }
+      // A reset may have landed while the IndexedDB read was in flight
+      if (idbRestoreCancelledRef.current) return;
+      if (!hasPersistedContent(idbSaved)) return;
+      // Only a strictly newer IndexedDB cache may replace the localStorage session
+      if (!isIndexedDbSnapshotNewer(idbSaved, saved)) return;
+      applyPersistedSnapshot(idbSaved);
     });
 
     // Hydrate Save-to-Save Journey Report immediately on boot so Analyst Chat always has it
     void listSaveHistoryPoints().then((items) => {
+      if (idbRestoreCancelledRef.current) return;
       if (items.length >= 2) {
         const initialMatches = saved?.matches ?? [];
         const report = buildDeepJourneyReport(
@@ -401,10 +424,17 @@ export default function App() {
         setLatestJourneyReport(report);
       }
     });
-  }, []);
+  }, [applyPersistedSnapshot]);
 
   // Automatically persist non-empty state across browser refreshes & sessions
   useEffect(() => {
+    // The first pass still holds pre-restore defaults; persisting them would clobber
+    // the snapshot the mount effect is restoring (and beat the IndexedDB recency check).
+    if (skipNextAutosaveRef.current) {
+      skipNextAutosaveRef.current = false;
+      return;
+    }
+    if (isResettingRef.current) return;
     if (
       players.length > 0 ||
       matches.length > 0 ||
@@ -418,7 +448,7 @@ export default function App() {
         leagueStandingSub,
         wageSpend,
         balance,
-        clubName: hydratedFmSave?.decodedPayload.meta.clubName,
+        clubName: hydratedFmSave?.decodedPayload?.meta?.clubName,
         players,
         matches,
         staff,
@@ -448,19 +478,46 @@ export default function App() {
     applyToAnalystOnly,
   ]);
 
-  const summary = computeCompetitiveSummary(matches, saveDate);
+  const summary = useMemo(
+    () => computeCompetitiveSummary(matches, saveDate),
+    [matches, saveDate]
+  );
+
+  // Chat-logged matches are not part of the .fm snapshot, so the live header must
+  // prefer the recomputed summary over the stale save labels once one is added.
+  const manualMatchCount = useMemo(
+    () => matches.filter((m) => m.source === 'CHAT').length,
+    [matches]
+  );
+  const hasManualMatches = manualMatchCount > 0;
 
   const handleClearMemory = async () => {
     if (!confirmResetPending) {
       setConfirmResetPending(true);
-      window.setTimeout(() => setConfirmResetPending(false), 5000);
+      if (resetConfirmTimeoutRef.current !== null) {
+        window.clearTimeout(resetConfirmTimeoutRef.current);
+      }
+      resetConfirmTimeoutRef.current = window.setTimeout(() => {
+        resetConfirmTimeoutRef.current = null;
+        setConfirmResetPending(false);
+      }, 5000);
       return;
     }
 
     setConfirmResetPending(false);
+    if (resetConfirmTimeoutRef.current !== null) {
+      window.clearTimeout(resetConfirmTimeoutRef.current);
+      resetConfirmTimeoutRef.current = null;
+    }
+    // Block the auto-save effect while the reset is being applied
+    isResettingRef.current = true;
+    // Cancel any in-flight IndexedDB restore so it cannot resurrect cleared state
+    idbRestoreCancelledRef.current = true;
     clearPersistedFmState();
     clearProgressionArchive();
     await clearAllSaveCache();
+    // A late auto-save IndexedDB write may land after the wipe; clear once more
+    clearPersistedFmState();
     setPlayers([]);
     setMatches([]);
     setStaff([]);
@@ -475,11 +532,17 @@ export default function App() {
     setWageSpend(EMPTY_CLUB_META.wageSpend);
     setBalance(EMPTY_CLUB_META.balance);
     setHydratedFmSave(null);
+    setActiveShape(DEFAULT_ACTIVE_SHAPE);
+    setCustomSlots([]);
+    setApplyToAnalystOnly(false);
     setIsRestoredFromMemory(false);
     setSelectedPlayer(null);
     setSelectedStaff(null);
     setSnapshotResetNonce((n) => n + 1);
     showGlobalToast('All saved state, cached saves & snapshots cleared — ready to test fresh');
+    window.setTimeout(() => {
+      isResettingRef.current = false;
+    }, 0);
   };
 
   const handleExportBackup = () => {
@@ -516,12 +579,15 @@ export default function App() {
         setWageSpend(imported.wageSpend);
         setBalance(imported.balance);
         setHydratedFmSave(imported.hydratedFmSave);
+        if (imported.activeShape) setActiveShape(imported.activeShape);
+        setCustomSlots(imported.customSlots ?? []);
+        setApplyToAnalystOnly(Boolean(imported.applyToAnalystOnly));
         setIsRestoredFromMemory(true);
         showGlobalToast(
           `Restored campaign snapshot (${imported.players.length} players)`
         );
       } else {
-        alert('Invalid FM27 backup file format.');
+        showGlobalToast('Invalid FM27 backup file format.');
       }
     };
     reader.readAsText(file);
@@ -554,7 +620,7 @@ export default function App() {
     if (isInterim && !preSyncBaselineRef.current) {
       preSyncBaselineRef.current = {
         saveDate,
-        clubName: hydratedFmSave?.decodedPayload.meta.clubName || 'Managed Club',
+        clubName: hydratedFmSave?.decodedPayload?.meta?.clubName || 'Managed Club',
         players,
         matches,
       };
@@ -562,7 +628,7 @@ export default function App() {
 
     const baseline = preSyncBaselineRef.current ?? {
       saveDate,
-      clubName: hydratedFmSave?.decodedPayload.meta.clubName || 'Managed Club',
+      clubName: hydratedFmSave?.decodedPayload?.meta?.clubName || 'Managed Club',
       players,
       matches,
     };
@@ -639,8 +705,8 @@ export default function App() {
         supporterGrade: hydrated.governance?.supporterConfidence.grade ?? null,
         binaryDiffSnapshot,
       });
-      latestJourneyPromiseRef.current = putSaveHistoryPoint(snapshotPoint).then(
-        async () => {
+      latestJourneyPromiseRef.current = putSaveHistoryPoint(snapshotPoint)
+        .then(async () => {
           const items = await listSaveHistoryPoints();
           setSnapshotResetNonce((n) => n + 1);
           if (items.length >= 2) {
@@ -655,8 +721,14 @@ export default function App() {
           }
           setLatestJourneyReport(null);
           return null;
-        }
-      );
+        })
+        .catch((err) => {
+          console.warn('Failed to persist FM27 save history point:', err);
+          showGlobalToast(
+            'Save history could not be stored on this device (storage may be full) — live analytics are unaffected'
+          );
+          return null;
+        });
     }
 
     setHydratedFmSave(hydrated);
@@ -736,7 +808,7 @@ export default function App() {
         playerName: player.name,
         position: player.position,
         age: player.age,
-        currentClub: hydratedFmSave?.decodedPayload.meta.clubName || 'Managed Squad',
+        currentClub: hydratedFmSave?.decodedPayload?.meta?.clubName || 'Managed Squad',
         targetIpRole: player.ipRole,
         targetOopRole: player.oopRole,
         interest: 'Interested',
@@ -911,7 +983,14 @@ export default function App() {
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span className={confirmResetPending ? 'inline' : 'hidden lg:inline'}>
-                  {confirmResetPending ? 'Confirm Reset?' : 'Reset'}
+                  {confirmResetPending ? (
+                    <>
+                      <span className="sm:hidden">Confirm?</span>
+                      <span className="hidden sm:inline">Confirm Reset?</span>
+                    </>
+                  ) : (
+                    'Reset'
+                  )}
                 </span>
               </button>
             </>
@@ -993,7 +1072,7 @@ export default function App() {
                 <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                   <span>
                     {hydratedFmSave
-                      ? `${hydratedFmSave.decodedPayload.meta.clubName} (${hydratedFmSave.decodedPayload.meta.game} Build ${hydratedFmSave.decodedPayload.meta.build})`
+                      ? `${hydratedFmSave?.decodedPayload?.meta?.clubName} (${hydratedFmSave?.decodedPayload?.meta?.game} Build ${hydratedFmSave?.decodedPayload?.meta?.build})`
                       : 'Football Manager 27 · Local Browser Engine'}
                   </span>
                   <span>&middot;</span>
@@ -1011,7 +1090,7 @@ export default function App() {
                     }`}
                   >
                     {hydratedFmSave
-                      ? `LIVE .FM SYNCED (${hydratedFmSave.decodedPayload.meta.fileName || hydratedFmSave.decodedPayload.meta.saveName || '.fm'})`
+                      ? `LIVE .FM SYNCED (${hydratedFmSave?.decodedPayload?.meta?.fileName || hydratedFmSave?.decodedPayload?.meta?.saveName || '.fm'})`
                       : 'AWAITING .FM SAVE — DROP .FM SAVE TO SYNC'}
                   </span>
 
@@ -1024,7 +1103,7 @@ export default function App() {
                 </div>
                 <h1 className="text-xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100 mt-1">
                   {hydratedFmSave
-                    ? `${hydratedFmSave.decodedPayload.meta.clubName} Command Hub`
+                    ? `${hydratedFmSave?.decodedPayload?.meta?.clubName} Command Hub`
                     : 'FM27 Command Hub & AI Tactical Co-Pilot'}
                 </h1>
               </div>
@@ -1035,7 +1114,7 @@ export default function App() {
                 </div>
                 <div>
                   {hydratedFmSave
-                    ? `Manager: ${managerName} · Decoded locally via fmsave ${hydratedFmSave.decodedPayload.meta.fmsaveVersion}`
+                    ? `Manager: ${managerName} · Decoded locally via fmsave ${hydratedFmSave?.decodedPayload?.meta?.fmsaveVersion}`
                     : 'Status: Zero Mock Baseline · Verified Patch 27.1.0 KB Ready'}
                 </div>
               </div>
@@ -1046,22 +1125,26 @@ export default function App() {
               <div>
                 <div className="text-xs text-slate-500 dark:text-slate-400">
                   {hydratedFmSave
-                    ? `Live League Standing (${hydratedFmSave.decodedPayload.leagueStanding?.competitionName || 'League'})`
+                    ? `Live League Standing (${hydratedFmSave?.decodedPayload?.leagueStanding?.competitionName || 'League'})`
                     : 'League Standing'}
                 </div>
                 <div className="text-lg font-bold font-mono tabular-nums text-slate-900 dark:text-slate-100 mt-0.5">
-                  {hydratedFmSave?.leagueRecordLabel ||
+                  {(hasManualMatches ? null : hydratedFmSave?.leagueRecordLabel) ||
                     (summary.played > 0
                       ? `${summary.played} GP · ${summary.wins}W-${summary.draws}D-${summary.losses}L · ${summary.points} Pts`
                       : '--')}
                 </div>
                 <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  {hydratedFmSave?.leagueStandingLabel ||
-                    (summary.played > 0
-                      ? leagueStandingSub
-                      : hydratedFmSave
-                        ? '0 competitive matches played yet'
-                        : 'Awaiting .fm save')}
+                  {hasManualMatches
+                    ? hydratedFmSave
+                      ? `Includes ${manualMatchCount} chat-logged match${manualMatchCount === 1 ? '' : 'es'} not yet in the .fm save`
+                      : 'Awaiting .fm save'
+                    : hydratedFmSave?.leagueStandingLabel ||
+                      (summary.played > 0
+                        ? leagueStandingSub
+                        : hydratedFmSave
+                          ? '0 competitive matches played yet'
+                          : 'Awaiting .fm save')}
                 </div>
               </div>
 
@@ -1118,7 +1201,7 @@ export default function App() {
           {hydratedFmSave && liveGovernance && (
             <ClubGovernanceBanner
               governance={liveGovernance}
-              extractionManifest={hydratedFmSave.decodedPayload.extractionManifest ?? null}
+              extractionManifest={hydratedFmSave?.decodedPayload?.extractionManifest ?? null}
               onAskAnalyst={handleAskAnalystPrompt}
               onOpenCalibrationLab={handleOpenCalibrationLab}
             />
@@ -1145,7 +1228,7 @@ export default function App() {
               }}
               snapshotResetNonce={snapshotResetNonce}
               currentSaveDate={saveDate}
-              clubName={hydratedFmSave?.decodedPayload.meta.clubName}
+              clubName={hydratedFmSave?.decodedPayload?.meta?.clubName}
               managerName={managerName}
               nextFixture={nextFixture}
               leagueStandingSub={leagueStandingSub}
@@ -1155,6 +1238,8 @@ export default function App() {
               activeShape={activeShape}
               customSlots={customSlots}
               applyToAnalystOnly={applyToAnalystOnly}
+              liveGovernance={liveGovernance}
+              liveLastMatchTactic={liveLastMatchTactic}
               onUpdateSaveDate={setSaveDate}
               onAddMatch={handleAddMatch}
               onApplyPlayerUpdates={handleApplyPlayerUpdates}
@@ -1199,7 +1284,7 @@ export default function App() {
               <SquadAnalyticsTable
                 players={players}
                 matches={matches}
-                clubName={hydratedFmSave?.decodedPayload.meta.clubName}
+                clubName={hydratedFmSave?.decodedPayload?.meta?.clubName}
                 saveDate={saveDate}
                 divisionBenchmarks={hydratedFmSave?.divisionBenchmarks ?? null}
                 governance={liveGovernance ?? hydratedFmSave?.governance ?? null}
@@ -1211,7 +1296,7 @@ export default function App() {
                 }
                 isFastSync={Boolean(hydratedFmSave?.fastSync)}
                 playedMatchesCount={
-                  hydratedFmSave?.decodedPayload.playedMatches.length ?? matches.length
+                  hydratedFmSave?.decodedPayload?.playedMatches?.length ?? matches.length
                 }
                 onSelectPlayer={setSelectedPlayer}
               />
@@ -1229,23 +1314,23 @@ export default function App() {
                 saveDate={saveDate}
                 wageSpend={hydratedFmSave?.wageComplianceLabel || wageSpend}
                 balance={hydratedFmSave?.balanceLabel || balance}
-                clubName={hydratedFmSave?.decodedPayload.meta.clubName}
+                clubName={hydratedFmSave?.decodedPayload?.meta?.clubName}
                 finances={
-                  hydratedFmSave?.decodedPayload.finances ||
+                  hydratedFmSave?.decodedPayload?.finances ||
                   hydratedFmSave?.canonicalBalanceNum !== null
                     ? {
                         balanceNum:
                           hydratedFmSave?.canonicalBalanceNum ??
-                          hydratedFmSave?.decodedPayload.finances?.balance ??
+                          hydratedFmSave?.decodedPayload?.finances?.balance ??
                           null,
                         wagePayrollWeekly:
-                          hydratedFmSave?.decodedPayload.finances
+                          hydratedFmSave?.decodedPayload?.finances
                             ?.wagePayrollWeekly ?? null,
                         wageBudgetWeekly:
-                          hydratedFmSave?.decodedPayload.finances
+                          hydratedFmSave?.decodedPayload?.finances
                             ?.wageBudgetWeekly ?? null,
                         transferBudgetRemaining:
-                          hydratedFmSave?.decodedPayload.finances
+                          hydratedFmSave?.decodedPayload?.finances
                             ?.transferBudgetRemaining ?? null,
                         monthlyBurnRate:
                           hydratedFmSave?.financialRunway?.monthlyBurnRate ?? null,
@@ -1253,14 +1338,14 @@ export default function App() {
                     : null
                 }
                 financialRunway={hydratedFmSave?.financialRunway ?? null}
-                transferWindows={hydratedFmSave?.decodedPayload.transferWindows ?? null}
+                transferWindows={hydratedFmSave?.decodedPayload?.transferWindows ?? null}
                 competitionRules={hydratedFmSave?.competitionRules ?? null}
                 divisionBenchmarks={hydratedFmSave?.divisionBenchmarks ?? null}
                 governance={liveGovernance ?? hydratedFmSave?.governance ?? null}
                 lastMatchTactic={liveLastMatchTactic ?? hydratedFmSave?.lastMatchTactic ?? null}
                 scoutedTargets={
                   hydratedFmSave?.recruitmentTargets ??
-                  hydratedFmSave?.decodedPayload.recruitmentTargets ??
+                  hydratedFmSave?.decodedPayload?.recruitmentTargets ??
                   []
                 }
                 trackedTargets={trackedTargets}
@@ -1283,9 +1368,9 @@ export default function App() {
             <Suspense fallback={<LazyTabFallback label="Staff Directory" />}>
               <StaffDirectory
                 staff={staff}
-                clubName={hydratedFmSave?.decodedPayload.meta.clubName}
+                clubName={hydratedFmSave?.decodedPayload?.meta?.clubName}
                 saveDate={saveDate}
-                jobVacancies={hydratedFmSave?.decodedPayload.jobVacancies ?? []}
+                jobVacancies={hydratedFmSave?.decodedPayload?.jobVacancies ?? []}
                 onSelectStaff={setSelectedStaff}
               />
             </Suspense>
@@ -1299,15 +1384,15 @@ export default function App() {
                 matches={matches}
                 liveLeagueRecord={hydratedFmSave?.leagueRecordLabel || null}
                 liveSaveFileName={
-                  hydratedFmSave?.decodedPayload.meta.fileName ||
-                  hydratedFmSave?.decodedPayload.meta.saveName ||
+                  hydratedFmSave?.decodedPayload?.meta?.fileName ||
+                  hydratedFmSave?.decodedPayload?.meta?.saveName ||
                   null
                 }
-                clubName={hydratedFmSave?.decodedPayload.meta.clubName}
+                clubName={hydratedFmSave?.decodedPayload?.meta?.clubName}
                 saveDate={saveDate}
                 activeShape={
                   liveLastMatchTactic?.inPossessionFormation ||
-                  hydratedFmSave?.decodedPayload.tactics?.[0]?.inPossessionFormation ||
+                  hydratedFmSave?.decodedPayload?.tactics?.[0]?.inPossessionFormation ||
                   activeShape
                 }
                 activeTacticSummary={(() => {
@@ -1419,7 +1504,7 @@ export default function App() {
             }
             isFastSync={Boolean(hydratedFmSave?.fastSync)}
             playedMatchesCount={
-              hydratedFmSave?.decodedPayload.playedMatches.length ?? matches.length
+              hydratedFmSave?.decodedPayload?.playedMatches?.length ?? matches.length
             }
             shortlists={shortlists}
             isManagedClubPlayer={Boolean(
@@ -1468,7 +1553,7 @@ export default function App() {
             staff={staff}
             scoutTargets={
               hydratedFmSave?.recruitmentTargets ??
-              hydratedFmSave?.decodedPayload.recruitmentTargets ??
+              hydratedFmSave?.decodedPayload?.recruitmentTargets ??
               []
             }
             activeShape={activeShape}
