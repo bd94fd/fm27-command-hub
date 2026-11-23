@@ -660,6 +660,18 @@ export async function decodeFmSaveViaServer(
       );
     }
 
+    // 507 = the server (Render free tier, 512 MB) OOM-killed the Python child.
+    // Fall back to Pyodide / Fast Sync immediately instead of retrying for minutes.
+    if (jobRes.status === 507) {
+      throw new ServerDecodeUnavailableError(
+        await readErrorMessageFromResponse(
+          jobRes,
+          'Server ran out of memory while decoding this .fm save; switching to local browser decoder.'
+        ),
+        507
+      );
+    }
+
     consecutivePollErrors = 0;
 
     if (!jobRes.ok) {
@@ -778,17 +790,8 @@ export function decodeFmSaveInBrowserWorker(
 
     let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
     let hardCeilingTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const handleVisibilityChange = () => {
-      if (
-        typeof document !== 'undefined' &&
-        document.visibilityState === 'visible' &&
-        !settled &&
-        isJobActive
-      ) {
-        resetInactivityWatchdog();
-      }
-    };
+    let hiddenAtMs: number | null = null;
+    let ceilingDeadlineMs = 0;
 
     const cleanup = () => {
       if (inactivityTimer) {
@@ -857,7 +860,7 @@ export function decodeFmSaveInBrowserWorker(
       );
     };
 
-    const resetInactivityWatchdog = () => {
+    const scheduleInactivity = () => {
       if (inactivityTimer) clearTimeout(inactivityTimer);
       inactivityTimer = setTimeout(
         () => failWithTimeout('inactivity', WORKER_INACTIVITY_TIMEOUT_MS),
@@ -865,8 +868,58 @@ export function decodeFmSaveInBrowserWorker(
       );
     };
 
+    const scheduleCeiling = () => {
+      if (hardCeilingTimer) clearTimeout(hardCeilingTimer);
+      const remainingMs = Math.max(0, ceilingDeadlineMs - Date.now());
+      hardCeilingTimer = setTimeout(
+        () => failWithTimeout('ceiling', WORKER_HARD_CEILING_MS),
+        remainingMs
+      );
+    };
+
+    const resetInactivityWatchdog = () => {
+      // Background tabs are throttled, so hidden time must not count as a stall.
+      if (hiddenAtMs !== null) {
+        if (inactivityTimer) {
+          clearTimeout(inactivityTimer);
+          inactivityTimer = null;
+        }
+        return;
+      }
+      scheduleInactivity();
+    };
+
+    const handleVisibilityChange = () => {
+      if (typeof document === 'undefined' || settled) return;
+      if (document.visibilityState === 'hidden') {
+        if (hiddenAtMs === null) {
+          hiddenAtMs = Date.now();
+          if (inactivityTimer) {
+            clearTimeout(inactivityTimer);
+            inactivityTimer = null;
+          }
+          if (hardCeilingTimer) {
+            clearTimeout(hardCeilingTimer);
+            hardCeilingTimer = null;
+          }
+        }
+        return;
+      }
+      if (document.visibilityState !== 'visible' || hiddenAtMs === null) return;
+      const hiddenMs = Math.max(0, Date.now() - hiddenAtMs);
+      hiddenAtMs = null;
+      // Extend the hard ceiling by exactly the time spent suspended.
+      ceilingDeadlineMs += hiddenMs;
+      if (!isJobActive) return;
+      scheduleCeiling();
+      scheduleInactivity();
+    };
+
     if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
       document.addEventListener('visibilitychange', handleVisibilityChange);
+      if (document.visibilityState === 'hidden') {
+        hiddenAtMs = Date.now();
+      }
     }
 
     const handleMessage = (event: MessageEvent) => {
@@ -944,11 +997,11 @@ export function decodeFmSaveInBrowserWorker(
     worker.addEventListener('message', handleMessage);
     worker.addEventListener('error', handleError);
     worker.addEventListener('messageerror', handleMessageError);
-    resetInactivityWatchdog();
-    hardCeilingTimer = setTimeout(
-      () => failWithTimeout('ceiling', WORKER_HARD_CEILING_MS),
-      WORKER_HARD_CEILING_MS
-    );
+    ceilingDeadlineMs = Date.now() + WORKER_HARD_CEILING_MS;
+    if (hiddenAtMs === null) {
+      resetInactivityWatchdog();
+      scheduleCeiling();
+    }
 
     worker.postMessage({
       type: 'parse_fm',

@@ -10,6 +10,9 @@ const PYODIDE_VERSION = '314.0.7';
 const FMSAVE_VERSION = '0.14.3';
 const PYODIDE_INDEX_URL = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
 const MOUNT_DIR = '/mnt_save';
+// WORKERFS is the strict zero-copy path. Copying a large ArrayBuffer into MEMFS
+// doubles peak RAM on mobile, so refuse anything above this threshold.
+const MAX_MEMFS_BUFFER_BYTES = 64 * 1024 * 1024;
 
 let pyodide = null;
 let bootPromise = null;
@@ -182,6 +185,23 @@ self.onmessage = async (event) => {
         );
         savePath = `${MOUNT_DIR}/${resolvedFileName}`;
       } else {
+        const bufferBytes =
+          buffer instanceof ArrayBuffer
+            ? buffer.byteLength
+            : (buffer && typeof buffer.byteLength === 'number' ? buffer.byteLength : 0);
+        if (bufferBytes > MAX_MEMFS_BUFFER_BYTES) {
+          const bufferMb = (bufferBytes / (1024 * 1024)).toFixed(1);
+          const limitMb = Math.round(MAX_MEMFS_BUFFER_BYTES / (1024 * 1024));
+          reply({
+            type: 'stage',
+            stage: 'read',
+            step: 'Stage 1/4',
+            label: `Refusing to copy ${bufferMb} MB into MEMFS — zero-copy WORKERFS (File) is required above ${limitMb} MB on mobile.`,
+          });
+          throw new Error(
+            `Refusing to copy a ${bufferMb} MB ArrayBuffer into MEMFS BUFFER_TMP (limit ${limitMb} MB). Re-import the .fm file from the file picker so zero-copy WORKERFS is used.`
+          );
+        }
         activeStep = 'Stage 1/4: Staging save buffer to temporary WASM file';
         tempBufferPath = `/tmp/fm_save_${requestId || Date.now()}.fm`;
         let bytes = new Uint8Array(buffer);
