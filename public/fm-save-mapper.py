@@ -47,7 +47,7 @@ try:
 except Exception:
     _layout_patcher = None  # type: ignore[assignment]
 
-MAPPER_CACHE_BUSTER = "?v=21"
+MAPPER_CACHE_BUSTER = "?v=22"
 
 # Detect native server Python vs browser Pyodide (emscripten) for realistic budgets
 _IS_PYODIDE = sys.platform == "emscripten"
@@ -981,6 +981,54 @@ def _open_save_non_strict(path: str) -> Any:
     return fmsave.open(path)
 
 
+def _collect_patch_section_status() -> dict[str, bool]:
+    """Map completed extraction phases to clean/unavailable flags for patch diagnostics."""
+    return {
+        "players": bool(_STATE.get("players_out")),
+        "staff": bool(_STATE.get("staff_out")),
+        "finances": _STATE.get("finances") is not None,
+        "tactics": bool(_STATE.get("tactics")),
+        "selections": bool(_STATE.get("selections")),
+        "set_pieces": bool(_STATE.get("set_pieces")),
+        "season_stats": bool(
+            _STATE.get("player_match_stats")
+            or _STATE.get("player_season_history")
+            or _STATE.get("team_match_stats")
+        ),
+        "fixtures": bool(_STATE.get("played_matches") or _STATE.get("upcoming_fixtures")),
+        "league_table": _STATE.get("league_standing") is not None,
+        "governance": bool(
+            ((_STATE.get("governance") or {}).get("managerContract") or {}).get("available")
+        ),
+        "binary_forensics": _STATE.get("binary_forensics") is not None,
+    }
+
+
+def _build_patch_compatibility(
+    build_str: str, extracted: dict[str, bool] | None = None
+) -> dict[str, Any]:
+    """Structured, non-fatal patch diagnostics for the loaded build (never raises)."""
+    if _layout_patcher is not None:
+        try:
+            return _layout_patcher.build_patch_compatibility_summary(build_str, extracted)
+        except Exception:
+            pass
+    normalized = str(build_str or "unknown")
+    return {
+        "detectedBuild": normalized,
+        "isFm27": normalized.startswith("27."),
+        "layoutStatus": "unknown",
+        "layoutBase": None,
+        "isUntestedBuild": False,
+        "runtimePatchesApplied": False,
+        "dynamicBuildRegistered": False,
+        "sections": [],
+        "summary": f"{normalized} · runtime layout diagnostics unavailable",
+        "advisory": None,
+        "generatedAtIso": None,
+    }
+
+
 def step_open(
     path: str,
     preferred_club_hint: str = "",
@@ -1119,6 +1167,13 @@ def step_open(
         "importScope": _STATE["import_scope"],
         "fastSync": _STATE["fast_sync"],
     }
+    meta["patchCompatibility"] = _build_patch_compatibility(build_str)
+    if meta["patchCompatibility"].get("isUntestedBuild"):
+        untested_note = (
+            f"New FM27 build {build_str} detected: dynamic layout inheritance active"
+        )
+        if untested_note not in _STATE["warnings"]:
+            _STATE["warnings"].append(untested_note)
 
     # Probe managed club & save for any exposed governance fields (board/supporter confidence,
     # objectives, club vision, job security, manager contract, promises — strictly auto-read, never fabricated).
@@ -7753,8 +7808,13 @@ def _build_current_payload() -> dict[str, Any]:
         "fastSync": bool(_STATE.get("fast_sync", False)),
     }
 
+    meta_out = dict(_STATE.get("meta") or {})
+    meta_out["patchCompatibility"] = _build_patch_compatibility(
+        str(meta_out.get("build") or "unknown"), _collect_patch_section_status()
+    )
+
     raw_payload = {
-        "meta": _STATE["meta"],
+        "meta": meta_out,
         "clubUid": _STATE["club_uid"],
         "players": players_out,
         "staff": _STATE.get("staff_out", []),

@@ -408,8 +408,8 @@ test('hydrateAppFromDecodedFmSave handles non-contract players with null expires
   assert.equal(trialist.expires.slice(-4), 'N/A');
 });
 
-test('Worker cache-buster is bumped to ?v=21 and FmImportScope supports club_and_division with clamping', () => {
-  assert.equal(WORKER_CACHE_BUSTER, '?v=21');
+test('Worker cache-buster is bumped to ?v=22 and FmImportScope supports club_and_division with clamping', () => {
+  assert.equal(WORKER_CACHE_BUSTER, '?v=22');
 
   const scope: FmImportScope = 'club_and_division';
   assert.equal(scope, 'club_and_division');
@@ -1270,7 +1270,7 @@ test('Step 4/6 & Step 3/6 Watchdogs: 150s inactivity + 480s hard ceiling, detail
   assert.doesNotMatch(hydrated.analystPromptContext, /\bCA\s*\d+|\bPA\s*\d+/i);
 });
 
-test('Single-Pass game_db 4-Stage Pipeline & ?v=21 Static Guardrails: all game_db reads finish before releasing game_db for Fixtures/League/SeasonStats/CareerHistory, and Checkpoints emitted', () => {
+test('Single-Pass game_db 4-Stage Pipeline & ?v=22 Static Guardrails: all game_db reads finish before releasing game_db for Fixtures/League/SeasonStats/CareerHistory, and Checkpoints emitted', () => {
   const workerSrc = fs.readFileSync(
     path.resolve(process.cwd(), 'public/fm-save-worker.js'),
     'utf8'
@@ -1288,10 +1288,10 @@ test('Single-Pass game_db 4-Stage Pipeline & ?v=21 Static Guardrails: all game_d
     'utf8'
   );
 
-  // Worker, mapper, and client cache-buster synced to ?v=21
-  assert.equal(WORKER_CACHE_BUSTER, '?v=21');
-  assert.match(workerSrc, /\/fm-save-mapper\.py\?v=21/);
-  assert.match(mapperSrc, /MAPPER_CACHE_BUSTER\s*=\s*"\?v=21"/);
+  // Worker, mapper, and client cache-buster synced to ?v=22
+  assert.equal(WORKER_CACHE_BUSTER, '?v=22');
+  assert.match(workerSrc, /\/fm-save-mapper\.py\?v=22/);
+  assert.match(mapperSrc, /MAPPER_CACHE_BUSTER\s*=\s*"\?v=22"/);
   assert.match(clientSrc, /WORKER_CACHE_BUSTER/);
   assert.match(clientSrc, /WORKER_INACTIVITY_TIMEOUT_MS\s*=\s*150_000/);
   assert.match(clientSrc, /WORKER_HARD_CEILING_MS\s*=\s*480_000/);
@@ -1573,7 +1573,7 @@ test('Progressive Checkpoint Recovery: resolves with latest valid squad checkpoi
     new ArrayBuffer(8)
   )) as DecodedFmSavePayload;
 
-  assert.equal(capturedWorkerUrl, '/fm-save-worker.js?v=21');
+  assert.equal(capturedWorkerUrl, '/fm-save-worker.js?v=22');
   assert.equal(terminatedAfterStage3, true);
   assert.equal(recovered.players.length, 1);
   assert.equal(recovered.players[0].name, 'Quinten Boudry');
