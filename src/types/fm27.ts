@@ -45,6 +45,11 @@ export interface PlayerRecord {
   nation: string;
   wagePw: number;
   marketValue?: number | null;
+  /** Provenance of `marketValue`: "capped" means the stored 300m ceiling, not a valuation. */
+  marketValueState?: 'ok' | 'capped' | 'unset' | 'zero';
+  marketValueCapped?: boolean;
+  /** True when the save stores a potential range code instead of a fixed PA. */
+  potentialUncertain?: boolean;
   morale?: string | null;
   status: 'Starter' | 'Rotation' | 'Injured' | 'Surplus' | 'Youth';
   teamSlot?: number;
