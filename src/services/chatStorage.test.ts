@@ -107,3 +107,38 @@ test('chatStorage recovers cleanly from corrupt JSON and QuotaExceededError', ()
   assert.equal(recovered.length, 10);
   assert.equal(recovered[recovered.length - 1].id, 'u-19');
 });
+
+test('fmSaveUiHelpers formats analyst modes cleanly, trims double periods, and keeps .fm import delta compact', async () => {
+  const {
+    buildCompactFmImportDeltaContext,
+    formatAnalystModeLabel,
+    trimTrailingPeriod,
+  } = await import('../utils/fmSaveUiHelpers.ts');
+
+  assert.equal(formatAnalystModeLabel('deep_high'), 'Deep Analyst');
+  assert.equal(formatAnalystModeLabel('max_xhigh'), 'Max Synthesis');
+  assert.equal(formatAnalystModeLabel('fast_lite'), 'Fast Co-Pilot');
+  assert.equal(
+    trimTrailingPeriod('HTTP 504: Timed out after 60s. Please retry..'),
+    'HTTP 504: Timed out after 60s. Please retry'
+  );
+
+  const delta = buildCompactFmImportDeltaContext({
+    fileName: 'auto save.fm',
+    clubName: 'KVV Zelzate',
+    saveDateLabel: '11/08/2027',
+    changedPlayers: Array.from({ length: 18 }, (_, i) => ({
+      name: `Player ${i + 1}`,
+      changes: ['Pace +1', 'Rating 7.10'],
+    })),
+    removedPlayers: ['Departed Player'],
+    newMatchesCount: 2,
+    extractionWarnings: ['Minor non-fatal reader note'],
+  });
+  assert.ok(delta.length < 1800, `Expected compact delta < 1800 chars, got ${delta.length}`);
+  assert.match(delta, /KVV Zelzate/);
+  assert.match(delta, /18 player\(s\) updated, 1 removed, 2 new match\(es\) logged/);
+  assert.match(delta, /\(\+10 more updated players in live context\)/);
+  assert.doesNotMatch(delta, /docEventBulletBlock|sheetRowValues/);
+});
+

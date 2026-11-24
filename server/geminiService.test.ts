@@ -275,4 +275,75 @@ describe('server/geminiService', () => {
       'gemini-3.5-flash-lite',
     ]);
   });
+
+  it('resolves latency-safe thinkingConfig levels for fast_lite, deep_high, max_xhigh, and failover', async () => {
+    const { resolveThinkingConfig } = await import('./geminiService.ts');
+    const { ThinkingLevel } = await import('@google/genai');
+
+    assert.deepEqual(resolveThinkingConfig('gemini-3.5-flash-lite', 'fast_lite'), {
+      thinkingLevel: ThinkingLevel.MINIMAL,
+    });
+    assert.deepEqual(resolveThinkingConfig('gemini-3.6-flash', 'deep_high'), {
+      thinkingLevel: ThinkingLevel.LOW,
+    });
+    assert.deepEqual(resolveThinkingConfig('gemini-3.6-flash', 'max_xhigh'), {
+      thinkingLevel: ThinkingLevel.MEDIUM,
+    });
+    assert.deepEqual(resolveThinkingConfig('gemini-3.5-flash-lite', 'deep_high', true), {
+      thinkingLevel: ThinkingLevel.MINIMAL,
+    });
+    // Models that do not support MINIMAL safely use LOW on fast/failover
+    assert.deepEqual(resolveThinkingConfig('gemini-3.8-flash', 'fast_lite'), {
+      thinkingLevel: ThinkingLevel.LOW,
+    });
+    assert.equal(resolveThinkingConfig('gemini-2.5-flash', 'deep_high'), undefined);
+  });
+
+  it('passes mode-appropriate thinkingConfig, skips redundant models.list(), and drops failover to MINIMAL', async () => {
+    const { ThinkingLevel } = await import('@google/genai');
+    let listCalls = 0;
+    const seenConfigs: Array<{ model: string; thinkingLevel?: string }> = [];
+    let fakeNow = 10_000;
+
+    const service = new GeminiService({
+      config: loadServerConfig({ GEMINI_API_KEY: 'test-key' } as NodeJS.ProcessEnv),
+      now: () => fakeNow,
+      clientFactory: () => ({
+        models: {
+          list: async () => {
+            listCalls += 1;
+            return { models: [] };
+          },
+          generateContent: (async (params: {
+            model: string;
+            config?: { thinkingConfig?: { thinkingLevel?: string } };
+          }) => {
+            seenConfigs.push({
+              model: params.model,
+              thinkingLevel: params.config?.thinkingConfig?.thinkingLevel,
+            });
+            if (params.model === 'gemini-3.6-flash') {
+              fakeNow += 40_000;
+              const err = new Error('The operation was aborted due to timeout');
+              err.name = 'TimeoutError';
+              throw err;
+            }
+            return { text: '{"ok":true}' };
+          }) as never,
+        },
+      }),
+    });
+
+    const res = await service.generateContent(
+      { contents: 'Pre-Match Plan' },
+      { reasoningMode: 'deep_high' }
+    );
+    assert.equal(res.text, '{"ok":true}');
+    assert.equal(listCalls, 0, 'explicit reasoningMode should not block on models.list()');
+    assert.deepEqual(seenConfigs, [
+      { model: 'gemini-3.6-flash', thinkingLevel: ThinkingLevel.LOW },
+      { model: 'gemini-3.5-flash-lite', thinkingLevel: ThinkingLevel.MINIMAL },
+    ]);
+  });
 });
+

@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel, type ThinkingConfig } from '@google/genai';
 import {
   FALLBACK_GEMINI_MODEL,
   loadServerConfig,
@@ -12,6 +12,41 @@ export const DEEP_MODEL_ID = 'gemini-3.6-flash';
 export type ReasoningMode = 'fast_lite' | 'deep_high' | 'max_xhigh';
 
 const RETIRED_MODEL_RE = /^(?:models\/)?gemini-(?:1\.|2\.0|2\.5)/i;
+
+/**
+ * Resolves a latency-safe ThinkingConfig for Gemini 3.x / 4.x models.
+ * - fast_lite & timeout failover -> MINIMAL (or LOW on models that do not support MINIMAL)
+ * - deep_high -> LOW (keeps structured tactical accuracy while ~2x faster than default MEDIUM)
+ * - max_xhigh -> MEDIUM (deeper synthesis while staying safely inside the 60s timeout)
+ */
+export function resolveThinkingConfig(
+  model: string,
+  reasoningMode?: ReasoningMode,
+  isFailover = false
+): ThinkingConfig | undefined {
+  const normalized = normalizeModelName(model).toLowerCase();
+  if (!normalized || isRetiredGeminiModel(normalized)) {
+    return undefined;
+  }
+  if (!/^gemini-(?:3|4)/.test(normalized)) {
+    return undefined;
+  }
+  const supportsMinimal =
+    !/^gemini-(?:3\.8|4)/.test(normalized) && !normalized.includes('pro');
+
+  if (isFailover || reasoningMode === 'fast_lite') {
+    return {
+      thinkingLevel: supportsMinimal ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW,
+    };
+  }
+  if (reasoningMode === 'max_xhigh') {
+    return { thinkingLevel: ThinkingLevel.MEDIUM };
+  }
+  if (reasoningMode === 'deep_high') {
+    return { thinkingLevel: ThinkingLevel.LOW };
+  }
+  return undefined;
+}
 
 export function normalizeModelName(name: string): string {
   return name.trim().replace(/^models\//i, '');
@@ -276,8 +311,6 @@ export class GeminiService {
     reasoningMode?: ReasoningMode;
     requestedModel?: string;
   }): Promise<string> {
-    const discovered = await this.discoverModels();
-
     const pickIfActive = (candidate: string | null | undefined): string | null => {
       if (!candidate) return null;
       const normalized = normalizeModelName(candidate);
@@ -305,7 +338,8 @@ export class GeminiService {
     const envOverride = pickIfActive(this.config.geminiModelOverride);
     if (envOverride) return envOverride;
 
-    // 4. First preferred model present in discovered list
+    // 4. First preferred model present in discovered list (lazy-fetched only when needed)
+    const discovered = await this.discoverModels();
     for (const preferred of this.config.preferredModels) {
       if (discovered.includes(preferred)) {
         return preferred;
@@ -343,7 +377,11 @@ export class GeminiService {
     const fastModel = this.getFastModelId();
     const deadline = this.now() + timeoutMs;
 
-    const invoke = async (model: string, capDeadline = deadline) => {
+    const invoke = async (
+      model: string,
+      capDeadline = deadline,
+      isFailover = false
+    ) => {
       const remainingMs = Math.min(deadline, capDeadline) - this.now();
       if (remainingMs <= 500) {
         throw new AnalystTimeoutError(timeoutMs);
@@ -359,11 +397,16 @@ export class GeminiService {
         });
 
         const baseConfig = (params.config || {}) as Record<string, unknown>;
+        const resolvedThinking =
+          baseConfig.thinkingConfig !== undefined
+            ? baseConfig.thinkingConfig
+            : resolveThinkingConfig(model, options?.reasoningMode, isFailover);
         const callPromise = client.models.generateContent({
           ...params,
           model,
           config: {
             ...baseConfig,
+            ...(resolvedThinking ? { thinkingConfig: resolvedThinking } : {}),
             abortSignal,
           },
         });
@@ -387,11 +430,15 @@ export class GeminiService {
       return model !== fallbackModel ? fallbackModel : DEEP_MODEL_ID;
     };
 
-    const invokeWithOverloadRetry = async (model: string, capDeadline = deadline) => {
+    const invokeWithOverloadRetry = async (
+      model: string,
+      capDeadline = deadline,
+      isFailover = false
+    ) => {
       let lastErr: unknown;
       for (let attempt = 0; attempt <= OVERLOAD_RETRY_DELAYS_MS.length; attempt++) {
         try {
-          return await invoke(model, capDeadline);
+          return await invoke(model, capDeadline, isFailover);
         } catch (err: unknown) {
           lastErr = err;
           if (!isTransientOverloadError(err)) {
@@ -418,12 +465,12 @@ export class GeminiService {
       : deadline;
 
     try {
-      return await invokeWithOverloadRetry(primaryModel, primaryDeadline);
+      return await invokeWithOverloadRetry(primaryModel, primaryDeadline, false);
     } catch (err: unknown) {
       if (isNotFoundError(err)) {
         this.clearDiscoveryCache();
         if (primaryModel !== fallbackModel) {
-          return await invokeWithOverloadRetry(fallbackModel);
+          return await invokeWithOverloadRetry(fallbackModel, deadline, true);
         }
       }
       if (
@@ -431,13 +478,13 @@ export class GeminiService {
         canTimeoutFailoverToFast &&
         deadline - this.now() > 2_000
       ) {
-        return await invokeWithOverloadRetry(fastModel, deadline);
+        return await invokeWithOverloadRetry(fastModel, deadline, true);
       }
       if (isTransientOverloadError(err)) {
         const failoverModel = resolveFailoverModel(primaryModel);
         if (failoverModel !== primaryModel && deadline - this.now() > 500) {
           try {
-            return await invokeWithOverloadRetry(failoverModel);
+            return await invokeWithOverloadRetry(failoverModel, deadline, true);
           } catch (failoverErr: unknown) {
             if (isTransientOverloadError(failoverErr)) {
               throw new AnalystOverloadError();

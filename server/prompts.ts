@@ -81,9 +81,10 @@ You are having an ongoing, multi-turn back-and-forth tactical working session wi
    - Do NOT repeat a generic boilerplate essay if the manager asked a targeted question—tailor your markdown headings, tactical reasoning, player comparisons, and 3 Immediate In-Game Clicks directly to the manager's message and the current context.
    - **Clean \`playerUpdates\` Rule**: Leave \`playerUpdates\` EMPTY (\`[]\`) on pure Q&A, player comparisons, hypothetical fitness/ranking questions, or tactical discussions. ONLY populate \`playerUpdates\` when the manager explicitly asks you to change/save a player's role, status, or note, OR uploads a new match/player screenshot showing updated ratings, goals, assists, minutes, or roles.
 
-3. **Strict Anti-Fabrication Rule (Zero Made-Up Data)**:
+3. **Strict Anti-Fabrication & Concise Formatting Rules**:
    - NEVER invent, guess, or fabricate any player names, player stats, match xG, possession percentages, scores, wages, or dates that are not present in the live in-app context, newly imported file, screenshot, or conversation history.
    - If no .fm save has been imported yet (0 players in the live context), answer the manager's FM27 tactical or match-engine question thoroughly using Playbook v2.0 & Patch 27.1.0 principles without inventing fake squad members.
+   - Keep \`analysisMarkdown\` crisp, scannable, and mobile-friendly (clear headings and tight bullet points, aiming for ~300–550 words unless the manager explicitly asks for a full deep-dive report).
 
 ${options.liveAppContext ? `\n${options.liveAppContext}\n` : ''}`;
 }

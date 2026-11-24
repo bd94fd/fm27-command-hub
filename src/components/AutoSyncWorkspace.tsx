@@ -47,8 +47,11 @@ import type {
   HydratedSaveState,
 } from '../utils/fmSaveHydrator';
 import {
+  buildCompactFmImportDeltaContext,
+  formatAnalystModeLabel,
   shouldDefaultFastSync,
   formatStepTimingLabel,
+  trimTrailingPeriod,
 } from '../utils/fmSaveUiHelpers';
 import type {
   FmSaveProgressStage,
@@ -231,6 +234,9 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       ),
     [clubName, hydratedFmSave?.decodedPayload?.meta?.clubUid]
   );
+  const chatClubKeyRef = useRef<string>(chatClubKey);
+  chatClubKeyRef.current = chatClubKey;
+  const analystAbortRef = useRef<AbortController | null>(null);
 
   const [chatState, setChatState] = useState<{
     clubKey: string;
@@ -240,20 +246,32 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     turns: loadClubChatHistory(chatClubKey),
   }));
   const turns = chatState.clubKey === chatClubKey ? chatState.turns : [];
+
+  const updateTurnsForClub = useCallback(
+    (
+      targetClubKey: string,
+      action: React.SetStateAction<ChatTurnPayload[]>
+    ) => {
+      setChatState((prev) => {
+        const baseTurns =
+          prev.clubKey === targetClubKey
+            ? prev.turns
+            : loadClubChatHistory(targetClubKey);
+        const nextTurns =
+          typeof action === 'function' ? action(baseTurns) : action;
+        saveClubChatHistory(targetClubKey, nextTurns);
+        return { clubKey: targetClubKey, turns: nextTurns };
+      });
+    },
+    []
+  );
+
   const setTurns: React.Dispatch<React.SetStateAction<ChatTurnPayload[]>> =
     useCallback(
       (action) => {
-        setChatState((prev) => {
-          const baseTurns =
-            prev.clubKey === chatClubKey
-              ? prev.turns
-              : loadClubChatHistory(chatClubKey);
-          const nextTurns =
-            typeof action === 'function' ? action(baseTurns) : action;
-          return { clubKey: chatClubKey, turns: nextTurns };
-        });
+        updateTurnsForClub(chatClubKeyRef.current, action);
       },
-      [chatClubKey]
+      [updateTurnsForClub]
     );
   const lastSnapshotResetNonceRef = useRef<number>(snapshotResetNonce);
   const [mobileHubView, setMobileHubView] = useState<'chat' | 'journey'>('chat');
@@ -530,7 +548,24 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       onUpdateSaveDate(detectedExportDate);
     }
 
-    const combinedFileContextParts = fmFilesToSend.map((f) => f.promptContext);
+    const newlyAttachedHydratedSave =
+      fmFilesToSend.find((f) => f.hydratedSave)?.hydratedSave ?? null;
+    const latestHydratedSave = newlyAttachedHydratedSave || hydratedFmSave;
+
+    const combinedFileContextParts = fmFilesToSend.map((f) => {
+      if (f.kind === 'FM_SAVE_DECODED' && f.hydratedSave) {
+        return buildCompactFmImportDeltaContext({
+          fileName: f.name,
+          clubName: f.hydratedSave.decodedPayload.meta.clubName,
+          saveDateLabel: f.hydratedSave.saveDateLabel,
+          changedPlayers: f.hydratedSave.changedPlayers,
+          removedPlayers: f.hydratedSave.removedPlayers,
+          newMatchesCount: f.hydratedSave.newMatchesCount,
+          extractionWarnings: f.hydratedSave.decodedPayload.extractionWarnings,
+        });
+      }
+      return f.promptContext;
+    });
     if (bulkMergedDiffSummaries.length > 0) {
       combinedFileContextParts.push(
         `[AUTO-MERGED SQUAD DATABASE DIFFS FROM UPLOADED EXPORT]\n${bulkMergedDiffSummaries.join('\n')}`
@@ -550,22 +585,6 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     const finalPrompt =
       promptText ||
       `Imported ${attachedNames.join(', ')} — analyse my squad, played results, league standing, finances, and injuries against Bobby Dean's Playbook v2.0, and give me a concise tactical & rotation plan from ${detectedExportDate || currentSaveDate} forward.`;
-
-    const userTurn: ChatTurnPayload = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      userText: finalPrompt,
-      imageNames: attachedNames,
-    };
-
-    setTurns((prev) => [...prev, userTurn]);
-    setIsSending(true);
-    setChatError(null);
-    setChatFallbackNotice(null);
-
-    const newlyAttachedHydratedSave =
-      fmFilesToSend.find((f) => f.hydratedSave)?.hydratedSave ?? null;
-    const latestHydratedSave = newlyAttachedHydratedSave || hydratedFmSave;
 
     // Only override live React squad/matches when a brand-new .fm save is attached on THIS turn;
     // on subsequent turns keep live `players`/`matches` so Analyst updates, CSV merges & match logs persist.
@@ -622,6 +641,34 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       latestHydratedSave?.balanceLabel ||
       '--';
 
+    // Always write turns under the hydrated club key so fresh .fm save imports
+    // never lose their user prompt or Analyst reply when clubName updates mid-flight.
+    const targetClubKey = resolveChatClubKey(
+      effectiveClubName,
+      latestHydratedSave?.decodedPayload?.meta?.clubUid ?? null
+    );
+    const priorTurnsForHistory =
+      targetClubKey === chatClubKeyRef.current
+        ? turns
+        : loadClubChatHistory(targetClubKey);
+
+    const userTurn: ChatTurnPayload = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      userText: finalPrompt,
+      imageNames: attachedNames,
+    };
+
+    const requestAbort =
+      typeof AbortController !== 'undefined' ? new AbortController() : null;
+    analystAbortRef.current?.abort();
+    analystAbortRef.current = requestAbort;
+
+    updateTurnsForClub(targetClubKey, (prev) => [...prev, userTurn]);
+    setIsSending(true);
+    setChatError(null);
+    setChatFallbackNotice(null);
+
     const appendOfflineBriefing = async (fallbackReason: string) => {
       const { buildOfflineTacticalBriefing } = await import(
         '../utils/offlineBriefingEngine'
@@ -654,7 +701,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         eventNumber: nextEventNum,
         playerUpdatesApplied: [],
       };
-      setTurns((prev) => [...prev, offlineTurn]);
+      updateTurnsForClub(targetClubKey, (prev) => [...prev, offlineTurn]);
     };
 
     try {
@@ -690,7 +737,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       };
       const liveAppContext = buildLiveTacticalAnalystContext(contextInput);
 
-      const historyForApi = buildConversationTranscript(turns, 6);
+      const historyForApi = buildConversationTranscript(priorTurnsForHistory, 6);
 
       const requestPayload = {
         message: finalPrompt,
@@ -726,6 +773,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ...requestPayload, reasoningMode: mode }),
+            signal: requestAbort?.signal,
           });
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           return await parseJsonApiResponse<any>(
@@ -733,12 +781,16 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             'Failed to get Tactical Analyst response'
           );
         } catch (err: unknown) {
+          if (requestAbort?.signal.aborted) {
+            throw err;
+          }
           throw toApiResponseError(err);
         }
       };
 
       const isDeepAnalystMode =
         reasoningMode === 'deep_high' || reasoningMode === 'max_xhigh';
+      const primaryModeLabel = formatAnalystModeLabel(reasoningMode);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let data: any;
@@ -746,6 +798,13 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       try {
         data = await postTacticalChat(reasoningMode);
       } catch (firstErr) {
+        if (requestAbort?.signal.aborted) {
+          updateTurnsForClub(targetClubKey, (prev) =>
+            prev.filter((t) => t.id !== userTurn.id)
+          );
+          setChatFallbackNotice(null);
+          return;
+        }
         failure = toApiResponseError(firstErr);
         // Cheap transient gateway glitches are worth one same-mode retry. Real
         // timeouts (504) and overload (503/429) go straight to the Fast fallback
@@ -757,17 +816,31 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           failure.status === 502;
         if (shouldRetrySameMode) {
           await new Promise((resolve) => setTimeout(resolve, 900));
+          if (requestAbort?.signal.aborted) {
+            updateTurnsForClub(targetClubKey, (prev) =>
+              prev.filter((t) => t.id !== userTurn.id)
+            );
+            setChatFallbackNotice(null);
+            return;
+          }
           try {
             data = await postTacticalChat(reasoningMode);
             failure = null;
           } catch (retryErr) {
+            if (requestAbort?.signal.aborted) {
+              updateTurnsForClub(targetClubKey, (prev) =>
+                prev.filter((t) => t.id !== userTurn.id)
+              );
+              setChatFallbackNotice(null);
+              return;
+            }
             failure = toApiResponseError(retryErr);
           }
         }
       }
 
       if (failure) {
-        const primaryDetail = describeApiFailure(failure);
+        const primaryDetail = trimTrailingPeriod(describeApiFailure(failure));
         const keyMissing = /GEMINI_API_KEY|not configured|API key/i.test(
           failure.message
         );
@@ -784,17 +857,31 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         let fastSucceeded = false;
         if (isDeepAnalystMode && isRecoverableAnalystFailure(failure)) {
           setChatFallbackNotice(
-            `Deep Analyst failed — ${primaryDetail}. Automatically retrying with Fast Analyst…`
+            `${primaryModeLabel} failed — ${primaryDetail}. Automatically retrying with Fast Co-Pilot…`
           );
           await new Promise((resolve) => setTimeout(resolve, 600));
+          if (requestAbort?.signal.aborted) {
+            updateTurnsForClub(targetClubKey, (prev) =>
+              prev.filter((t) => t.id !== userTurn.id)
+            );
+            setChatFallbackNotice(null);
+            return;
+          }
           try {
             data = await postTacticalChat('fast_lite');
             failure = null;
             fastSucceeded = true;
           } catch (fastErr) {
+            if (requestAbort?.signal.aborted) {
+              updateTurnsForClub(targetClubKey, (prev) =>
+                prev.filter((t) => t.id !== userTurn.id)
+              );
+              setChatFallbackNotice(null);
+              return;
+            }
             const fastFailure = toApiResponseError(fastErr);
             failure = fastFailure;
-            fastDetail = describeApiFailure(fastFailure);
+            fastDetail = trimTrailingPeriod(describeApiFailure(fastFailure));
           }
         }
 
@@ -802,21 +889,23 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           if (isRecoverableAnalystFailure(failure)) {
             setChatFallbackNotice(
               fastDetail
-                ? `Deep Analyst failed — ${primaryDetail}. Fast Analyst also failed — ${fastDetail}. Showing the local offline briefing instead.`
+                ? `${primaryModeLabel} failed — ${primaryDetail}. Fast Co-Pilot also failed — ${fastDetail}. Showing the local offline briefing instead.`
                 : `Analyst unavailable — ${primaryDetail}. Showing the local offline briefing instead.`
             );
             await appendOfflineBriefing('AI service unavailable / offline');
             return;
           }
-          setTurns((prev) => prev.filter((t) => t.id !== userTurn.id));
+          updateTurnsForClub(targetClubKey, (prev) =>
+            prev.filter((t) => t.id !== userTurn.id)
+          );
           setChatFallbackNotice(null);
-          setChatError(primaryDetail);
+          setChatError(`${primaryDetail}.`);
           return;
         }
 
         if (fastSucceeded) {
           setChatFallbackNotice(
-            `Deep Analyst failed — ${primaryDetail}. Fast Analyst answered instead.`
+            `${primaryModeLabel} failed — ${primaryDetail}. Fast Co-Pilot answered instead.`
           );
         }
       }
@@ -900,10 +989,17 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         playerUpdatesApplied: appliedPlayerNames,
       };
 
-      setTurns((prev) => [...prev, assistantTurn]);
+      updateTurnsForClub(targetClubKey, (prev) => [...prev, assistantTurn]);
     } catch (err: unknown) {
+      if (requestAbort?.signal.aborted) {
+        updateTurnsForClub(targetClubKey, (prev) =>
+          prev.filter((t) => t.id !== userTurn.id)
+        );
+        setChatFallbackNotice(null);
+        return;
+      }
       if (err instanceof ApiResponseError) {
-        const failureDetail = describeApiFailure(err);
+        const failureDetail = trimTrailingPeriod(describeApiFailure(err));
         if (isRecoverableAnalystFailure(err)) {
           setChatFallbackNotice(
             `Analyst unavailable — ${failureDetail}. Showing the local offline briefing instead.`
@@ -911,12 +1007,16 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           await appendOfflineBriefing('AI service unavailable / offline');
           return;
         }
-        setTurns((prev) => prev.filter((t) => t.id !== userTurn.id));
+        updateTurnsForClub(targetClubKey, (prev) =>
+          prev.filter((t) => t.id !== userTurn.id)
+        );
         setChatFallbackNotice(null);
-        setChatError(failureDetail);
+        setChatError(`${failureDetail}.`);
         return;
       }
-      setTurns((prev) => prev.filter((t) => t.id !== userTurn.id));
+      updateTurnsForClub(targetClubKey, (prev) =>
+        prev.filter((t) => t.id !== userTurn.id)
+      );
       setChatFallbackNotice(null);
       setChatError(
         err instanceof Error
@@ -924,6 +1024,9 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           : 'Error communicating with FM27 Tactical Analyst'
       );
     } finally {
+      if (analystAbortRef.current === requestAbort) {
+        analystAbortRef.current = null;
+      }
       setIsSending(false);
     }
   };
@@ -2096,9 +2199,20 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             })}
 
             {isSending && (
-              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center gap-2.5 text-xs text-slate-600 dark:text-slate-300">
-                <Sparkles className="w-4 h-4 text-emerald-500 animate-spin motion-reduce:animate-none shrink-0" />
-                <span>Analysing your club &amp; preparing tactical advice...</span>
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2.5 text-xs text-slate-600 dark:text-slate-300">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Sparkles className="w-4 h-4 text-emerald-500 animate-spin motion-reduce:animate-none shrink-0" />
+                  <span className="min-w-0 break-words">
+                    Analysing your club &amp; preparing tactical advice...
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => analystAbortRef.current?.abort()}
+                  className="min-h-[44px] sm:min-h-[32px] px-3 sm:px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-200/80 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 transition cursor-pointer shrink-0"
+                >
+                  Cancel
+                </button>
               </div>
             )}
             <div ref={feedEndRef} />

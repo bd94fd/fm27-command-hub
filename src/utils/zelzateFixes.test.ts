@@ -392,6 +392,10 @@ test('KVV Zelzate Fix #5 & Gemini 404 retry: MatchLogArchive explicitly labels s
     }),
   });
 
+  // Seed discovery cache first, then confirm 404 fallback invalidates it
+  await service.discoverModels();
+  assert.equal(listCallCount, 1);
+
   const result = await service.generateContent(
     { contents: 'test' },
     { reasoningMode: 'deep_high' }

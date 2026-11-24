@@ -39,3 +39,65 @@ const STEP_TIMING_LABELS: Record<string, string> = {
 export function formatStepTimingLabel(stepKey: string): string {
   return STEP_TIMING_LABELS[stepKey] || stepKey.replace(/_/g, ' ');
 }
+
+export function formatAnalystModeLabel(mode: string): string {
+  if (mode === 'max_xhigh') return 'Max Synthesis';
+  if (mode === 'fast_lite') return 'Fast Co-Pilot';
+  return 'Deep Analyst';
+}
+
+export function trimTrailingPeriod(text: string): string {
+  return text.trim().replace(/\.+$/, '');
+}
+
+export interface CompactFmImportDeltaInput {
+  fileName: string;
+  clubName?: string;
+  saveDateLabel?: string;
+  changedPlayers?: Array<{ name: string; changes?: string[] }>;
+  removedPlayers?: Array<string | { name: string }>;
+  newMatchesCount?: number;
+  extractionWarnings?: string[];
+}
+
+/**
+ * Builds a concise (~300–1,200 char) delta summary for a newly decoded .fm save
+ * so `/api/fm27/tactical-chat` does not send a redundant 17,500-char copy of the
+ * full squad/matches alongside `liveAppContext`.
+ */
+export function buildCompactFmImportDeltaContext(
+  input: CompactFmImportDeltaInput
+): string {
+  const lines: string[] = [
+    `[NEWLY IMPORTED .FM SAVE DELTA — ${input.fileName}]`,
+    `Club: ${input.clubName || 'Managed Club'} | In-Game Date: ${input.saveDateLabel || '--'}`,
+    `Database Sync: ${input.changedPlayers?.length ?? 0} player(s) updated, ${input.removedPlayers?.length ?? 0} removed, ${input.newMatchesCount ?? 0} new match(es) logged.`,
+  ];
+
+  const changed = input.changedPlayers ?? [];
+  if (changed.length > 0) {
+    const sample = changed.slice(0, 8).map((cp) => {
+      const detail =
+        Array.isArray(cp.changes) && cp.changes.length > 0
+          ? cp.changes.slice(0, 3).join(', ')
+          : 'updated';
+      return `- ${cp.name}: ${detail}`;
+    });
+    lines.push('Notable Player Diffs:', ...sample);
+    if (changed.length > 8) {
+      lines.push(`(+${changed.length - 8} more updated players in live context)`);
+    }
+  }
+
+  const warnings = (input.extractionWarnings ?? []).filter(Boolean).slice(0, 3);
+  if (warnings.length > 0) {
+    lines.push('Reader Notes:', ...warnings.map((w) => `- ${w.slice(0, 140)}`));
+  }
+
+  lines.push(
+    'Full squad, War Room XI, Best XI, Depth Chart, Transfers, Set-Pieces, Recent Matches, Governance & Journey are already hydrated in LIVE IN-APP COMMAND HUB CONTEXT.'
+  );
+
+  return lines.join('\n').slice(0, 1800);
+}
+

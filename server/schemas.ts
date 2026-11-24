@@ -138,29 +138,13 @@ export const TACTICAL_CHAT_SCHEMA: Schema = {
       description:
         '3 smart, context-aware follow-up questions or tactical scenarios the manager can click next to continue this conversation',
     },
-    targetSheetTable: {
-      type: Type.STRING,
-      description:
-        'Which Master Sheet table this update belongs to: TABLE_1G_MATCH_LOG, TABLE_1H_SCOUTING, TABLE_1I_TACTICAL_AUDIT, or GENERAL_CHRONICLE',
-    },
     chronicleTitle: {
       type: Type.STRING,
-      description: 'Title for Event # in Master Doc & Tab 10 Chronicles',
+      description: 'Optional concise headline title for this tactical turn',
     },
     chronicleOutcomeMetric: {
       type: Type.STRING,
-      description: 'Headline result, metric, or tactical decision summary for Chronicles',
-    },
-    docEventBulletBlock: {
-      type: Type.STRING,
-      description:
-        'Ready-to-insert flat bullet block (using ● and -) for Event # in Section 5 of the Master Google Doc above [INSERT NEXT CHRONOLOGICAL EVENT HERE]',
-    },
-    sheetRowValues: {
-      type: Type.ARRAY,
-      items: { type: Type.STRING },
-      description:
-        '6 or 7 column values matching the detected Master Sheet table row ready to append directly to Google Sheets',
+      description: 'Optional one-line key outcome or tactical summary',
     },
     isMatchResult: {
       type: Type.BOOLEAN,
@@ -248,11 +232,6 @@ export const TACTICAL_CHAT_SCHEMA: Schema = {
     'analysisMarkdown',
     'immediateClicks',
     'followUpQuestions',
-    'targetSheetTable',
-    'chronicleTitle',
-    'chronicleOutcomeMetric',
-    'docEventBulletBlock',
-    'sheetRowValues',
     'isMatchResult',
   ],
 };
