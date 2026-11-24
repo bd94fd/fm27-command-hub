@@ -139,6 +139,9 @@ interface AutoSyncWorkspaceProps {
   ) => void;
   pendingPrompt?: string | null;
   onClearPendingPrompt?: () => void;
+  externalFmFile?: File | null;
+  onClearExternalFmFile?: () => void;
+  onBusyStateChange?: (busy: boolean) => void;
 }
 
 export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
@@ -172,6 +175,9 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   onBackgroundSyncStatusChange,
   pendingPrompt = null,
   onClearPendingPrompt,
+  externalFmFile = null,
+  onClearExternalFmFile,
+  onBusyStateChange,
 }) => {
   const latestMatch = matches[0];
   const nextEventNum = (latestMatch?.eventNumber || matches.length) + 1;
@@ -1000,6 +1006,19 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     await processIncomingFiles(files);
     e.target.value = '';
   };
+
+  useEffect(() => {
+    onBusyStateChange?.(Boolean(fmDecodeStage) || isSending);
+  }, [fmDecodeStage, isSending, onBusyStateChange]);
+
+  const processIncomingFilesRef = useRef(processIncomingFiles);
+  processIncomingFilesRef.current = processIncomingFiles;
+
+  useEffect(() => {
+    if (!externalFmFile) return;
+    onClearExternalFmFile?.();
+    void processIncomingFilesRef.current([externalFmFile]);
+  }, [externalFmFile, onClearExternalFmFile]);
 
   const handleDropFiles = async (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();

@@ -1,17 +1,87 @@
 {
+  "id": "/",
   "name": "FM27 Command & Auto-Sync Hub",
   "short_name": "FM27 Hub",
   "description": "Live Football Manager 27 tactical war room, squad analytics engine, and auto-sync command hub.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#090D16",
   "theme_color": "#0F172A",
   "icons": [
     {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
       "src": "/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Sync .fm Save",
+      "short_name": "Sync .fm",
+      "description": "Open the Hub and import a Football Manager 27 .fm save file",
+      "url": "/?action=sync",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Tactics & Matchday",
+      "short_name": "Tactics",
+      "description": "Jump straight to your Tactical War Room and Matchday Companion",
+      "url": "/?tab=tactics",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Squad Analytics",
+      "short_name": "Squad",
+      "description": "Review squad ratings, durability, and player cards",
+      "url": "/?tab=squad",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "file_handlers": [
+    {
+      "action": "/?action=open-fm",
+      "accept": {
+        "application/octet-stream": [".fm"]
+      }
     }
   ]
 }

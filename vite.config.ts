@@ -12,14 +12,12 @@ export default defineConfig(() => {
       react(),
       tailwindcss(),
       VitePWA({
-        registerType: 'autoUpdate',
+        registerType: 'prompt',
         injectRegister: 'auto',
         manifest: false,
         workbox: {
           cleanupOutdatedCaches: true,
-          skipWaiting: true,
-          clientsClaim: true,
-          globPatterns: ['**/*.{js,css,html,svg,woff2,json}'],
+          globPatterns: ['**/*.{js,css,html,svg,png,woff2,json}'],
           // Keep the worker + Python runtime scripts out of the precache: they are
           // fetched with a manual ?v= cache buster and must match the deployed
           // mapper/patcher on every release.

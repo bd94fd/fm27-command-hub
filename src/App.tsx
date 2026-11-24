@@ -31,6 +31,11 @@ import {
   ShortlistRecord,
   StaffRecord,
 } from './types/fm27';
+import {
+  parsePwaLaunchParams,
+  usePwaLifecycle,
+} from './hooks/usePwaLifecycle';
+import { PwaStatusBanners } from './components/PwaStatusBanners';
 import { computeCompetitiveSummary } from './utils/fmSyncEngine';
 import {
   mergeParsedPlayersIntoSquad,
@@ -243,6 +248,10 @@ export default function App() {
     label: string;
     clubCoreReady: boolean;
   } | null>(null);
+  const [workspaceBusy, setWorkspaceBusy] = useState<boolean>(false);
+  const pwa = usePwaLifecycle({
+    isBusy: workspaceBusy || Boolean(backgroundSyncStatus),
+  });
   const [showMobileDetails, setShowMobileDetails] = useState<boolean>(false);
   const backupFileInputRef = useRef<HTMLInputElement | null>(null);
   const preSyncBaselineRef = useRef<{
@@ -270,6 +279,34 @@ export default function App() {
       setAppToast((prev) => (prev === msg ? null : prev));
     }, 3200);
   }, []);
+
+  // Handle Android home-screen shortcut URLs (?tab=tactics, ?tab=squad, ?action=sync)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.location.search) return;
+    const launch = parsePwaLaunchParams(window.location.search);
+    if (!launch.initialTab && !launch.shouldPromptSync && !launch.isFileOpenAction) {
+      return;
+    }
+    if (launch.initialTab) {
+      setActiveTab(launch.initialTab);
+    }
+    if (launch.shouldPromptSync) {
+      showGlobalToast('Ready to sync — tap Import .fm to pick your save file.');
+    }
+    try {
+      const cleanUrl = `${window.location.pathname}${window.location.hash}`;
+      window.history.replaceState(null, '', cleanUrl);
+    } catch {
+      // ignore history errors in restricted frames
+    }
+  }, [showGlobalToast]);
+
+  // Switch straight to Hub when a .fm save is opened via PWA file_handlers
+  useEffect(() => {
+    if (pwa.launchedFmFile) {
+      setActiveTab('sync');
+    }
+  }, [pwa.launchedFmFile]);
 
   useEffect(
     () => () => {
@@ -997,7 +1034,12 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col">
       {/* Top Navigation Shell */}
-      <header className="sticky top-0 z-30 flex items-center justify-between gap-x-4 px-4 sm:px-6 py-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800">
+      <header
+        className="sticky top-0 z-30 flex items-center justify-between gap-x-4 px-4 sm:px-6 pb-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800"
+        style={{
+          paddingTop: 'calc(0.75rem + env(safe-area-inset-top, 0px))',
+        }}
+      >
         <a
           href="#top"
           onClick={(e) => {
@@ -1122,6 +1164,27 @@ export default function App() {
           )}
         </div>
       </header>
+
+      {/* PWA Status Banners: Offline Notice, Safe Update Prompt, Android/iOS Install */}
+      <PwaStatusBanners
+        isOnline={pwa.isOnline}
+        clubName={clubName}
+        hasLoadedSave={Boolean(hydratedFmSave || players.length > 0)}
+        showUpdateBanner={pwa.showUpdateBanner}
+        onApplyUpdate={pwa.applyUpdate}
+        onDismissUpdate={pwa.dismissUpdateBanner}
+        showInstallBanner={pwa.showInstallBanner}
+        canPromptInstall={pwa.canPromptInstall}
+        isIosSafari={pwa.isIosSafari}
+        onPromptInstall={() => {
+          void pwa.promptInstall().then((outcome) => {
+            if (outcome === 'accepted') {
+              showGlobalToast('FM27 Hub installed to your home screen.');
+            }
+          });
+        }}
+        onDismissInstall={pwa.dismissInstallBanner}
+      />
 
       {/* Main Content Container (extra bottom padding on mobile for fixed bottom nav) */}
       <main className="flex-1 max-w-[1400px] w-full mx-auto px-3 sm:px-6 pt-3 sm:pt-5 pb-24 md:pb-8 space-y-4 sm:space-y-5">
@@ -1363,6 +1426,9 @@ export default function App() {
               onBackgroundSyncStatusChange={handleBackgroundSyncStatusChange}
               pendingPrompt={pendingAnalystPrompt}
               onClearPendingPrompt={handleClearPendingPrompt}
+              externalFmFile={pwa.launchedFmFile}
+              onClearExternalFmFile={pwa.clearLaunchedFmFile}
+              onBusyStateChange={setWorkspaceBusy}
             />
           </AppErrorBoundary>
         </div>
