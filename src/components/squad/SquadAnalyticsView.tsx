@@ -63,7 +63,7 @@ export const SquadAnalyticsView: React.FC<SquadAnalyticsViewProps> = ({
             aria-label="Select player for attribute radar"
             value={activeRadarPlayer?.id || ''}
             onChange={(e) => setRadarPlayerId(e.target.value)}
-            className="min-h-[38px] px-3 py-1.5 text-xs bg-slate-950 border border-slate-700 rounded-lg text-slate-200 max-w-[240px]"
+            className="w-full sm:w-auto sm:max-w-[260px] min-h-[44px] sm:min-h-[38px] px-3 py-1.5 text-xs bg-slate-950 border border-slate-700 rounded-lg text-slate-200"
           >
             {players.map((p) => (
               <option key={p.id} value={p.id}>
@@ -83,10 +83,10 @@ export const SquadAnalyticsView: React.FC<SquadAnalyticsViewProps> = ({
           return (
             <div className="space-y-3">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-center">
-                <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 flex justify-center">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 flex justify-center min-w-0">
                   <AttributeRadarChart player={activeRadarPlayer} size={265} />
                 </div>
-                <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 flex justify-center">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 flex justify-center min-w-0">
                   <PercentilePizzaChart
                     slices={radarIntel.pizzaSlices}
                     playerName={activeRadarPlayer.name}
@@ -96,14 +96,14 @@ export const SquadAnalyticsView: React.FC<SquadAnalyticsViewProps> = ({
                 </div>
               </div>
               <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
-                <span className="text-slate-200">
+                <span className="text-slate-200 min-w-0">
                   <strong className="text-emerald-300">{radarIntel.verdictLabel}:</strong>{' '}
                   {radarIntel.inlineRationale}
                 </span>
                 <button
                   type="button"
                   onClick={() => onSelectPlayer?.(activeRadarPlayer)}
-                  className="text-[11px] font-semibold text-sky-300 hover:text-sky-200 shrink-0"
+                  className="min-h-[40px] sm:min-h-[32px] px-2.5 rounded-lg text-[11px] font-semibold text-sky-300 hover:text-sky-200 bg-sky-500/10 border border-sky-500/30 shrink-0 cursor-pointer"
                 >
                   Open Deep Profile →
                 </button>

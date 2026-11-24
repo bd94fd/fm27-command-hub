@@ -482,7 +482,7 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
           </div>
         </div>
 
-        {/* Mobile-Friendly Day-by-Day View (Pixel 10 Pro XL) */}
+        {/* Mobile-Friendly Day-by-Day View (360px-safe 44px tap targets) */}
         <div className="md:hidden space-y-3">
           <div className="grid grid-cols-7 gap-1">
             {activeWeeklyDays.map((day, idx) => (
@@ -490,7 +490,7 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
                 key={day.dayShort}
                 type="button"
                 onClick={() => setSelectedMobileDay(idx)}
-                className={`rounded-lg py-2 text-center text-[11px] font-bold transition cursor-pointer ${
+                className={`min-h-[44px] min-w-0 rounded-lg px-0.5 py-2 text-center text-[11px] font-bold transition cursor-pointer ${
                   selectedMobileDay === idx
                     ? 'bg-emerald-500 text-slate-950'
                     : 'bg-slate-950 text-slate-400 border border-slate-800'
@@ -504,9 +504,9 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
           {(() => {
             const activeDay = activeWeeklyDays[selectedMobileDay] ?? activeWeeklyDays[0];
             return (
-              <div className="rounded-xl border border-slate-800 bg-slate-950/80 p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
+              <div className="rounded-xl border border-slate-800 bg-slate-950/80 p-3.5 sm:p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
                     <div className="text-sm font-bold text-white">
                       {activeDay.dayFull}
                       {activeDay.dateLabel ? ` · ${activeDay.dateLabel}` : ''}
@@ -517,14 +517,14 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
                       </div>
                     )}
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 shrink-0">
                     <button
                       type="button"
                       aria-label="Previous day"
                       onClick={() =>
                         setSelectedMobileDay((d) => (d + 6) % 7)
                       }
-                      className="rounded-lg border border-slate-700 bg-slate-900 p-1.5 text-slate-300"
+                      className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-300 cursor-pointer"
                     >
                       <ChevronLeft className="h-4 w-4" />
                     </button>
@@ -534,7 +534,7 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
                       onClick={() =>
                         setSelectedMobileDay((d) => (d + 1) % 7)
                       }
-                      className="rounded-lg border border-slate-700 bg-slate-900 p-1.5 text-slate-300"
+                      className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-300 cursor-pointer"
                     >
                       <ChevronRight className="h-4 w-4" />
                     </button>

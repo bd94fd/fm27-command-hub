@@ -1,10 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   AlertTriangle,
-  BookmarkPlus,
   CheckCircle2,
-  ClipboardPlus,
-  Download,
   LayoutDashboard,
   Shield,
   Sparkles,
@@ -13,6 +10,10 @@ import {
   Zap,
 } from 'lucide-react';
 import { MobileSheetFrame } from './MobileSheetFrame';
+import {
+  PlayerOverviewKpiStrip,
+  PlayerQuickActionBar,
+} from './PlayerModalMobileStrip';
 import { PlayerRecord, ShortlistRecord } from '../types/fm27';
 import {
   ClubGovernanceState,
@@ -151,6 +152,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
   onAddToShortlist,
 }) => {
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
+  const [mobileAttrGroup, setMobileAttrGroup] = useState<'all' | 'primary' | 'mental' | 'physical'>('all');
   const [selectedIpRole, setSelectedIpRole] = useState<string>('');
   const [selectedOopRole, setSelectedOopRole] = useState<string>('');
   const [comparePlayerId, setComparePlayerId] = useState<string>('__AUTO__');
@@ -160,6 +162,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
 
   React.useEffect(() => {
     setActiveTab('overview');
+    setMobileAttrGroup('all');
     setSelectedIpRole('');
     setSelectedOopRole('');
     setComparePlayerId('__AUTO__');
@@ -610,7 +613,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
       maxWidthClass="sm:max-w-4xl"
       bodyClassName="p-4 sm:p-5 space-y-4"
       header={
-        <div className="space-y-2.5 min-w-0">
+        <div className="space-y-2 min-w-0">
           <div className="flex items-start gap-2.5 sm:gap-3 min-w-0">
             <div
               className="flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold text-sm font-mono"
@@ -630,56 +633,59 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                   className="rounded-md bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-xs font-semibold text-amber-300"
                   title="Star rating relative to your current squad"
                 >
-                  {player.ability.toFixed(1)}★ / {player.potential.toFixed(1)}★ Pot
+                  {player.ability.toFixed(1)}★ / {player.potential.toFixed(1)}★
                 </span>
-                {analysis.bestIpRole && (
-                  <span className="rounded-md bg-sky-500/15 border border-sky-500/35 px-2 py-0.5 text-xs font-semibold text-sky-300">
-                    Best Fit: {analysis.bestIpRole.role.name} · {analysis.bestIpRole.fitPct}%
-                  </span>
-                )}
-                {(() => {
-                  const meta = evaluatePlayerMetaScore(player);
-                  const dual = evaluateDualPhaseRoles(player, 1);
-                  return (
-                    <>
-                      {meta.metaScore !== null && (
-                        <span
-                          className="rounded-md bg-emerald-500/15 border border-emerald-500/35 px-2 py-0.5 text-xs font-semibold text-emerald-300"
-                          title={`FM-Arena Meta Score (${meta.tier})${meta.paMetaScore !== null ? ` · Projected Pot Meta ${meta.paMetaScore.toFixed(1)}` : ''}`}
-                        >
-                          Meta {meta.metaScore.toFixed(1)}
-                          {meta.paMetaScore !== null && meta.paMetaScore > meta.metaScore
-                            ? ` → ${meta.paMetaScore.toFixed(1)} Pot`
-                            : ''}
-                        </span>
-                      )}
-                      {(dual.bestInPossession || dual.bestOutOfPossession) && (
-                        <span
-                          className="rounded-md bg-cyan-500/15 border border-cyan-500/30 px-2 py-0.5 text-[11px] font-medium text-cyan-200"
-                          title="FM27 Touchline Dual-Phase Best Roles (In-Possession / Out-of-Possession)"
-                        >
-                          IP: {dual.bestInPossession?.name ?? '--'} · OOP:{' '}
-                          {dual.bestOutOfPossession?.name ?? '--'}
-                        </span>
-                      )}
-                    </>
-                  );
-                })()}
-                {player.squadUnit && player.squadUnit !== 'First Team' && (
-                  <span className="rounded-md bg-indigo-500/15 border border-indigo-500/35 px-2 py-0.5 text-[11px] font-semibold text-indigo-300">
-                    {player.squadUnit}
-                  </span>
-                )}
-                {player.onLoan && (
-                  <span className="rounded-md bg-purple-500/15 border border-purple-500/35 px-2 py-0.5 text-[11px] font-semibold text-purple-300">
-                    On Loan
-                  </span>
-                )}
-                {player.morale && (
-                  <span className="rounded-md bg-slate-800 border border-slate-700 px-2 py-0.5 text-[11px] text-slate-300">
-                    Morale: {player.morale}
-                  </span>
-                )}
+                {/* Secondary intelligence badges stay in header on sm:+ desktop; shown inside body ribbon on < sm mobile to keep sticky header sleek */}
+                <span className="hidden sm:contents">
+                  {analysis.bestIpRole && (
+                    <span className="rounded-md bg-sky-500/15 border border-sky-500/35 px-2 py-0.5 text-xs font-semibold text-sky-300">
+                      Best Fit: {analysis.bestIpRole.role.name} · {analysis.bestIpRole.fitPct}%
+                    </span>
+                  )}
+                  {(() => {
+                    const meta = evaluatePlayerMetaScore(player);
+                    const dual = evaluateDualPhaseRoles(player, 1);
+                    return (
+                      <>
+                        {meta.metaScore !== null && (
+                          <span
+                            className="rounded-md bg-emerald-500/15 border border-emerald-500/35 px-2 py-0.5 text-xs font-semibold text-emerald-300"
+                            title={`FM-Arena Meta Score (${meta.tier})${meta.paMetaScore !== null ? ` · Projected Pot Meta ${meta.paMetaScore.toFixed(1)}` : ''}`}
+                          >
+                            Meta {meta.metaScore.toFixed(1)}
+                            {meta.paMetaScore !== null && meta.paMetaScore > meta.metaScore
+                              ? ` → ${meta.paMetaScore.toFixed(1)} Pot`
+                              : ''}
+                          </span>
+                        )}
+                        {(dual.bestInPossession || dual.bestOutOfPossession) && (
+                          <span
+                            className="rounded-md bg-cyan-500/15 border border-cyan-500/30 px-2 py-0.5 text-[11px] font-medium text-cyan-200"
+                            title="FM27 Touchline Dual-Phase Best Roles (In-Possession / Out-of-Possession)"
+                          >
+                            IP: {dual.bestInPossession?.name ?? '--'} · OOP:{' '}
+                            {dual.bestOutOfPossession?.name ?? '--'}
+                          </span>
+                        )}
+                      </>
+                    );
+                  })()}
+                  {player.squadUnit && player.squadUnit !== 'First Team' && (
+                    <span className="rounded-md bg-indigo-500/15 border border-indigo-500/35 px-2 py-0.5 text-[11px] font-semibold text-indigo-300">
+                      {player.squadUnit}
+                    </span>
+                  )}
+                  {player.onLoan && (
+                    <span className="rounded-md bg-purple-500/15 border border-purple-500/35 px-2 py-0.5 text-[11px] font-semibold text-purple-300">
+                      On Loan
+                    </span>
+                  )}
+                  {player.morale && (
+                    <span className="rounded-md bg-slate-800 border border-slate-700 px-2 py-0.5 text-[11px] text-slate-300">
+                      Morale: {player.morale}
+                    </span>
+                  )}
+                </span>
                 {player.activeSuspensions && player.activeSuspensions.length > 0 && (() => {
                   const nextBan = player.activeSuspensions.find((b) =>
                     isSuspensionActiveForCompetition(b, nextCompetitionName)
@@ -696,82 +702,50 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                   );
                 })()}
               </div>
-              <p className="text-xs text-slate-400">
+              <p className="text-[11px] sm:text-xs text-slate-400 leading-snug">
                 Age {player.age}
                 {player.nation && player.nation !== 'Unknown' ? ` · ${player.nation}` : ''} ·{' '}
                 {formatFootLabel(player)}
-                {player.heightCm ? ` · ${player.heightCm} cm` : ''} · {player.personality} ·{' '}
-                £{player.wagePw.toLocaleString()}/wk (exp {player.expires})
+                {player.heightCm ? ` · ${player.heightCm} cm` : ''}
+                <span className="hidden sm:inline"> · {player.personality}</span> ·{' '}
+                £{player.wagePw.toLocaleString()}/wk
+                <span className="hidden sm:inline"> (exp {player.expires})</span>
                 {player.marketValueCapped || player.marketValueState === 'capped'
-                  ? ' · Not for sale (£300m cap)'
+                  ? ' · £300m cap'
                   : typeof player.marketValue === 'number' && player.marketValue > 0
-                    ? ` · Value ${formatDynamicCurrency(player.marketValue, 'marketValue')}`
+                    ? ` · ${formatDynamicCurrency(player.marketValue, 'marketValue')}`
                     : ''}
               </p>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-            <button
-              type="button"
-              onClick={handleExportPlayerCardPng}
-              className="min-h-[36px] inline-flex items-center gap-1.5 rounded-lg border border-sky-500/35 bg-sky-500/15 hover:bg-sky-500/25 px-2.5 py-1.5 text-xs font-semibold text-sky-300 transition cursor-pointer"
-              title="Export 1-Click Shareable FM27 Player Card (PNG)"
-            >
-              <Download className="h-3.5 w-3.5" />
-              {exportFeedback || 'Export PNG'}
-            </button>
-            {!isManagedClubPlayer && (
-              <button
-                type="button"
-                onClick={() =>
-                  onToggleTrack ? onToggleTrack(player) : onAddRecruitment(player)
-                }
-                className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
-                  isTracked
-                    ? 'bg-emerald-500/20 hover:bg-emerald-500/30 border-emerald-500/50 text-emerald-300'
-                    : 'bg-indigo-500/15 hover:bg-indigo-500/25 border-indigo-500/30 text-indigo-300'
-                }`}
-              >
-                <ClipboardPlus className="h-3.5 w-3.5" />
-                {isTracked ? '✓ Tracked' : '+ Track'}
-              </button>
-            )}
-            {shortlists.length > 0 && (
-              <div className="flex items-center gap-1">
-                <select
-                  value={selectedShortlistId || shortlists[0]?.id || ''}
-                  onChange={(e) => setSelectedShortlistId(e.target.value)}
-                  className="min-h-[36px] rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-200"
-                >
-                  {shortlists.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={handleShortlistAdd}
-                  className="min-h-[36px] inline-flex items-center gap-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 px-2.5 py-1.5 text-xs font-medium text-emerald-300 transition cursor-pointer"
-                >
-                  <BookmarkPlus className="h-3.5 w-3.5" />
-                  {shortlistFeedback || 'Shortlist'}
-                </button>
-              </div>
-            )}
+          <div className="hidden sm:block">
+            <PlayerQuickActionBar
+              player={player}
+              isManagedClubPlayer={isManagedClubPlayer}
+              isTracked={isTracked}
+              shortlists={shortlists}
+              selectedShortlistId={selectedShortlistId}
+              onSelectShortlistId={setSelectedShortlistId}
+              exportFeedback={exportFeedback}
+              shortlistFeedback={shortlistFeedback}
+              onExportPng={handleExportPlayerCardPng}
+              onToggleTrack={onToggleTrack}
+              onAddRecruitment={onAddRecruitment}
+              onShortlistAdd={handleShortlistAdd}
+            />
           </div>
         </div>
       }
       subHeader={
-        <div className="flex gap-1 overflow-x-auto border-b border-slate-800 bg-slate-950/50 px-4 sm:px-5 pt-1.5 no-scrollbar">
+        <div className="flex gap-1 overflow-x-auto border-b border-slate-800 bg-slate-950/50 px-3 sm:px-5 pt-1 no-scrollbar snap-x">
           {(
             [
-              { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-              { id: 'attributes', label: 'Attributes', icon: Sparkles },
-              { id: 'positions', label: 'Roles & Pitch', icon: Shield },
-              { id: 'metrics', label: 'Engine & Charts', icon: Zap },
-              { id: 'contract', label: 'Stats & Contract', icon: User },
+              { id: 'overview', label: 'Overview', shortLabel: 'Overview', icon: LayoutDashboard },
+              { id: 'attributes', label: 'Attributes', shortLabel: 'Attrs', icon: Sparkles },
+              { id: 'positions', label: 'Roles & Pitch', shortLabel: 'Roles', icon: Shield },
+              { id: 'metrics', label: 'Engine & Charts', shortLabel: 'Charts', icon: Zap },
+              { id: 'contract', label: 'Stats & Contract', shortLabel: 'Contract', icon: User },
             ] as const
           ).map((t) => {
             const Icon = t.icon;
@@ -780,20 +754,75 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                 key={t.id}
                 type="button"
                 onClick={() => setActiveTab(t.id)}
-                className={`min-h-[44px] inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-xs font-medium transition cursor-pointer ${
+                className={`min-h-[44px] inline-flex shrink-0 snap-start items-center gap-1.5 whitespace-nowrap border-b-2 px-2.5 sm:px-3 py-2 text-xs font-medium transition cursor-pointer ${
                   activeTab === t.id
                     ? 'border-emerald-400 text-emerald-300'
                     : 'border-transparent text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <Icon className="h-3.5 w-3.5" />
-                {t.label}
+                <Icon className="h-3.5 w-3.5 shrink-0" />
+                <span className="sm:hidden">{t.shortLabel}</span>
+                <span className="hidden sm:inline">{t.label}</span>
               </button>
             );
           })}
         </div>
       }
     >
+          {/* Mobile-only compact intelligence tags & 44px action bar (keeps sticky sheet header slim on Android) */}
+          <div className="sm:hidden space-y-2.5 rounded-xl border border-slate-800/90 bg-slate-950/60 p-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {analysis.bestIpRole && (
+                <span className="rounded-md bg-sky-500/15 border border-sky-500/35 px-2 py-0.5 text-[11px] font-semibold text-sky-300">
+                  Best Fit: {analysis.bestIpRole.role.name} · {analysis.bestIpRole.fitPct}%
+                </span>
+              )}
+              {(() => {
+                const meta = evaluatePlayerMetaScore(player);
+                return meta.metaScore !== null ? (
+                  <span className="rounded-md bg-emerald-500/15 border border-emerald-500/35 px-2 py-0.5 text-[11px] font-semibold text-emerald-300">
+                    Meta {meta.metaScore.toFixed(1)}
+                    {meta.paMetaScore !== null && meta.paMetaScore > meta.metaScore
+                      ? ` → ${meta.paMetaScore.toFixed(1)} Pot`
+                      : ''}
+                  </span>
+                ) : null;
+              })()}
+              {player.squadUnit && player.squadUnit !== 'First Team' && (
+                <span className="rounded-md bg-indigo-500/15 border border-indigo-500/35 px-2 py-0.5 text-[11px] font-semibold text-indigo-300">
+                  {player.squadUnit}
+                </span>
+              )}
+              {player.onLoan && (
+                <span className="rounded-md bg-purple-500/15 border border-purple-500/35 px-2 py-0.5 text-[11px] font-semibold text-purple-300">
+                  On Loan
+                </span>
+              )}
+              {player.morale && (
+                <span className="rounded-md bg-slate-800 border border-slate-700 px-2 py-0.5 text-[11px] text-slate-300">
+                  Morale: {player.morale}
+                </span>
+              )}
+              <span className="rounded-md bg-slate-900 border border-slate-800 px-2 py-0.5 text-[11px] text-slate-400">
+                {player.personality} · exp {player.expires}
+              </span>
+            </div>
+            <PlayerQuickActionBar
+              player={player}
+              isManagedClubPlayer={isManagedClubPlayer}
+              isTracked={isTracked}
+              shortlists={shortlists}
+              selectedShortlistId={selectedShortlistId}
+              onSelectShortlistId={setSelectedShortlistId}
+              exportFeedback={exportFeedback}
+              shortlistFeedback={shortlistFeedback}
+              onExportPng={handleExportPlayerCardPng}
+              onToggleTrack={onToggleTrack}
+              onAddRecruitment={onAddRecruitment}
+              onShortlistAdd={handleShortlistAdd}
+            />
+          </div>
+
           {player.activeSuspensions && player.activeSuspensions.length > 0 && (() => {
             const appliesNext = player.activeSuspensions.some((b) =>
               isSuspensionActiveForCompetition(b, nextCompetitionName)
@@ -831,8 +860,16 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
           {/* TAB 1: OVERVIEW (Instant Manager's Briefing) */}
           {activeTab === 'overview' && (
             <div className="space-y-4">
+              {/* Instant 4-Tile Snapshot Bar */}
+              <PlayerOverviewKpiStrip
+                player={player}
+                analysis={analysis}
+                cardIntel={cardIntel}
+                durabilityBadgeClass={durabilityBadgeClass}
+              />
+
               {/* Scouting Verdict */}
-              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-2">
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3.5 sm:p-4 space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-300">
                     Scouting Verdict
@@ -1181,14 +1218,14 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
 
               {/* IP / OOP role highlight selector with live Fit % */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-                <div>
+                <div className="min-w-0">
                   <label className="block text-[11px] font-semibold uppercase tracking-wider text-emerald-400 mb-1">
                     In-Possession (IP) Role Highlight
                   </label>
                   <select
                     value={effectiveIpRole}
                     onChange={(e) => setSelectedIpRole(e.target.value)}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-200"
+                    className="w-full min-h-[44px] sm:min-h-[36px] rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-200"
                   >
                     {scopedIpRoles.map((r) => {
                       const pct = scorePlayerForFm27Role(player, r);
@@ -1201,14 +1238,14 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     })}
                   </select>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-[11px] font-semibold uppercase tracking-wider text-sky-400 mb-1">
                     Out-of-Possession (OOP) Role Highlight
                   </label>
                   <select
                     value={effectiveOopRole}
                     onChange={(e) => setSelectedOopRole(e.target.value)}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-200"
+                    className="w-full min-h-[44px] sm:min-h-[36px] rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-200"
                   >
                     {scopedOopRoles.map((r) => {
                       const pct = scorePlayerForFm27Role(player, r);
@@ -1223,20 +1260,63 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                 </div>
               </div>
 
+              {/* Mobile-only attribute pillar filter so Android users don't scroll 36 rows */}
+              <div className="grid grid-cols-4 gap-1 rounded-xl border border-slate-800 bg-slate-950/70 p-1 md:hidden">
+                {(
+                  [
+                    { id: 'all', label: 'All' },
+                    { id: 'primary', label: isGoalkeeper ? 'GK' : 'Tech' },
+                    { id: 'mental', label: 'Mental' },
+                    { id: 'physical', label: 'Phys' },
+                  ] as const
+                ).map((grp) => (
+                  <button
+                    key={grp.id}
+                    type="button"
+                    onClick={() => setMobileAttrGroup(grp.id)}
+                    className={`min-h-[40px] rounded-lg text-xs font-semibold transition cursor-pointer ${
+                      mobileAttrGroup === grp.id
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                        : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                    }`}
+                  >
+                    {grp.label}
+                  </button>
+                ))}
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-1.5">
+                <div
+                  className={`space-y-1.5 ${
+                    mobileAttrGroup !== 'all' && mobileAttrGroup !== 'primary'
+                      ? 'hidden md:block'
+                      : ''
+                  }`}
+                >
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
                     {isGoalkeeper ? 'Goalkeeping (11)' : 'Technical (14)'}
                   </h4>
                   {(isGoalkeeper ? gkAttrs : technicalAttrs).map(renderAttrRow)}
                 </div>
-                <div className="space-y-1.5">
+                <div
+                  className={`space-y-1.5 ${
+                    mobileAttrGroup !== 'all' && mobileAttrGroup !== 'mental'
+                      ? 'hidden md:block'
+                      : ''
+                  }`}
+                >
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
                     Mental (14)
                   </h4>
                   {mentalAttrs.map(renderAttrRow)}
                 </div>
-                <div className="space-y-1.5">
+                <div
+                  className={`space-y-1.5 ${
+                    mobileAttrGroup !== 'all' && mobileAttrGroup !== 'physical'
+                      ? 'hidden md:block'
+                      : ''
+                  }`}
+                >
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
                     Physical (8)
                   </h4>
@@ -1272,14 +1352,14 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
 
           {/* TAB 3: ROLES & PITCH */}
           {activeTab === 'positions' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div className="rounded-xl border border-emerald-900/50 bg-gradient-to-b from-emerald-950/40 to-slate-950 p-4 space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+              <div className="rounded-xl border border-emerald-900/50 bg-gradient-to-b from-emerald-950/40 to-slate-950 p-3.5 sm:p-4 space-y-3">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-300 text-center">
                   FM27 Positional Familiarity Map
                 </h4>
                 <div className="space-y-2.5">
                   {PITCH_ROWS.map((row, rIdx) => (
-                    <div key={rIdx} className="flex items-center justify-center gap-3">
+                    <div key={rIdx} className="flex items-center justify-center gap-2 sm:gap-3">
                       {row.map((pos) => {
                         const score = getPositionScore(pos.code);
                         return (
@@ -1303,7 +1383,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
               </div>
 
               <div className="space-y-3">
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2.5">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 sm:p-4 space-y-2.5">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-400">
                     Top In-Possession (IP) Roles
                   </h4>
@@ -1311,11 +1391,11 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     {analysis.topIpRoles.map((r) => (
                       <div
                         key={r.role.name}
-                        className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs"
+                        className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs"
                       >
-                        <span className="font-medium text-slate-200">{r.role.name}</span>
+                        <span className="font-medium text-slate-200 min-w-0 truncate">{r.role.name}</span>
                         <span
-                          className={`rounded border px-2 py-0.5 text-[10px] font-mono font-semibold ${tierBadgeClass(
+                          className={`rounded border px-2 py-0.5 text-[10px] font-mono font-semibold shrink-0 ${tierBadgeClass(
                             r.tier
                           )}`}
                         >
@@ -1326,7 +1406,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2.5">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 sm:p-4 space-y-2.5">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-sky-400">
                     Top Out-of-Possession (OOP) Roles
                   </h4>
@@ -1334,11 +1414,11 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     {analysis.topOopRoles.map((r) => (
                       <div
                         key={r.role.name}
-                        className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs"
+                        className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs"
                       >
-                        <span className="font-medium text-slate-200">{r.role.name}</span>
+                        <span className="font-medium text-slate-200 min-w-0 truncate">{r.role.name}</span>
                         <span
-                          className={`rounded border px-2 py-0.5 text-[10px] font-mono font-semibold ${tierBadgeClass(
+                          className={`rounded border px-2 py-0.5 text-[10px] font-mono font-semibold shrink-0 ${tierBadgeClass(
                             r.tier
                           )}`}
                         >
@@ -1349,7 +1429,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 sm:p-4">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
                     Scout &amp; Tactical Notes
                   </h4>
@@ -1363,18 +1443,18 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
 
           {/* TAB 4: ENGINE & CHARTS */}
           {activeTab === 'metrics' && (
-            <div className="space-y-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-1">
-                  <div className="flex items-center justify-between gap-2">
+            <div className="space-y-4 sm:space-y-5">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 sm:p-4 space-y-1 min-w-0">
+                  <div className="flex flex-wrap items-center justify-between gap-1">
                     <span className="text-[10px] uppercase tracking-wider text-slate-400">
-                      FM27 Physical Score
+                      Physical
                     </span>
-                    <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">
+                    <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-semibold text-emerald-300">
                       {analysis.physical.tier}
                     </span>
                   </div>
-                  <div className="text-2xl font-bold text-emerald-400 font-mono">
+                  <div className="text-xl sm:text-2xl font-bold text-emerald-400 font-mono tabular-nums">
                     {analysis.physical.score}/100
                   </div>
                   <div className="text-[11px] text-slate-400 leading-snug">
@@ -1382,14 +1462,14 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-1">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 sm:p-4 space-y-1 min-w-0">
                   <div className="text-[10px] uppercase tracking-wider text-slate-400">
                     Top Sprint Speed
                   </div>
-                  <div className="text-2xl font-bold text-sky-300 font-mono">
-                    {analysis.physical.topSpeedKmh} <span className="text-sm font-normal">km/h</span>
+                  <div className="text-xl sm:text-2xl font-bold text-sky-300 font-mono tabular-nums">
+                    {analysis.physical.topSpeedKmh} <span className="text-xs sm:text-sm font-normal">km/h</span>
                   </div>
-                  <div className="text-[11px] text-slate-300">
+                  <div className="text-[11px] text-slate-300 leading-snug">
                     {analysis.physical.speedVerdict}
                   </div>
                   <div className="text-[10px] text-slate-500 font-mono">
@@ -1397,48 +1477,48 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-1">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 sm:p-4 space-y-1 min-w-0">
                   <div className="text-[10px] uppercase tracking-wider text-slate-400">
                     Aerial Reach
                   </div>
-                  <div className="text-2xl font-bold text-amber-300 font-mono">
+                  <div className="text-xl sm:text-2xl font-bold text-amber-300 font-mono tabular-nums">
                     +{analysis.physical.jumpHeightMeters} m
                   </div>
                   <div className="text-[11px] text-slate-300 leading-snug">
                     {analysis.physical.aerialVerdict}
                   </div>
                   <div className="text-[10px] text-slate-500 font-mono">
-                    Jumping {a.jumpingReach}/20 · Heading {a.heading ?? '—'}/20
+                    Jump {a.jumpingReach}/20 · Head {a.heading ?? '—'}/20
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-1">
-                  <div className="flex items-center justify-between gap-2">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 sm:p-4 space-y-1 min-w-0">
+                  <div className="flex flex-wrap items-center justify-between gap-1">
                     <span className="text-[10px] uppercase tracking-wider text-slate-400">
-                      Durability &amp; Load
+                      Durability
                     </span>
                     <span
-                      className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${durabilityBadgeClass}`}
+                      className={`rounded border px-1.5 py-0.5 text-[9px] sm:text-[10px] font-semibold ${durabilityBadgeClass}`}
                     >
                       {analysis.physical.durability.tier}
                     </span>
                   </div>
-                  <div className="text-2xl font-bold text-slate-100 font-mono">
+                  <div className="text-xl sm:text-2xl font-bold text-slate-100 font-mono tabular-nums">
                     {analysis.physical.durability.stamina}
-                    <span className="text-sm font-normal text-slate-400"> / </span>
+                    <span className="text-xs sm:text-sm font-normal text-slate-400"> / </span>
                     {analysis.physical.durability.naturalFitness ?? '—'}
                   </div>
                   <div className="text-[11px] text-slate-300 leading-snug">
                     {analysis.physical.durability.headline}
                   </div>
                   <div className="text-[10px] text-slate-500">
-                    Stamina / Natural Fitness (out of 20)
+                    Stamina / Natural Fitness
                   </div>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 flex items-center justify-center">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 sm:p-4 flex items-center justify-center min-w-0">
                   <RolePercentilePizzaChart
                     player={player}
                     squadPlayers={squadPlayers}
@@ -1447,7 +1527,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     highlightedPrimaryKeys={highlightedKeys.keySet}
                   />
                 </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 flex flex-col items-center justify-center space-y-2">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 sm:p-4 flex flex-col items-center justify-center space-y-2 min-w-0">
                   <div className="w-full flex flex-wrap items-center justify-between gap-2">
                     <div className="text-xs font-bold text-slate-200">
                       6-Axis Comparison Radar
@@ -1457,7 +1537,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                         value={comparePlayerId}
                         onChange={(e) => setComparePlayerId(e.target.value)}
                         aria-label="Compare with teammate"
-                        className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] text-slate-200 max-w-[190px]"
+                        className="w-full sm:w-auto sm:max-w-[210px] min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1 text-[11px] text-slate-200"
                       >
                         {analysis.squadDepth?.bestTeammate && (
                           <option value="__AUTO__">
@@ -1536,43 +1616,43 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     </p>
                   ) : (
                     <>
-                      <div className="flex justify-between">
+                      <div className="flex items-baseline justify-between gap-2">
                         <span className="text-slate-400">Apps / Minutes:</span>
-                        <span className="font-mono text-slate-200">
+                        <span className="font-mono text-slate-200 text-right shrink-0 tabular-nums">
                           {player.apps} ({player.minutes}m)
                         </span>
                       </div>
-                      <div className="flex justify-between">
+                      <div className="flex items-baseline justify-between gap-2">
                         <span className="text-slate-400">Avg Rating:</span>
-                        <span className="font-mono text-emerald-300 font-semibold">
+                        <span className="font-mono text-emerald-300 font-semibold text-right shrink-0 tabular-nums">
                           {player.rating !== null && player.rating > 0
                             ? player.rating.toFixed(2)
                             : '—'}
                         </span>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-400">Goals (xG / per 90):</span>
-                        <span className="font-mono text-slate-200">
-                          {player.goals} ({player.xG.toFixed(2)} xG · {player.xGPer90.toFixed(2)}/90)
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-slate-400">Goals (xG / 90):</span>
+                        <span className="font-mono text-slate-200 text-right shrink-0 tabular-nums">
+                          {player.goals} ({player.xG.toFixed(2)} · {player.xGPer90.toFixed(2)}/90)
                         </span>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-400">Assists (xA / per 90):</span>
-                        <span className="font-mono text-slate-200">
-                          {player.assists} ({player.xA.toFixed(2)} xA · {player.xAPer90.toFixed(2)}/90)
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-slate-400">Assists (xA / 90):</span>
+                        <span className="font-mono text-slate-200 text-right shrink-0 tabular-nums">
+                          {player.assists} ({player.xA.toFixed(2)} · {player.xAPer90.toFixed(2)}/90)
                         </span>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-400">Dribbles / Prog. Passes / Int (per 90):</span>
-                        <span className="font-mono text-slate-200">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-slate-400">Drb / Prog.P / Int (/90):</span>
+                        <span className="font-mono text-slate-200 text-right shrink-0 tabular-nums">
                           {player.drbPer90 > 0 ? player.drbPer90.toFixed(2) : '—'} /{' '}
                           {player.prPassesPer90 > 0 ? player.prPassesPer90.toFixed(2) : '—'} /{' '}
                           {player.intPer90 > 0 ? player.intPer90.toFixed(2) : '—'}
                         </span>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-400">Tackling / Aerial Win %:</span>
-                        <span className="font-mono text-slate-200">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-slate-400">Tackling / Aerial %:</span>
+                        <span className="font-mono text-slate-200 text-right shrink-0 tabular-nums">
                           {player.tckPct > 0 ? `${player.tckPct}%` : '—'} /{' '}
                           {player.hdrPct > 0 ? `${player.hdrPct}%` : '—'}
                         </span>
@@ -1596,26 +1676,26 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                   <h4 className="font-bold uppercase tracking-wider text-slate-400 mb-2">
                     Contract &amp; Squad Standing
                   </h4>
-                  <div className="flex justify-between">
+                  <div className="flex items-baseline justify-between gap-2">
                     <span className="text-slate-400">Hub Squad Role:</span>
-                    <span className="font-semibold text-slate-200">{player.status}</span>
+                    <span className="font-semibold text-slate-200 text-right">{player.status}</span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex items-baseline justify-between gap-2">
                     <span className="text-slate-400">Contract Promise:</span>
-                    <span className="font-semibold text-indigo-300">
+                    <span className="font-semibold text-indigo-300 text-right">
                       {analysis.contractStanding.promisedPlayingTime || 'Not recorded'}
                     </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Weekly / Annual Wage:</span>
-                    <span className="font-mono text-slate-200">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-slate-400">Weekly / Annual:</span>
+                    <span className="font-mono text-slate-200 text-right tabular-nums">
                       £{player.wagePw.toLocaleString()}/wk (£
                       {analysis.contractStanding.annualWage.toLocaleString()}/yr)
                     </span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex items-baseline justify-between gap-2">
                     <span className="text-slate-400">Contract Expires:</span>
-                    <span className="font-mono text-amber-300">
+                    <span className="font-mono text-amber-300 text-right tabular-nums">
                       {player.expires}
                       {analysis.contractStanding.monthsRemaining !== null
                         ? ` (${analysis.contractStanding.monthsRemaining}m left)`
@@ -1623,9 +1703,9 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     </span>
                   </div>
                   {typeof player.marketValue === 'number' && player.marketValue >= 0 && (
-                    <div className="flex justify-between">
+                    <div className="flex items-baseline justify-between gap-2">
                       <span className="text-slate-400">Market Value:</span>
-                      <span className="font-mono text-emerald-300">
+                      <span className="font-mono text-emerald-300 text-right tabular-nums">
                         {player.marketValueCapped || player.marketValueState === 'capped'
                           ? 'Not for sale (£300m cap)'
                           : player.marketValue > 0
@@ -1634,10 +1714,10 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                       </span>
                     </div>
                   )}
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Relative Ability / Potential:</span>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-slate-400">Ability / Potential:</span>
                     <span
-                      className="font-mono text-amber-300"
+                      className="font-mono text-amber-300 text-right tabular-nums"
                       title={
                         player.potentialUncertain
                           ? 'Potential is stored as a dynamic youth range in this FM27 save rather than a fixed ceiling.'
@@ -1765,11 +1845,36 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
 
               {/* Career Season History */}
               {seasonHistory.length > 0 && (
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 sm:p-4 space-y-2">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
                     Career Season History ({seasonHistory.length} Seasons)
                   </h4>
-                  <div className="overflow-x-auto">
+                  {/* Mobile cards (< sm) — zero horizontal scrolling at 360px */}
+                  <div className="space-y-1.5 sm:hidden">
+                    {seasonHistory.map((h, i) => (
+                      <div
+                        key={`m-${h.season}-${h.club}-${i}`}
+                        className="rounded-lg border border-slate-800/80 bg-slate-900/60 px-3 py-2 flex items-center justify-between gap-2 text-xs"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-mono font-semibold text-white">
+                            {h.season}{' '}
+                            <span className="font-sans font-normal text-slate-300">
+                              · {h.club}
+                            </span>
+                          </div>
+                          <div className="text-[11px] font-mono text-slate-400 tabular-nums">
+                            {h.apps} apps · {h.goals}G · {h.assists}A
+                          </div>
+                        </div>
+                        <span className="rounded-md bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 font-mono font-bold text-emerald-300 tabular-nums shrink-0">
+                          {h.avgRating.toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Desktop table (sm:+) */}
+                  <div className="hidden sm:block overflow-x-auto">
                     <table className="w-full text-xs text-left text-slate-300">
                       <thead className="bg-slate-900/90 text-[10px] uppercase text-slate-400">
                         <tr>

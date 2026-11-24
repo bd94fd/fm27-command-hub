@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { MatchLogEntry, PlayerRecord } from '../types/fm27';
 import type { LastMatchTacticBlueprint, SquadPlannerSlot } from '../types/fmSave';
 import type { PercentilePizzaSlice } from '../utils/cardIntelligenceEngine';
@@ -22,6 +23,22 @@ import {
   matchesEntryCompetitionFilter,
   parseScoreGoals,
 } from '../utils/matchScopeHelpers';
+import {
+  buildXgMomentumRankedRows,
+  classifyScatterQuadrant,
+  describeMatchXgVerdict,
+  getPaddedRadialViewBox,
+  getResponsiveChartBox,
+  rankAgeValuePlayers,
+  rankScatterExplorerPlayers,
+  resolveTouchTooltipSelection,
+  type ChartViewMode,
+  type ScatterExplorerPresetKey,
+} from '../utils/mobileChartHelpers';
+import {
+  ChartRankedListToggle,
+  useCompactChartViewport,
+} from './ChartRankedListToggle';
 
 export interface DynamicScatterScale {
   metric: 'marketValue' | 'wagePw';
@@ -131,11 +148,15 @@ export const AttributeRadarChart: React.FC<AttributeRadarChartProps> = ({
   comparePlayer = null,
   size = 280,
 }) => {
+  const [pinnedAxisKey, setPinnedAxisKey] = useState<string | null>(null);
+  const [hoveredAxisKey, setHoveredAxisKey] = useState<string | null>(null);
+
   const axes = isGkPlayer(player) ? GK_AXES : OUTFIELD_AXES;
   const cx = size / 2;
   const cy = size / 2;
   const radius = size * 0.34;
   const rings = [5, 10, 15, 20];
+  const radialBox = getPaddedRadialViewBox(size, 30);
 
   const getPoint = (axisIndex: number, value: number): [number, number] => {
     const angle = (Math.PI * 2 * axisIndex) / axes.length - Math.PI / 2;
@@ -155,16 +176,16 @@ export const AttributeRadarChart: React.FC<AttributeRadarChartProps> = ({
 
   const primaryPoints = toPolygon(player);
   const comparePoints = comparePlayer ? toPolygon(comparePlayer) : null;
+  const activeAxisKey = resolveTouchTooltipSelection(pinnedAxisKey, hoveredAxisKey);
+  const activeAxis = axes.find((a) => a.key === activeAxisKey) ?? null;
 
   return (
-    <div className="flex flex-col items-center">
+    <div className="flex flex-col items-center w-full min-w-0">
       <svg
-        width={size}
-        height={size}
-        viewBox={`0 0 ${size} ${size}`}
+        viewBox={radialBox.viewBox}
         role="img"
         aria-label={`Attribute radar for ${player.name}${comparePlayer ? ` vs ${comparePlayer.name}` : ''}`}
-        className="overflow-visible"
+        className="w-full max-w-[300px] h-auto select-none"
       >
         {/* Concentric grid polygons */}
         {rings.map((ringVal) => {
@@ -186,39 +207,53 @@ export const AttributeRadarChart: React.FC<AttributeRadarChartProps> = ({
           );
         })}
 
-        {/* Axis spokes & labels */}
+        {/* Axis spokes & tappable labels */}
         {axes.map((ax, idx) => {
           const [xEnd, yEnd] = getPoint(idx, 20);
           const angle = (Math.PI * 2 * idx) / axes.length - Math.PI / 2;
-          const lx = cx + (radius + 22) * Math.cos(angle);
-          const ly = cy + (radius + 20) * Math.sin(angle);
+          const lx = cx + (radius + 23) * Math.cos(angle);
+          const ly = cy + (radius + 21) * Math.sin(angle);
           const pVal = Number(player.attributes?.[ax.key] ?? 10);
+          const isSelected = activeAxisKey === ax.key;
           return (
-            <g key={ax.key}>
+            <g
+              key={ax.key}
+              onMouseEnter={() => setHoveredAxisKey(ax.key)}
+              onMouseLeave={() =>
+                setHoveredAxisKey((curr) => (curr === ax.key ? null : curr))
+              }
+              onClick={() =>
+                setPinnedAxisKey((curr) => (curr === ax.key ? null : ax.key))
+              }
+              className="cursor-pointer"
+            >
               <line
                 x1={cx}
                 y1={cy}
                 x2={xEnd}
                 y2={yEnd}
                 stroke="currentColor"
-                strokeWidth={0.75}
-                className="text-slate-700/70"
+                strokeWidth={isSelected ? 1.4 : 0.75}
+                className={isSelected ? 'text-emerald-400/80' : 'text-slate-700/70'}
               />
+              <circle cx={lx} cy={ly + 4} r={20} fill="transparent" />
               <text
                 x={lx}
                 y={ly}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                className="fill-slate-300 text-[10px] font-semibold"
+                className={`text-[10.5px] font-semibold ${
+                  isSelected ? 'fill-white' : 'fill-slate-300'
+                }`}
               >
                 {ax.label}
               </text>
               <text
                 x={lx}
-                y={ly + 11}
+                y={ly + 12}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                className="fill-emerald-400 text-[9px] font-mono"
+                className="fill-emerald-400 text-[9.5px] font-mono tabular-nums"
               >
                 {pVal}
                 {comparePlayer
@@ -247,19 +282,32 @@ export const AttributeRadarChart: React.FC<AttributeRadarChartProps> = ({
           strokeWidth={2}
         />
 
-        {/* Vertex dots */}
+        {/* Vertex dots with generous touch hit areas */}
         {axes.map((ax, idx) => {
           const [x, y] = getPoint(idx, Number(player.attributes?.[ax.key] ?? 10));
+          const isSelected = activeAxisKey === ax.key;
           return (
-            <circle
+            <g
               key={`dot-p1-${ax.key}`}
-              cx={x}
-              cy={y}
-              r={3}
-              fill="#34d399"
-              stroke="#022c22"
-              strokeWidth={1}
-            />
+              onMouseEnter={() => setHoveredAxisKey(ax.key)}
+              onMouseLeave={() =>
+                setHoveredAxisKey((curr) => (curr === ax.key ? null : curr))
+              }
+              onClick={() =>
+                setPinnedAxisKey((curr) => (curr === ax.key ? null : ax.key))
+              }
+              className="cursor-pointer"
+            >
+              <circle cx={x} cy={y} r={14} fill="transparent" />
+              <circle
+                cx={x}
+                cy={y}
+                r={isSelected ? 4.8 : 3.2}
+                fill="#34d399"
+                stroke={isSelected ? '#ffffff' : '#022c22'}
+                strokeWidth={isSelected ? 1.5 : 1}
+              />
+            </g>
           );
         })}
         {comparePlayer &&
@@ -268,32 +316,67 @@ export const AttributeRadarChart: React.FC<AttributeRadarChartProps> = ({
               idx,
               Number(comparePlayer.attributes?.[ax.key] ?? 10)
             );
+            const isSelected = activeAxisKey === ax.key;
             return (
               <circle
                 key={`dot-p2-${ax.key}`}
                 cx={x}
                 cy={y}
-                r={3}
+                r={isSelected ? 4.2 : 3}
                 fill="#38bdf8"
-                stroke="#082f49"
+                stroke={isSelected ? '#ffffff' : '#082f49'}
                 strokeWidth={1}
               />
             );
           })}
       </svg>
 
-      <div className="mt-2 flex flex-wrap items-center justify-center gap-4 text-[11px]">
-        <span className="inline-flex items-center gap-1.5 text-emerald-300 font-semibold">
-          <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-          {player.name} ({player.position})
-        </span>
-        {comparePlayer && (
-          <span className="inline-flex items-center gap-1.5 text-sky-300 font-semibold">
-            <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
-            {comparePlayer.name} ({comparePlayer.position})
+      {activeAxis ? (() => {
+        const p1Val = Number(player.attributes?.[activeAxis.key] ?? 10);
+        const p2Val = comparePlayer
+          ? Number(comparePlayer.attributes?.[activeAxis.key] ?? 10)
+          : null;
+        const delta = p2Val !== null ? p1Val - p2Val : null;
+        return (
+          <div className="mt-2 w-full rounded-lg border border-emerald-500/30 bg-slate-950/85 px-3 py-2 text-[11px] flex flex-wrap items-center justify-between gap-2">
+            <span className="font-semibold text-white">{activeAxis.label}</span>
+            <span className="font-mono tabular-nums text-emerald-300">
+              {p1Val}/20
+              {p2Val !== null && (
+                <>
+                  {' '}
+                  <span className="text-slate-400">vs</span>{' '}
+                  <span className="text-sky-300">{p2Val}/20</span>{' '}
+                  <span
+                    className={
+                      delta !== null && delta > 0
+                        ? 'text-emerald-400'
+                        : delta !== null && delta < 0
+                          ? 'text-rose-400'
+                          : 'text-slate-400'
+                    }
+                  >
+                    ({delta !== null && delta > 0 ? `+${delta}` : delta})
+                  </span>
+                </>
+              )}
+            </span>
+          </div>
+        );
+      })() : (
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-3 text-[11px]">
+          <span className="inline-flex items-center gap-1.5 text-emerald-300 font-semibold">
+            <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+            {player.name} ({player.position})
           </span>
-        )}
-      </div>
+          {comparePlayer && (
+            <span className="inline-flex items-center gap-1.5 text-sky-300 font-semibold">
+              <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
+              {comparePlayer.name} ({comparePlayer.position})
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -322,7 +405,10 @@ export const SquadAgeValueScatterPlot: React.FC<SquadAgeValueScatterPlotProps> =
   selectedPlayerId = null,
   onSelectPlayer,
 }) => {
+  const isMobile = useCompactChartViewport();
+  const [viewMode, setViewMode] = useState<ChartViewMode>('chart');
   const [hovered, setHovered] = useState<PlayerRecord | null>(null);
+  const [pinned, setPinned] = useState<PlayerRecord | null>(null);
   const [xMetric, setXMetric] = useState<ScatterXMetric>('age');
   const [yMetric, setYMetric] = useState<ScatterYMetric>('auto');
   const [posGroup, setPosGroup] = useState<PositionGroupFilter>('ALL');
@@ -337,14 +423,8 @@ export const SquadAgeValueScatterPlot: React.FC<SquadAgeValueScatterPlotProps> =
     [filteredPlayers, players]
   );
 
-  const width = 520;
-  const height = 270;
-  const padLeft = 64;
-  const padRight = 20;
-  const padTop = 20;
-  const padBottom = 38;
-  const plotW = width - padLeft - padRight;
-  const plotH = height - padTop - padBottom;
+  const box = getResponsiveChartBox('scatter', isMobile);
+  const { width, height, padL: padLeft, padR: padRight, padT: padTop, plotW, plotH } = box;
 
   const getXVal = (p: PlayerRecord): number => {
     if (xMetric === 'age') return p.age || 22;
@@ -415,22 +495,28 @@ export const SquadAgeValueScatterPlot: React.FC<SquadAgeValueScatterPlotProps> =
   const peakX1 = mapX(Math.max(minX, 23));
   const peakX2 = mapX(Math.min(maxX, 28));
 
+  const activePlayer = resolveTouchTooltipSelection(
+    pinned && filteredPlayers.some((p) => p.id === pinned.id) ? pinned : null,
+    hovered
+  );
+
+  const rankedRows = useMemo(
+    () => rankAgeValuePlayers(filteredPlayers, getXVal, getYVal),
+    [filteredPlayers, xMetric, yMetric, scale.metric]
+  );
+
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-2.5 min-w-0">
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
         <span className="font-semibold text-slate-200">
           {xLabel} vs {yLabel} ({filteredPlayers.length} players)
         </span>
-        {hovered ? (
-          <span className="font-mono text-[11px] text-emerald-300">
-            {hovered.name} · {xLabel} {getXVal(hovered)} · {formatY(getYVal(hovered))} ·{' '}
-            {hovered.ability.toFixed(1)}★
-          </span>
-        ) : (
-          <span className="text-[11px] text-slate-400">
-            Tap any dot to inspect player profile
-          </span>
-        )}
+        <ChartRankedListToggle
+          mode={viewMode}
+          onChange={setViewMode}
+          ariaLabel="Switch squad scatter between chart and ranked list"
+          count={filteredPlayers.length}
+        />
       </div>
 
       {/* Compact X/Y controls + Position filter chips */}
@@ -441,7 +527,7 @@ export const SquadAgeValueScatterPlot: React.FC<SquadAgeValueScatterPlotProps> =
               key={grp}
               type="button"
               onClick={() => setPosGroup(grp)}
-              className={`min-h-[32px] px-2.5 rounded-lg text-[11px] font-semibold border transition-colors ${
+              className={`min-h-[40px] sm:min-h-[32px] px-2.5 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${
                 posGroup === grp
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                   : 'bg-slate-900/70 text-slate-400 border-slate-800 hover:text-slate-200'
@@ -451,13 +537,13 @@ export const SquadAgeValueScatterPlot: React.FC<SquadAgeValueScatterPlotProps> =
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-1.5 text-[11px]">
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
           <label className="inline-flex items-center gap-1 text-slate-400">
             X:
             <select
               value={xMetric}
               onChange={(e) => setXMetric(e.target.value as ScatterXMetric)}
-              className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-slate-200 text-[11px]"
+              className="min-h-[40px] sm:min-h-[32px] rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-slate-200 text-[11px]"
             >
               <option value="age">Age</option>
               <option value="pace">Pace</option>
@@ -471,7 +557,7 @@ export const SquadAgeValueScatterPlot: React.FC<SquadAgeValueScatterPlotProps> =
             <select
               value={yMetric}
               onChange={(e) => setYMetric(e.target.value as ScatterYMetric)}
-              className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-slate-200 text-[11px]"
+              className="min-h-[40px] sm:min-h-[32px] rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-slate-200 text-[11px]"
             >
               <option value="auto">{scale.metricLabel}</option>
               <option value="ability">Ability ★</option>
@@ -482,137 +568,212 @@ export const SquadAgeValueScatterPlot: React.FC<SquadAgeValueScatterPlotProps> =
         </div>
       </div>
 
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        role="img"
-        aria-label={`Squad ${xLabel} vs ${yLabel} scatter plot`}
-        className="w-full h-auto rounded-lg bg-slate-950/60 border border-slate-800"
-      >
-        {/* Peak-age shading (23–28) */}
-        {xMetric === 'age' && (
-          <>
-            <rect
-              x={peakX1}
-              y={padTop}
-              width={Math.max(0, peakX2 - peakX1)}
-              height={plotH}
-              fill="rgba(16, 185, 129, 0.06)"
-            />
-            <text
-              x={(peakX1 + peakX2) / 2}
-              y={padTop + 12}
-              textAnchor="middle"
-              className="fill-emerald-500/70 text-[9px] font-semibold"
-            >
-              Peak Years (23–28)
-            </text>
-          </>
-        )}
-
-        {/* Horizontal gridlines + dynamic Y ticks */}
-        {yTicks.map((tick) => {
-          const y = mapY(tick);
-          return (
-            <g key={`y-${tick}`}>
-              <line
-                x1={padLeft}
-                y1={y}
-                x2={width - padRight}
-                y2={y}
-                stroke="currentColor"
-                strokeWidth={0.75}
-                className="text-slate-800"
-              />
-              <text
-                x={padLeft - 8}
-                y={y + 3}
-                textAnchor="end"
-                className="fill-slate-400 text-[9px] font-mono"
-              >
-                {formatY(tick)}
-              </text>
-            </g>
-          );
-        })}
-
-        {/* Vertical X ticks */}
-        {xTicks.map((tickVal) => {
-          const x = mapX(tickVal);
-          return (
-            <g key={`x-${tickVal}`}>
-              <line
-                x1={x}
-                y1={padTop}
-                x2={x}
-                y2={padTop + plotH}
-                stroke="currentColor"
-                strokeDasharray="2 3"
-                strokeWidth={0.6}
-                className="text-slate-800"
-              />
-              <text
-                x={x}
-                y={height - 14}
-                textAnchor="middle"
-                className="fill-slate-400 text-[9px] font-mono"
-              >
-                {xMetric === 'age' ? `${tickVal}y` : tickVal}
-              </text>
-            </g>
-          );
-        })}
-
-        {/* Player scatter dots */}
-        {filteredPlayers.map((p) => {
-          const x = mapX(getXVal(p));
-          const y = mapY(getYVal(p));
-          const isBanned =
-            Array.isArray(p.activeSuspensions) && p.activeSuspensions.length > 0;
-          const isSelected = p.id === selectedPlayerId || hovered?.id === p.id;
-          const fill = isBanned
-            ? '#f43f5e'
-            : p.age <= 21
-              ? '#38bdf8'
-              : p.age >= 30
-                ? '#f59e0b'
-                : '#10b981';
-
-          return (
-            <g
+      {viewMode === 'list' ? (
+        <div className="space-y-1.5 max-h-[380px] overflow-y-auto pr-0.5">
+          {rankedRows.map(({ rank, player: p, xVal, yVal }) => (
+            <button
               key={p.id}
-              onMouseEnter={() => setHovered(p)}
-              onMouseLeave={() => setHovered((curr) => (curr?.id === p.id ? null : curr))}
+              type="button"
               onClick={() => onSelectPlayer?.(p)}
-              className="cursor-pointer"
+              className="w-full min-h-[48px] text-left rounded-xl border border-slate-800 bg-slate-950/70 hover:border-emerald-500/40 px-3 py-2 flex items-center justify-between gap-2 transition cursor-pointer"
             >
-              <circle
-                cx={x}
-                cy={y}
-                r={isSelected ? 6.5 : 4.5}
-                fill={fill}
-                fillOpacity={isSelected ? 0.95 : 0.78}
-                stroke={isSelected ? '#ffffff' : '#0f172a'}
-                strokeWidth={isSelected ? 1.8 : 1}
-              />
-            </g>
-          );
-        })}
-      </svg>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-6 font-mono text-[11px] font-bold text-slate-500 shrink-0">
+                  #{rank}
+                </span>
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-white truncate">
+                    {p.name}
+                  </div>
+                  <div className="text-[10px] text-slate-400 font-mono">
+                    {p.position} · {p.ability.toFixed(1)}★ · {xLabel}:{' '}
+                    {xMetric === 'age' ? `${xVal}y` : xVal}
+                  </div>
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="text-xs font-mono font-bold text-emerald-300 tabular-nums">
+                  {formatY(yVal)}
+                </div>
+                <div className="text-[10px] text-slate-500">{yLabel}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <>
+          <svg
+            viewBox={`0 0 ${width} ${height}`}
+            role="img"
+            aria-label={`Squad ${xLabel} vs ${yLabel} scatter plot`}
+            className="w-full h-auto rounded-lg bg-slate-950/60 border border-slate-800 select-none"
+          >
+            {/* Peak-age shading (23–28) */}
+            {xMetric === 'age' && (
+              <>
+                <rect
+                  x={peakX1}
+                  y={padTop}
+                  width={Math.max(0, peakX2 - peakX1)}
+                  height={plotH}
+                  fill="rgba(16, 185, 129, 0.06)"
+                />
+                <text
+                  x={(peakX1 + peakX2) / 2}
+                  y={padTop + 12}
+                  textAnchor="middle"
+                  className={`fill-emerald-500/75 font-semibold ${box.labelFontClass}`}
+                >
+                  Peak (23–28)
+                </text>
+              </>
+            )}
 
-      <div className="flex flex-wrap items-center gap-4 text-[10px] text-slate-400">
-        <span className="inline-flex items-center gap-1">
-          <span className="h-2 w-2 rounded-full bg-sky-400" /> U21 Prospect
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="h-2 w-2 rounded-full bg-emerald-400" /> Prime (22–29)
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="h-2 w-2 rounded-full bg-amber-400" /> Senior (30+)
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="h-2 w-2 rounded-full bg-rose-500" /> Suspended
-        </span>
-      </div>
+            {/* Horizontal gridlines + dynamic Y ticks */}
+            {yTicks.map((tick) => {
+              const y = mapY(tick);
+              return (
+                <g key={`y-${tick}`}>
+                  <line
+                    x1={padLeft}
+                    y1={y}
+                    x2={width - padRight}
+                    y2={y}
+                    stroke="currentColor"
+                    strokeWidth={0.75}
+                    className="text-slate-800"
+                  />
+                  <text
+                    x={padLeft - 7}
+                    y={y + 3}
+                    textAnchor="end"
+                    className={`fill-slate-400 font-mono tabular-nums ${box.axisFontClass}`}
+                  >
+                    {formatY(tick)}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* Vertical X ticks */}
+            {xTicks.map((tickVal) => {
+              const x = mapX(tickVal);
+              return (
+                <g key={`x-${tickVal}`}>
+                  <line
+                    x1={x}
+                    y1={padTop}
+                    x2={x}
+                    y2={padTop + plotH}
+                    stroke="currentColor"
+                    strokeDasharray="2 3"
+                    strokeWidth={0.6}
+                    className="text-slate-800"
+                  />
+                  <text
+                    x={x}
+                    y={height - 12}
+                    textAnchor="middle"
+                    className={`fill-slate-400 font-mono tabular-nums ${box.axisFontClass}`}
+                  >
+                    {xMetric === 'age' ? `${tickVal}y` : tickVal}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* Player scatter dots with touch hit targets */}
+            {filteredPlayers.map((p) => {
+              const x = mapX(getXVal(p));
+              const y = mapY(getYVal(p));
+              const isBanned =
+                Array.isArray(p.activeSuspensions) && p.activeSuspensions.length > 0;
+              const isSelected =
+                p.id === selectedPlayerId || activePlayer?.id === p.id;
+              const fill = isBanned
+                ? '#f43f5e'
+                : p.age <= 21
+                  ? '#38bdf8'
+                  : p.age >= 30
+                    ? '#f59e0b'
+                    : '#10b981';
+
+              return (
+                <g
+                  key={p.id}
+                  onMouseEnter={() => setHovered(p)}
+                  onMouseLeave={() => setHovered((curr) => (curr?.id === p.id ? null : curr))}
+                  onClick={() => {
+                    if (pinned?.id === p.id) {
+                      onSelectPlayer?.(p);
+                    } else {
+                      setPinned(p);
+                    }
+                  }}
+                  className="cursor-pointer"
+                >
+                  <circle cx={x} cy={y} r={box.hitRadius} fill="transparent" />
+                  <circle
+                    cx={x}
+                    cy={y}
+                    r={isSelected ? box.selectedDotRadius : box.dotRadius}
+                    fill={fill}
+                    fillOpacity={isSelected ? 0.96 : 0.8}
+                    stroke={isSelected ? '#ffffff' : '#0f172a'}
+                    strokeWidth={isSelected ? 2 : 1}
+                  />
+                </g>
+              );
+            })}
+          </svg>
+
+          {/* Docked tap-to-inspect strip */}
+          {activePlayer ? (
+            <div className="rounded-xl border border-emerald-500/35 bg-slate-950/90 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="min-w-0">
+                <div className="font-semibold text-white truncate">
+                  {activePlayer.name}{' '}
+                  <span className="font-mono text-[11px] text-emerald-300">
+                    ({activePlayer.position})
+                  </span>
+                </div>
+                <div className="text-[11px] font-mono text-slate-300 tabular-nums">
+                  {xLabel}: {xMetric === 'age' ? `${getXVal(activePlayer)}y` : getXVal(activePlayer)}{' '}
+                  · {yLabel}: {formatY(getYVal(activePlayer))} · {activePlayer.ability.toFixed(1)}★
+                </div>
+              </div>
+              {onSelectPlayer && (
+                <button
+                  type="button"
+                  onClick={() => onSelectPlayer(activePlayer)}
+                  className="min-h-[40px] sm:min-h-[32px] px-3 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-xs font-semibold text-emerald-300 cursor-pointer shrink-0"
+                >
+                  Open Profile →
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-slate-800/80 bg-slate-950/50 px-3 py-1.5 text-[11px] text-slate-400">
+              Tap any dot to inspect player details, or switch to Ranked List.
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-3 text-[10px] text-slate-400">
+            <span className="inline-flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full bg-sky-400" /> U21 Prospect
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full bg-emerald-400" /> Prime (22–29)
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full bg-amber-400" /> Senior (30+)
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full bg-rose-500" /> Suspended
+            </span>
+          </div>
+        </>
+      )}
     </div>
   );
 };
@@ -760,12 +921,16 @@ export const RolePercentilePizzaChart: React.FC<RolePercentilePizzaChartProps> =
   highlightedPrimaryKeys,
   size = 310,
 }) => {
+  const [pinnedSliceKey, setPinnedSliceKey] = useState<string | null>(null);
+  const [hoveredSliceKey, setHoveredSliceKey] = useState<string | null>(null);
+
   const slices = getPizzaSlicesForPosition(player.position);
   const useSquadBaseline = squadPlayers.length >= 4;
   const cx = size / 2;
   const cy = size / 2;
   const maxR = size * 0.33;
   const sliceAngle = (Math.PI * 2) / slices.length;
+  const radialBox = getPaddedRadialViewBox(size, 32);
 
   const categoryColor = (cat: PizzaSliceDefinition['category']) => {
     if (cat === 'Physical') return { fill: '#10b981', stroke: '#34d399' };
@@ -773,8 +938,14 @@ export const RolePercentilePizzaChart: React.FC<RolePercentilePizzaChartProps> =
     return { fill: '#f59e0b', stroke: '#fbbf24' };
   };
 
+  const activeSliceKey = resolveTouchTooltipSelection(
+    pinnedSliceKey,
+    hoveredSliceKey
+  );
+  const activeSlice = slices.find((s) => String(s.key) === activeSliceKey) ?? null;
+
   return (
-    <div className="flex flex-col items-center space-y-2">
+    <div className="flex flex-col items-center space-y-2 w-full min-w-0">
       <div className="text-center">
         <div className="text-xs font-bold text-slate-200">
           Position Attribute Profile ({player.position})
@@ -794,12 +965,10 @@ export const RolePercentilePizzaChart: React.FC<RolePercentilePizzaChartProps> =
       </div>
 
       <svg
-        width={size}
-        height={size}
-        viewBox={`0 0 ${size} ${size}`}
+        viewBox={radialBox.viewBox}
         role="img"
         aria-label={`Role and attribute percentile pizza chart for ${player.name}`}
-        className="overflow-visible"
+        className="w-full max-w-[300px] h-auto select-none"
       >
         {/* Background full wedges & concentric percentile rings */}
         {[0.25, 0.5, 0.75, 1].map((frac) => (
@@ -829,12 +998,24 @@ export const RolePercentilePizzaChart: React.FC<RolePercentilePizzaChartProps> =
           const colors = categoryColor(slice.category);
           const normKey = String(slice.key).toLowerCase().replace(/[^a-z]/g, '');
           const isRoleKey = highlightedPrimaryKeys?.has(normKey) ?? false;
+          const sliceId = String(slice.key);
+          const isSelected = activeSliceKey === sliceId;
 
           const lx = cx + (maxR + 24) * Math.cos(midAngle);
           const ly = cy + (maxR + 22) * Math.sin(midAngle);
 
           return (
-            <g key={slice.key}>
+            <g
+              key={slice.key}
+              onMouseEnter={() => setHoveredSliceKey(sliceId)}
+              onMouseLeave={() =>
+                setHoveredSliceKey((curr) => (curr === sliceId ? null : curr))
+              }
+              onClick={() =>
+                setPinnedSliceKey((curr) => (curr === sliceId ? null : sliceId))
+              }
+              className="cursor-pointer"
+            >
               <path
                 d={buildWedgePath(cx, cy, maxR, startAngle, endAngle)}
                 fill="rgba(15, 23, 42, 0.45)"
@@ -844,17 +1025,17 @@ export const RolePercentilePizzaChart: React.FC<RolePercentilePizzaChartProps> =
               <path
                 d={buildWedgePath(cx, cy, r, startAngle, endAngle)}
                 fill={colors.fill}
-                fillOpacity={isRoleKey ? 0.85 : 0.62}
-                stroke={isRoleKey ? '#ffffff' : colors.stroke}
-                strokeWidth={isRoleKey ? 1.5 : 0.9}
+                fillOpacity={isSelected ? 0.95 : isRoleKey ? 0.85 : 0.62}
+                stroke={isSelected || isRoleKey ? '#ffffff' : colors.stroke}
+                strokeWidth={isSelected ? 2 : isRoleKey ? 1.5 : 0.9}
               />
               <text
                 x={lx}
                 y={ly - 4}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                className={`text-[9px] font-semibold ${
-                  isRoleKey ? 'fill-white font-bold' : 'fill-slate-300'
+                className={`text-[9.5px] font-semibold ${
+                  isSelected || isRoleKey ? 'fill-white font-bold' : 'fill-slate-300'
                 }`}
               >
                 {slice.label}
@@ -864,7 +1045,7 @@ export const RolePercentilePizzaChart: React.FC<RolePercentilePizzaChartProps> =
                 y={ly + 6}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                className="fill-emerald-300 text-[8.5px] font-mono"
+                className="fill-emerald-300 text-[8.5px] font-mono tabular-nums"
               >
                 {rawVal} ({pct}p)
               </text>
@@ -873,23 +1054,47 @@ export const RolePercentilePizzaChart: React.FC<RolePercentilePizzaChartProps> =
         })}
       </svg>
 
-      <div className="flex flex-wrap items-center justify-center gap-3 text-[10px] text-slate-400">
-        <span className="inline-flex items-center gap-1">
-          <span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" /> Physical
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="h-2.5 w-2.5 rounded-sm bg-sky-500" /> Technical / GK
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="h-2.5 w-2.5 rounded-sm bg-amber-500" /> Mental
-        </span>
-        <span className="inline-flex items-center gap-1 text-slate-300">
-          <span className="h-2.5 w-2.5 rounded-sm border border-white bg-slate-700" /> White rim = Key for Role
-        </span>
-      </div>
-      <p className="text-[10px] text-slate-500 text-center max-w-xs">
-        Longer slice = stronger attribute. E.g. <span className="font-mono text-slate-300">85p</span> means higher than 85% of {useSquadBaseline ? 'your squad' : 'the division baseline'}.
-      </p>
+      {activeSlice ? (() => {
+        const rawVal = Number(player.attributes?.[activeSlice.key] ?? 10);
+        const pct = useSquadBaseline
+          ? computeSquadRelativePercentile(rawVal, activeSlice.key, squadPlayers)
+          : estimateAttributePercentile(rawVal);
+        const normKey = String(activeSlice.key).toLowerCase().replace(/[^a-z]/g, '');
+        const isRoleKey = highlightedPrimaryKeys?.has(normKey) ?? false;
+        return (
+          <div className="w-full rounded-lg border border-emerald-500/30 bg-slate-950/85 px-3 py-2 text-[11px] flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+              <span className="font-semibold text-white">{activeSlice.label}</span>
+              <span className="ml-1.5 text-[10px] text-slate-400">
+                ({activeSlice.category}{isRoleKey ? ' · Key Role Attr' : ''})
+              </span>
+            </div>
+            <span className="font-mono tabular-nums text-emerald-300 shrink-0">
+              {rawVal}/20 · {pct}th pct
+            </span>
+          </div>
+        );
+      })() : (
+        <>
+          <div className="flex flex-wrap items-center justify-center gap-3 text-[10px] text-slate-400">
+            <span className="inline-flex items-center gap-1">
+              <span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" /> Physical
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="h-2.5 w-2.5 rounded-sm bg-sky-500" /> Technical / GK
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="h-2.5 w-2.5 rounded-sm bg-amber-500" /> Mental
+            </span>
+            <span className="inline-flex items-center gap-1 text-slate-300">
+              <span className="h-2.5 w-2.5 rounded-sm border border-white bg-slate-700" /> White rim = Key for Role
+            </span>
+          </div>
+          <p className="text-[10px] text-slate-500 text-center max-w-xs">
+            Tap any slice to inspect. E.g. <span className="font-mono text-slate-300">85p</span> means higher than 85% of {useSquadBaseline ? 'your squad' : 'the division baseline'}.
+          </p>
+        </>
+      )}
     </div>
   );
 };
@@ -906,6 +1111,8 @@ export const MultiPlayerComparisonChart: React.FC<MultiPlayerComparisonChartProp
   size = 280,
 }) => {
   const [mode, setMode] = useState<ComparisonChartMode>(initialMode);
+  const [pinnedAxisKey, setPinnedAxisKey] = useState<string | null>(null);
+  const [hoveredAxisKey, setHoveredAxisKey] = useState<string | null>(null);
   const { players, colors, radarAxes, pizzaSlices, barMetrics } = dataset;
 
   if (players.length === 0) {
@@ -920,6 +1127,7 @@ export const MultiPlayerComparisonChart: React.FC<MultiPlayerComparisonChartProp
   const cy = size / 2;
   const radius = size * 0.34;
   const rings = [5, 10, 15, 20];
+  const radialBox = getPaddedRadialViewBox(size, 28);
 
   const getRadarPoint = (axisIndex: number, value: number, total: number): [number, number] => {
     const angle = (Math.PI * 2 * axisIndex) / total - Math.PI / 2;
@@ -928,9 +1136,12 @@ export const MultiPlayerComparisonChart: React.FC<MultiPlayerComparisonChartProp
     return [cx + Math.cos(angle) * r, cy + Math.sin(angle) * r];
   };
 
+  const activeAxisKey = resolveTouchTooltipSelection(pinnedAxisKey, hoveredAxisKey);
+  const activeAxis = radarAxes.find((a) => a.key === activeAxisKey) ?? null;
+
   return (
-    <div className="space-y-3">
-      {/* Mode switcher — 44px touch targets for Pixel 10 Pro XL */}
+    <div className="space-y-3 min-w-0">
+      {/* Mode switcher — 44px touch targets on mobile */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div
           role="tablist"
@@ -950,7 +1161,7 @@ export const MultiPlayerComparisonChart: React.FC<MultiPlayerComparisonChartProp
               role="tab"
               aria-selected={mode === tab.id}
               onClick={() => setMode(tab.id)}
-              className={`min-h-[40px] px-3.5 rounded-lg text-xs font-semibold transition-colors ${
+              className={`min-h-[44px] sm:min-h-[38px] px-3.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
                 mode === tab.id
                   ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                   : 'text-slate-400 hover:text-slate-200 border border-transparent'
@@ -981,12 +1192,12 @@ export const MultiPlayerComparisonChart: React.FC<MultiPlayerComparisonChartProp
 
       {/* RADAR MODE */}
       {mode === 'radar' && (
-        <div className="flex flex-col items-center">
+        <div className="flex flex-col items-center space-y-2">
           <svg
-            viewBox={`0 0 ${size} ${size}`}
+            viewBox={radialBox.viewBox}
             role="img"
             aria-label={`Multi-player radar comparison for ${players.map((p) => p.name).join(' vs ')}`}
-            className="w-full max-w-[300px] h-auto"
+            className="w-full max-w-[300px] h-auto select-none"
           >
             {rings.map((ring) => {
               const pts = radarAxes
@@ -1004,23 +1215,37 @@ export const MultiPlayerComparisonChart: React.FC<MultiPlayerComparisonChartProp
             })}
             {radarAxes.map((ax, i) => {
               const [x2, y2] = getRadarPoint(i, 20, radarAxes.length);
-              const [lx, ly] = getRadarPoint(i, 24, radarAxes.length);
+              const [lx, ly] = getRadarPoint(i, 24.5, radarAxes.length);
+              const isSelected = activeAxisKey === ax.key;
               return (
-                <g key={ax.key}>
+                <g
+                  key={ax.key}
+                  onMouseEnter={() => setHoveredAxisKey(ax.key)}
+                  onMouseLeave={() =>
+                    setHoveredAxisKey((curr) => (curr === ax.key ? null : curr))
+                  }
+                  onClick={() =>
+                    setPinnedAxisKey((curr) => (curr === ax.key ? null : ax.key))
+                  }
+                  className="cursor-pointer"
+                >
                   <line
                     x1={cx}
                     y1={cy}
                     x2={x2}
                     y2={y2}
-                    stroke="rgba(148, 163, 184, 0.18)"
-                    strokeWidth={0.8}
+                    stroke={isSelected ? '#34d399' : 'rgba(148, 163, 184, 0.18)'}
+                    strokeWidth={isSelected ? 1.4 : 0.8}
                   />
+                  <circle cx={lx} cy={ly} r={18} fill="transparent" />
                   <text
                     x={lx}
                     y={ly}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    className="fill-slate-300 text-[9.5px] font-semibold"
+                    className={`text-[10px] font-semibold ${
+                      isSelected ? 'fill-white' : 'fill-slate-300'
+                    }`}
                   >
                     {ax.label}
                   </text>
@@ -1049,12 +1274,40 @@ export const MultiPlayerComparisonChart: React.FC<MultiPlayerComparisonChartProp
                       ax.values[pIdx] ?? 10,
                       radarAxes.length
                     );
-                    return <circle key={ax.key} cx={x} cy={y} r={3} fill={color} />;
+                    const isSelected = activeAxisKey === ax.key;
+                    return (
+                      <circle
+                        key={ax.key}
+                        cx={x}
+                        cy={y}
+                        r={isSelected ? 4.5 : 3}
+                        fill={color}
+                        stroke={isSelected ? '#ffffff' : 'none'}
+                        strokeWidth={isSelected ? 1.2 : 0}
+                      />
+                    );
                   })}
                 </g>
               );
             })}
           </svg>
+
+          {activeAxis ? (
+            <div className="w-full rounded-lg border border-emerald-500/30 bg-slate-950/85 px-3 py-2 text-[11px] flex flex-wrap items-center justify-between gap-2">
+              <span className="font-semibold text-white">{activeAxis.label}</span>
+              <div className="flex flex-wrap items-center gap-2 font-mono tabular-nums">
+                {players.map((p, idx) => (
+                  <span key={p.id} style={{ color: colors[idx] }}>
+                    {p.name.split(' ').slice(-1)[0]}: {activeAxis.values[idx] ?? 10}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="text-[10px] text-slate-500">
+              Tap any axis label to inspect exact scores side-by-side
+            </div>
+          )}
         </div>
       )}
 
@@ -1165,6 +1418,10 @@ export const PlayerProgressionSparkline: React.FC<PlayerProgressionSparklineProp
   points,
   playerName,
 }) => {
+  const isMobile = useCompactChartViewport();
+  const [pinnedIdx, setPinnedIdx] = useState<number | null>(null);
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+
   if (points.length < 2) {
     return (
       <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3 text-xs text-slate-400">
@@ -1173,12 +1430,8 @@ export const PlayerProgressionSparkline: React.FC<PlayerProgressionSparklineProp
     );
   }
 
-  const width = 360;
-  const height = 110;
-  const padX = 24;
-  const padY = 18;
-  const plotW = width - padX * 2;
-  const plotH = height - padY * 2;
+  const box = getResponsiveChartBox('sparkline', isMobile);
+  const { width, height, padL: padX, padT: padY, plotW, plotH } = box;
 
   const deltas = points.map((p) => p.netDeltaFromStart);
   const minD = Math.min(0, ...deltas);
@@ -1188,13 +1441,19 @@ export const PlayerProgressionSparkline: React.FC<PlayerProgressionSparklineProp
   const coords = points.map((pt, i) => {
     const x = padX + (i / Math.max(1, points.length - 1)) * plotW;
     const y = padY + plotH - ((pt.netDeltaFromStart - minD) / spanD) * plotH;
-    return { x, y, pt };
+    return { x, y, pt, i };
   });
 
   const polyline = coords.map((c) => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ');
   const latest = points[points.length - 1];
   const first = points[0];
-  const deltaSign = latest.netDeltaFromStart > 0 ? '+' : '';
+  const activeIdx = resolveTouchTooltipSelection(
+    pinnedIdx !== null && pinnedIdx < points.length ? pinnedIdx : null,
+    hoveredIdx !== null && hoveredIdx < points.length ? hoveredIdx : null,
+    points.length - 1
+  );
+  const activePoint = activeIdx !== null ? points[activeIdx] : latest;
+  const deltaSign = activePoint.netDeltaFromStart > 0 ? '+' : '';
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-2">
@@ -1202,17 +1461,17 @@ export const PlayerProgressionSparkline: React.FC<PlayerProgressionSparklineProp
         <span className="font-semibold text-slate-200">
           Progression Timeline ({points.length} saves)
         </span>
-        <div className="flex items-center gap-2 font-mono text-[11px]">
+        <div className="flex items-center gap-2 font-mono text-[11px] tabular-nums">
           <span
             className={
-              latest.netDeltaFromStart >= 0 ? 'text-emerald-400' : 'text-rose-400'
+              activePoint.netDeltaFromStart >= 0 ? 'text-emerald-400' : 'text-rose-400'
             }
           >
             {deltaSign}
-            {latest.netDeltaFromStart} net attr
+            {activePoint.netDeltaFromStart} net attr
           </span>
-          {latest.abilityStars != null && (
-            <span className="text-amber-300">{latest.abilityStars.toFixed(1)}★</span>
+          {activePoint.abilityStars != null && (
+            <span className="text-amber-300">{activePoint.abilityStars.toFixed(1)}★</span>
           )}
         </div>
       </div>
@@ -1221,7 +1480,7 @@ export const PlayerProgressionSparkline: React.FC<PlayerProgressionSparklineProp
         viewBox={`0 0 ${width} ${height}`}
         role="img"
         aria-label={`Progression timeline for ${playerName}`}
-        className="w-full h-auto"
+        className="w-full h-auto select-none"
       >
         <line
           x1={padX}
@@ -1239,23 +1498,35 @@ export const PlayerProgressionSparkline: React.FC<PlayerProgressionSparklineProp
           strokeLinecap="round"
           points={polyline}
         />
-        {coords.map(({ x, y, pt }) => (
-          <g key={pt.saveDate}>
-            <circle
-              cx={x}
-              cy={y}
-              r={3.5}
-              fill={pt.netDeltaFromStart >= 0 ? '#10b981' : '#f43f5e'}
-              stroke="#0f172a"
-              strokeWidth={1.2}
-            />
-          </g>
-        ))}
+        {coords.map(({ x, y, pt, i }) => {
+          const isSel = activeIdx === i;
+          return (
+            <g
+              key={`${pt.saveDate}-${i}`}
+              onMouseEnter={() => setHoveredIdx(i)}
+              onMouseLeave={() => setHoveredIdx((curr) => (curr === i ? null : curr))}
+              onClick={() => setPinnedIdx((curr) => (curr === i ? null : i))}
+              className="cursor-pointer"
+            >
+              <circle cx={x} cy={y} r={box.hitRadius} fill="transparent" />
+              <circle
+                cx={x}
+                cy={y}
+                r={isSel ? box.selectedDotRadius : box.dotRadius}
+                fill={pt.netDeltaFromStart >= 0 ? '#10b981' : '#f43f5e'}
+                stroke={isSel ? '#ffffff' : '#0f172a'}
+                strokeWidth={isSel ? 1.8 : 1.2}
+              />
+            </g>
+          );
+        })}
       </svg>
 
-      <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-mono text-slate-400">
         <span>{first.saveDate}</span>
-        <span>Avg Core: {latest.avgCoreAttr.toFixed(1)}</span>
+        <span className="text-slate-200">
+          {activePoint.saveDate} · Avg Core {activePoint.avgCoreAttr.toFixed(1)}
+        </span>
         <span>{latest.saveDate}</span>
       </div>
     </div>
@@ -1283,7 +1554,8 @@ export const PercentilePizzaChart: React.FC<PercentilePizzaChartProps> = ({
   subtitle,
   size = 276,
 }) => {
-  const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [pinnedKey, setPinnedKey] = useState<string | null>(null);
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
 
   if (!slices || slices.length === 0) {
     return null;
@@ -1293,6 +1565,7 @@ export const PercentilePizzaChart: React.FC<PercentilePizzaChartProps> = ({
   const cy = size / 2;
   const maxR = size * 0.34;
   const sliceAngle = (Math.PI * 2) / slices.length;
+  const radialBox = getPaddedRadialViewBox(size, 30);
 
   const getSliceStyle = (cat: PercentilePizzaSlice['category']) => {
     if (cat === 'physical') return { fill: '#10b981', stroke: '#34d399', text: 'text-emerald-300' };
@@ -1301,10 +1574,11 @@ export const PercentilePizzaChart: React.FC<PercentilePizzaChartProps> = ({
     return { fill: '#f59e0b', stroke: '#fbbf24', text: 'text-amber-300' };
   };
 
+  const activeKey = resolveTouchTooltipSelection(pinnedKey, hoveredKey);
   const activeSlice = slices.find((s) => s.key === activeKey) ?? null;
 
   return (
-    <div className="flex flex-col items-center space-y-2">
+    <div className="flex flex-col items-center space-y-2 w-full min-w-0">
       <div className="text-center">
         <div className="text-xs font-semibold text-slate-100">
           Position Percentile Profile
@@ -1315,12 +1589,10 @@ export const PercentilePizzaChart: React.FC<PercentilePizzaChartProps> = ({
       </div>
 
       <svg
-        width={size}
-        height={size}
-        viewBox={`0 0 ${size} ${size}`}
+        viewBox={radialBox.viewBox}
         role="img"
         aria-label={`8-spoke percentile pizza chart for ${playerName}`}
-        className="w-full max-w-[290px] h-auto overflow-visible"
+        className="w-full max-w-[290px] h-auto select-none"
       >
         {[0.25, 0.5, 0.75, 1].map((frac) => (
           <circle
@@ -1349,10 +1621,10 @@ export const PercentilePizzaChart: React.FC<PercentilePizzaChartProps> = ({
           return (
             <g
               key={slice.key}
-              onMouseEnter={() => setActiveKey(slice.key)}
-              onMouseLeave={() => setActiveKey((curr) => (curr === slice.key ? null : curr))}
+              onMouseEnter={() => setHoveredKey(slice.key)}
+              onMouseLeave={() => setHoveredKey((curr) => (curr === slice.key ? null : curr))}
               onClick={() =>
-                setActiveKey((curr) => (curr === slice.key ? null : slice.key))
+                setPinnedKey((curr) => (curr === slice.key ? null : slice.key))
               }
               className="cursor-pointer"
             >
@@ -1365,9 +1637,9 @@ export const PercentilePizzaChart: React.FC<PercentilePizzaChartProps> = ({
               <path
                 d={buildWedgePath(cx, cy, r, startAngle, endAngle)}
                 fill={style.fill}
-                fillOpacity={isSelected ? 0.92 : 0.68}
+                fillOpacity={isSelected ? 0.94 : 0.68}
                 stroke={isSelected ? '#ffffff' : style.stroke}
-                strokeWidth={isSelected ? 1.8 : 0.9}
+                strokeWidth={isSelected ? 1.9 : 0.9}
               />
               <text
                 x={lx}
@@ -1395,7 +1667,7 @@ export const PercentilePizzaChart: React.FC<PercentilePizzaChartProps> = ({
       </svg>
 
       {activeSlice ? (
-        <div className="w-full rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 text-[11px] flex items-center justify-between gap-2">
+        <div className="w-full rounded-lg border border-emerald-500/30 bg-slate-950/85 px-3 py-2 text-[11px] flex flex-wrap items-center justify-between gap-2">
           <span className="font-semibold text-slate-100">{activeSlice.label}</span>
           <span className="font-mono tabular-nums text-emerald-300">
             {activeSlice.value}/20 · {activeSlice.percentile}th pct
@@ -1440,6 +1712,9 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
   controlledScope,
   onScopeChange,
 }) => {
+  const isMobile = useCompactChartViewport();
+  const [viewMode, setViewMode] = useState<ChartViewMode>('chart');
+
   const { seasons, currentSeason } = useMemo(
     () => extractMatchSeasons(matches, saveDate),
     [matches, saveDate]
@@ -1507,6 +1782,11 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
     [filtered]
   );
 
+  const rankedRows = useMemo(
+    () => buildXgMomentumRankedRows(xgMatches),
+    [xgMatches]
+  );
+
   const totals = useMemo(() => {
     let gf = 0;
     let ga = 0;
@@ -1534,23 +1814,20 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
     };
   }, [filtered]);
 
-  const selectedMatch =
-    xgMatches.find((m) => m.id === selectedId) ??
-    xgMatches[xgMatches.length - 1] ??
-    null;
+  const selectedIndex = useMemo(() => {
+    if (xgMatches.length === 0) return -1;
+    const found = xgMatches.findIndex((m) => m.id === selectedId);
+    return found >= 0 ? found : xgMatches.length - 1;
+  }, [xgMatches, selectedId]);
+
+  const selectedMatch = selectedIndex >= 0 ? xgMatches[selectedIndex] : null;
 
   if (matches.length === 0) {
     return null;
   }
 
-  const width = 540;
-  const height = 215;
-  const padL = 38;
-  const padR = 16;
-  const padT = 18;
-  const padB = 34;
-  const plotW = width - padL - padR;
-  const plotH = height - padT - padB;
+  const box = getResponsiveChartBox('xgTrend', isMobile);
+  const { width, height, padL, padR, padT, plotW, plotH } = box;
 
   const maxXg = Math.max(
     2.5,
@@ -1570,6 +1847,11 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
     .map((m, idx) => `${mapX(idx, xgMatches.length).toFixed(1)},${mapY(m.xGAgainst || 0).toFixed(1)}`)
     .join(' ');
 
+  const hitColWidth =
+    xgMatches.length > 1
+      ? Math.max(14, plotW / (xgMatches.length - 1))
+      : plotW;
+
   const scopeTabs: Array<{ id: MatchCompetitionFilter; label: string; count: number }> = [
     { id: 'competitive', label: 'Competitive', count: scopeCounts.competitive },
     { id: 'league', label: 'League', count: scopeCounts.league },
@@ -1578,11 +1860,18 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
     { id: 'all', label: 'All', count: scopeCounts.all },
   ];
 
+  const verdictToneClass = (tone: 'emerald' | 'sky' | 'amber' | 'rose') => {
+    if (tone === 'emerald') return 'text-emerald-300 bg-emerald-500/15 border-emerald-500/30';
+    if (tone === 'sky') return 'text-sky-300 bg-sky-500/15 border-sky-500/30';
+    if (tone === 'amber') return 'text-amber-300 bg-amber-500/15 border-amber-500/30';
+    return 'text-rose-300 bg-rose-500/15 border-rose-500/30';
+  };
+
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
+    <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3.5 sm:p-4 space-y-3 min-w-0">
       <div className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-sm font-semibold text-white">{title}</h3>
               {activeSeason && activeSeason !== 'ALL' && (
@@ -1613,36 +1902,48 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
             </p>
           </div>
 
-          {seasons.length > 1 && (
-            <div className="flex flex-wrap items-center gap-1 text-[11px]">
-              {seasons.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setSelectedSeason(s)}
-                  className={`min-h-[30px] px-2 rounded-md border font-mono font-semibold transition-colors ${
-                    activeSeason === s
-                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                      : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
-                  }`}
-                >
-                  {s}
-                </button>
-              ))}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {xgMatches.length >= 2 && (
+              <ChartRankedListToggle
+                mode={viewMode}
+                onChange={setViewMode}
+                ariaLabel="Switch match xG momentum between chart and match list"
+                listLabel="Match List"
+                count={xgMatches.length}
+              />
+            )}
+          </div>
+        </div>
+
+        {seasons.length > 1 && (
+          <div className="flex flex-wrap items-center gap-1 text-[11px]">
+            {seasons.map((s) => (
               <button
+                key={s}
                 type="button"
-                onClick={() => setSelectedSeason('ALL')}
-                className={`min-h-[30px] px-2 rounded-md border font-semibold transition-colors ${
-                  activeSeason === 'ALL'
+                onClick={() => setSelectedSeason(s)}
+                className={`min-h-[38px] sm:min-h-[30px] px-2.5 rounded-md border font-mono font-semibold transition-colors cursor-pointer ${
+                  activeSeason === s
                     ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                     : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
                 }`}
               >
-                All Seasons
+                {s}
               </button>
-            </div>
-          )}
-        </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => setSelectedSeason('ALL')}
+              className={`min-h-[38px] sm:min-h-[30px] px-2.5 rounded-md border font-semibold transition-colors cursor-pointer ${
+                activeSeason === 'ALL'
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                  : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
+              }`}
+            >
+              All Seasons
+            </button>
+          </div>
+        )}
 
         {/* Separate Competition Scope Tabs + Clear Legend */}
         <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
@@ -1652,7 +1953,7 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
                 key={tab.id}
                 type="button"
                 onClick={() => setScope(tab.id)}
-                className={`min-h-[32px] px-2.5 rounded-lg border font-semibold transition-colors ${
+                className={`min-h-[38px] sm:min-h-[32px] px-2.5 rounded-lg border font-semibold transition-colors cursor-pointer ${
                   activeScope === tab.id
                     ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                     : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
@@ -1663,14 +1964,16 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-3 text-[10px] text-slate-400">
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-0.5 w-3.5 bg-emerald-400 inline-block" /> xG For
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-0.5 w-3.5 border-t-2 border-dashed border-rose-400 inline-block" /> xG Against
-            </span>
-          </div>
+          {viewMode === 'chart' && (
+            <div className="flex items-center gap-3 text-[10px] text-slate-400">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-0.5 w-3.5 bg-emerald-400 inline-block" /> xG For
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-0.5 w-3.5 border-t-2 border-dashed border-rose-400 inline-block" /> xG Against
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1679,13 +1982,68 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
           Need at least 2 played matches with xG in this scope ({xgMatches.length} currently available in{' '}
           {activeSeason === 'ALL' ? 'all seasons' : activeSeason} · {activeScope}).
         </div>
+      ) : viewMode === 'list' ? (
+        <div className="space-y-1.5 max-h-[400px] overflow-y-auto pr-0.5">
+          {rankedRows.map((row) => {
+            const bucket = classifyMatchEntryBucket(row.match, matches);
+            const resClass =
+              row.match.result === 'W'
+                ? 'text-emerald-400 bg-emerald-500/15 border-emerald-500/35'
+                : row.match.result === 'D'
+                  ? 'text-amber-300 bg-amber-500/15 border-amber-500/35'
+                  : 'text-rose-400 bg-rose-500/15 border-rose-500/35';
+            return (
+              <div
+                key={row.match.id}
+                className="rounded-xl border border-slate-800 bg-slate-950/75 p-2.5 space-y-1.5"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0 flex items-center gap-1.5">
+                    <span className="font-mono text-[10px] text-slate-400 shrink-0">
+                      {row.match.date}
+                    </span>
+                    <span className="text-xs font-semibold text-white truncate">
+                      vs {row.match.opponent} ({row.match.venue})
+                    </span>
+                  </div>
+                  <span
+                    className={`rounded-md border px-2 py-0.5 font-mono text-[11px] font-bold shrink-0 tabular-nums ${resClass}`}
+                  >
+                    {row.match.result} {row.match.score}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-1.5 text-[11px]">
+                  <div className="flex flex-wrap items-center gap-1.5 font-mono tabular-nums">
+                    <span className="text-emerald-300">
+                      xG {row.xgFor.toFixed(2)}–{row.xgAgainst.toFixed(2)}
+                    </span>
+                    <span className="text-slate-500">·</span>
+                    <span className="text-[10px] text-slate-400 font-sans">
+                      {formatCompetitionBucketTag(bucket)}
+                    </span>
+                    {row.match.possession != null && (
+                      <span className="text-slate-400">{row.match.possession}%</span>
+                    )}
+                  </div>
+                  <span
+                    className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${verdictToneClass(
+                      row.verdictTone
+                    )}`}
+                  >
+                    {row.verdict}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       ) : (
         <>
           <svg
             viewBox={`0 0 ${width} ${height}`}
             role="img"
             aria-label="Match xG For vs xG Against trend line chart"
-            className="w-full h-auto rounded-lg bg-slate-950/60 border border-slate-800"
+            className="w-full h-auto rounded-lg bg-slate-950/60 border border-slate-800 select-none"
           >
             {[0, 0.25, 0.5, 0.75, 1].map((f) => {
               const tick = yCeiling * f;
@@ -1704,7 +2062,7 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
                     x={padL - 6}
                     y={y + 3}
                     textAnchor="end"
-                    className="fill-slate-400 text-[9px] font-mono tabular-nums"
+                    className={`fill-slate-400 font-mono tabular-nums ${box.axisFontClass}`}
                   >
                     {tick.toFixed(1)}
                   </text>
@@ -1741,47 +2099,59 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
                   : m.result === 'D'
                     ? '#f59e0b'
                     : '#f43f5e';
+              const labelStep = Math.max(
+                1,
+                Math.floor(xgMatches.length / (isMobile ? 4 : 5))
+              );
               return (
                 <g
                   key={m.id}
                   onClick={() => setSelectedId(m.id)}
                   className="cursor-pointer"
                 >
+                  {/* Full-height invisible touch strip for reliable mobile taps */}
+                  <rect
+                    x={x - hitColWidth / 2}
+                    y={padT}
+                    width={hitColWidth}
+                    height={plotH + 22}
+                    fill="transparent"
+                  />
                   {isSel && (
                     <line
                       x1={x}
                       y1={padT}
                       x2={x}
                       y2={padT + plotH}
-                      stroke="rgba(148, 163, 184, 0.35)"
-                      strokeWidth={1}
+                      stroke="rgba(148, 163, 184, 0.45)"
+                      strokeWidth={1.2}
                     />
                   )}
                   <circle
                     cx={x}
                     cy={yFor}
-                    r={isSel ? 5 : 3.5}
+                    r={isSel ? box.selectedDotRadius : box.dotRadius}
                     fill="#10b981"
                     stroke={isSel ? '#ffffff' : '#022c22'}
-                    strokeWidth={isSel ? 1.5 : 1}
+                    strokeWidth={isSel ? 1.8 : 1}
                   />
                   <circle
                     cx={x}
                     cy={yAg}
-                    r={isSel ? 4.5 : 3}
+                    r={isSel ? Math.max(4.5, box.selectedDotRadius - 0.5) : Math.max(3, box.dotRadius - 0.5)}
                     fill="#f43f5e"
                     stroke={isSel ? '#ffffff' : '#4c0519'}
-                    strokeWidth={isSel ? 1.5 : 1}
+                    strokeWidth={isSel ? 1.8 : 1}
                   />
-                  <circle cx={x} cy={height - 16} r={3.5} fill={resultColor} />
+                  <circle cx={x} cy={height - 18} r={isSel ? 4.2 : 3.5} fill={resultColor} />
                   {(idx === 0 ||
                     idx === xgMatches.length - 1 ||
-                    idx % Math.max(1, Math.floor(xgMatches.length / 5)) === 0) && (
+                    idx % labelStep === 0) && (
                     <text
                       x={x}
                       y={height - 4}
                       textAnchor="middle"
-                      className="fill-slate-400 text-[8.5px] font-mono"
+                      className={`fill-slate-400 font-mono ${box.labelFontClass}`}
                     >
                       {m.date.slice(0, 5)}
                     </text>
@@ -1799,36 +2169,77 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
                 : selBucket === 'cup'
                   ? 'bg-sky-500/15 text-sky-300 border-sky-500/35'
                   : 'bg-amber-500/15 text-amber-300 border-amber-500/35';
+            const [gf] = parseScoreGoals(selectedMatch.score);
+            const xgF = selectedMatch.xGFor ?? 0;
+            const xgA = selectedMatch.xGAgainst ?? 0;
+            const verdict = describeMatchXgVerdict(xgF - xgA, gf - xgF);
+
             return (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2 text-xs">
-                <div className="flex flex-wrap items-center gap-1.5 text-slate-200">
-                  <span className={`rounded border px-1.5 py-0.5 font-mono text-[9px] font-bold ${bucketBadgeClass}`}>
-                    {formatCompetitionBucketTag(selBucket)}
-                  </span>
-                  <span className="font-mono text-slate-400">{selectedMatch.date}</span>
-                  <span className="font-semibold text-white">
-                    vs {selectedMatch.opponent} ({selectedMatch.venue})
-                  </span>
-                  <span className="text-slate-400">{selectedMatch.competition}</span>
+              <div className="rounded-xl border border-slate-800 bg-slate-950/80 px-3 py-2.5 space-y-2 text-xs">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5 text-slate-200 min-w-0">
+                    <span className={`rounded border px-1.5 py-0.5 font-mono text-[9px] font-bold shrink-0 ${bucketBadgeClass}`}>
+                      {formatCompetitionBucketTag(selBucket)}
+                    </span>
+                    <span className="font-mono text-slate-400 shrink-0">{selectedMatch.date}</span>
+                    <span className="font-semibold text-white break-words">
+                      vs {selectedMatch.opponent} ({selectedMatch.venue})
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      aria-label="Previous match"
+                      disabled={selectedIndex <= 0}
+                      onClick={() => {
+                        if (selectedIndex > 0) setSelectedId(xgMatches[selectedIndex - 1].id);
+                      }}
+                      className="min-h-[40px] min-w-[40px] sm:min-h-[30px] sm:min-w-[30px] inline-flex items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-300 disabled:opacity-35 cursor-pointer"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Next match"
+                      disabled={selectedIndex >= xgMatches.length - 1}
+                      onClick={() => {
+                        if (selectedIndex < xgMatches.length - 1) {
+                          setSelectedId(xgMatches[selectedIndex + 1].id);
+                        }
+                      }}
+                      className="min-h-[40px] min-w-[40px] sm:min-h-[30px] sm:min-w-[30px] inline-flex items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-300 disabled:opacity-35 cursor-pointer"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3 font-mono tabular-nums text-[11px]">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2.5 font-mono tabular-nums text-[11px]">
+                    <span
+                      className={
+                        selectedMatch.result === 'W'
+                          ? 'text-emerald-400 font-semibold'
+                          : selectedMatch.result === 'D'
+                            ? 'text-amber-300 font-semibold'
+                            : 'text-rose-400 font-semibold'
+                      }
+                    >
+                      {selectedMatch.result} {selectedMatch.score}
+                    </span>
+                    <span className="text-emerald-300">
+                      xG {xgF.toFixed(2)}–{xgA.toFixed(2)}
+                    </span>
+                    {selectedMatch.possession != null && (
+                      <span className="text-slate-400">{selectedMatch.possession}% poss</span>
+                    )}
+                  </div>
                   <span
-                    className={
-                      selectedMatch.result === 'W'
-                        ? 'text-emerald-400 font-semibold'
-                        : selectedMatch.result === 'D'
-                          ? 'text-amber-300 font-semibold'
-                          : 'text-rose-400 font-semibold'
-                    }
+                    className={`rounded border px-2 py-0.5 text-[10px] font-semibold ${verdictToneClass(
+                      verdict.tone
+                    )}`}
                   >
-                    {selectedMatch.result} {selectedMatch.score}
+                    {verdict.verdict}
                   </span>
-                  <span className="text-emerald-300">
-                    xG {(selectedMatch.xGFor ?? 0).toFixed(2)}–{(selectedMatch.xGAgainst ?? 0).toFixed(2)}
-                  </span>
-                  {selectedMatch.possession != null && (
-                    <span className="text-slate-400">{selectedMatch.possession}% poss</span>
-                  )}
                 </div>
               </div>
             );
@@ -1845,7 +2256,7 @@ export interface InteractiveScatterExplorerProps {
   onSelectPlayer?: (player: PlayerRecord) => void;
 }
 
-type ScatterPresetKey = 'ageValue' | 'attackOutput' | 'transitionEngine' | 'valueEfficiency';
+type ScatterPresetKey = ScatterExplorerPresetKey;
 
 const SCATTER_PRESETS: Array<{
   key: ScatterPresetKey;
@@ -1894,9 +2305,12 @@ export const InteractiveScatterExplorer: React.FC<InteractiveScatterExplorerProp
   selectedPlayerId = null,
   onSelectPlayer,
 }) => {
+  const isMobile = useCompactChartViewport();
+  const [viewMode, setViewMode] = useState<ChartViewMode>('chart');
   const [preset, setPreset] = useState<ScatterPresetKey>('transitionEngine');
   const [posGroup, setPosGroup] = useState<PositionGroupFilter>('ALL');
   const [hovered, setHovered] = useState<PlayerRecord | null>(null);
+  const [pinned, setPinned] = useState<PlayerRecord | null>(null);
 
   const filtered = useMemo(() => {
     const byPos = players.filter((p) => matchesPosGroup(p.position, posGroup));
@@ -1961,14 +2375,8 @@ export const InteractiveScatterExplorer: React.FC<InteractiveScatterExplorerProp
           ? 8.2
           : Math.max(0.4, ...(yValues.length ? yValues : [1])) * 1.15;
 
-  const width = 520;
-  const height = 260;
-  const padL = 56;
-  const padR = 18;
-  const padT = 18;
-  const padB = 34;
-  const plotW = width - padL - padR;
-  const plotH = height - padT - padB;
+  const box = getResponsiveChartBox('scatter', isMobile);
+  const { width, height, padL, padR, padT, plotW, plotH } = box;
   const mapX = (v: number) =>
     padL + ((Math.min(maxX, Math.max(minX, v)) - minX) / Math.max(0.01, maxX - minX)) * plotW;
   const mapY = (v: number) =>
@@ -1988,18 +2396,60 @@ export const InteractiveScatterExplorer: React.FC<InteractiveScatterExplorerProp
     return val.toFixed(2);
   };
 
+  const activePlayer = resolveTouchTooltipSelection(
+    pinned && filtered.some((p) => p.id === pinned.id) ? pinned : null,
+    hovered
+  );
+
+  const rankedRows = useMemo(
+    () => rankScatterExplorerPlayers(filtered, preset, getX, getY, midX, midY),
+    [filtered, preset, midX, midY, dynamicScale.metric]
+  );
+
+  const quadrantToneClass = (tone: 'emerald' | 'sky' | 'amber' | 'rose') => {
+    if (tone === 'emerald') return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35';
+    if (tone === 'sky') return 'bg-sky-500/15 text-sky-300 border-sky-500/35';
+    if (tone === 'amber') return 'bg-amber-500/15 text-amber-300 border-amber-500/35';
+    return 'bg-rose-500/15 text-rose-300 border-rose-500/35';
+  };
+
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
+    <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3.5 sm:p-4 space-y-3 min-w-0">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
           <h3 className="text-sm font-semibold text-white">
             Interactive Squad Scatter Explorer
           </h3>
           <p className="text-[11px] text-slate-400">
-            {hovered
-              ? `${hovered.name} (${hovered.position}) · ${activePreset.xLabel}: ${formatVal(getX(hovered), 'x')} · ${activePreset.yLabel}: ${formatVal(getY(hovered), 'y')}`
-              : `${filtered.length} players plotted · Dashed crosshair marks squad mean · Tap any dot for deep profile`}
+            {filtered.length} players · Dashed crosshair marks squad average
           </p>
+        </div>
+
+        <ChartRankedListToggle
+          mode={viewMode}
+          onChange={setViewMode}
+          ariaLabel="Switch squad scatter explorer between chart and ranked list"
+          count={filtered.length}
+        />
+      </div>
+
+      {/* Position filter chips + Preset switcher */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div className="flex flex-wrap gap-1.5">
+          {SCATTER_PRESETS.map((p) => (
+            <button
+              key={p.key}
+              type="button"
+              onClick={() => setPreset(p.key)}
+              className={`min-h-[40px] sm:min-h-[34px] px-2.5 sm:px-3 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${
+                preset === p.key
+                  ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                  : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
         </div>
 
         <div className="flex flex-wrap gap-1">
@@ -2008,7 +2458,7 @@ export const InteractiveScatterExplorer: React.FC<InteractiveScatterExplorerProp
               key={g}
               type="button"
               onClick={() => setPosGroup(g)}
-              className={`min-h-[34px] px-2.5 rounded-lg text-[11px] font-semibold border transition-colors ${
+              className={`min-h-[40px] sm:min-h-[32px] px-2.5 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${
                 posGroup === g
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                   : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
@@ -2020,126 +2470,211 @@ export const InteractiveScatterExplorer: React.FC<InteractiveScatterExplorerProp
         </div>
       </div>
 
-      {/* Preset switcher */}
-      <div className="flex flex-wrap gap-1.5">
-        {SCATTER_PRESETS.map((p) => (
-          <button
-            key={p.key}
-            type="button"
-            onClick={() => setPreset(p.key)}
-            className={`min-h-[36px] px-3 rounded-lg text-[11px] font-semibold border transition-colors ${
-              preset === p.key
-                ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
-                : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
-            }`}
-          >
-            {p.label}
-          </button>
-        ))}
-      </div>
-
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        role="img"
-        aria-label={`Interactive scatter plot: ${activePreset.label}`}
-        className="w-full h-auto rounded-lg bg-slate-950/60 border border-slate-800"
-      >
-        {/* Quadrant mean crosshairs */}
-        <line
-          x1={mapX(midX)}
-          y1={padT}
-          x2={mapX(midX)}
-          y2={padT + plotH}
-          stroke="rgba(148, 163, 184, 0.25)"
-          strokeDasharray="3 3"
-        />
-        <line
-          x1={padL}
-          y1={mapY(midY)}
-          x2={width - padR}
-          y2={mapY(midY)}
-          stroke="rgba(148, 163, 184, 0.25)"
-          strokeDasharray="3 3"
-        />
-
-        {/* Quadrant labels */}
-        <text
-          x={width - padR - 4}
-          y={padT + 12}
-          textAnchor="end"
-          className="fill-emerald-400/70 text-[8.5px] font-semibold"
-        >
-          {activePreset.quadrantTopRight}
-        </text>
-        <text
-          x={padL + 6}
-          y={padT + plotH - 6}
-          textAnchor="start"
-          className="fill-slate-500 text-[8.5px] font-semibold"
-        >
-          {activePreset.quadrantBottomLeft}
-        </text>
-
-        {/* Ticks */}
-        {[0, 0.5, 1].map((f) => {
-          const yv = minY + (maxY - minY) * f;
-          const xv = minX + (maxX - minX) * f;
-          return (
-            <g key={f}>
-              <text
-                x={padL - 7}
-                y={mapY(yv) + 3}
-                textAnchor="end"
-                className="fill-slate-400 text-[8.5px] font-mono tabular-nums"
-              >
-                {formatVal(yv, 'y')}
-              </text>
-              <text
-                x={mapX(xv)}
-                y={height - 10}
-                textAnchor="middle"
-                className="fill-slate-400 text-[8.5px] font-mono tabular-nums"
-              >
-                {formatVal(xv, 'x')}
-              </text>
-            </g>
-          );
-        })}
-
-        {/* Dots */}
-        {filtered.map((p) => {
-          const x = mapX(getX(p));
-          const y = mapY(getY(p));
-          const isSel = p.id === selectedPlayerId || hovered?.id === p.id;
-          const color =
-            p.status === 'Surplus'
-              ? '#f43f5e'
-              : p.age <= 21
-                ? '#38bdf8'
-                : p.status === 'Starter'
-                  ? '#10b981'
-                  : '#f59e0b';
-          return (
-            <g
+      {viewMode === 'list' ? (
+        <div className="space-y-1.5 max-h-[420px] overflow-y-auto pr-0.5">
+          {rankedRows.map(({ rank, player: p, xVal, yVal, quadrantLabel, quadrantTone }) => (
+            <button
               key={p.id}
-              onMouseEnter={() => setHovered(p)}
-              onMouseLeave={() => setHovered((curr) => (curr?.id === p.id ? null : curr))}
+              type="button"
               onClick={() => onSelectPlayer?.(p)}
-              className="cursor-pointer"
+              className="w-full min-h-[52px] text-left rounded-xl border border-slate-800 bg-slate-950/75 hover:border-emerald-500/40 px-3 py-2 flex items-center justify-between gap-2 transition cursor-pointer"
             >
-              <circle
-                cx={x}
-                cy={y}
-                r={isSel ? 6.5 : 4.5}
-                fill={color}
-                fillOpacity={isSel ? 0.96 : 0.8}
-                stroke={isSel ? '#ffffff' : '#0f172a'}
-                strokeWidth={isSel ? 1.8 : 1}
-              />
-            </g>
-          );
-        })}
-      </svg>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-6 font-mono text-[11px] font-bold text-slate-500 shrink-0">
+                  #{rank}
+                </span>
+                <div className="min-w-0 space-y-0.5">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-xs font-semibold text-white truncate">
+                      {p.name}
+                    </span>
+                    <span className="font-mono text-[10px] text-emerald-300 shrink-0">
+                      {p.position}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span
+                      className={`rounded border px-1.5 py-0.25 text-[9.5px] font-semibold ${quadrantToneClass(
+                        quadrantTone
+                      )}`}
+                    >
+                      {quadrantLabel}
+                    </span>
+                    <span className="text-[10px] font-mono text-amber-300">
+                      {p.ability.toFixed(1)}★
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="text-right font-mono tabular-nums shrink-0">
+                <div className="text-[11px] font-bold text-white">
+                  {activePreset.xLabel.split(' ')[0]}: {formatVal(xVal, 'x')}
+                </div>
+                <div className="text-[10px] text-sky-300">
+                  {activePreset.yLabel.split(' ')[0]}: {formatVal(yVal, 'y')}
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <>
+          <svg
+            viewBox={`0 0 ${width} ${height}`}
+            role="img"
+            aria-label={`Interactive scatter plot: ${activePreset.label}`}
+            className="w-full h-auto rounded-lg bg-slate-950/60 border border-slate-800 select-none"
+          >
+            {/* Quadrant mean crosshairs */}
+            <line
+              x1={mapX(midX)}
+              y1={padT}
+              x2={mapX(midX)}
+              y2={padT + plotH}
+              stroke="rgba(148, 163, 184, 0.25)"
+              strokeDasharray="3 3"
+            />
+            <line
+              x1={padL}
+              y1={mapY(midY)}
+              x2={width - padR}
+              y2={mapY(midY)}
+              stroke="rgba(148, 163, 184, 0.25)"
+              strokeDasharray="3 3"
+            />
+
+            {/* Quadrant labels */}
+            <text
+              x={width - padR - 4}
+              y={padT + 12}
+              textAnchor="end"
+              className={`fill-emerald-400/75 font-semibold ${box.labelFontClass}`}
+            >
+              {activePreset.quadrantTopRight}
+            </text>
+            <text
+              x={padL + 6}
+              y={padT + plotH - 6}
+              textAnchor="start"
+              className={`fill-slate-500 font-semibold ${box.labelFontClass}`}
+            >
+              {activePreset.quadrantBottomLeft}
+            </text>
+
+            {/* Ticks */}
+            {[0, 0.5, 1].map((f) => {
+              const yv = minY + (maxY - minY) * f;
+              const xv = minX + (maxX - minX) * f;
+              return (
+                <g key={f}>
+                  <text
+                    x={padL - 7}
+                    y={mapY(yv) + 3}
+                    textAnchor="end"
+                    className={`fill-slate-400 font-mono tabular-nums ${box.axisFontClass}`}
+                  >
+                    {formatVal(yv, 'y')}
+                  </text>
+                  <text
+                    x={mapX(xv)}
+                    y={height - 10}
+                    textAnchor="middle"
+                    className={`fill-slate-400 font-mono tabular-nums ${box.axisFontClass}`}
+                  >
+                    {formatVal(xv, 'x')}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* Dots with touch hit targets */}
+            {filtered.map((p) => {
+              const x = mapX(getX(p));
+              const y = mapY(getY(p));
+              const isSel = p.id === selectedPlayerId || activePlayer?.id === p.id;
+              const color =
+                p.status === 'Surplus'
+                  ? '#f43f5e'
+                  : p.age <= 21
+                    ? '#38bdf8'
+                    : p.status === 'Starter'
+                      ? '#10b981'
+                      : '#f59e0b';
+              return (
+                <g
+                  key={p.id}
+                  onMouseEnter={() => setHovered(p)}
+                  onMouseLeave={() => setHovered((curr) => (curr?.id === p.id ? null : curr))}
+                  onClick={() => {
+                    if (pinned?.id === p.id) {
+                      onSelectPlayer?.(p);
+                    } else {
+                      setPinned(p);
+                    }
+                  }}
+                  className="cursor-pointer"
+                >
+                  <circle cx={x} cy={y} r={box.hitRadius} fill="transparent" />
+                  <circle
+                    cx={x}
+                    cy={y}
+                    r={isSel ? box.selectedDotRadius : box.dotRadius}
+                    fill={color}
+                    fillOpacity={isSel ? 0.96 : 0.8}
+                    stroke={isSel ? '#ffffff' : '#0f172a'}
+                    strokeWidth={isSel ? 2 : 1}
+                  />
+                </g>
+              );
+            })}
+          </svg>
+
+          {/* Docked tap-to-inspect strip with quadrant explanation + Open Profile */}
+          {activePlayer ? (() => {
+            const xVal = getX(activePlayer);
+            const yVal = getY(activePlayer);
+            const quad = classifyScatterQuadrant(preset, xVal, yVal, midX, midY);
+            return (
+              <div className="rounded-xl border border-emerald-500/35 bg-slate-950/90 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="min-w-0 space-y-0.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-semibold text-white truncate">
+                      {activePlayer.name}
+                    </span>
+                    <span className="font-mono text-[11px] text-emerald-300">
+                      ({activePlayer.position})
+                    </span>
+                    <span
+                      className={`rounded border px-1.5 py-0.25 text-[10px] font-semibold ${quadrantToneClass(
+                        quad.tone
+                      )}`}
+                    >
+                      {quad.label}
+                    </span>
+                  </div>
+                  <div className="text-[11px] font-mono text-slate-300 tabular-nums">
+                    {activePreset.xLabel}: {formatVal(xVal, 'x')} · {activePreset.yLabel}:{' '}
+                    {formatVal(yVal, 'y')} · {activePlayer.ability.toFixed(1)}★
+                  </div>
+                </div>
+                {onSelectPlayer && (
+                  <button
+                    type="button"
+                    onClick={() => onSelectPlayer(activePlayer)}
+                    className="min-h-[40px] sm:min-h-[32px] px-3 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-xs font-semibold text-emerald-300 cursor-pointer shrink-0"
+                  >
+                    Open Profile →
+                  </button>
+                )}
+              </div>
+            );
+          })() : (
+            <div className="rounded-lg border border-slate-800/80 bg-slate-950/50 px-3 py-1.5 text-[11px] text-slate-400">
+              Tap any dot to inspect player details &amp; quadrant verdict, or switch to Ranked List.
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 };

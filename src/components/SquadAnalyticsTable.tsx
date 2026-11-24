@@ -375,14 +375,14 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
             key={id}
             type="button"
             onClick={() => setViewMode(id)}
-            className={`inline-flex items-center justify-center gap-1 px-2 sm:px-3 py-1.5 text-[11px] sm:text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+            className={`min-w-0 min-h-[42px] sm:min-h-[36px] inline-flex items-center justify-center gap-1 px-1.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-semibold rounded-md transition-colors cursor-pointer ${
               viewMode === id
                 ? 'bg-emerald-600 text-white shadow-xs'
                 : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            <Icon className="w-3.5 h-3.5 shrink-0 hidden xs:inline sm:inline" />
-            <span>{label}</span>
+            <Icon className="w-3.5 h-3.5 shrink-0 hidden sm:inline" />
+            <span className="truncate">{label}</span>
           </button>
         ))}
       </div>

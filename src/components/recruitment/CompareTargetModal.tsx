@@ -103,8 +103,8 @@ export const CompareTargetModal: React.FC<CompareTargetModalProps> = ({
                     .join(' ');
                   return (
                     <svg
-                      viewBox="0 0 220 220"
-                      className="w-48 h-48 sm:w-52 sm:h-52"
+                      viewBox="-16 -16 252 252"
+                      className="w-52 h-52 sm:w-56 sm:h-56 max-w-full"
                       aria-label="Attribute radar comparison"
                     >
                       {[5, 10, 15, 20].map((ring) => (

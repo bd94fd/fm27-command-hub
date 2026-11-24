@@ -349,84 +349,155 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-950/70 text-[11px] uppercase tracking-wider text-slate-400">
-                <tr>
-                  <th className="px-4 py-3">Name</th>
-                  <th className="px-4 py-3">Role / Dept</th>
-                  <th className="px-4 py-3">Key Attributes</th>
-                  <th className="px-4 py-3">DDM (Det/Dis/Mot)</th>
-                  <th className="px-4 py-3">Best FM27 Specialty</th>
-                  <th className="px-4 py-3">Star Rating</th>
-                  <th className="px-4 py-3">Wage / Contract</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/70">
-                {filtered.map((s) => {
-                  const best = getBestStaffRoleRating(s);
-                  const dept = classifyStaffDepartment(s);
-                  const expiringSoon = isStaffContractExpiringSoon(
-                    s.expires,
-                    saveDate
-                  );
-                  const keyAttrsLabel =
-                    dept === 'medical'
-                      ? `Phy ${s.attributes.physiotherapy} · Sci ${s.attributes.sports_science}`
-                      : dept === 'scouting'
-                        ? `JPA ${s.attributes.judging_player_ability} · JPP ${s.attributes.judging_player_potential} · Data ${s.attributes.analysing_data}`
-                        : `Def ${s.attributes.defending} · Att ${s.attributes.attacking} · Tac ${s.attributes.tactical}`;
-
-                  return (
-                    <tr
-                      key={s.id}
-                      onClick={() => onSelectStaff(s)}
-                      className="cursor-pointer hover:bg-slate-800/50 transition"
-                    >
-                      <td className="px-4 py-3 font-semibold text-white whitespace-nowrap">
-                        {s.name}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="text-sky-300">{s.role}</div>
-                        <div className="text-[10px] uppercase tracking-wider text-slate-500">
-                          {dept}
+          <>
+            {/* Mobile staff cards (< md) — zero horizontal scrolling at 360px */}
+            <div className="md:hidden divide-y divide-slate-800/80">
+              {filtered.map((s) => {
+                const best = getBestStaffRoleRating(s);
+                const dept = classifyStaffDepartment(s);
+                const expiringSoon = isStaffContractExpiringSoon(
+                  s.expires,
+                  saveDate
+                );
+                const keyAttrsLabel =
+                  dept === 'medical'
+                    ? `Phy ${s.attributes.physiotherapy} · Sci ${s.attributes.sports_science}`
+                    : dept === 'scouting'
+                      ? `JPA ${s.attributes.judging_player_ability} · JPP ${s.attributes.judging_player_potential} · Data ${s.attributes.analysing_data}`
+                      : `Def ${s.attributes.defending} · Att ${s.attributes.attacking} · Tac ${s.attributes.tactical}`;
+                return (
+                  <button
+                    key={`m-${s.id}`}
+                    type="button"
+                    onClick={() => onSelectStaff(s)}
+                    className="w-full text-left p-3.5 hover:bg-slate-800/40 active:bg-slate-800/60 transition space-y-2 cursor-pointer"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-white truncate">
+                          {s.name}
                         </div>
-                      </td>
-                      <td className="px-4 py-3 font-mono text-slate-300 whitespace-nowrap">
-                        {keyAttrsLabel}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-slate-300 whitespace-nowrap">
-                        {s.attributes.determination} / {s.attributes.authority} /{' '}
-                        {s.attributes.motivating}
-                      </td>
-                      <td className="px-4 py-3 text-slate-300 whitespace-nowrap">
-                        {best.label}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 font-mono font-bold text-amber-300">
-                          <Star className="h-3 w-3" />
-                          {formatStars(best.stars)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 font-mono text-slate-400 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <span>
-                            £{s.wagePw.toLocaleString()}/wk · {s.expires}
+                        <div className="text-xs text-sky-300 truncate">
+                          {s.role}{' '}
+                          <span className="text-[10px] uppercase text-slate-500">
+                            · {dept}
                           </span>
-                          {expiringSoon && (
-                            <span className="inline-flex items-center gap-0.5 rounded bg-amber-500/20 border border-amber-500/40 px-1.5 py-0.5 text-[10px] font-sans font-semibold text-amber-300">
-                              <Clock className="h-2.5 w-2.5" />
-                              Expiring
-                            </span>
-                          )}
                         </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                      </div>
+                      <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 font-mono text-xs font-bold text-amber-300 shrink-0">
+                        <Star className="h-3 w-3" />
+                        {formatStars(best.stars)}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                      <div className="rounded-lg bg-slate-950/70 border border-slate-800/80 px-2 py-1.5 min-w-0">
+                        <div className="text-[9px] uppercase text-slate-500">Best Specialty</div>
+                        <div className="text-slate-200 font-medium truncate">{best.label}</div>
+                      </div>
+                      <div className="rounded-lg bg-slate-950/70 border border-slate-800/80 px-2 py-1.5 min-w-0">
+                        <div className="text-[9px] uppercase text-slate-500">DDM (Det/Dis/Mot)</div>
+                        <div className="font-mono text-slate-200">
+                          {s.attributes.determination} / {s.attributes.authority} / {s.attributes.motivating}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-1.5 text-[11px] font-mono text-slate-400">
+                      <span>{keyAttrsLabel}</span>
+                      <span className="inline-flex items-center gap-1">
+                        £{s.wagePw.toLocaleString()}/wk · {s.expires}
+                        {expiringSoon && (
+                          <span className="inline-flex items-center gap-0.5 rounded bg-amber-500/20 border border-amber-500/40 px-1.5 py-0.5 text-[10px] font-sans font-semibold text-amber-300">
+                            <Clock className="h-2.5 w-2.5" />
+                            Exp
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Desktop table (md:+) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-950/70 text-[11px] uppercase tracking-wider text-slate-400">
+                  <tr>
+                    <th className="px-4 py-3">Name</th>
+                    <th className="px-4 py-3">Role / Dept</th>
+                    <th className="px-4 py-3">Key Attributes</th>
+                    <th className="px-4 py-3">DDM (Det/Dis/Mot)</th>
+                    <th className="px-4 py-3">Best FM27 Specialty</th>
+                    <th className="px-4 py-3">Star Rating</th>
+                    <th className="px-4 py-3">Wage / Contract</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/70">
+                  {filtered.map((s) => {
+                    const best = getBestStaffRoleRating(s);
+                    const dept = classifyStaffDepartment(s);
+                    const expiringSoon = isStaffContractExpiringSoon(
+                      s.expires,
+                      saveDate
+                    );
+                    const keyAttrsLabel =
+                      dept === 'medical'
+                        ? `Phy ${s.attributes.physiotherapy} · Sci ${s.attributes.sports_science}`
+                        : dept === 'scouting'
+                          ? `JPA ${s.attributes.judging_player_ability} · JPP ${s.attributes.judging_player_potential} · Data ${s.attributes.analysing_data}`
+                          : `Def ${s.attributes.defending} · Att ${s.attributes.attacking} · Tac ${s.attributes.tactical}`;
+
+                    return (
+                      <tr
+                        key={s.id}
+                        onClick={() => onSelectStaff(s)}
+                        className="cursor-pointer hover:bg-slate-800/50 transition"
+                      >
+                        <td className="px-4 py-3 font-semibold text-white whitespace-nowrap">
+                          {s.name}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <div className="text-sky-300">{s.role}</div>
+                          <div className="text-[10px] uppercase tracking-wider text-slate-500">
+                            {dept}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-slate-300 whitespace-nowrap">
+                          {keyAttrsLabel}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-slate-300 whitespace-nowrap">
+                          {s.attributes.determination} / {s.attributes.authority} /{' '}
+                          {s.attributes.motivating}
+                        </td>
+                        <td className="px-4 py-3 text-slate-300 whitespace-nowrap">
+                          {best.label}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 font-mono font-bold text-amber-300">
+                            <Star className="h-3 w-3" />
+                            {formatStars(best.stars)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-slate-400 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            <span>
+                              £{s.wagePw.toLocaleString()}/wk · {s.expires}
+                            </span>
+                            {expiringSoon && (
+                              <span className="inline-flex items-center gap-0.5 rounded bg-amber-500/20 border border-amber-500/40 px-1.5 py-0.5 text-[10px] font-sans font-semibold text-amber-300">
+                                <Clock className="h-2.5 w-2.5" />
+                                Expiring
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </div>

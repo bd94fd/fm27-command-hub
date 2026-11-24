@@ -417,7 +417,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                 key={m.id}
                 type="button"
                 onClick={() => setTimelineMetric(m.id)}
-                className={`min-h-[28px] px-2 rounded font-semibold transition-colors ${
+                className={`min-h-[38px] sm:min-h-[28px] px-2.5 sm:px-2 rounded font-semibold transition-colors cursor-pointer ${
                   timelineMetric === m.id
                     ? 'bg-emerald-500/20 text-emerald-300'
                     : 'text-slate-400 hover:text-slate-200'
