@@ -95,10 +95,6 @@ class TestPercentScaling(unittest.TestCase):
         # a raw 255 here is read as 2.55% and rounded, not as an overloaded 100.
         self.assertEqual(mapper._clamp_pct(255), 3)
 
-    def test_auto_reads_both_scales(self) -> None:
-        self.assertEqual(mapper._clamp_pct_auto(10000), 100)
-        self.assertEqual(mapper._clamp_pct_auto(55), 55)
-
 
 class TestEnumToken(unittest.TestCase):
     def test_strenum_and_plain_string(self) -> None:

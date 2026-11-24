@@ -359,16 +359,6 @@ def _enum_token(value: Any) -> str:
     return str(raw or "").strip().lower().split(".")[-1]
 
 
-def _clamp_pct_auto(val: Any, *, raw_scale_max: int = 100) -> int | None:
-    """Scale-aware percentage: treat values above `raw_scale_max` as 0-10,000 raw stores."""
-    parsed = _int(val, None)
-    if parsed is None or parsed < 0:
-        return None
-    if parsed > raw_scale_max:
-        return max(0, min(100, int(round(parsed / 100))))
-    return max(0, min(100, parsed))
-
-
 def _injury_row_state(inj: Any, game_date: Any) -> tuple[bool, str, bool]:
     """Classify one injury row as currently active.
 
