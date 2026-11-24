@@ -375,6 +375,9 @@ export interface DecodedFmSavePlayer {
   age: number;
   heightCm?: number;
   marketValue?: number | null;
+  marketValueState?: 'ok' | 'capped' | 'unset' | 'zero';
+  marketValueCapped?: boolean;
+  potentialUncertain?: boolean;
   morale?: string | null;
   nation?: string | null;
   /** Optional internal-only fields from legacy payloads; never emitted by Pass 0 Python extractor or exposed to UI/AI */
@@ -544,6 +547,7 @@ export interface DecodedFmSavePayload {
     playerName: string | null;
     typeName: string;
     date: string | null;
+    expectedReturn?: string | null;
     severity: string | null;
     cause: string | null;
     kind: string;
@@ -977,6 +981,15 @@ export function hydrateAppFromDecodedFmSave(
     if (dp.marketValue !== undefined) {
       next.marketValue = dp.marketValue;
     }
+    if (dp.marketValueState !== undefined) {
+      next.marketValueState = dp.marketValueState;
+    }
+    if (typeof dp.marketValueCapped === 'boolean') {
+      next.marketValueCapped = dp.marketValueCapped;
+    }
+    if (typeof dp.potentialUncertain === 'boolean') {
+      next.potentialUncertain = dp.potentialUncertain;
+    }
     if (dp.morale !== undefined) {
       next.morale = dp.morale;
     }
@@ -1213,6 +1226,11 @@ export function hydrateAppFromDecodedFmSave(
       nation: (dp.nation && dp.nation.trim()) || 'FM',
       wagePw: Number(dp.wagePw) || 0,
       marketValue: dp.marketValue ?? null,
+      marketValueState: dp.marketValueState,
+      marketValueCapped:
+        typeof dp.marketValueCapped === 'boolean' ? dp.marketValueCapped : undefined,
+      potentialUncertain:
+        typeof dp.potentialUncertain === 'boolean' ? dp.potentialUncertain : undefined,
       morale: dp.morale ?? null,
       status: assignedStatus,
       teamSlot: typeof dp.teamSlot === 'number' ? dp.teamSlot : 0,
@@ -1658,7 +1676,9 @@ export function hydrateAppFromDecodedFmSave(
       ? decoded.activeInjuries
           .map(
             (i) =>
-              `- ${i.playerName || 'Player'}: ${i.typeName} (${i.severity || i.kind}, ${i.date || 'active'})`
+              `- ${i.playerName || 'Player'}: ${i.typeName} (${i.severity || i.kind}, ${
+                i.expectedReturn ? `expected return ${i.expectedReturn}` : i.date || 'active'
+              })`
           )
           .join('\n')
       : '- No active injuries reported in save.';
@@ -1725,6 +1745,10 @@ export function hydrateAppFromDecodedFmSave(
             typeof rawRules.relegationPlaces === 'number'
               ? rawRules.relegationPlaces
               : null,
+          prizeMoney:
+            typeof rawRules.prizeMoney === 'number' ? rawRules.prizeMoney : null,
+          rounds:
+            typeof rawRules.rounds === 'number' ? rawRules.rounds : null,
         }
       : null;
 

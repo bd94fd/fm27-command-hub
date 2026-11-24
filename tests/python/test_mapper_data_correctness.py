@@ -184,5 +184,22 @@ class TestPotentialAndValueSemantics(unittest.TestCase):
         self.assertIn("300_000_000", source)
 
 
+class TestNationLookupTable(unittest.TestCase):
+    def test_canonical_nation_ids_are_accurate_and_unshifted(self) -> None:
+        nations = mapper.FM_NATION_DB_ID_NAMES
+        self.assertGreaterEqual(len(nations), 220)
+        # Regression: 29 and 30 previously both mapped to "Malawi" and Africa/Asia/UEFA were shifted
+        self.assertEqual(nations[29], "Madagascar")
+        self.assertEqual(nations[30], "Malawi")
+        self.assertEqual(nations[31], "Mali")
+        self.assertEqual(nations[106], "Afghanistan")
+        self.assertEqual(nations[116], "Japan")
+        self.assertEqual(nations[1435], "Australia")
+        self.assertEqual(nations[1438], "New Zealand")
+        self.assertEqual(nations[757], "Belgium")
+        self.assertEqual(nations[765], "England")
+        self.assertEqual(nations[777], "Latvia")
+
+
 if __name__ == "__main__":
     unittest.main()

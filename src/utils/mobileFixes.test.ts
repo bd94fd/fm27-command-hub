@@ -480,11 +480,11 @@ class NatSave:
         # Deliberately non-sequential save-local nation_ids that would fail list-index lookup
         return [
             NationRow(42, 804),   # Kosovo
-            NationRow(11, 1),     # Algeria
+            NationRow(11, 5),     # Algeria
             NationRow(77, 32),    # Mauritania
-            NationRow(19, 5),     # Burkina Faso
+            NationRow(19, 9),     # Burkina Faso
             NationRow(88, 31),    # Mali
-            NationRow(1, 757),    # Belgium (save-local id=1 MUST NOT collide with Algeria db_id=1!)
+            NationRow(5, 757),    # Belgium (save-local id=5 MUST NOT collide with Algeria db_id=5!)
         ]
 
 lookup = mod._build_nation_lookup(NatSave())
@@ -497,8 +497,8 @@ nat_results = {
     "mauritania": mod._resolve_player_nationality(NatPlayer(77), lookup),
     "burkina": mod._resolve_player_nationality(NatPlayer(19), lookup),
     "mali": mod._resolve_player_nationality(NatPlayer(88), lookup),
-    "belgium_no_collision": mod._resolve_player_nationality(NatPlayer(1), lookup),
-    "unmapped_not_algeria": mod._resolve_player_nationality(NatPlayer(5), lookup),
+    "belgium_no_collision": mod._resolve_player_nationality(NatPlayer(5), lookup),
+    "unmapped_not_algeria": mod._resolve_player_nationality(NatPlayer(9), lookup),
 }
 
 # Fix 3: Separate Match Bonuses from true Release Clauses

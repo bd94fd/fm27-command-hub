@@ -324,6 +324,16 @@ export function renderColumnValue(row: EnrichedSquadRow, colId: SquadColumnId): 
         </span>
       );
     case 'value':
+      if (p.marketValueCapped || p.marketValueState === 'capped') {
+        return (
+          <span
+            className="font-mono text-[11px] text-amber-600 dark:text-amber-300 whitespace-nowrap"
+            title="Stored at FM27's £300m ceiling (Not for sale / placeholder valuation)"
+          >
+            Not for sale
+          </span>
+        );
+      }
       return (
         <span className="font-mono tabular-nums text-slate-700 dark:text-slate-200 whitespace-nowrap">
           {formatCompactCurrency(p.marketValue)}

@@ -703,9 +703,11 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                 {formatFootLabel(player)}
                 {player.heightCm ? ` · ${player.heightCm} cm` : ''} · {player.personality} ·{' '}
                 £{player.wagePw.toLocaleString()}/wk (exp {player.expires})
-                {typeof player.marketValue === 'number' && player.marketValue > 0
-                  ? ` · Value ${formatDynamicCurrency(player.marketValue, 'marketValue')}`
-                  : ''}
+                {player.marketValueCapped || player.marketValueState === 'capped'
+                  ? ' · Not for sale (£300m cap)'
+                  : typeof player.marketValue === 'number' && player.marketValue > 0
+                    ? ` · Value ${formatDynamicCurrency(player.marketValue, 'marketValue')}`
+                    : ''}
               </p>
             </div>
           </div>
@@ -1631,16 +1633,26 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     <div className="flex justify-between">
                       <span className="text-slate-400">Market Value:</span>
                       <span className="font-mono text-emerald-300">
-                        {player.marketValue > 0
-                          ? formatDynamicCurrency(player.marketValue, 'marketValue')
-                          : '£0'}
+                        {player.marketValueCapped || player.marketValueState === 'capped'
+                          ? 'Not for sale (£300m cap)'
+                          : player.marketValue > 0
+                            ? formatDynamicCurrency(player.marketValue, 'marketValue')
+                            : '£0'}
                       </span>
                     </div>
                   )}
                   <div className="flex justify-between">
                     <span className="text-slate-400">Relative Ability / Potential:</span>
-                    <span className="font-mono text-amber-300">
+                    <span
+                      className="font-mono text-amber-300"
+                      title={
+                        player.potentialUncertain
+                          ? 'Potential is stored as a dynamic youth range in this FM27 save rather than a fixed ceiling.'
+                          : undefined
+                      }
+                    >
                       {player.ability.toFixed(1)}★ / {player.potential.toFixed(1)}★
+                      {player.potentialUncertain ? ' (Ranged)' : ''}
                     </span>
                   </div>
                   {analysis.contractStanding.promiseMismatch && (

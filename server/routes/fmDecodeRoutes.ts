@@ -20,6 +20,7 @@ const PYTHON_PROBE_TTL_MS = 60_000;
 const SERVER_DECODE_TIMEOUT_MS = 480_000; // 480s (8 min) for large multi-season saves
 const SERVER_DECODE_MAX_STDOUT_BYTES = 100 * 1024 * 1024;
 const MAX_TOTAL_UPLOAD_BYTES = 1024 * 1024 * 1024; // 1024 MB (1 GB) total chunked save limit
+const MAX_TOTAL_PENDING_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB total across all concurrent pending uploads
 const PENDING_UPLOAD_TTL_MS = 15 * 60 * 1000; // 15 minutes of inactivity
 const DECODE_JOB_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const MAX_PENDING_UPLOADS = 24;
@@ -60,6 +61,15 @@ const pendingUploads = new Map<string, PendingUploadEntry>();
 const decodeJobs = new Map<string, DecodeJobEntry>();
 const activeTempPaths = new Set<string>();
 let cachedPythonRuntime: ServerPythonRuntime | null = null;
+
+function getTotalPendingUploadBytes(excludeUploadId?: string): number {
+  let total = 0;
+  for (const [id, entry] of pendingUploads.entries()) {
+    if (excludeUploadId && id === excludeUploadId) continue;
+    total += Math.max(entry.bytesReceived, entry.expectedTotalBytes ?? 0);
+  }
+  return total;
+}
 
 function isValidUuid(val: unknown): val is string {
   return typeof val === 'string' && STRICT_UUID_RE.test(val.trim());
@@ -618,6 +628,15 @@ export function createFmDecodeRouter(options?: {
       expectedTotalBytes = parsedTotal;
     }
 
+    const currentPendingBytes = getTotalPendingUploadBytes();
+    const projectedPendingBytes = currentPendingBytes + (expectedTotalBytes ?? 0);
+    if (projectedPendingBytes > MAX_TOTAL_PENDING_UPLOAD_BYTES) {
+      return res.status(429).json({
+        error:
+          'Temporary upload storage limit reached on the server. Please wait a moment and try again.',
+      });
+    }
+
     const uploadId = crypto.randomUUID();
     const tmpBaseDir = path.resolve(os.tmpdir());
     const filePath = path.resolve(tmpBaseDir, `fm27-save-${uploadId}.fm`);
@@ -714,6 +733,16 @@ export function createFmDecodeRouter(options?: {
         await fs.promises.unlink(entry.filePath).catch(() => {});
         return res.status(413).json({
           error: `Total .fm save size (${attemptedMb} MB) exceeded the 1024 MB (1 GB) server upload limit.`,
+        });
+      }
+
+      const otherPendingBytes = getTotalPendingUploadBytes(uploadId);
+      if (otherPendingBytes + nextTotalBytes > MAX_TOTAL_PENDING_UPLOAD_BYTES) {
+        pendingUploads.delete(uploadId);
+        await fs.promises.unlink(entry.filePath).catch(() => {});
+        return res.status(429).json({
+          error:
+            'Temporary upload storage limit reached on the server. Partial upload cleared — please try again in a moment.',
         });
       }
 

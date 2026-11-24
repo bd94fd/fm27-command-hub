@@ -3112,3 +3112,115 @@ test('activeInjuries hydrates status=Injured (excluded by solveBestXi) and ST po
   assert.ok(xiUids.includes(1002), 'Fit backup striker must start ahead of injured player');
 });
 
+test('hydrateAppFromDecodedFmSave preserves marketValueState, marketValueCapped, potentialUncertain, expectedReturn, and competition prizeMoney/rounds', () => {
+  const payload = {
+    meta: {
+      gameDate: '01/03/2031',
+      clubName: 'KVV Zelzate',
+      managerName: 'Bobby Dean',
+    },
+    players: [
+      {
+        uid: 5001,
+        name: 'Wonderkid Prospect',
+        position: 'MC',
+        age: 17,
+        abilityStars: 2.5,
+        potentialStars: 2.5,
+        potentialUncertain: true,
+        marketValue: 300000000,
+        marketValueState: 'capped',
+        marketValueCapped: true,
+        condition: 90,
+        sharpness: 70,
+        wagePw: 500,
+        expires: '30/06/2034',
+        onLoan: false,
+        teamSlot: 0,
+        apps: '10',
+        minutes: 720,
+        rating: 7.1,
+        goals: 2,
+        xG: 1.5,
+        xGPer90: 0.19,
+        assists: 3,
+        xA: 2.1,
+        xAPer90: 0.26,
+        drbPer90: 1.2,
+        prPassesPer90: 4.5,
+        hdrPct: 50,
+        intPer90: 1.8,
+        tckPct: 75,
+        distanceKm: 11.2,
+        yellowCards: 1,
+        redCards: 0,
+        attributes: null,
+      },
+    ],
+    activeInjuries: [
+      {
+        playerUid: 5001,
+        playerName: 'Wonderkid Prospect',
+        typeName: 'Ankle Sprain',
+        date: '20/03/2031',
+        expectedReturn: '20/03/2031',
+        severity: 'Moderate',
+        cause: 'Match',
+        kind: 'typed',
+      },
+    ],
+    competitionRules: {
+      competitionName: 'Belgian First Division B',
+      maxSquadSize: 25,
+      minHomegrownClub: 2,
+      minHomegrownNation: 6,
+      maxForeignPlayers: null,
+      u21Exempt: true,
+      matchdaySubsLimit: 5,
+      prizeMoney: 1250000,
+      rounds: 30,
+    },
+    staff: [],
+    fixtures: [],
+    playedMatches: [],
+    upcomingFixtures: [],
+    leagueStanding: null,
+    finances: null,
+    tactics: [],
+    mentoring: [],
+  } as unknown as DecodedFmSavePayload;
+
+  const fresh = hydrateAppFromDecodedFmSave(payload, [], []);
+  const player = fresh.updatedSquad.find((p) => p.uid === 5001);
+  assert.ok(player);
+  assert.equal(player.marketValueState, 'capped');
+  assert.equal(player.marketValueCapped, true);
+  assert.equal(player.potentialUncertain, true);
+  assert.equal(fresh.competitionRules?.prizeMoney, 1250000);
+  assert.equal(fresh.competitionRules?.rounds, 30);
+  assert.match(fresh.analystPromptContext, /expected return 20\/03\/2031/);
+
+  // Re-syncing against an existing player should also update the new fields
+  const resyncPayload = {
+    ...payload,
+    players: [
+      {
+        ...payload.players[0],
+        marketValue: 450000,
+        marketValueState: 'ok',
+        marketValueCapped: false,
+        potentialUncertain: false,
+      },
+    ],
+  } as unknown as DecodedFmSavePayload;
+
+  const resynced = hydrateAppFromDecodedFmSave(resyncPayload, fresh.updatedSquad, []);
+  const updated = resynced.updatedSquad.find((p) => p.uid === 5001);
+  assert.ok(updated);
+  assert.equal(updated.marketValue, 450000);
+  assert.equal(updated.marketValueState, 'ok');
+  assert.equal(updated.marketValueCapped, false);
+  assert.equal(updated.potentialUncertain, false);
+});
+
+

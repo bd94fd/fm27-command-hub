@@ -424,6 +424,8 @@ export interface CompetitionRegistrationRules {
   promotionPlaces?: number | null;
   playoffPlaces?: number | null;
   relegationPlaces?: number | null;
+  prizeMoney?: number | null;
+  rounds?: number | null;
 }
 
 export interface HydratedSquadPlayer {
