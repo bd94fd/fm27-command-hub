@@ -103,10 +103,10 @@ const sampleMatch: MatchLogEntry = {
   tacticalAudit: 'Counter Positive win',
 };
 
-test('fmStorage saves, loads, and persists state across reloads', () => {
+test('fmStorage saves, loads, and persists state across reloads', async () => {
   mockLocalStorage.clear();
 
-  const success = savePersistedFmState({
+  const success = await savePersistedFmState({
     saveDate: '18/09/2027',
     nextFixture: '02/10/2027 vs KFC Dessel Sport',
     leagueStandingSub: '#3 of 16 | 9 Pts',
@@ -144,8 +144,8 @@ test('fmStorage records and retrieves previous snapshot for delta tracking', () 
   assert.equal(snap.playersSnapshot[0].goals, 5);
 });
 
-test('fmStorage clears persisted state completely', () => {
-  savePersistedFmState({
+test('fmStorage clears persisted state completely', async () => {
+  await savePersistedFmState({
     saveDate: '18/09/2027',
     nextFixture: '',
     leagueStandingSub: '',
@@ -157,15 +157,15 @@ test('fmStorage clears persisted state completely', () => {
   });
 
   assert.ok(loadPersistedFmState());
-  clearPersistedFmState();
+  await clearPersistedFmState();
   assert.equal(loadPersistedFmState(), null);
   assert.equal(loadPreviousSnapshot(), null);
 });
 
-test('fmStorage exports and imports JSON backups cleanly', () => {
+test('fmStorage exports and imports JSON backups cleanly', async () => {
   mockLocalStorage.clear();
 
-  savePersistedFmState({
+  await savePersistedFmState({
     saveDate: '18/09/2027',
     nextFixture: 'Dessel Sport',
     leagueStandingSub: '#3',
@@ -183,12 +183,12 @@ test('fmStorage exports and imports JSON backups cleanly', () => {
   mockLocalStorage.clear();
   assert.equal(loadPersistedFmState(), null);
 
-  const imported = importFmStateBackupJson(exported);
+  const imported = await importFmStateBackupJson(exported);
   assert.ok(imported);
   assert.equal(imported.players[0].name, 'Mbey Epolo');
 
   // Corrupted JSON returns null without crashing
-  const badImport = importFmStateBackupJson('invalid json string');
+  const badImport = await importFmStateBackupJson('invalid json string');
   assert.equal(badImport, null);
 });
 
@@ -249,7 +249,7 @@ test('fmStorage persists Shortlist tracked targets with add/remove toggling', ()
   assert.equal(loadTrackedScoutTargets().length, 0);
 });
 
-test('fmStorage v2 migrates v1 state and persists customSlots, activeShape, applyToAnalystOnly, and archivedSaveSnapshots', () => {
+test('fmStorage v2 migrates v1 state and persists customSlots, activeShape, applyToAnalystOnly, and archivedSaveSnapshots', async () => {
   mockLocalStorage.clear();
 
   const legacyV1Payload = {
@@ -274,7 +274,7 @@ test('fmStorage v2 migrates v1 state and persists customSlots, activeShape, appl
   assert.deepEqual(migrated.archivedSaveSnapshots, []);
   assert.equal(migrated.players[0].name, 'Mbey Epolo');
 
-  savePersistedFmState({
+  await savePersistedFmState({
     ...migrated,
     activeShape: '4-2-3-1 DM AM Wide',
     customSlots: [
@@ -302,7 +302,7 @@ test('fmStorage v2 migrates v1 state and persists customSlots, activeShape, appl
   assert.ok(exported);
   mockLocalStorage.clear();
 
-  const imported = importBackupJson(exported);
+  const imported = await importBackupJson(exported);
   assert.equal(imported.ok, true);
   assert.equal(imported.errors.length, 0);
   assert.equal(imported.state?.schemaVersion, 2);
@@ -312,7 +312,7 @@ test('fmStorage v2 migrates v1 state and persists customSlots, activeShape, appl
   assert.equal(imported.state?.archivedSaveSnapshots?.length, 1);
 });
 
-test('fmStorage validateStateSchema and importBackupJson reject malformed payloads cleanly', () => {
+test('fmStorage validateStateSchema and importBackupJson reject malformed payloads cleanly', async () => {
   const invalidShape = validateStateSchema({
     players: [],
     matches: [],
@@ -328,8 +328,171 @@ test('fmStorage validateStateSchema and importBackupJson reject malformed payloa
   });
   assert.equal(invalidSlots.valid, false);
 
-  const badJson = importBackupJson('{not valid json');
+  const badJson = await importBackupJson('{not valid json');
   assert.equal(badJson.ok, false);
   assert.equal(badJson.state, null);
   assert.ok(badJson.errors.length > 0);
+});
+
+test('fmStorage falls back to 150 targets in localStorage on quota error while awaiting IndexedDB', async () => {
+  mockLocalStorage.clear();
+  const win = (globalThis as unknown as {
+    window: { localStorage: typeof mockLocalStorage; indexedDB?: unknown };
+  }).window;
+
+  const originalSetItem = mockLocalStorage.setItem;
+  let setAttempts = 0;
+  mockLocalStorage.setItem = (key: string, val: string) => {
+    setAttempts += 1;
+    if (setAttempts === 1) {
+      throw new Error('QuotaExceededError');
+    }
+    return originalSetItem(key, val);
+  };
+
+  let idbPutCompleted = false;
+  let idbDeleteCompleted = false;
+  let storedTargetCountInIdb = 0;
+
+  win.indexedDB = {
+    open: () => {
+      const req: Record<string, unknown> = {
+        result: {
+          objectStoreNames: { contains: () => true },
+          transaction: () => {
+            const tx: Record<string, unknown> = {
+              objectStore: () => ({
+                put: (payload: { hydratedFmSave?: { recruitmentTargets?: unknown[] } }) => {
+                  storedTargetCountInIdb =
+                    payload.hydratedFmSave?.recruitmentTargets?.length ?? 0;
+                  setTimeout(() => {
+                    idbPutCompleted = true;
+                    if (typeof tx.oncomplete === 'function') (tx.oncomplete as () => void)();
+                  }, 10);
+                },
+                delete: () => {
+                  setTimeout(() => {
+                    idbDeleteCompleted = true;
+                    if (typeof tx.oncomplete === 'function') (tx.oncomplete as () => void)();
+                  }, 10);
+                },
+              }),
+            };
+            return tx;
+          },
+          close: () => {},
+        },
+      };
+      setTimeout(() => {
+        if (typeof req.onsuccess === 'function') (req.onsuccess as () => void)();
+      }, 0);
+      return req;
+    },
+  };
+
+  try {
+    const manyTargets: RecruitmentTarget[] = Array.from({ length: 220 }, (_, i) => ({
+      uid: 1000 + i,
+      name: `Target ${i}`,
+      age: 21,
+      nationality: 'Belgium',
+      primaryPosition: 'MC',
+      isFreeAgent: true,
+      contractExpiryMonths: 0,
+      demandedWageEur: 400,
+      attributes: { passing: 13 },
+    }));
+
+    const ok = await savePersistedFmState({
+      saveDate: '18/09/2027',
+      nextFixture: 'Dessel Sport',
+      leagueStandingSub: '#3',
+      wageSpend: '£9.7K',
+      balance: '£-710K',
+      players: [samplePlayer],
+      matches: [sampleMatch],
+      hydratedFmSave: {
+        saveDateLabel: '18/09/2027',
+        nextFixtureLabel: 'Dessel Sport',
+        leagueStandingLabel: '#3',
+        wageComplianceLabel: '£9.7K',
+        balanceLabel: '£-710K',
+        updatedSquad: [samplePlayer],
+        updatedMatches: [sampleMatch],
+        recruitmentTargets: manyTargets,
+      } as never,
+    });
+
+    assert.equal(ok, true);
+    assert.equal(idbPutCompleted, true);
+    assert.equal(storedTargetCountInIdb, 220);
+
+    const loaded = loadPersistedFmState();
+    assert.equal(loaded?.hydratedFmSave?.recruitmentTargets?.length, 150);
+
+    await clearPersistedFmState();
+    assert.equal(idbDeleteCompleted, true);
+    assert.equal(loadPersistedFmState(), null);
+  } finally {
+    mockLocalStorage.setItem = originalSetItem;
+    delete win.indexedDB;
+  }
+});
+
+test('fmStorage handles IndexedDB transaction errors and aborts without unhandled rejections', async () => {
+  mockLocalStorage.clear();
+  const win = (globalThis as unknown as {
+    window: { localStorage: typeof mockLocalStorage; indexedDB?: unknown };
+  }).window;
+
+  win.indexedDB = {
+    open: () => {
+      const req: Record<string, unknown> = {
+        result: {
+          objectStoreNames: { contains: () => true },
+          transaction: () => {
+            const tx: Record<string, unknown> = {
+              objectStore: () => ({
+                put: () => {
+                  setTimeout(() => {
+                    if (typeof tx.onerror === 'function') (tx.onerror as () => void)();
+                  }, 5);
+                },
+                delete: () => {
+                  setTimeout(() => {
+                    if (typeof tx.onabort === 'function') (tx.onabort as () => void)();
+                  }, 5);
+                },
+              }),
+            };
+            return tx;
+          },
+          close: () => {},
+        },
+      };
+      setTimeout(() => {
+        if (typeof req.onsuccess === 'function') (req.onsuccess as () => void)();
+      }, 0);
+      return req;
+    },
+  };
+
+  try {
+    const ok = await savePersistedFmState({
+      saveDate: '18/09/2027',
+      nextFixture: 'Dessel Sport',
+      leagueStandingSub: '#3',
+      wageSpend: '£9.7K',
+      balance: '£-710K',
+      players: [samplePlayer],
+      matches: [sampleMatch],
+      hydratedFmSave: null,
+    });
+    assert.equal(ok, true);
+
+    await clearPersistedFmState();
+    assert.equal(loadPersistedFmState(), null);
+  } finally {
+    delete win.indexedDB;
+  }
 });

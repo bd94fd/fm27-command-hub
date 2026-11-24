@@ -50,9 +50,9 @@ export class AppErrorBoundary extends Component<
     }
   };
 
-  private handleResetCacheAndReload = (): void => {
+  private handleResetCacheAndReload = async (): Promise<void> => {
     try {
-      clearPersistedFmState();
+      await clearPersistedFmState();
       clearProgressionArchive();
     } catch {
       // ignore storage errors

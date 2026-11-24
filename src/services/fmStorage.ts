@@ -240,10 +240,10 @@ export function loadPersistedFmState(): FmHubPersistedState | null {
 /**
  * Safely persist current state into localStorage (with schemaVersion: 2).
  */
-export function savePersistedFmState(
+export async function savePersistedFmState(
   state: Omit<FmHubPersistedState, 'version' | 'lastSyncedAt'>
-): boolean {
-  if (typeof window === 'undefined' || !window.localStorage) {
+): Promise<boolean> {
+  if (typeof window === 'undefined') {
     return false;
   }
 
@@ -283,27 +283,38 @@ export function savePersistedFmState(
   };
 
   const fullPayload = buildPayload();
-  void savePersistedFmStateToIndexedDb(fullPayload);
 
-  try {
-    window.localStorage.setItem(FM27_STORAGE_KEY, JSON.stringify(fullPayload));
-    return true;
-  } catch (err) {
+  let localSaved = false;
+  if (window.localStorage) {
     try {
-      window.localStorage.setItem(FM27_STORAGE_KEY, JSON.stringify(buildPayload(150)));
-      return true;
-    } catch {
-      console.warn('Failed to save FM27 state to localStorage:', err);
-      return false;
+      window.localStorage.setItem(FM27_STORAGE_KEY, JSON.stringify(fullPayload));
+      localSaved = true;
+    } catch (err) {
+      try {
+        window.localStorage.setItem(FM27_STORAGE_KEY, JSON.stringify(buildPayload(150)));
+        localSaved = true;
+      } catch {
+        console.warn('Failed to save FM27 state to localStorage:', err);
+        localSaved = false;
+      }
     }
   }
+
+  let idbSaved = false;
+  try {
+    idbSaved = await savePersistedFmStateToIndexedDb(fullPayload);
+  } catch (err) {
+    console.warn('Failed to save FM27 state to IndexedDB:', err);
+  }
+
+  return localSaved || idbSaved;
 }
 
 const IDB_DB_NAME = 'fm27_command_hub_idb';
 const IDB_STORE_NAME = 'hub_state';
 
 function openFm27IndexedDb(): Promise<IDBDatabase | null> {
-  if (typeof window === 'undefined' || !('indexedDB' in window)) {
+  if (typeof window === 'undefined' || !('indexedDB' in window) || !window.indexedDB) {
     return Promise.resolve(null);
   }
   return new Promise((resolve) => {
@@ -317,6 +328,7 @@ function openFm27IndexedDb(): Promise<IDBDatabase | null> {
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => resolve(null);
+      req.onblocked = () => resolve(null);
     } catch {
       resolve(null);
     }
@@ -337,6 +349,10 @@ export async function savePersistedFmStateToIndexedDb(
         resolve(true);
       };
       tx.onerror = () => {
+        db.close();
+        resolve(false);
+      };
+      tx.onabort = () => {
         db.close();
         resolve(false);
       };
@@ -381,6 +397,10 @@ export async function clearPersistedFmStateFromIndexedDb(): Promise<void> {
         resolve();
       };
       tx.onerror = () => {
+        db.close();
+        resolve();
+      };
+      tx.onabort = () => {
         db.close();
         resolve();
       };
@@ -442,15 +462,20 @@ export function loadPreviousSnapshot(): FmHubPreviousSnapshot | null {
 /**
  * Completely wipe stored save memory to return to clean "Awaiting .fm Save" state.
  */
-export function clearPersistedFmState(): void {
-  void clearPersistedFmStateFromIndexedDb();
-  if (typeof window === 'undefined' || !window.localStorage) return;
+export async function clearPersistedFmState(): Promise<void> {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      window.localStorage.removeItem(FM27_STORAGE_KEY);
+      window.localStorage.removeItem(FM27_PREVIOUS_KEY);
+      window.localStorage.removeItem(FM27_TRACKED_TARGETS_KEY);
+    } catch (err) {
+      console.warn('Failed to clear FM27 state from localStorage:', err);
+    }
+  }
   try {
-    window.localStorage.removeItem(FM27_STORAGE_KEY);
-    window.localStorage.removeItem(FM27_PREVIOUS_KEY);
-    window.localStorage.removeItem(FM27_TRACKED_TARGETS_KEY);
+    await clearPersistedFmStateFromIndexedDb();
   } catch (err) {
-    console.warn('Failed to clear FM27 state from localStorage:', err);
+    console.warn('Failed to clear FM27 state from IndexedDB:', err);
   }
 }
 
@@ -568,14 +593,16 @@ export function exportFmStateBackupJson(): string | null {
 /**
  * Import and validate a portable JSON backup.
  */
-export function importFmStateBackupJson(jsonString: string): FmHubPersistedState | null {
+export async function importFmStateBackupJson(
+  jsonString: string
+): Promise<FmHubPersistedState | null> {
   try {
     const parsed = JSON.parse(jsonString);
     const migrated = migratePersistedState(parsed);
     if (!migrated) {
       throw new Error('Invalid FM27 backup schema');
     }
-    savePersistedFmState(migrated);
+    await savePersistedFmState(migrated);
     return migrated;
   } catch (err) {
     console.error('Failed to import FM27 state backup:', err);
@@ -593,11 +620,11 @@ export function exportBackupJson(): string | null {
 /**
  * Pass 2 (v2.1): Import, validate, migrate to schemaVersion 2, and persist a JSON backup.
  */
-export function importBackupJson(jsonString: string): {
+export async function importBackupJson(jsonString: string): Promise<{
   ok: boolean;
   state: FmHubPersistedState | null;
   errors: string[];
-} {
+}> {
   try {
     const parsed = JSON.parse(jsonString);
     const validation = validateStateSchema(parsed);
@@ -608,7 +635,7 @@ export function importBackupJson(jsonString: string): {
     if (!migrated) {
       return { ok: false, state: null, errors: ['Failed to migrate state payload'] };
     }
-    savePersistedFmState(migrated);
+    await savePersistedFmState(migrated);
     return { ok: true, state: migrated, errors: [] };
   } catch (err) {
     return {

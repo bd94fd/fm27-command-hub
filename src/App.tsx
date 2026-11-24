@@ -442,7 +442,8 @@ export default function App() {
       recruitmentCases.length > 0 ||
       shortlists.length > 0
     ) {
-      savePersistedFmState({
+      let cancelled = false;
+      void savePersistedFmState({
         saveDate,
         nextFixture,
         leagueStandingSub,
@@ -458,8 +459,18 @@ export default function App() {
         activeShape,
         customSlots,
         applyToAnalystOnly,
-      });
-      setIsRestoredFromMemory(true);
+      })
+        .then((saved) => {
+          if (!cancelled && saved) {
+            setIsRestoredFromMemory(true);
+          }
+        })
+        .catch((err) => {
+          console.warn('Failed to auto-save FM27 state:', err);
+        });
+      return () => {
+        cancelled = true;
+      };
     }
   }, [
     players,
@@ -513,11 +524,11 @@ export default function App() {
     isResettingRef.current = true;
     // Cancel any in-flight IndexedDB restore so it cannot resurrect cleared state
     idbRestoreCancelledRef.current = true;
-    clearPersistedFmState();
+    await clearPersistedFmState();
     clearProgressionArchive();
     await clearAllSaveCache();
     // A late auto-save IndexedDB write may land after the wipe; clear once more
-    clearPersistedFmState();
+    await clearPersistedFmState();
     setPlayers([]);
     setMatches([]);
     setStaff([]);
@@ -563,30 +574,35 @@ export default function App() {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const text = event.target?.result as string;
       if (!text) return;
-      const imported = importFmStateBackupJson(text);
-      if (imported) {
-        setPlayers(imported.players);
-        setMatches(imported.matches);
-        setStaff(imported.staff || []);
-        setRecruitmentCases(imported.recruitmentCases || []);
-        setShortlists(imported.shortlists || []);
-        setSaveDate(imported.saveDate);
-        setNextFixture(imported.nextFixture);
-        setLeagueStandingSub(imported.leagueStandingSub);
-        setWageSpend(imported.wageSpend);
-        setBalance(imported.balance);
-        setHydratedFmSave(imported.hydratedFmSave);
-        if (imported.activeShape) setActiveShape(imported.activeShape);
-        setCustomSlots(imported.customSlots ?? []);
-        setApplyToAnalystOnly(Boolean(imported.applyToAnalystOnly));
-        setIsRestoredFromMemory(true);
-        showGlobalToast(
-          `Restored campaign snapshot (${imported.players.length} players)`
-        );
-      } else {
+      try {
+        const imported = await importFmStateBackupJson(text);
+        if (imported) {
+          setPlayers(imported.players);
+          setMatches(imported.matches);
+          setStaff(imported.staff || []);
+          setRecruitmentCases(imported.recruitmentCases || []);
+          setShortlists(imported.shortlists || []);
+          setSaveDate(imported.saveDate);
+          setNextFixture(imported.nextFixture);
+          setLeagueStandingSub(imported.leagueStandingSub);
+          setWageSpend(imported.wageSpend);
+          setBalance(imported.balance);
+          setHydratedFmSave(imported.hydratedFmSave);
+          if (imported.activeShape) setActiveShape(imported.activeShape);
+          setCustomSlots(imported.customSlots ?? []);
+          setApplyToAnalystOnly(Boolean(imported.applyToAnalystOnly));
+          setIsRestoredFromMemory(true);
+          showGlobalToast(
+            `Restored campaign snapshot (${imported.players.length} players)`
+          );
+        } else {
+          showGlobalToast('Invalid FM27 backup file format.');
+        }
+      } catch (err) {
+        console.warn('Failed to import FM27 backup:', err);
         showGlobalToast('Invalid FM27 backup file format.');
       }
     };
