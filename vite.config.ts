@@ -6,11 +6,56 @@ import {defineConfig} from 'vite';
 import {analyzer} from 'vite-bundle-analyzer';
 import {VitePWA} from 'vite-plugin-pwa';
 
-export default defineConfig(() => {
+export default defineConfig(({command, mode}) => {
+  // Prevent a shell-level NODE_ENV=development from leaking React dev-runtime
+  // (jsx-dev-runtime + react-dom.development.js) into production builds while
+  // leaving local dev server & HMR completely untouched.
+  if (command === 'build' && mode === 'production') {
+    process.env.NODE_ENV = 'production';
+  }
+
+  const removePycacheFromDist = () => {
+    const distDir = path.resolve(import.meta.dirname, 'dist');
+    if (!fs.existsSync(distDir)) return;
+    const pycacheDir = path.join(distDir, '__pycache__');
+    if (fs.existsSync(pycacheDir)) {
+      fs.rmSync(pycacheDir, {recursive: true, force: true});
+    }
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, {withFileTypes: true})) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (entry.name === '__pycache__') {
+            fs.rmSync(full, {recursive: true, force: true});
+          } else {
+            walk(full);
+          }
+        } else if (entry.name.endsWith('.pyc') || entry.name.endsWith('.pyo')) {
+          fs.rmSync(full, {force: true});
+        }
+      }
+    };
+    walk(distDir);
+  };
+
   return {
     plugins: [
       react(),
       tailwindcss(),
+      // Strip Python bytecode (public/__pycache__/*.pyc created by `py_compile`)
+      // before VitePWA hashes dist/ so .pyc files never land in dist/ or sw.js.
+      {
+        name: 'strip-pycache-from-dist',
+        apply: 'build',
+        writeBundle(): void {
+          removePycacheFromDist();
+        },
+        closeBundle(error?: Error): void {
+          if (!error) {
+            removePycacheFromDist();
+          }
+        },
+      },
       VitePWA({
         registerType: 'prompt',
         injectRegister: 'auto',
@@ -18,13 +63,14 @@ export default defineConfig(() => {
         workbox: {
           cleanupOutdatedCaches: true,
           globPatterns: ['**/*.{js,css,html,svg,png,woff2,json}'],
-          // Keep the worker + Python runtime scripts out of the precache: they are
-          // fetched with a manual ?v= cache buster and must match the deployed
-          // mapper/patcher on every release.
+          // Keep the worker + Python runtime scripts and any bytecode out of the
+          // precache: worker/Python files use a manual ?v= cache buster.
           globIgnores: [
             '**/fm-save-worker.js',
             '**/fm-save-mapper.py',
             '**/fm_layout_patcher.py',
+            '**/__pycache__/**',
+            '**/*.pyc',
           ],
           navigateFallback: '/index.html',
           navigateFallbackDenylist: [/^\/api\//],

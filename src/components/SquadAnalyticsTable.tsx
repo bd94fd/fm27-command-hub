@@ -1,4 +1,11 @@
-import React, { useState, useMemo, useDeferredValue, useEffect } from 'react';
+import React, {
+  Suspense,
+  lazy,
+  useState,
+  useMemo,
+  useDeferredValue,
+  useEffect,
+} from 'react';
 import { BarChart3, GitCompare, Table2, TrendingUp, Users } from 'lucide-react';
 import { MatchLogEntry, PlayerRecord } from '../types/fm27';
 import type {
@@ -38,10 +45,23 @@ import {
 } from '../utils/squadViewHelpers';
 import { STATS_SORT_KEYS } from './squad/squadTableConfig';
 import type { ListDisplayMode, SquadViewMode } from './squad/squadTableConfig';
-import { SquadAnalyticsView } from './squad/SquadAnalyticsView';
-import { SquadCompareView } from './squad/SquadCompareView';
-import { SquadProgressionView } from './squad/SquadProgressionView';
 import { SquadListView } from './squad/SquadListView';
+
+const SquadAnalyticsView = lazy(() =>
+  import('./squad/SquadAnalyticsView').then((m) => ({
+    default: m.SquadAnalyticsView,
+  }))
+);
+const SquadCompareView = lazy(() =>
+  import('./squad/SquadCompareView').then((m) => ({
+    default: m.SquadCompareView,
+  }))
+);
+const SquadProgressionView = lazy(() =>
+  import('./squad/SquadProgressionView').then((m) => ({
+    default: m.SquadProgressionView,
+  }))
+);
 
 interface SquadAnalyticsTableProps {
   players: PlayerRecord[];
@@ -402,45 +422,69 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
       </p>
     </div>
         ) : viewMode === 'analytics' ? (
-          <SquadAnalyticsView
-            players={players}
-            matches={matches}
-            saveDate={saveDate}
-            divisionBenchmarks={divisionBenchmarks}
-            governance={governance}
-            lastMatchTactic={lastMatchTactic}
-            squadPlanner={squadPlanner}
-            onSelectPlayer={onSelectPlayer}
-            activeRadarPlayer={activeRadarPlayer}
-            setRadarPlayerId={setRadarPlayerId}
-            squadTransferAudit={squadTransferAudit}
-            transferVerdictById={transferVerdictById}
-          />
+          <Suspense
+            fallback={
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-500 dark:text-slate-400">
+                Loading Squad Analytics...
+              </div>
+            }
+          >
+            <SquadAnalyticsView
+              players={players}
+              matches={matches}
+              saveDate={saveDate}
+              divisionBenchmarks={divisionBenchmarks}
+              governance={governance}
+              lastMatchTactic={lastMatchTactic}
+              squadPlanner={squadPlanner}
+              onSelectPlayer={onSelectPlayer}
+              activeRadarPlayer={activeRadarPlayer}
+              setRadarPlayerId={setRadarPlayerId}
+              squadTransferAudit={squadTransferAudit}
+              transferVerdictById={transferVerdictById}
+            />
+          </Suspense>
         ) : viewMode === 'compare' ? (
-          <SquadCompareView
-            players={players}
-            comparePlayerA={comparePlayerA}
-            comparePlayerB={comparePlayerB}
-            setCompareAId={setCompareAId}
-            setCompareBId={setCompareBId}
-          />
+          <Suspense
+            fallback={
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-500 dark:text-slate-400">
+                Loading Player Compare...
+              </div>
+            }
+          >
+            <SquadCompareView
+              players={players}
+              comparePlayerA={comparePlayerA}
+              comparePlayerB={comparePlayerB}
+              setCompareAId={setCompareAId}
+              setCompareBId={setCompareBId}
+            />
+          </Suspense>
         ) : viewMode === 'progression' ? (
-          <SquadProgressionView
-            progressionArchive={progressionArchive}
-            progressionDiff={progressionDiff}
-            baselineIdx={baselineIdx}
-            setBaselineIdx={setBaselineIdx}
-            confirmClearProgression={confirmClearProgression}
-            handleClearProgressionSnapshots={handleClearProgressionSnapshots}
-            progressionDirection={progressionDirection}
-            setProgressionDirection={setProgressionDirection}
-            showMinorProgressionShifts={showMinorProgressionShifts}
-            setShowMinorProgressionShifts={setShowMinorProgressionShifts}
-            expandedMinorUids={expandedMinorUids}
-            setExpandedMinorUids={setExpandedMinorUids}
-            players={players}
-            onSelectPlayer={onSelectPlayer}
-          />
+          <Suspense
+            fallback={
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-500 dark:text-slate-400">
+                Loading Squad Progression...
+              </div>
+            }
+          >
+            <SquadProgressionView
+              progressionArchive={progressionArchive}
+              progressionDiff={progressionDiff}
+              baselineIdx={baselineIdx}
+              setBaselineIdx={setBaselineIdx}
+              confirmClearProgression={confirmClearProgression}
+              handleClearProgressionSnapshots={handleClearProgressionSnapshots}
+              progressionDirection={progressionDirection}
+              setProgressionDirection={setProgressionDirection}
+              showMinorProgressionShifts={showMinorProgressionShifts}
+              setShowMinorProgressionShifts={setShowMinorProgressionShifts}
+              expandedMinorUids={expandedMinorUids}
+              setExpandedMinorUids={setExpandedMinorUids}
+              players={players}
+              onSelectPlayer={onSelectPlayer}
+            />
+          </Suspense>
         ) : (
           /* ── MAIN SQUAD LIST VIEW ── */
           <SquadListView

@@ -14,7 +14,7 @@ import {
   parseScoreGoals,
   summarizeMatchesByScope,
 } from '../utils/matchScopeHelpers';
-import { MatchXgMomentumChart } from './FootballAnalyticsCharts';
+import { MatchXgMomentumChart } from './charts/MatchXgMomentumChart';
 import { MatchLogCard } from './MatchLogCard';
 
 export interface PostMatchDebriefData {

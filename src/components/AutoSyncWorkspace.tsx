@@ -1,4 +1,12 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, {
+  Suspense,
+  lazy,
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+} from 'react';
 import {
   Send,
   Upload,
@@ -26,34 +34,28 @@ import {
   RecruitmentCase,
   StaffRecord,
 } from '../types/fm27';
-import { verifyFm27Accuracy } from '../data/fm27KnowledgeBase';
-import { buildOfflineTacticalBriefing } from '../utils/offlineBriefingEngine';
-import { SaveSnapshotDiffPanel } from './SaveSnapshotDiffPanel';
+import { checkFm27ResponseWarnings } from '../utils/fm27AccuracyCheck';
 import type { DeepJourneyReport } from '../services/saveCache';
 import type { RecruitmentTarget } from '../types/fmSave';
-import {
-  parseFmStructuredExport,
+import type {
   ParsedFmExportResult,
   ParsedPlayerDelta,
   SquadMergeResult,
 } from '../utils/fmFileImporter';
-import {
+import type {
   DecodedFmSavePayload,
   HydratedSaveState,
-  shouldDefaultFastSync,
-  formatStepTimingLabel,
 } from '../utils/fmSaveHydrator';
 import {
-  decodeFmSaveFile,
-  cancelFmSaveDecode,
-  checkServerDecodeStatus,
-  createUploadController,
+  shouldDefaultFastSync,
+  formatStepTimingLabel,
+} from '../utils/fmSaveUiHelpers';
+import type {
   FmSaveProgressStage,
   FmImportScope,
   UploadController,
 } from '../services/fmSaveReader';
 import { useUploadWakeLock } from '../hooks/useUploadWakeLock';
-import { FmUploadProgressCard } from './FmUploadProgressCard';
 import {
   ChatTurnPayload,
   clearClubChatHistory,
@@ -61,17 +63,13 @@ import {
   resolveChatClubKey,
   saveClubChatHistory,
 } from '../services/chatStorage';
-import {
+import type {
   AnalystReasoningMode,
-  buildConversationTranscript,
-  buildLiveTacticalAnalystContext,
-  CORE_PREFLIGHT_REQUIRED_KEYS,
   ExtendedPlayerAutoUpdate,
   PreFlightPayloadValidationResult,
-  runPreFlightAnalystValidation,
 } from '../utils/tacticalAnalystContext';
-import { FormationPresetKey } from '../utils/bestXiSolver';
-import { PersistedCustomSlot } from '../services/fmStorage';
+import type { FormationPresetKey } from '../utils/bestXiSolver';
+import type { PersistedCustomSlot } from '../services/fmStorage';
 import type {
   ClubGovernanceState,
   LastMatchTacticBlueprint,
@@ -84,6 +82,38 @@ import {
   sanitizeReaderNotes,
   toApiResponseError,
 } from '../utils/apiResponse';
+
+const SaveSnapshotDiffPanel = lazy(() =>
+  import('./SaveSnapshotDiffPanel').then((m) => ({
+    default: m.SaveSnapshotDiffPanel,
+  }))
+);
+
+const FmUploadProgressCard = lazy(() =>
+  import('./FmUploadProgressCard').then((m) => ({
+    default: m.FmUploadProgressCard,
+  }))
+);
+
+async function probeServerDecodeAvailability(): Promise<boolean> {
+  const controller =
+    typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeout = controller ? setTimeout(() => controller.abort(), 8_000) : null;
+  try {
+    const res = await fetch('/api/fm27/decode-status', {
+      method: 'GET',
+      cache: 'no-store',
+      signal: controller?.signal,
+    });
+    if (!res.ok) return false;
+    const data = (await res.json()) as { serverDecodeAvailable?: boolean };
+    return Boolean(data?.serverDecodeAvailable);
+  } catch {
+    return false;
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
 
 export type { ChatTurnPayload };
 export type PlayerAutoUpdate = ExtendedPlayerAutoUpdate;
@@ -125,11 +155,13 @@ interface AutoSyncWorkspaceProps {
   onUpdateSaveDate?: (date: string) => void;
   onAddMatch: (match: MatchLogEntry) => void;
   onApplyPlayerUpdates?: (updates: PlayerAutoUpdate[]) => void;
-  onBulkMergePlayers?: (parsedPlayers: ParsedPlayerDelta[]) => SquadMergeResult;
+  onBulkMergePlayers?: (
+    parsedPlayers: ParsedPlayerDelta[]
+  ) => Promise<SquadMergeResult> | SquadMergeResult;
   onApplyDecodedFmSave?: (
     decoded: DecodedFmSavePayload,
     options?: { isInterimCheckpoint?: boolean }
-  ) => HydratedSaveState;
+  ) => Promise<HydratedSaveState> | HydratedSaveState;
   onBackgroundSyncStatusChange?: (
     status: {
       label: string;
@@ -255,6 +287,34 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const feedEndRef = useRef<HTMLDivElement | null>(null);
   const uploadControlRef = useRef<UploadController | null>(null);
+  const cancelDecodeRef = useRef<(() => void) | null>(null);
+  const [isDesktopViewport, setIsDesktopViewport] = useState<boolean>(() =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(min-width: 768px)').matches
+      : true
+  );
+  const [hasOpenedJourneyPanel, setHasOpenedJourneyPanel] = useState<boolean>(
+    false
+  );
+  const [livePreFlightValidation, setLivePreFlightValidation] =
+    useState<PreFlightPayloadValidationResult | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return;
+    }
+    const mq = window.matchMedia('(min-width: 768px)');
+    const onChange = (e: MediaQueryListEvent) => setIsDesktopViewport(e.matches);
+    setIsDesktopViewport(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  useEffect(() => {
+    if (mobileHubView === 'journey' && !hasOpenedJourneyPanel) {
+      setHasOpenedJourneyPanel(true);
+    }
+  }, [mobileHubView, hasOpenedJourneyPanel]);
 
   // Hydrate club-specific chat history when switching clubs or resetting memory
   useEffect(() => {
@@ -286,30 +346,55 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
 
   const hasLoadedSave = players.length > 0 || Boolean(hydratedFmSave);
 
-  const livePreFlightValidation = useMemo<PreFlightPayloadValidationResult | null>(() => {
-    if (!hasLoadedSave) return null;
-    const { validation } = runPreFlightAnalystValidation({
-      clubName: clubName && clubName !== '--' ? clubName : '--',
-      managerName: managerName && managerName !== '--' ? managerName : '--',
-      saveDate: currentSaveDate,
-      nextFixture,
-      leagueStandingSub,
-      wageSpend,
-      balance,
-      players,
-      matches,
-      hydratedFmSave,
-      staff,
-      recruitmentCases,
-      trackedTargets,
-      latestJourneyReport,
-      activeShape,
-      customSlots,
-      applyToAnalystOnly,
-      liveGovernance,
-      liveLastMatchTactic,
-    });
-    return validation;
+  // Defer heavy tacticalAnalystContext pre-flight diagnostics off the cold-start paint
+  useEffect(() => {
+    if (!hasLoadedSave) {
+      setLivePreFlightValidation(null);
+      return;
+    }
+    let cancelled = false;
+    const runValidation = () => {
+      void import('../utils/tacticalAnalystContext')
+        .then(({ runPreFlightAnalystValidation }) => {
+          if (cancelled) return;
+          const { validation } = runPreFlightAnalystValidation({
+            clubName: clubName && clubName !== '--' ? clubName : '--',
+            managerName: managerName && managerName !== '--' ? managerName : '--',
+            saveDate: currentSaveDate,
+            nextFixture,
+            leagueStandingSub,
+            wageSpend,
+            balance,
+            players,
+            matches,
+            hydratedFmSave,
+            staff,
+            recruitmentCases,
+            trackedTargets,
+            latestJourneyReport,
+            activeShape,
+            customSlots,
+            applyToAnalystOnly,
+            liveGovernance,
+            liveLastMatchTactic,
+          });
+          setLivePreFlightValidation(validation);
+        })
+        .catch(() => {
+          // ignore lazy load errors on unmount/offline edge
+        });
+    };
+    const timer =
+      typeof window !== 'undefined'
+        ? window.setTimeout(runValidation, 120)
+        : null;
+    if (timer === null) {
+      runValidation();
+    }
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
   }, [
     hasLoadedSave,
     clubName,
@@ -349,11 +434,11 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
 
   useEffect(() => {
     let active = true;
-    checkServerDecodeStatus().then((status) => {
+    void probeServerDecodeAvailability().then((available) => {
       if (!active) return;
-      setServerDecodeAvailable(status.serverDecodeAvailable);
+      setServerDecodeAvailable(available);
       if (!fastSyncManuallyToggledRef.current) {
-        if (status.serverDecodeAvailable) {
+        if (available) {
           setFastSync(false);
         } else if (typeof window !== 'undefined') {
           setFastSync(shouldDefaultFastSync(window.innerWidth));
@@ -418,7 +503,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       ) {
         const mergeRes =
           fmFile.initialMergeResult ??
-          onBulkMergePlayers(fmFile.parsedExport.parsedPlayers);
+          (await onBulkMergePlayers(fmFile.parsedExport.parsedPlayers));
         if (mergeRes.changedPlayers.length > 0) {
           for (const cp of mergeRes.changedPlayers) {
             bulkUpdatedPlayerNames.push(cp.name);
@@ -533,7 +618,10 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       latestHydratedSave?.balanceLabel ||
       '--';
 
-    const appendOfflineBriefing = (fallbackReason: string) => {
+    const appendOfflineBriefing = async (fallbackReason: string) => {
+      const { buildOfflineTacticalBriefing } = await import(
+        '../utils/offlineBriefingEngine'
+      );
       const offlineData = buildOfflineTacticalBriefing({
         clubName: effectiveClubName,
         saveDate: effectiveSaveDate,
@@ -566,6 +654,11 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     };
 
     try {
+      const {
+        buildLiveTacticalAnalystContext,
+        buildConversationTranscript,
+        runPreFlightAnalystValidation,
+      } = await import('../utils/tacticalAnalystContext');
       const contextInput = {
         clubName: effectiveClubName,
         managerName: effectiveManagerName,
@@ -679,7 +772,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           setChatFallbackNotice(
             `Analyst unavailable — ${primaryDetail}. Showing the local offline briefing instead.`
           );
-          appendOfflineBriefing('no external LLM API key configured');
+          await appendOfflineBriefing('no external LLM API key configured');
           return;
         }
 
@@ -708,7 +801,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                 ? `Deep Analyst failed — ${primaryDetail}. Fast Analyst also failed — ${fastDetail}. Showing the local offline briefing instead.`
                 : `Analyst unavailable — ${primaryDetail}. Showing the local offline briefing instead.`
             );
-            appendOfflineBriefing('AI service unavailable / offline');
+            await appendOfflineBriefing('AI service unavailable / offline');
             return;
           }
           setTurns((prev) => prev.filter((t) => t.id !== userTurn.id));
@@ -811,7 +904,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           setChatFallbackNotice(
             `Analyst unavailable — ${failureDetail}. Showing the local offline briefing instead.`
           );
-          appendOfflineBriefing('AI service unavailable / offline');
+          await appendOfflineBriefing('AI service unavailable / offline');
           return;
         }
         setTurns((prev) => prev.filter((t) => t.id !== userTurn.id));
@@ -913,6 +1006,9 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           setLastStepTimingsMs({});
           setClubCoreReadyDuringDecode(false);
           let interimHydrated = false;
+          const { decodeFmSaveFile, cancelFmSaveDecode, createUploadController } =
+            await import('../services/fmSaveReader');
+          cancelDecodeRef.current = cancelFmSaveDecode;
           const uploadControl = createUploadController();
           uploadControlRef.current = uploadControl;
           const initialLabel = `Reading ${file.name}${fastSync ? ' (Fast Sync)' : ''}...`;
@@ -949,7 +1045,9 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                 if (onApplyDecodedFmSave && cp.payload?.players?.length > 0) {
                   interimHydrated = true;
                   setClubCoreReadyDuringDecode(true);
-                  onApplyDecodedFmSave(cp.payload, { isInterimCheckpoint: true });
+                  void onApplyDecodedFmSave(cp.payload, {
+                    isInterimCheckpoint: true,
+                  });
                   onBackgroundSyncStatusChange?.({
                     label:
                       'Squad, staff & tactics ready — finishing fixtures, match xG & season stats...',
@@ -979,7 +1077,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           );
 
           const hydrated = onApplyDecodedFmSave
-            ? onApplyDecodedFmSave(decoded, { isInterimCheckpoint: false })
+            ? await onApplyDecodedFmSave(decoded, { isInterimCheckpoint: false })
             : undefined;
           onBackgroundSyncStatusChange?.(null);
 
@@ -1033,11 +1131,14 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         lower.endsWith('.txt')
       ) {
         try {
-          const text = await file.text();
+          const [text, { parseFmStructuredExport }] = await Promise.all([
+            file.text(),
+            import('../utils/fmFileImporter'),
+          ]);
           const parsed = parseFmStructuredExport(text, file.name);
           const initialMergeResult =
             parsed.parsedPlayers.length > 0 && onBulkMergePlayers
-              ? onBulkMergePlayers(parsed.parsedPlayers)
+              ? await onBulkMergePlayers(parsed.parsedPlayers)
               : undefined;
           if (parsed.detectedDate && onUpdateSaveDate) {
             onUpdateSaveDate(parsed.detectedDate);
@@ -1579,9 +1680,14 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                   }`}
                 >
                   Pre-Flight Payload Check:{' '}
-                  {activePreFlightValidation.valid
-                    ? `All ${CORE_PREFLIGHT_REQUIRED_KEYS.length} Core Fields Mapped`
-                    : `${activePreFlightValidation.missingFields.length}/${CORE_PREFLIGHT_REQUIRED_KEYS.length} Core Fields Failed Extraction`}
+                  {(() => {
+                    const coreFieldCount = Object.values(
+                      activePreFlightValidation.fields
+                    ).filter((f) => !f.informational).length;
+                    return activePreFlightValidation.valid
+                      ? `All ${coreFieldCount} Core Fields Mapped`
+                      : `${activePreFlightValidation.missingFields.length}/${coreFieldCount} Core Fields Failed Extraction`;
+                  })()}
                 </span>
                 {activePreFlightValidation.needsReimport && (
                   <label
@@ -1652,24 +1758,26 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       {/* SHARED UPLOAD / DECODE PROGRESS CARD (visible across both mobile Hub views) */}
       {fmDecodeStage && (
         <div className="px-3.5 sm:px-5 pt-3.5 sm:pt-4">
-          <FmUploadProgressCard
-            stage={fmDecodeStage}
-            elapsedSec={decodeElapsedSec}
-            clubCoreReady={clubCoreReadyDuringDecode}
-            wakeLockActive={wakeLockActive}
-            onPause={() => uploadControlRef.current?.pause('manual')}
-            onResume={() => uploadControlRef.current?.resume()}
-            onDecodeOnPhone={() =>
-              uploadControlRef.current?.requestLocalFallback()
-            }
-            onCancel={() => {
-              uploadControlRef.current = null;
-              cancelFmSaveDecode();
-              setFmDecodeStage(null);
-              setClubCoreReadyDuringDecode(false);
-              onBackgroundSyncStatusChange?.(null);
-            }}
-          />
+          <Suspense fallback={null}>
+            <FmUploadProgressCard
+              stage={fmDecodeStage}
+              elapsedSec={decodeElapsedSec}
+              clubCoreReady={clubCoreReadyDuringDecode}
+              wakeLockActive={wakeLockActive}
+              onPause={() => uploadControlRef.current?.pause('manual')}
+              onResume={() => uploadControlRef.current?.resume()}
+              onDecodeOnPhone={() =>
+                uploadControlRef.current?.requestLocalFallback()
+              }
+              onCancel={() => {
+                uploadControlRef.current = null;
+                cancelDecodeRef.current?.();
+                setFmDecodeStage(null);
+                setClubCoreReadyDuringDecode(false);
+                onBackgroundSyncStatusChange?.(null);
+              }}
+            />
+          </Suspense>
         </div>
       )}
 
@@ -1876,7 +1984,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                     )}
 
                   {turn.analysisMarkdown && (() => {
-                    const check = verifyFm27Accuracy(turn.analysisMarkdown);
+                    const check = checkFm27ResponseWarnings(turn.analysisMarkdown);
                     if (check.passed) return null;
                     return (
                       <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-300 flex items-center gap-1.5">
@@ -2134,26 +2242,36 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         </form>
       </div>
 
-      {/* SAVE-TO-SAVE JOURNEY PANEL (separate mobile Hub view, always shown below chat on md+) */}
-      <div
-        className={
-          mobileHubView === 'journey' ? 'block p-3.5 md:p-0' : 'hidden md:block'
-        }
-      >
-        <SaveSnapshotDiffPanel
-          refreshToken={`${hydratedFmSave?.saveDateLabel || ''}-${players.length}-${snapshotResetNonce ?? 0}`}
-          liveMatches={matches}
-          onJourneyReportChange={onJourneyReportChange}
-          onAskAnalyst={(prompt) => {
-            setMobileHubView('chat');
-            void dispatchToAnalyst({
-              promptText: prompt,
-              imagesToSend: [],
-              fmFilesToSend: [],
-            });
-          }}
-        />
-      </div>
+      {/* SAVE-TO-SAVE JOURNEY PANEL (lazy-loaded; deferred on mobile until Journey tab opened) */}
+      {(isDesktopViewport || mobileHubView === 'journey' || hasOpenedJourneyPanel) && (
+        <div
+          className={
+            mobileHubView === 'journey' ? 'block p-3.5 md:p-0' : 'hidden md:block'
+          }
+        >
+          <Suspense
+            fallback={
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 text-center text-xs text-slate-500 dark:text-slate-400">
+                Loading Save-to-Save Journey...
+              </div>
+            }
+          >
+            <SaveSnapshotDiffPanel
+              refreshToken={`${hydratedFmSave?.saveDateLabel || ''}-${players.length}-${snapshotResetNonce ?? 0}`}
+              liveMatches={matches}
+              onJourneyReportChange={onJourneyReportChange}
+              onAskAnalyst={(prompt) => {
+                setMobileHubView('chat');
+                void dispatchToAnalyst({
+                  promptText: prompt,
+                  imagesToSend: [],
+                  fmFilesToSend: [],
+                });
+              }}
+            />
+          </Suspense>
+        </div>
+      )}
     </div>
   );
 };

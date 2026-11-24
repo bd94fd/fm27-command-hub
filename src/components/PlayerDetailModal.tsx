@@ -43,8 +43,8 @@ import {
   PercentilePizzaChart,
   PlayerProgressionSparkline,
   RolePercentilePizzaChart,
-  formatDynamicCurrency,
-} from './FootballAnalyticsCharts';
+} from './charts/PlayerRadarAndPizzaCharts';
+import { formatDynamicCurrency } from './charts/chartScaleHelpers';
 import {
   buildPlayerProgressionSeries,
   loadProgressionArchive,

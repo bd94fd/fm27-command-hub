@@ -15,7 +15,7 @@ import {
 } from '../types/fmSave';
 import { evaluateScoutTargetCard } from '../utils/cardIntelligenceEngine';
 import type { ClubDnaPillarWeights } from '../utils/clubDnaEngine';
-import { AttributeRadarChart, PercentilePizzaChart } from './FootballAnalyticsCharts';
+import { AttributeRadarChart, PercentilePizzaChart } from './charts/PlayerRadarAndPizzaCharts';
 import { MobileSheetFrame } from './MobileSheetFrame';
 
 interface ScoutTargetDetailModalProps {

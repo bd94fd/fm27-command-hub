@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { getSaveCacheStats, SaveCacheStats } from '../services/saveCache';
+import type { SaveCacheStats } from '../services/saveCache';
 
 export type PrimaryMobileTabId = 'sync' | 'squad' | 'tactics' | 'recruitment';
 export type MobileNavButtonId = PrimaryMobileTabId | 'more';
@@ -189,12 +189,14 @@ export async function readLocalCacheDiagnostics(): Promise<{
   storageQuotaBytes: number | null;
 }> {
   const [cacheStats, estimate] = await Promise.all([
-    getSaveCacheStats().catch(() => ({
-      cachedSavesCount: 0,
-      cachedBriefingsCount: 0,
-      snapshotPointsCount: 0,
-      indexedDbAvailable: false,
-    })),
+    import('../services/saveCache')
+      .then(({ getSaveCacheStats }) => getSaveCacheStats())
+      .catch(() => ({
+        cachedSavesCount: 0,
+        cachedBriefingsCount: 0,
+        snapshotPointsCount: 0,
+        indexedDbAvailable: false,
+      })),
     (async () => {
       try {
         if (

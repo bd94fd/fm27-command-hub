@@ -7,10 +7,8 @@ import {
   AlertTriangle,
   Clock,
 } from 'lucide-react';
-import {
-  HydratedSaveState,
-  formatStepTimingLabel,
-} from '../utils/fmSaveHydrator';
+import type { HydratedSaveState } from '../utils/fmSaveHydrator';
+import { formatStepTimingLabel } from '../utils/fmSaveUiHelpers';
 import { sanitizeReaderNotes } from '../utils/apiResponse';
 
 interface LiveFmSaveProofCardProps {
