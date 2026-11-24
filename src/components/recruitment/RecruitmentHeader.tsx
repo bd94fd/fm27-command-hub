@@ -286,14 +286,23 @@ export const RecruitmentHeader: React.FC<RecruitmentHeaderProps> = ({
         </div>
       </div>
 
-      {/* 5 Focused View Switchers */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 pt-1">
+      {/* 6 Focused View Switchers (incl. Club & League-Calibrated Loan Hub) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 pt-1">
         {(
           [
             {
               id: 'advice',
               label: `Squad Advice (${scopedPlayerAdvice.length})`,
               icon: Sparkles,
+            },
+            {
+              id: 'loans',
+              label: `Loans (${
+                audit.loanAdvice.incomingLoanPriorities.length +
+                audit.loanAdvice.developmentLoansOut.length +
+                audit.loanAdvice.activeLoansMonitor.length
+              })`,
+              icon: Layers,
             },
             {
               id: 'contracts',

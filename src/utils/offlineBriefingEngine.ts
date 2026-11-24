@@ -133,11 +133,28 @@ export function buildOfflineTacticalBriefing(
         }
       : undefined;
 
+  const ls = decoded?.leagueStanding;
   const audit = buildSquadTransferAudit(
     input.players,
     saveDate,
     auditFinances,
-    hydrated?.divisionBenchmarks ?? null
+    hydrated?.divisionBenchmarks ?? null,
+    {
+      competitionName:
+        ls?.competitionName ??
+        hydrated?.divisionBenchmarks?.competitionName ??
+        hydrated?.competitionRules?.competitionName ??
+        null,
+      leaguePosition: ls?.position ?? null,
+      totalClubs: ls?.totalTeams ?? hydrated?.divisionBenchmarks?.clubCount ?? null,
+      points: ls?.points ?? null,
+      played: ls?.played ?? null,
+      competitionRules: hydrated?.competitionRules ?? null,
+      transferWindowOpen:
+        typeof decoded?.transferWindows?.isOpen === 'boolean'
+          ? decoded.transferWindows.isOpen
+          : null,
+    }
   );
 
   const allMatches = input.matches || [];
@@ -301,11 +318,19 @@ export function buildOfflineTacticalBriefing(
   }
   lines.push('');
 
-  // 3. Contract & Wage Audit
-  lines.push('#### 3. Contract & Transfer Audit');
+  // 3. Contract, Loan & League-Calibrated Transfer Audit
   lines.push(
-    `- **Squad Health:** ${keepCount} Core/Renew | ${sellCandidates.length} Sell/Release Candidates | ${expiringSoon.length} Expiring ≤ 6 Months`
+    `#### 3. Contract, Loan & Transfer Audit (${audit.leagueLevelCalibration.standingContextLabel})`
   );
+  lines.push(
+    `- **Club & League Level Standard:** ${audit.leagueLevelCalibration.clubTierLabel} · Starter Floor ${audit.tierBenchmarks.firstTeamStarterFloor.toFixed(1)}★ (Key Attrs ≥ ${audit.leagueLevelCalibration.starterAttrBaseline}/20)`
+  );
+  lines.push(
+    `- **Squad Health:** ${keepCount} Core/Renew | ${sellCandidates.length} Sell/Release Candidates | ${audit.loanAdvice.developmentLoansOut.length} Dev Loans Out | ${expiringSoon.length} Expiring ≤ 6 Months`
+  );
+  for (const loanNote of audit.loanAdvice.strategyNotes.slice(0, 2)) {
+    lines.push(`- **Loan Strategy:** ${loanNote}`);
+  }
   if (expiringSoon.length > 0) {
     const topExpiring = expiringSoon
       .slice(0, 5)

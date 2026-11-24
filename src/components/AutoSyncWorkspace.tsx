@@ -277,7 +277,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     );
   const lastSnapshotResetNonceRef = useRef<number>(snapshotResetNonce);
   const [mobileHubView, setMobileHubView] = useState<'chat' | 'journey'>('chat');
-  const [importScope] = useState<FmImportScope>('managed_club_only');
+  const [importScope] = useState<FmImportScope>('club_and_division');
   const [serverDecodeAvailable, setServerDecodeAvailable] = useState<boolean | null>(
     null
   );

@@ -518,6 +518,8 @@ export interface RecruitmentTarget {
   primaryPosition: string;
   currentClub?: string;
   isFreeAgent: boolean;
+  isLoanCandidate?: boolean;
+  parentClubWagePw?: number | null;
   contractExpiryMonths: number;
   expires?: string;
   demandedWageEur: number;

@@ -2973,6 +2973,8 @@ def _scan_recruitment_targets_group4(
 
     club_rep = _STATE.get("club_reputation")
     rep_max = (club_rep + 1800) if isinstance(club_rep, int) and club_rep > 0 else None
+    loan_rep_max = (club_rep + 2600) if isinstance(club_rep, int) and club_rep > 0 else None
+    loan_rep_min = max(0, club_rep - 800) if isinstance(club_rep, int) and club_rep > 0 else None
     rep_min = max(0, club_rep - 2800) if isinstance(club_rep, int) and club_rep > 0 else None
 
     # Pre-compute managed club's dominant nationality ONCE before scanning 160k+ players
@@ -2990,6 +2992,10 @@ def _scan_recruitment_targets_group4(
     pos_heaps: dict[str, list[tuple[float, int, dict[str, Any]]]] = {
         slot: [] for slot in ("GK", "DC", "DL", "DR", "DM", "MC", "AMC", "AML", "AMR", "ST")
     }
+    loan_counts: dict[str, int] = {
+        slot: 0 for slot in ("GK", "DC", "DL", "DR", "DM", "MC", "AMC", "AML", "AMR", "ST")
+    }
+    max_loans_per_pos = max(4, int(SCOUT_PER_POSITION_CAP * 0.24))
     per_pos_cap = SCOUT_PER_POSITION_CAP
     tie_counter = 0
     evaluated_count = 0
@@ -3101,9 +3107,9 @@ def _scan_recruitment_targets_group4(
                     if stored_tid in club_team_ids:
                         continue
 
-                    if rep_max is not None:
-                        p_rep = hv[cur_rep_idx] or hv[home_rep_idx]
-                        if p_rep > rep_max or (rep_min is not None and p_rep < rep_min):
+                    p_rep_fast = hv[cur_rep_idx] or hv[home_rep_idx]
+                    if loan_rep_max is not None:
+                        if p_rep_fast > loan_rep_max or (rep_min is not None and p_rep_fast < rep_min):
                             continue
 
                     # Fast raw-byte primary position + visible quality pre-score
@@ -3142,7 +3148,7 @@ def _scan_recruitment_targets_group4(
                     if club_uid is not None and p_club_uid == club_uid:
                         continue
 
-                    # Check contract expiry BEFORE decoding person/name block
+                    # Check contract expiry or U23 loan eligibility BEFORE decoding person/name block
                     if not is_free_by_team and p_club_uid is not None:
                         contract_obj, _on_loan, *_ = contract_dec.decode(
                             game_db,
@@ -3159,11 +3165,22 @@ def _scan_recruitment_targets_group4(
                         if contract_obj is not None:
                             c_end = getattr(contract_obj, "end", None)
                             c_months = _months_until(c_end, game_date) if c_end else 999
-                            if c_months > 12:
-                                continue
                             c_wage = _int(getattr(contract_obj, "wage", None), 0) or 0
-                            if c_months > 0 and c_wage > wage_ceiling:
-                                continue
+                            if c_months > 12:
+                                # Allow realistic parent-club U23 loan-in candidates if slot loan quota isn't full
+                                if (
+                                    _on_loan
+                                    or loan_counts[exact_slot] >= max_loans_per_pos
+                                    or vis_q < max(8.5, squad_med - 0.5)
+                                    or c_wage > int(wage_ceiling * 2.2)
+                                    or (loan_rep_min is not None and p_rep_fast and p_rep_fast < loan_rep_min)
+                                ):
+                                    continue
+                            else:
+                                if rep_max is not None and p_rep_fast > rep_max:
+                                    continue
+                                if c_months > 0 and c_wage > wage_ceiling:
+                                    continue
 
                     # Candidate survived all fast filters — decode full Player cleanly
                     p_obj, _ = decoder.decode(
@@ -3210,7 +3227,15 @@ def _scan_recruitment_targets_group4(
 
             is_free_agent = is_unattached or (contract is None) or (contract_months == 0)
             is_expiring = (not is_free_agent) and (0 < contract_months <= 12)
-            if not (is_free_agent or is_expiring):
+            is_already_on_loan = bool(getattr(p, "on_loan", False))
+            is_loan_candidate = (
+                (not is_free_agent)
+                and (not is_expiring)
+                and (not is_already_on_loan)
+                and (17 <= age <= 23)
+                and contract_months > 12
+            )
+            if not (is_free_agent or is_expiring or is_loan_candidate):
                 continue
 
             p_wage = _int(
@@ -3218,13 +3243,21 @@ def _scan_recruitment_targets_group4(
                 or (getattr(contract, "wage", None) if contract else None),
                 0,
             ) or 0
-            if not is_free_agent and p_wage > wage_ceiling:
+            if is_expiring and p_wage > wage_ceiling:
+                continue
+            if is_loan_candidate and p_wage > int(wage_ceiling * 2.2):
                 continue
 
             p_rep = _int(_first_attr(p, ("reputation", "current_reputation", "home_reputation")), None)
-            if rep_max is not None and p_rep is not None:
-                if p_rep > rep_max or (rep_min is not None and p_rep < rep_min):
-                    continue
+            if p_rep is not None:
+                if is_loan_candidate:
+                    if (loan_rep_max is not None and p_rep > loan_rep_max) or (
+                        loan_rep_min is not None and p_rep < loan_rep_min
+                    ):
+                        continue
+                elif rep_max is not None:
+                    if p_rep > rep_max or (rep_min is not None and p_rep < rep_min):
+                        continue
 
             p_name = getattr(p, "name", None)
             if not p_name:
@@ -3237,6 +3270,9 @@ def _scan_recruitment_targets_group4(
             pos_grp = _classify_pos_group_py(primary_pos)
             exact_slot = _classify_exact_pos_slot_py(primary_pos)
 
+            if is_loan_candidate and loan_counts[exact_slot] >= max_loans_per_pos:
+                continue
+
             # Fast pre-scoring before full 52-attr allocation
             attr_dict = _extract_52_attributes(p, attrs)
             if pos_grp != "GK" and age >= 30 and attr_dict["pace"] < 10:
@@ -3244,7 +3280,8 @@ def _scan_recruitment_targets_group4(
 
             vis_quality = _score_candidate_visible_quality(primary_pos, attr_dict)
             squad_med = squad_medians.get(pos_grp, 10.5)
-            if vis_quality < max(7.5, squad_med - 2.5):
+            min_vis_q = max(8.5, squad_med - 0.5) if is_loan_candidate else max(7.5, squad_med - 2.5)
+            if vis_quality < min_vis_q:
                 continue
 
             # Prime/U28 age weighting: strongly favor 18-27 over 30+ veterans
@@ -3266,7 +3303,11 @@ def _scan_recruitment_targets_group4(
             elif club_is_european and resolved_nation in _EUROPEAN_NATIONS:
                 region_bonus = 1.1
 
-            contract_bonus = 0.6 if is_free_agent else (0.3 if contract_months <= 6 else 0.0)
+            contract_bonus = (
+                0.6
+                if is_free_agent
+                else (0.3 if (is_expiring and contract_months <= 6) else (0.25 if is_loan_candidate else 0.0))
+            )
             rank_score = (vis_quality - squad_med) * 2.0 + vis_quality + age_bonus + region_bonus + contract_bonus
 
             bucket = pos_heaps[exact_slot]
@@ -3300,6 +3341,7 @@ def _scan_recruitment_targets_group4(
             attr_dict["keyDecision"] = attr_dict["decisions"]
             attr_dict["keyStamina"] = attr_dict["stamina"]
 
+            est_loan_wage = int(round(p_wage * 0.35)) if is_loan_candidate and p_wage > 0 else 0
             candidate = {
                 "uid": _int(getattr(p, "uid", None), 0) or 0,
                 "name": str(p_name),
@@ -3307,11 +3349,25 @@ def _scan_recruitment_targets_group4(
                 "nationality": resolved_nation,
                 "primaryPosition": primary_pos,
                 "positionRatings": pos_ratings if pos_ratings else None,
-                "currentClub": "Free Agent" if is_free_agent else (getattr(p, "club_name", None) or "Expiring Contract"),
+                "currentClub": (
+                    "Free Agent"
+                    if is_free_agent
+                    else (getattr(p, "club_name", None) or ("Parent Club" if is_loan_candidate else "Expiring Contract"))
+                ),
                 "isFreeAgent": is_free_agent,
+                "isLoanCandidate": is_loan_candidate,
+                "parentClubWagePw": p_wage if is_loan_candidate else None,
                 "contractExpiryMonths": 0 if is_free_agent else int(contract_months),
-                "expires": "Free" if is_free_agent else (_dmy(contract_end) or f"<= {contract_months}m"),
-                "demandedWageEur": 0 if is_free_agent else p_wage,
+                "expires": (
+                    "Free"
+                    if is_free_agent
+                    else (
+                        f"Loan ({_dmy(contract_end) or f'{contract_months}m parent deal'})"
+                        if is_loan_candidate
+                        else (_dmy(contract_end) or f"<= {contract_months}m")
+                    )
+                ),
+                "demandedWageEur": 0 if is_free_agent else (est_loan_wage if is_loan_candidate else p_wage),
                 "scoutBadges": _extract_reliability_badges(p, pers),
                 "traits": _extract_traits(p),
                 "attributes": attr_dict,
@@ -3320,8 +3376,14 @@ def _scan_recruitment_targets_group4(
             tie_counter += 1
             if len(bucket) < per_pos_cap:
                 heapq.heappush(bucket, (rank_score, tie_counter, candidate))
+                if is_loan_candidate:
+                    loan_counts[exact_slot] += 1
             else:
-                heapq.heapreplace(bucket, (rank_score, tie_counter, candidate))
+                evicted = heapq.heapreplace(bucket, (rank_score, tie_counter, candidate))
+                if evicted[2].get("isLoanCandidate"):
+                    loan_counts[exact_slot] = max(0, loan_counts[exact_slot] - 1)
+                if is_loan_candidate:
+                    loan_counts[exact_slot] += 1
     except Exception as exc:
         _record_warning(f"recruitment_scan: {type(exc).__name__}")
 

@@ -8,7 +8,7 @@ import {
 
 export type ScoutPositionGroup = 'ALL' | 'GK' | 'DEF' | 'MID' | 'FWD';
 export type ScoutAgeBand = 'ALL' | 'U23' | '23-28' | '29+';
-export type ScoutContractFilter = 'ALL' | 'FREE' | 'EXPIRING';
+export type ScoutContractFilter = 'ALL' | 'FREE' | 'LOAN' | 'EXPIRING';
 
 export interface TargetAttributeChip {
   label: string;
@@ -836,6 +836,21 @@ export function formatTargetContractSummary(
       trialBadge: '2-Week Free Trial',
     };
   }
+  if (target.isLoanCandidate) {
+    const estShare = target.demandedWageEur || 0;
+    const parentWage = target.parentClubWagePw || 0;
+    const wageLabel =
+      estShare > 0
+        ? parentWage > estShare
+          ? `~£${estShare.toLocaleString()}/wk share (of £${parentWage.toLocaleString()})`
+          : `~£${estShare.toLocaleString()}/wk share`
+        : '£0–30% Wage Share';
+    return {
+      primaryLabel: `Loan Candidate · ${target.currentClub || 'Parent Club'}`,
+      wageLabel,
+      trialBadge: '£0 Loan Fee Target',
+    };
+  }
   const months = target.contractExpiryMonths > 0 ? target.contractExpiryMonths : 6;
   const wageLabel =
     target.demandedWageEur > 0
@@ -857,7 +872,7 @@ export function matchesAgeBand(age: number, band: ScoutAgeBand): boolean {
 
 /**
  * Computes a zero-CA/PA Moneyball Value Score (0-100) comparing FM27 role fit,
- * playbook archetype fit, and age curve against 3-year wage commitment
+ * playbook archetype fit, and age curve against 3-year (or 1-season loan) wage commitment
  * calibrated to the current squad's median weekly wage.
  */
 export function computeMoneyballValueScore(params: {
@@ -868,7 +883,8 @@ export function computeMoneyballValueScore(params: {
 }): MoneyballValueRating {
   const { target, bestRoleFitPct, archetypeScore, squadPlayers } = params;
   const weeklyWage = Math.max(0, target.demandedWageEur || 0);
-  const threeYearCostEur = Math.round(weeklyWage * 156);
+  const weeksMultiplier = target.isLoanCandidate ? 44 : 156;
+  const threeYearCostEur = Math.round(weeklyWage * weeksMultiplier);
 
   const squadWages = squadPlayers
     .map((p) => p.wagePw || 0)
@@ -886,14 +902,20 @@ export function computeMoneyballValueScore(params: {
   const qualityScore =
     bestRoleFitPct * 0.55 + archetypeScore * 0.25 + ageBonus * 0.2;
 
-  // Relative wage ratio vs squad median (free agents / Bosmans have €0 transfer fee)
-  const wageRatio = weeklyWage > 0 ? weeklyWage / Math.max(250, medianSquadWage) : 0.4;
+  // Relative wage ratio vs squad median (free agents, loans, and Bosmans have £0 transfer fee)
+  const wageRatio = weeklyWage > 0 ? weeklyWage / Math.max(180, medianSquadWage) : 0.35;
   const costPenalty = Math.max(0, (wageRatio - 1.0) * 22);
-  const freeAgentBonus = target.isFreeAgent ? 6 : target.contractExpiryMonths <= 6 ? 4 : 0;
+  const contractTypeBonus = target.isFreeAgent
+    ? 6
+    : target.isLoanCandidate
+      ? 5
+      : target.contractExpiryMonths <= 6
+        ? 4
+        : 0;
 
   const score = Math.max(
     0,
-    Math.min(100, Math.round(qualityScore + freeAgentBonus - costPenalty))
+    Math.min(100, Math.round(qualityScore + contractTypeBonus - costPenalty))
   );
 
   const tier: MoneyballValueTier =
@@ -905,12 +927,15 @@ export function computeMoneyballValueScore(params: {
           ? 'Fair'
           : 'Overpriced';
 
+  const periodSuffix = target.isLoanCandidate ? '/ 1y loan' : '/ 3y';
   const costLabel =
     threeYearCostEur >= 1_000_000
-      ? `£${(threeYearCostEur / 1_000_000).toFixed(2)}M / 3y`
+      ? `£${(threeYearCostEur / 1_000_000).toFixed(2)}M ${periodSuffix}`
       : threeYearCostEur > 0
-        ? `£${Math.round(threeYearCostEur / 1000)}k / 3y`
-        : 'Trial / Low Wage';
+        ? `£${Math.round(threeYearCostEur / 1000)}k ${periodSuffix}`
+        : target.isLoanCandidate
+          ? '0% Wage Loan'
+          : 'Trial / Low Wage';
 
   const summary = `${tier} (${score}/100) · ${costLabel}`;
   return { score, tier, threeYearCostEur, costLabel, summary };
@@ -960,11 +985,17 @@ export function enrichAndFilterScoutedTargets(params: {
     if (posGroup !== 'ALL' && item.posGroup !== posGroup) return false;
     if (!matchesAgeBand(item.target.age, ageBand)) return false;
     if (contractFilter === 'FREE' && !item.target.isFreeAgent) return false;
-    if (contractFilter === 'EXPIRING' && item.target.isFreeAgent) return false;
+    if (contractFilter === 'LOAN' && !item.target.isLoanCandidate) return false;
+    if (
+      contractFilter === 'EXPIRING' &&
+      (item.target.isFreeAgent || item.target.isLoanCandidate)
+    ) {
+      return false;
+    }
     if (genuineGapsOnly && !item.depth.isGenuineGap) return false;
     if (q) {
       const hay =
-        `${item.target.name} ${item.target.primaryPosition} ${item.target.nationality} ${item.target.currentClub || ''} ${item.bestRole.roleName} ${item.archetype.name}`.toLowerCase();
+        `${item.target.name} ${item.target.primaryPosition} ${item.target.nationality} ${item.target.currentClub || ''} ${item.bestRole.roleName} ${item.archetype.name} ${item.target.isLoanCandidate ? 'loan' : ''}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;

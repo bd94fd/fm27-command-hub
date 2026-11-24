@@ -234,8 +234,12 @@ export const ScoutTargetFilters: React.FC<ScoutTargetFiltersProps> = ({
                 label: `Free Agents (${scoutedTargets.filter((t) => t.isFreeAgent).length})`,
               },
               {
+                id: 'LOAN',
+                label: `Loans (${scoutedTargets.filter((t) => Boolean(t.isLoanCandidate)).length})`,
+              },
+              {
                 id: 'EXPIRING',
-                label: `Expiring ≤6m (${scoutedTargets.filter((t) => !t.isFreeAgent).length})`,
+                label: `Expiring (${scoutedTargets.filter((t) => !t.isFreeAgent && !t.isLoanCandidate).length})`,
               },
             ] as const
           ).map((btn) => (

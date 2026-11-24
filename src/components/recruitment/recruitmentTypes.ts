@@ -9,7 +9,7 @@ export type SquadAudit = SquadTransferAuditSummary;
 export type PlayerAdviceItem = SquadAudit['playerAdvice'][number];
 export type PositionalNeed = SquadAudit['positionalNeeds'][number];
 
-export type AuditView = 'advice' | 'contracts' | 'depth' | 'targets' | 'shortlist';
+export type AuditView = 'advice' | 'loans' | 'contracts' | 'depth' | 'targets' | 'shortlist';
 
 export type ContractHorizonTier =
   | 'ALL'

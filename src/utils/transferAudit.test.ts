@@ -765,6 +765,168 @@ test('Squad-relative Current Ability: 18yo best player is treated as Core Starte
   assert.equal(byId['w-ready-u21'].abilityReadinessTier, 'starter_level');
 });
 
+test('Bidirectional Loan Strategy & League Level Calibration scale dynamically from Semi-Pro 3rd Tier to Top-Flight', async () => {
+  const { enrichAndFilterScoutedTargets } = await import('./recruitmentHelpers');
+
+  const semiProSquad: PlayerRecord[] = [
+    // 2 senior GKs (idealMin = 2 -> GK senior pathway is full!)
+    makePlayer({ id: 'gk-1', name: 'Starter GK', position: 'GK', age: 26, ability: 4.0, potential: 4.0, wagePw: 280, positionRatings: { GK: 20 } }),
+    makePlayer({ id: 'gk-2', name: 'Backup GK', position: 'GK', age: 24, ability: 3.0, potential: 3.5, wagePw: 180, positionRatings: { GK: 20 } }),
+    // Blocked 20yo developing GK (2.0★ -> 4.5★, 0 mins, non-expiring) -> Loan Out!
+    makePlayer({
+      id: 'gk-dev-loan',
+      name: 'Blocked U21 GK',
+      position: 'GK',
+      age: 20,
+      ability: 2.0,
+      potential: 4.5,
+      minutes: 0,
+      teamSlot: 1,
+      status: 'Youth',
+      wagePw: 60,
+      expires: '30/06/2030',
+      positionRatings: { GK: 20 },
+    }),
+    // Surplus high-wage senior CM -> Sell + Wage-Relief Loan Fallback
+    makePlayer({
+      id: 'cm-surplus',
+      name: 'Surplus Earner',
+      position: 'M (C)',
+      age: 28,
+      ability: 2.5,
+      potential: 2.5,
+      minutes: 40,
+      status: 'Surplus',
+      wagePw: 490,
+      expires: '30/06/2029',
+      positionRatings: { MC: 20 },
+    }),
+  ];
+
+  const eerstenationaleBench: DivisionBenchmarks = {
+    competitionName: 'Eerste Nationale VV',
+    scope: 'club_and_division',
+    clubCount: 16,
+    byPositionGroup: {
+      GK: { sampleSize: 32, medianWeeklyWage: 220, medianAttributes: { reflexes: 11, handling: 11 } },
+      DEF: { sampleSize: 96, medianWeeklyWage: 260, medianAttributes: { pace: 11, tackling: 11 } },
+      MID: { sampleSize: 96, medianWeeklyWage: 280, medianAttributes: { passing: 11, stamina: 11 } },
+      FWD: { sampleSize: 48, medianWeeklyWage: 310, medianAttributes: { finishing: 11, pace: 12 } },
+    },
+  };
+
+  const semiProAudit = buildSquadTransferAudit(
+    semiProSquad,
+    '15/09/2027',
+    { balanceNum: -749_000, balanceLabel: '-£749K', wagePayrollWeekly: 10257, wageBudgetWeekly: 10203 },
+    eerstenationaleBench,
+    {
+      competitionName: 'Eerste Nationale VV',
+      leaguePosition: 6,
+      totalClubs: 16,
+      points: 6,
+      played: 4,
+      competitionRules: {
+        competitionName: 'Eerste Nationale VV',
+        maxSquadSize: 25,
+        minHomegrownClub: null,
+        minHomegrownNation: 6,
+        maxForeignPlayers: null,
+        u21Exempt: true,
+        matchdaySubsLimit: 7,
+      },
+      transferWindowOpen: false,
+    }
+  );
+
+  assert.equal(semiProAudit.leagueLevelCalibration.competitionName, 'Eerste Nationale VV');
+  assert.equal(semiProAudit.leagueLevelCalibration.starterAttrBaseline, 11);
+  assert.match(semiProAudit.leagueLevelCalibration.standingContextLabel, /#6 of 16 in Eerste Nationale VV/);
+  assert.match(semiProAudit.leagueLevelCalibration.recruitmentApproachSummary, /0%–30% wage share/i);
+
+  // Blocked 20yo developing GK gets Loan Out verdict + Regular Starter + Recall Clause guidance
+  const devLoan = semiProAudit.playerAdvice.find((a) => a.player.id === 'gk-dev-loan')!;
+  assert.equal(devLoan.verdict, 'Loan Out');
+  assert.match(devLoan.recommendedMove, /Regular Starter/i);
+  assert.match(devLoan.recommendedMove, /Recall Clause/i);
+  assert.equal(semiProAudit.loanAdvice.developmentLoansOut.length, 1);
+
+  // Thin positions surface Incoming Loan Priorities & surplus senior surfaces Wage-Relief Loan Fallback
+  assert.ok(semiProAudit.loanAdvice.incomingLoanPriorities.some((i) => i.bucketCode === 'CB'));
+  assert.ok(semiProAudit.loanAdvice.wageReliefLoanFallbacks.some((w) => w.player.id === 'cm-surplus'));
+  assert.match(semiProAudit.loanAdvice.leagueLoanRulesNote, /U21 players are exempt/i);
+
+  // Compare against an Elite Top-Flight Club -> attribute baselines & scout profiles scale UP automatically!
+  const eliteSquad: PlayerRecord[] = [
+    makePlayer({
+      id: 'elite-st',
+      name: 'World Class ST',
+      position: 'ST (C)',
+      ability: 4.5,
+      wagePw: 180_000,
+      attributes: { pace: 16, acceleration: 16, stamina: 15, jumpingReach: 14, determination: 17, passing: 15, finishing: 17, tackling: 8, firstTouch: 16, decisions: 16, workRate: 15, offTheBall: 17 },
+    }),
+  ];
+  const eliteAudit = buildSquadTransferAudit(
+    eliteSquad,
+    '15/09/2027',
+    { balanceNum: 85_000_000, wagePayrollWeekly: 2_400_000, wageBudgetWeekly: 2_800_000 },
+    null,
+    { competitionName: 'Premier League', leaguePosition: 2, totalClubs: 20 }
+  );
+  assert.ok(
+    eliteAudit.leagueLevelCalibration.starterAttrBaseline >= 15,
+    `Expected top-flight starterAttrBaseline >= 15, got ${eliteAudit.leagueLevelCalibration.starterAttrBaseline}`
+  );
+  const semiProStProfile = semiProAudit.positionalNeeds.find((b) => b.code === 'ST')!.scoutProfile;
+  const eliteStProfile = eliteAudit.positionalNeeds.find((b) => b.code === 'ST')!.scoutProfile;
+  assert.match(semiProStProfile, /Finishing ≥ 11/);
+  assert.match(eliteStProfile, /Finishing ≥ 1[56]/);
+
+  // Scouted Loan Candidates filter & wage-share formatting
+  const enrichedLoans = enrichAndFilterScoutedTargets({
+    targets: [
+      {
+        uid: 901,
+        name: 'Jong Brugge Prospect',
+        age: 19,
+        nationality: 'Belgium',
+        primaryPosition: 'DC',
+        currentClub: 'Club Brugge NXT',
+        isFreeAgent: false,
+        isLoanCandidate: true,
+        parentClubWagePw: 320,
+        contractExpiryMonths: 28,
+        expires: 'Loan (30/06/2030)',
+        demandedWageEur: 112,
+        attributes: { tackling: 13, marking: 12, positioning: 12, jumpingReach: 14, pace: 13, stamina: 12, decisions: 12 },
+      },
+      {
+        uid: 902,
+        name: 'Free Agent CB',
+        age: 24,
+        nationality: 'Belgium',
+        primaryPosition: 'DC',
+        isFreeAgent: true,
+        contractExpiryMonths: 0,
+        demandedWageEur: 0,
+        attributes: { tackling: 12, marking: 12, positioning: 12, jumpingReach: 13, pace: 12 },
+      },
+    ],
+    squadPlayers: semiProSquad,
+    posGroup: 'ALL',
+    ageBand: 'ALL',
+    contractFilter: 'LOAN',
+    genuineGapsOnly: false,
+    searchQuery: '',
+  });
+  assert.equal(enrichedLoans.length, 1);
+  assert.equal(enrichedLoans[0].target.name, 'Jong Brugge Prospect');
+  assert.equal(enrichedLoans[0].contractDisplay.trialBadge, '£0 Loan Fee Target');
+  assert.match(enrichedLoans[0].contractDisplay.wageLabel || '', /~£112\/wk share \(of £320\)/);
+});
+
+
 
 
 

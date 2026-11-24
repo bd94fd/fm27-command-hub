@@ -855,7 +855,8 @@ export function buildLiveTacticalAnalystContext(
     });
   }
 
-  // 5. Transfers & Squad Advice Positional Depth Chart (exact match with Transfers tab canonical split)
+  // 5. Transfers, Loans & Squad Advice Positional Depth Chart (calibrated to exact Club & League Level)
+  const ls = decoded?.leagueStanding;
   const transferAudit = buildSquadTransferAudit(
     players,
     saveDate,
@@ -869,8 +870,58 @@ export function buildLiveTacticalAnalystContext(
       wageSpendLabel: hydratedFmSave?.wageComplianceLabel || wageSpend,
       monthlyBurnRate: hydratedFmSave?.financialRunway?.monthlyBurnRate ?? null,
     },
-    hydratedFmSave?.divisionBenchmarks ?? null
+    hydratedFmSave?.divisionBenchmarks ?? null,
+    {
+      competitionName:
+        ls?.competitionName ??
+        hydratedFmSave?.divisionBenchmarks?.competitionName ??
+        hydratedFmSave?.competitionRules?.competitionName ??
+        null,
+      leaguePosition: ls?.position ?? null,
+      totalClubs:
+        ls?.totalTeams ?? hydratedFmSave?.divisionBenchmarks?.clubCount ?? null,
+      points: ls?.points ?? null,
+      played: ls?.played ?? null,
+      competitionRules: hydratedFmSave?.competitionRules ?? null,
+      transferWindowOpen:
+        typeof decoded?.transferWindows?.isOpen === 'boolean'
+          ? decoded.transferWindows.isOpen
+          : null,
+      boardObjectiveSummary:
+        hydratedFmSave?.governance?.boardObjectives?.[0]?.target ?? null,
+    }
   );
+
+  const cal = transferAudit.leagueLevelCalibration;
+  const loanPlan = transferAudit.loanAdvice;
+  const inLoanCodes =
+    loanPlan.incomingLoanPriorities.map((i) => i.bucketCode).join(',') || 'Opportunistic(0% wage)';
+  const outDevNames =
+    loanPlan.developmentLoansOut
+      .slice(0, 4)
+      .map((d) => `${d.player.name}(${d.primaryBucketCode})`)
+      .join(', ') || 'None';
+  const reliefNames =
+    loanPlan.wageReliefLoanFallbacks
+      .slice(0, 3)
+      .map((w) => `${w.player.name}(£${w.player.wagePw}/wk)`)
+      .join(', ') || 'None';
+  const calibrationLines: string[] = [
+    `=== CLUB & LEAGUE LEVEL CALIBRATION + LOAN STRATEGY ===`,
+    `Level: ${cal.clubTierLabel} | ${cal.standingContextLabel} | Starter Floor: ${transferAudit.tierBenchmarks.firstTeamStarterFloor.toFixed(1)}★ (Attrs >=${cal.starterAttrBaseline}/20, Standout >=${cal.standoutAttrBaseline}/20${cal.divisionMedianWeeklyWage ? `, DivMed £${cal.divisionMedianWeeklyWage}/wk` : ''})`,
+    `Loans: In[${inLoanCodes}] · OutDev[${outDevNames} — Regular Starter + Recall] · WageRelief50-100%[${reliefNames}]`,
+  ];
+  if (transferAudit.tierBenchmarks.divisionDeficits.length > 0) {
+    calibrationLines.push(
+      `Div Gaps: ${transferAudit.tierBenchmarks.divisionDeficits.slice(0, 3).join(' | ')}`
+    );
+  }
+  blocks.push({
+    id: 'league_level_and_loans',
+    tier: 'P0',
+    fullText: calibrationLines.join('\n'),
+    compactText: calibrationLines.slice(0, 3).join('\n'),
+  });
 
   if (transferAudit.positionalNeeds.length > 0) {
     const depthLines = transferAudit.positionalNeeds
@@ -1052,8 +1103,8 @@ export function buildLiveTacticalAnalystContext(
   );
   if (loanList.length > 0) {
     actionPlanLines.push(
-      `Loan Out: ${loanList
-        .map((a) => `${a.player.name}(${a.player.age}y,${a.player.ability.toFixed(1)}★/${a.player.potential.toFixed(1)}★)`)
+      `Loan Out (Dev Loans — Lock Regular Starter + Recall Clause): ${loanList
+        .map((a) => `${a.player.name}(${a.player.age}y,${a.player.ability.toFixed(1)}★/${a.player.potential.toFixed(1)}★,${a.primaryBucketCode})`)
         .join(' | ')}`
     );
   }
@@ -1065,7 +1116,8 @@ export function buildLiveTacticalAnalystContext(
         line.startsWith('Promote to Backup') ||
         line.startsWith('Sell / Transfer List') ||
         line.startsWith('APP ADVICE — Recommended to Sell') ||
-        line.startsWith('Renew Now:')
+        line.startsWith('Renew Now:') ||
+        line.startsWith('Loan Out')
     );
     const header = '=== TRANSFERS & SQUAD ADVICE ACTION PLAN (MUST MATCH TRANSFERS TAB) ===';
     blocks.push({

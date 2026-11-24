@@ -18,6 +18,7 @@ import {
 import {
   buildSquadTransferAudit,
   ClubFinancialInput,
+  ClubLeagueContextInput,
   TransferActionVerdict,
 } from '../utils/transferAudit';
 import { ScoutTargetDetailModal } from './ScoutTargetDetailModal';
@@ -48,6 +49,7 @@ import {
 } from '../utils/clubDnaEngine';
 import { RecruitmentHeader } from './recruitment/RecruitmentHeader';
 import { SquadAdviceView } from './recruitment/SquadAdviceView';
+import { LoanStrategyView } from './recruitment/LoanStrategyView';
 import { ContractHorizonView } from './recruitment/ContractHorizonView';
 import { PositionalDepthView } from './recruitment/PositionalDepthView';
 import { ScoutTargetFilters } from './recruitment/ScoutTargetFilters';
@@ -66,6 +68,7 @@ interface RecruitmentWorkspaceProps {
   balance?: string;
   clubName?: string;
   finances?: ClubFinancialInput | null;
+  leagueContext?: ClubLeagueContextInput | null;
   financialRunway?: FinancialRunway | null;
   transferWindows?: TransferWindowInfo | null;
   competitionRules?: CompetitionRegistrationRules | null;
@@ -93,6 +96,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
   balance = '--',
   clubName,
   finances,
+  leagueContext = null,
   financialRunway = null,
   transferWindows = null,
   competitionRules = null,
@@ -357,9 +361,32 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
           monthlyBurnRate:
             finances?.monthlyBurnRate ?? financialRunway?.monthlyBurnRate ?? null,
         },
-        divisionBenchmarks
+        divisionBenchmarks,
+        {
+          ...leagueContext,
+          competitionRules: leagueContext?.competitionRules ?? competitionRules ?? null,
+          transferWindowOpen:
+            leagueContext?.transferWindowOpen ??
+            (typeof transferWindows?.isOpen === 'boolean' ? transferWindows.isOpen : null),
+          boardObjectiveSummary:
+            leagueContext?.boardObjectiveSummary ??
+            governance?.boardObjectives?.[0]?.target ??
+            null,
+        }
       ),
-    [players, saveDate, finances, balance, wageSpend, financialRunway, divisionBenchmarks]
+    [
+      players,
+      saveDate,
+      finances,
+      balance,
+      wageSpend,
+      financialRunway,
+      divisionBenchmarks,
+      leagueContext,
+      competitionRules,
+      transferWindows,
+      governance,
+    ]
   );
 
   // Scoped advice list respects the Senior First Team vs All Club toggle without hiding youth successors from Depth
@@ -553,6 +580,42 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
               setSearch={setSearch}
               filteredAdvice={filteredAdvice}
               onSelectPlayer={onSelectPlayer}
+            />
+          )}
+
+          {/* VIEW 1B: CLUB & LEAGUE-CALIBRATED BIDIRECTIONAL LOAN HUB */}
+          {view === 'loans' && (
+            <LoanStrategyView
+              audit={audit}
+              scoutedTargets={scoutedTargets}
+              onSelectPlayer={onSelectPlayer}
+              onAskAnalyst={onAskAnalyst}
+              onJumpToLoanTargets={(bucketCode) => {
+                setTargetFilter('LOAN');
+                if (bucketCode) {
+                  const mapBucketToExactSlot: Record<string, string> = {
+                    GK: 'GK',
+                    RB: 'DR',
+                    CB: 'DC',
+                    LB: 'DL',
+                    DM: 'DM',
+                    CM: 'MC',
+                    AM: 'AMC',
+                    ST: 'STC',
+                  };
+                  if (bucketCode === 'W') {
+                    setExactPosFilter('ALL');
+                    setTargetPosGroup('MID');
+                  } else if (mapBucketToExactSlot[bucketCode]) {
+                    setExactPosFilter(mapBucketToExactSlot[bucketCode]);
+                    setTargetPosGroup('ALL');
+                  }
+                } else {
+                  setExactPosFilter('ALL');
+                  setTargetPosGroup('ALL');
+                }
+                setView('targets');
+              }}
             />
           )}
 

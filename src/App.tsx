@@ -1747,6 +1747,32 @@ export default function App() {
                     : null
                 }
                 financialRunway={hydratedFmSave?.financialRunway ?? null}
+                leagueContext={{
+                  competitionName:
+                    hydratedFmSave?.decodedPayload?.leagueStanding?.competitionName ??
+                    hydratedFmSave?.divisionBenchmarks?.competitionName ??
+                    hydratedFmSave?.competitionRules?.competitionName ??
+                    null,
+                  leaguePosition:
+                    hydratedFmSave?.decodedPayload?.leagueStanding?.position ?? null,
+                  totalClubs:
+                    hydratedFmSave?.decodedPayload?.leagueStanding?.totalTeams ??
+                    hydratedFmSave?.divisionBenchmarks?.clubCount ??
+                    null,
+                  points:
+                    hydratedFmSave?.decodedPayload?.leagueStanding?.points ?? null,
+                  played:
+                    hydratedFmSave?.decodedPayload?.leagueStanding?.played ?? null,
+                  competitionRules: hydratedFmSave?.competitionRules ?? null,
+                  transferWindowOpen:
+                    typeof hydratedFmSave?.decodedPayload?.transferWindows?.isOpen ===
+                    'boolean'
+                      ? hydratedFmSave.decodedPayload.transferWindows.isOpen
+                      : null,
+                  boardObjectiveSummary:
+                    (liveGovernance ?? hydratedFmSave?.governance)?.boardObjectives?.[0]
+                      ?.target ?? null,
+                }}
                 transferWindows={hydratedFmSave?.decodedPayload?.transferWindows ?? null}
                 competitionRules={hydratedFmSave?.competitionRules ?? null}
                 divisionBenchmarks={hydratedFmSave?.divisionBenchmarks ?? null}

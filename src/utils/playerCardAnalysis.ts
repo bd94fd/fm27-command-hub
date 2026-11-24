@@ -722,22 +722,64 @@ export function analyzePlayerCard(
     })
     .filter((x): x is { attrKey: string; label: string; value: number } => x !== null);
 
+  // Calibrate strength & watchpoint floors to this club & division level (never hardcoded Premier League numbers)
+  const posGrp =
+    player.position.toUpperCase().includes('GK')
+      ? 'GK'
+      : /\b(ST|CF)\b/i.test(player.position)
+        ? 'FWD'
+        : /\b(DC|DL|DR|CB|WB)\b|D\s*\(/i.test(player.position)
+          ? 'DEF'
+          : 'MID';
+  const divMedMap = divisionBenchmarks?.byPositionGroup?.[posGrp]?.medianAttributes;
+  const benchmarkValues: number[] = [];
+  if (divMedMap) {
+    for (const key of relevantKeys) {
+      const v = divMedMap[key];
+      if (typeof v === 'number' && v > 0) benchmarkValues.push(v);
+    }
+  }
+  if (benchmarkValues.length === 0 && squadPlayers.length >= 4) {
+    const peerPool = squadPlayers.filter(
+      (sp) => sp.teamSlot === undefined || sp.teamSlot === 0
+    );
+    const activePool = peerPool.length >= 4 ? peerPool : squadPlayers;
+    for (const sp of activePool) {
+      for (const key of relevantKeys) {
+        const v = readRawAttr(sp, key);
+        if (v !== null) benchmarkValues.push(v);
+      }
+    }
+  }
+  benchmarkValues.sort((a, b) => a - b);
+  const baselineAttr =
+    benchmarkValues.length > 0
+      ? benchmarkValues[Math.floor(benchmarkValues.length / 2)]
+      : 11;
+  const strengthFloor = Math.max(10, Math.min(15, Math.round(baselineAttr + 1)));
+  const watchpointCeiling = Math.max(7, Math.min(12, Math.round(baselineAttr - 2)));
+  const levelLabel = divisionBenchmarks?.competitionName || 'squad level';
+
   const strengths: PlayerTraitInsight[] = [...scoredAttrs]
     .sort((a, b) => b.value - a.value)
-    .filter((a) => a.value >= 12)
+    .filter((a) => a.value >= strengthFloor)
     .slice(0, 4)
     .map((item) => ({
       ...item,
-      summary: STRENGTH_HINTS[item.attrKey] || `Standout ${item.label.toLowerCase()} for this position`,
+      summary:
+        STRENGTH_HINTS[item.attrKey] ||
+        `Standout ${item.label.toLowerCase()} for ${levelLabel}`,
     }));
 
   const watchpoints: PlayerTraitInsight[] = [...scoredAttrs]
     .sort((a, b) => a.value - b.value)
-    .filter((a) => a.value <= 9)
+    .filter((a) => a.value <= watchpointCeiling)
     .slice(0, 3)
     .map((item) => ({
       ...item,
-      summary: WEAKNESS_HINTS[item.attrKey] || `Below-average ${item.label.toLowerCase()} — cover tactically`,
+      summary:
+        WEAKNESS_HINTS[item.attrKey] ||
+        `Below ${levelLabel} standard (${baselineAttr.toFixed(0)}/20) — cover tactically`,
     }));
 
   const physical = evaluatePhysicalVerdict(player, squadPlayers);
@@ -757,13 +799,13 @@ export function analyzePlayerCard(
   );
   const contractStanding = evaluateContractStanding(player);
 
-  // Build concise, plain-English scouting verdict
+  // Build concise, plain-English scouting verdict anchored to team & league level
   const topStrengthText =
     strengths.length >= 2
       ? `${strengths[0].label} (${strengths[0].value}) and ${strengths[1].label} (${strengths[1].value})`
       : strengths.length === 1
         ? `${strengths[0].label} (${strengths[0].value})`
-        : 'balanced all-round attributes';
+        : `balanced attributes around your ${levelLabel} baseline (${Math.round(baselineAttr)}/20)`;
 
   const bestRoleText = bestIpRole
     ? `${bestIpRole.role.name} (${bestIpRole.fitPct}% fit)`

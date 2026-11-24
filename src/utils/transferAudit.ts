@@ -1,5 +1,8 @@
 import { PlayerRecord } from '../types/fm27';
-import { DivisionBenchmarks } from '../types/fmSave';
+import {
+  CompetitionRegistrationRules,
+  DivisionBenchmarks,
+} from '../types/fmSave';
 import {
   formatClubMoney,
   parseSignedMoneyValue,
@@ -37,6 +40,48 @@ export interface ClubFinancialInput {
   balanceLabel?: string;
   wageSpendLabel?: string;
   monthlyBurnRate?: number | null;
+}
+
+export interface ClubLeagueContextInput {
+  competitionName?: string | null;
+  leaguePosition?: number | null;
+  totalClubs?: number | null;
+  points?: number | null;
+  played?: number | null;
+  competitionRules?: CompetitionRegistrationRules | null;
+  transferWindowOpen?: boolean | null;
+  boardObjectiveSummary?: string | null;
+}
+
+export interface LeagueLevelCalibration {
+  competitionName: string;
+  clubTierLabel: string;
+  standingContextLabel: string;
+  starterAttrBaseline: number;
+  standoutAttrBaseline: number;
+  divisionMedianWeeklyWage: number | null;
+  recruitmentApproachSummary: string;
+}
+
+export interface IncomingLoanPriorityItem {
+  bucketCode: PositionBucketCode;
+  bucketLabel: string;
+  reason: 'Need Signing' | 'Replace High-Wage Backup' | 'Thin Senior Cover';
+  targetRoles: string;
+  maxWeeklyWageSharePw: number;
+  recommendedWageSplitLabel: string;
+  rationale: string;
+}
+
+export interface ClubLoanStrategySummary {
+  headline: string;
+  strategyNotes: string[];
+  incomingLoanPriorities: IncomingLoanPriorityItem[];
+  developmentLoansOut: PlayerTransferAdvice[];
+  wageReliefLoanFallbacks: PlayerTransferAdvice[];
+  activeLoansMonitor: PlayerTransferAdvice[];
+  doNotLoanGuardrails: PlayerTransferAdvice[];
+  leagueLoanRulesNote: string;
 }
 
 export interface ClubFinancialProfile {
@@ -129,6 +174,8 @@ export interface DynamicSquadTierBenchmarks {
 
 export interface SquadTransferAuditSummary {
   clubProfile: ClubFinancialProfile;
+  leagueLevelCalibration: LeagueLevelCalibration;
+  loanAdvice: ClubLoanStrategySummary;
   totalWeeklyWage: number;
   /** Projected weekly wage savings if recommended sales/exits complete (NOT yet banked). */
   potentialWeeklySavings: number;
@@ -525,7 +572,8 @@ export function buildSquadTransferAudit(
   players: PlayerRecord[],
   saveDate: string,
   finances?: ClubFinancialInput,
-  divisionBenchmarks?: DivisionBenchmarks | null
+  divisionBenchmarks?: DivisionBenchmarks | null,
+  leagueContext?: ClubLeagueContextInput | null
 ): SquadTransferAuditSummary {
   const refDate = parseContractDate(saveDate) || new Date(2027, 8, 15);
   const tierBenchmarks = computeDynamicSquadTierBenchmarks(
@@ -585,6 +633,77 @@ export function buildSquadTransferAudit(
           ? 'Lower-League / Semi-Pro Club'
           : 'Grassroots / Non-League Club';
 
+  const resolvedLeagueName =
+    (leagueContext?.competitionName && leagueContext.competitionName !== '--'
+      ? leagueContext.competitionName
+      : null) ||
+    divisionBenchmarks?.competitionName ||
+    leagueContext?.competitionRules?.competitionName ||
+    'Domestic Division';
+
+  // Compute dynamic attribute baseline (1–20) from Division Benchmarks & Top-11 squad starters
+  // so scouting targets, role floors, and tactical/loan advice ALWAYS match this club & league level!
+  const divAttrSamples: number[] = [];
+  const divWageSamples: number[] = [];
+  if (divisionBenchmarks?.byPositionGroup) {
+    for (const grp of ['GK', 'DEF', 'MID', 'FWD'] as const) {
+      const b = divisionBenchmarks.byPositionGroup[grp];
+      if (!b || b.sampleSize === 0) continue;
+      if (typeof b.medianWeeklyWage === 'number' && b.medianWeeklyWage > 0) {
+        divWageSamples.push(b.medianWeeklyWage);
+      }
+      for (const v of Object.values(b.medianAttributes || {})) {
+        if (typeof v === 'number' && v > 0) divAttrSamples.push(v);
+      }
+    }
+  }
+  const top11Players = [...players]
+    .filter((p) => !p.onLoan)
+    .sort((a, b) => (b.ability || 0) - (a.ability || 0))
+    .slice(0, Math.min(11, players.length));
+  const squadCoreAttrSamples: number[] = [];
+  for (const sp of top11Players) {
+    const a = sp.attributes;
+    if (!a) continue;
+    for (const k of ['pace', 'stamina', 'passing', 'tackling', 'decisions', 'finishing'] as const) {
+      const val = a[k];
+      if (typeof val === 'number' && val > 0) squadCoreAttrSamples.push(val);
+    }
+  }
+  divAttrSamples.sort((a, b) => a - b);
+  squadCoreAttrSamples.sort((a, b) => a - b);
+  divWageSamples.sort((a, b) => a - b);
+
+  const fallbackTierAttr =
+    scaleRef >= 150_000 ? 15 : scaleRef >= 30_000 ? 13 : scaleRef >= 6_000 ? 11 : 10;
+  const rawBaselineAttr =
+    divAttrSamples.length > 0
+      ? divAttrSamples[Math.floor(divAttrSamples.length / 2)]
+      : squadCoreAttrSamples.length > 0
+        ? squadCoreAttrSamples[Math.floor(squadCoreAttrSamples.length / 2)]
+        : fallbackTierAttr;
+  const starterAttrBaseline = Math.max(9, Math.min(16, Math.round(rawBaselineAttr)));
+  const standoutAttrBaseline = Math.min(18, starterAttrBaseline + 2);
+  const divisionMedianWeeklyWage =
+    divWageSamples.length > 0
+      ? Math.round(divWageSamples[Math.floor(divWageSamples.length / 2)])
+      : null;
+
+  const posNum = leagueContext?.leaguePosition ?? null;
+  const totalClubs = leagueContext?.totalClubs ?? divisionBenchmarks?.clubCount ?? 16;
+  const standingContextLabel =
+    posNum !== null && posNum > 0
+      ? posNum <= 2
+        ? `#${posNum} of ${totalClubs} in ${resolvedLeagueName} (Title / Automatic Promotion Push)`
+        : posNum <= Math.max(5, Math.ceil(totalClubs * 0.35))
+          ? `#${posNum} of ${totalClubs} in ${resolvedLeagueName} (Play-Off / Upper-Table Contender)`
+          : posNum >= Math.max(totalClubs - 3, Math.floor(totalClubs * 0.8))
+            ? `#${posNum} of ${totalClubs} in ${resolvedLeagueName} (Survival / Relegation Margin)`
+            : `#${posNum} of ${totalClubs} in ${resolvedLeagueName} (Mid-Table Consolidation)`
+      : leagueContext?.boardObjectiveSummary || `${resolvedLeagueName} (${clubTierLabel})`;
+
+  const attrTarget = (offset = 0) => Math.max(8, Math.min(17, starterAttrBaseline + offset));
+
   // Classify every player into Senior First-Team vs U21/Youth/Reserve vs Out on Loan,
   // and assign EXACTLY ONE primary position bucket per player.
   const tierById = new Map<string, SquadTier>();
@@ -603,6 +722,7 @@ export function buildSquadTransferAudit(
   }
 
   // Compute 4-3-3 positional depth cleanly split by Senior Primary, Secondary Cover, U21/Youth, and On Loan
+  // with scout attribute floors dynamically calibrated to THIS team & league level!
   const bucketDefs: Array<{
     code: PositionBucketCode;
     label: string;
@@ -617,7 +737,7 @@ export function buildSquadTransferAudit(
       idealMin: 2,
       idealMax: 3,
       starterSlots: 1,
-      scoutProfile: 'No-Nonsense GK IP / GK OOP — Decisions ≥ 11, Aerial/JR ≥ 12',
+      scoutProfile: `No-Nonsense / Line-Holding GK IP + GK OOP — Reflexes ≥ ${attrTarget(0)}, Decisions ≥ ${attrTarget(-1)}, Aerial/JR ≥ ${attrTarget(0)} (${resolvedLeagueName} standard)`,
     },
     {
       code: 'RB',
@@ -625,8 +745,7 @@ export function buildSquadTransferAudit(
       idealMin: 2,
       idealMax: 3,
       starterSlots: 1,
-      scoutProfile:
-        'Full-Back IP / FB OOP — Pace ≥ 12, Acc ≥ 12, Stamina ≥ 12, Tackling ≥ 11',
+      scoutProfile: `Full-Back IP / Pressing or Holding FB OOP — Pace ≥ ${attrTarget(1)}, Acc ≥ ${attrTarget(1)}, Stamina ≥ ${attrTarget(0)}, Tackling ≥ ${attrTarget(0)}`,
     },
     {
       code: 'CB',
@@ -634,8 +753,7 @@ export function buildSquadTransferAudit(
       idealMin: 4,
       idealMax: 5,
       starterSlots: 2,
-      scoutProfile:
-        'CB / Ball-Playing CB — Jumping Reach ≥ 13, Tackling ≥ 12, Pace ≥ 11',
+      scoutProfile: `CB / Ball-Playing CB IP + Stopping/Covering CB OOP — Jumping Reach ≥ ${attrTarget(1)}, Tackling ≥ ${attrTarget(0)}, Pace ≥ ${attrTarget(0)}`,
     },
     {
       code: 'LB',
@@ -643,8 +761,7 @@ export function buildSquadTransferAudit(
       idealMin: 2,
       idealMax: 3,
       starterSlots: 1,
-      scoutProfile:
-        'Full-Back IP / FB OOP — Left-footed, Pace ≥ 12, Stamina ≥ 12, Tackling ≥ 11',
+      scoutProfile: `Full-Back IP / Pressing or Holding FB OOP — Left-footed, Pace ≥ ${attrTarget(1)}, Stamina ≥ ${attrTarget(0)}, Tackling ≥ ${attrTarget(0)}`,
     },
     {
       code: 'DM',
@@ -652,8 +769,7 @@ export function buildSquadTransferAudit(
       idealMin: 2,
       idealMax: 3,
       starterSlots: 1,
-      scoutProfile:
-        'DM IP / DM OOP — Tackling ≥ 12, Positioning ≥ 12, Stamina ≥ 12, Passing ≥ 11',
+      scoutProfile: `DM / Half-Back IP + Screening DM OOP — Tackling ≥ ${attrTarget(0)}, Positioning ≥ ${attrTarget(0)}, Stamina ≥ ${attrTarget(0)}, Passing ≥ ${attrTarget(0)}`,
     },
     {
       code: 'CM',
@@ -661,8 +777,7 @@ export function buildSquadTransferAudit(
       idealMin: 4,
       idealMax: 6,
       starterSlots: 2,
-      scoutProfile:
-        'Channel / Box-to-Box CM IP + Pressing / Screening CM OOP — Passing ≥ 12, First Touch ≥ 12, Work Rate ≥ 12, Stamina ≥ 12',
+      scoutProfile: `Channel / Box-to-Box CM IP + Pressing / Wide CM OOP — Passing ≥ ${attrTarget(0)}, First Touch ≥ ${attrTarget(0)}, Work Rate ≥ ${attrTarget(1)}, Stamina ≥ ${attrTarget(0)}`,
     },
     {
       code: 'AM',
@@ -670,8 +785,7 @@ export function buildSquadTransferAudit(
       idealMin: 0,
       idealMax: 3,
       starterSlots: 1,
-      scoutProfile:
-        'Attacking Midfielder / Advanced Playmaker IP + Tracking AM OOP (4-2-3-1 / 3-4-2-1 shapes)',
+      scoutProfile: `Attacking Midfielder / Advanced Playmaker IP + Tracking AM OOP — Vision ≥ ${attrTarget(0)}, Off The Ball ≥ ${attrTarget(0)}, First Touch ≥ ${attrTarget(0)}`,
     },
     {
       code: 'W',
@@ -679,8 +793,7 @@ export function buildSquadTransferAudit(
       idealMin: 4,
       idealMax: 6,
       starterSlots: 2,
-      scoutProfile:
-        'Winger / IF IP + Tracking Winger OOP — Pace ≥ 13, Acc ≥ 13, Stamina ≥ 11, Work Rate ≥ 11',
+      scoutProfile: `Winger / Inside Forward IP + Tracking Winger OOP — Pace ≥ ${attrTarget(1)}, Acc ≥ ${attrTarget(1)}, Stamina ≥ ${attrTarget(0)}, Work Rate ≥ ${attrTarget(0)}`,
     },
     {
       code: 'ST',
@@ -688,8 +801,7 @@ export function buildSquadTransferAudit(
       idealMin: 2,
       idealMax: 4,
       starterSlots: 1,
-      scoutProfile:
-        'Poacher / Channel Forward IP + Outlet CF OOP — Finishing ≥ 12, Off The Ball ≥ 12, Pace ≥ 13',
+      scoutProfile: `Poacher / Channel Forward IP + Outlet CF OOP — Finishing ≥ ${attrTarget(0)}, Off The Ball ≥ ${attrTarget(1)}, Pace ≥ ${attrTarget(1)}`,
     },
   ];
 
@@ -1161,27 +1273,39 @@ export function buildSquadTransferAudit(
       rationale = `Current Ability (${p.ability.toFixed(1)}★/${p.potential.toFixed(1)}★) already meets your First-Team rotation floor (${tierBenchmarks.firstTeamRotationFloor.toFixed(1)}★). Unlike raw academy teens, he is ready to fill your senior ${bestBucket?.label || p.position} gap at £${p.wagePw}/wk with zero transfer fee.`;
       recommendedMove = `Promote from U21/Reserves to Senior First Team immediately (${p.ipRole} IP / ${p.oopRole} OOP) — removes need for an external signing.`;
     }
-    // 3. Non-Expiring High-Potential Developing/Academy U21 Prospects -> Protect & Develop
-    else if (isHighPotYouth && !isSurplus && !isTrueStarter) {
-      const seniorDepthIsFull =
-        bestBucket !== null && bestBucket.currentCount >= bestBucket.idealMax;
+    // 3. Non-Expiring High-Potential Developing/Academy U21/U23 Prospects -> Loan Out (when blocked) vs Protect & Develop
+    else if (
+      (isHighPotYouth ||
+        (squadTier === 'youth_reserve' &&
+          p.age >= 18 &&
+          p.age <= 23 &&
+          p.potential >= 3.5 &&
+          !isExpiringSoon)) &&
+      !isSurplus &&
+      !isTrueStarter
+    ) {
+      const seniorDepthMet =
+        bestBucket !== null &&
+        bestBucket.idealMin > 0 &&
+        bestBucket.currentCount >= bestBucket.idealMin;
       if (abilityReadinessTier === 'academy_raw') {
         verdict = 'Protect Youth Asset';
         priority = 'Low';
         headline = `Academy prospect (${p.ability.toFixed(1)}★ now → ${p.potential.toFixed(1)}★ ceiling) — long-term U18/U21 development`;
-        rationale = `Age ${p.age} academy player (${p.ability.toFixed(1)}★ current vs ${tierBenchmarks.firstTeamRotationFloor.toFixed(1)}★ first-team floor). Not ready for senior minutes yet — develop patiently in U18/U21 with mentoring.`;
-        recommendedMove = `Keep in U18/U21 training & matches with a high-Determination mentor; reassess when he reaches ${tierBenchmarks.firstTeamRotationFloor.toFixed(1)}★+.`;
+        rationale = `Age ${p.age} academy player (${p.ability.toFixed(1)}★ current vs ${tierBenchmarks.firstTeamRotationFloor.toFixed(1)}★ ${resolvedLeagueName} first-team floor). Too raw for men's loan football yet — develop patiently in U18/U21 with mentoring.`;
+        recommendedMove = `Keep in U18/U21 training & matches with a high-Determination mentor; consider a development loan once he reaches ${Math.max(2.0, tierBenchmarks.firstTeamRotationFloor - 1.0).toFixed(1)}★+.`;
       } else if (
-        seniorDepthIsFull &&
-        p.age >= 19 &&
+        seniorDepthMet &&
+        p.age >= 18 &&
         abilityReadinessTier === 'developing_prospect' &&
-        p.minutes < 180
+        (p.minutes || 0) < 180
       ) {
-        verdict = 'Protect Youth Asset';
+        verdict = 'Loan Out';
         priority = 'Medium';
-        headline = `Protect U21 asset (${p.potential.toFixed(1)}★ ceiling) — develop via U21 or curated loan`;
-        rationale = `Age ${p.age} developing prospect (${p.ability.toFixed(1)}★ vs ${tierBenchmarks.firstTeamRotationFloor.toFixed(1)}★ rotation floor; ${p.potential.toFixed(1)}★ ceiling). Senior ${bestBucket?.code || p.position} depth is currently full (${bestBucket?.currentCount}/${bestBucket?.idealMax}), so keep protected rather than treating as surplus.`;
-        recommendedMove = `Keep contracted & mentored; optionally offer a Playing-Time-guaranteed development loan (never sell).`;
+        tags.push('Dev Loan Candidate');
+        headline = `Development Loan (${p.ability.toFixed(1)}★ → ${p.potential.toFixed(1)}★) — senior ${bestBucket?.code || p.position} pathway full`;
+        rationale = `Age ${p.age} developing prospect (${p.ability.toFixed(1)}★ current vs ${tierBenchmarks.firstTeamRotationFloor.toFixed(1)}★ ${resolvedLeagueName} rotation floor; ${p.potential.toFixed(1)}★ ceiling). Senior ${bestBucket?.label || p.position} depth is already met (${bestBucket?.currentCount}/${bestBucket?.idealMin}), so 25+ senior starts on loan will accelerate his growth far faster than reserve cameos.`;
+        recommendedMove = `Offer out for loan to a club one tier below ${resolvedLeagueName}: lock 'Regular Starter' playing time in ${p.ipRole} (IP), include a Recall Clause, and accept 0%–50% wage share (never sell).`;
       } else {
         verdict = 'Protect Youth Asset';
         priority = 'Medium';
@@ -1189,7 +1313,7 @@ export function buildSquadTransferAudit(
           abilityReadinessTier === 'rotation_ready'
             ? `First-Team Ready U21 (${p.ability.toFixed(1)}★ → ${p.potential.toFixed(1)}★) — bridge into senior minutes`
             : `Protect & develop U21 asset (${p.ability.toFixed(1)}★ → ${p.potential.toFixed(1)}★ ceiling)`;
-        rationale = `Age ${p.age} (${abilityReadinessLabel} vs ${tierBenchmarks.firstTeamRotationFloor.toFixed(1)}★ first-team floor; ${p.personality}, Det ${p.attributes.determination}, £${p.wagePw}/wk). Aligns with club strategy to develop youth into future first-team starters.`;
+        rationale = `Age ${p.age} (${abilityReadinessLabel} vs ${tierBenchmarks.firstTeamRotationFloor.toFixed(1)}★ ${resolvedLeagueName} first-team floor; ${p.personality}, Det ${p.attributes.determination}, £${p.wagePw}/wk). Aligns with ${clubTierLabel.toLowerCase()} strategy to develop youth into first-team starters.`;
         recommendedMove =
           abilityReadinessTier === 'rotation_ready'
             ? `Give cup starts & senior bench minutes now (${p.ipRole} IP / ${p.oopRole} OOP) — ready to step in when senior cover exits.`
@@ -1221,7 +1345,7 @@ export function buildSquadTransferAudit(
             ? p.wagePw || 150
             : Math.round(((p.wagePw || 150) * 1.1) / 10) * 10;
         headline = `Core #${clubWidePositionRank} ${bestBucket?.code || p.position} expiring in ${monthsLeft}m — renew on disciplined terms`;
-        rationale = `${p.ability.toFixed(1)}★/${p.potential.toFixed(1)}★ (${abilityReadinessLabel}, ${p.personality}, Det ${p.attributes.determination}). ${isInDebt ? 'Because the club is in debt, hold wages flat.' : 'Prevent a free Bosman exit.'}`;
+        rationale = `${p.ability.toFixed(1)}★/${p.potential.toFixed(1)}★ (${abilityReadinessLabel} for ${resolvedLeagueName}, ${p.personality}, Det ${p.attributes.determination}). ${isInDebt ? 'Because the club is in debt, hold wages flat.' : 'Prevent a free Bosman exit.'}`;
         recommendedMove = `Offer a ${p.age >= 29 ? '1-year' : '2-year'} extension capped at ≤ £${wageCap}/wk (no automatic yearly wage-rise clause).`;
       } else {
         verdict = 'Let Expire';
@@ -1261,10 +1385,13 @@ export function buildSquadTransferAudit(
         priority = 'High';
         headline = `Sell £${p.wagePw}/wk backup AFTER signing cheaper ${bestBucket?.code || p.position} cover`;
         rationale = `Earning £${p.wagePw}/wk (£${annualWage.toLocaleString()}/yr) as #${bestRank} ${bestBucket?.code || p.position} (Age ${p.age}, ${p.ability.toFixed(1)}★), which strains ${isInDebt ? 'your negative balance' : 'your wage budget'} — but ready depth is thin here (${bestBucket?.effectiveReadyCount}/${bestBucket?.idealMin}) with no U21 ready.`;
-        recommendedMove = `Line up a cheaper free-agent or zero-fee loan replacement at ${bestBucket?.code || p.position} first, then sell via TransferRoom to clear £${p.wagePw}/wk.`;
+        recommendedMove = `Line up a cheaper free-agent or zero-fee parent-club loan replacement at ${bestBucket?.code || p.position} first, then sell via TransferRoom to clear £${p.wagePw}/wk.`;
       } else {
         verdict = 'Sell / Transfer List';
         priority = 'High';
+        if ((p.wagePw || 0) >= Math.max(120, medianPaidWage * 0.7)) {
+          tags.push('Loan Wage-Relief Option');
+        }
         headline = youthSuccessor
           ? succIsTrueYouth
             ? `Sell ${isSurplus ? 'surplus' : 'backup'} (£${p.wagePw}/wk) & promote youth ${youthSuccessor.name} (£${youthSuccessor.wagePw}/wk)`
@@ -1272,8 +1399,8 @@ export function buildSquadTransferAudit(
           : `Transfer list ${isSurplus ? 'Surplus To Requirements player' : 'surplus senior depth'} to cut £${p.wagePw}/wk (£${annualWage.toLocaleString()}/yr)`;
         rationale = `${isSurplus ? 'Marked Surplus To Requirements in squad standing. ' : ''}#${bestRank} ${bestBucket?.code || p.position} ${isTrueStarter ? 'option' : 'backup'} (Age ${p.age}, ${p.ability.toFixed(1)}★/${p.potential.toFixed(1)}★${weakPers ? `, Det ${p.attributes.determination}` : ''}). ${isOverstockedPos ? `${bestBucket?.label} senior primary depth is overstocked (${bestBucket?.currentCount} vs ideal ${bestBucket?.idealMin}–${bestBucket?.idealMax}). ` : ''}${isInDebt || isMateriallyOverWageBudget ? 'Offloading these wages directly reduces club debt & monthly burn without weakening your Starting XI.' : 'Frees wage budget for priority upgrades.'}`;
         recommendedMove = youthSuccessor
-          ? `Transfer list & offer via TransferRoom; hand his backup minutes to ${youthSuccessor.name} (${youthSuccessor.ability.toFixed(1)}★/${youthSuccessor.potential.toFixed(1)}★, already on payroll at £${youthSuccessor.wagePw}/wk) to clear £${p.wagePw}/wk (£${annualWage.toLocaleString()}/yr) with no replacement fee.`
-          : `Transfer list & offer via TransferRoom (even a nominal fee or 100%-wage loan clears £${p.wagePw}/wk once completed).`;
+          ? `Transfer list & offer via TransferRoom (or loan out at 50%–100% wage share if cash bids stall at ${resolvedLeagueName} level); hand his backup minutes to ${youthSuccessor.name} (${youthSuccessor.ability.toFixed(1)}★/${youthSuccessor.potential.toFixed(1)}★, already on payroll at £${youthSuccessor.wagePw}/wk) to clear £${p.wagePw}/wk (£${annualWage.toLocaleString()}/yr) with no replacement fee.`
+          : `Transfer list & offer via TransferRoom (if permanent buyers stall, accept a 50%–100% wage-contribution loan to clear £${p.wagePw}/wk once completed).`;
       }
     }
     // 6. Hold (Core starters, cheap mentors, First-Team Ready U21 depth, Academy depth, or balanced senior depth)
@@ -1289,7 +1416,7 @@ export function buildSquadTransferAudit(
             : squadTier === 'youth_reserve'
               ? `${abilityReadinessLabel} U21/Academy (${p.ability.toFixed(1)}★/${p.potential.toFixed(1)}★, Age ${p.age})`
               : `Balanced senior depth (#${bestRank} ${bestBucket?.code || p.position} · exp ${p.expires})`;
-      rationale = `${p.ability.toFixed(1)}★/${p.potential.toFixed(1)}★ (${abilityReadinessLabel} vs ${tierBenchmarks.firstTeamRotationFloor.toFixed(1)}★ first-team floor), Age ${p.age}, £${p.wagePw}/wk (${p.personality}, Det ${p.attributes.determination})${isTrueStarter ? ' — first-choice starter protected for squad stability.' : isMentor ? ' — strong mentoring anchor for U21 prospects.' : isFirstTeamReadyU21 ? ' — already at First-Team rotation quality in U21/Reserves.' : ' — fits squad & budget structure.'}`;
+      rationale = `${p.ability.toFixed(1)}★/${p.potential.toFixed(1)}★ (${abilityReadinessLabel} vs ${tierBenchmarks.firstTeamRotationFloor.toFixed(1)}★ ${resolvedLeagueName} floor), Age ${p.age}, £${p.wagePw}/wk (${p.personality}, Det ${p.attributes.determination})${isTrueStarter ? ' — first-choice starter protected for squad stability.' : isMentor ? ' — strong mentoring anchor for U21 prospects.' : isFirstTeamReadyU21 ? ' — already at First-Team rotation quality in U21/Reserves.' : ' — fits squad & budget structure.'}`;
       recommendedMove = isMentor
         ? `Keep in squad and anchor a 3-player mentoring group with 2 U21 prospects.`
         : isFirstTeamReadyU21
@@ -1340,6 +1467,7 @@ export function buildSquadTransferAudit(
   for (const item of playerAdvice) {
     const departingNames = promotedYouthForSale.get(item.player.id);
     if (!departingNames || departingNames.length === 0) continue;
+    item.tags = item.tags.filter((t) => t !== 'Dev Loan Candidate');
     const promoteTag = `Promote to Backup (${departingNames.join(', ')})`;
     if (!item.tags.includes(promoteTag)) {
       item.tags.unshift(promoteTag);
@@ -1414,14 +1542,172 @@ export function buildSquadTransferAudit(
       (a) =>
         a.verdict === 'Sell / Transfer List' ||
         a.verdict === 'Replace Before Selling' ||
-        a.verdict === 'Let Expire' ||
-        a.verdict === 'Loan Out'
+        a.verdict === 'Let Expire'
     )
     .reduce((sum, a) => sum + (a.player.wagePw || 0), 0);
 
   const expiringWithin12mCount = playerAdvice.filter(
     (a) => a.monthsLeft !== null && a.monthsLeft <= 12
   ).length;
+
+  // Build Club & League Level Calibration + Complete Loan Strategy (Incoming + Outgoing)
+  const isLowerOrSemiPro = scaleRef < 30_000;
+  const maxLoanWageSharePw =
+    isInDebt || isOverWageBudget
+      ? Math.max(0, Math.min(200, Math.round(medianPaidWage * 0.5)))
+      : wageHeadroomWeekly !== null && wageHeadroomWeekly > 0
+        ? Math.min(Math.round(wageHeadroomWeekly * 0.6), Math.round(medianPaidWage * 1.15))
+        : Math.round(medianPaidWage * 0.85);
+  const recommendedWageSplitLabel =
+    isInDebt || isOverWageBudget
+      ? maxLoanWageSharePw > 0
+        ? `£0 loan fee · 0%–30% wage share (≤ £${maxLoanWageSharePw.toLocaleString()}/wk)`
+        : '£0 loan fee · 0% wage share (parent club pays 100%)'
+      : `£0 loan fee · ≤ 50% wage share (≤ £${Math.max(100, maxLoanWageSharePw).toLocaleString()}/wk)`;
+
+  const recruitmentApproachSummary = isInDebt
+    ? `At ${clubTierLabel} level in ${resolvedLeagueName} with ${balanceLabel} debt, avoid cash transfer fees completely — use 2-week Free Agent trials, ${recommendedWageSplitLabel} U23 loans from higher-tier clubs, and internal U21 promotions (target starter attributes ≥ ${starterAttrBaseline}/20).`
+    : isLowerOrSemiPro
+      ? `At ${clubTierLabel} level in ${resolvedLeagueName}, clubs rarely recoup cash fees — build around Free Agents, higher-division U23 loans (${recommendedWageSplitLabel}), and promoting high-potential U21s (starter baseline ≥ ${starterAttrBaseline}/20).`
+      : `At ${clubTierLabel} level in ${resolvedLeagueName}, target starter attributes ≥ ${starterAttrBaseline}/20 (standout ≥ ${standoutAttrBaseline}/20), blend U23 resale signings with selective loan cover (${recommendedWageSplitLabel}), and loan out blocked 18–22yo prospects.`;
+
+  const leagueLevelCalibration: LeagueLevelCalibration = {
+    competitionName: resolvedLeagueName,
+    clubTierLabel,
+    standingContextLabel,
+    starterAttrBaseline,
+    standoutAttrBaseline,
+    divisionMedianWeeklyWage,
+    recruitmentApproachSummary,
+  };
+
+  const incomingLoanPriorities: IncomingLoanPriorityItem[] = [];
+  for (const need of positionalNeeds) {
+    if (need.code === 'AM' && need.idealMin === 0) continue;
+    const replaceItem = playerAdvice.find(
+      (a) =>
+        a.verdict === 'Replace Before Selling' &&
+        a.primaryBucketCode === need.code
+    );
+    if (need.status === 'Need Signing') {
+      incomingLoanPriorities.push({
+        bucketCode: need.code,
+        bucketLabel: need.label,
+        reason: 'Need Signing',
+        targetRoles: need.scoutProfile,
+        maxWeeklyWageSharePw: maxLoanWageSharePw,
+        recommendedWageSplitLabel,
+        rationale: `Only ${need.effectiveReadyCount}/${need.idealMin} ready options at ${need.code} for ${resolvedLeagueName}. A 1-season U23 parent-club loan (${recommendedWageSplitLabel}) plugs the gap immediately with £0 transfer fee and zero long-term wage bloat.`,
+      });
+    } else if (replaceItem) {
+      incomingLoanPriorities.push({
+        bucketCode: need.code,
+        bucketLabel: need.label,
+        reason: 'Replace High-Wage Backup',
+        targetRoles: need.scoutProfile,
+        maxWeeklyWageSharePw: Math.min(
+          maxLoanWageSharePw,
+          Math.max(0, Math.round((replaceItem.player.wagePw || 0) * 0.45))
+        ),
+        recommendedWageSplitLabel,
+        rationale: `Securing a low-cost loan at ${need.code} unlocks selling ${replaceItem.player.name} (£${replaceItem.player.wagePw.toLocaleString()}/wk) without leaving your ${resolvedLeagueName} matchday squad short.`,
+      });
+    } else if (
+      need.effectiveReadyCount === need.idealMin &&
+      need.hasSuccessionGap &&
+      incomingLoanPriorities.length < 3
+    ) {
+      incomingLoanPriorities.push({
+        bucketCode: need.code,
+        bucketLabel: need.label,
+        reason: 'Thin Senior Cover',
+        targetRoles: need.scoutProfile,
+        maxWeeklyWageSharePw: maxLoanWageSharePw,
+        recommendedWageSplitLabel,
+        rationale: `All ${need.code} starters are 28+ with zero U23 cover. A pacey higher-tier U23 loanee adds transition speed for ${resolvedLeagueName} while you scout a permanent successor.`,
+      });
+    }
+  }
+
+  const developmentLoansOut = playerAdvice.filter((a) => a.verdict === 'Loan Out');
+  const wageReliefLoanFallbacks = playerAdvice.filter(
+    (a) =>
+      a.verdict === 'Sell / Transfer List' &&
+      (a.player.wagePw || 0) >= Math.max(100, medianPaidWage * 0.6)
+  );
+  const activeLoansMonitor = playerAdvice.filter((a) => a.squadTier === 'on_loan');
+  const doNotLoanGuardrails = playerAdvice.filter(
+    (a) =>
+      a.tags.some((t) => t.startsWith('Promote to Backup') || t === 'Promote to First Team') ||
+      (a.player.age <= 21 &&
+        a.squadTier !== 'on_loan' &&
+        (a.abilityReadinessTier === 'squad_star' ||
+          (a.abilityReadinessTier === 'starter_level' && a.clubWidePositionRank <= 2)))
+  );
+
+  const cr = leagueContext?.competitionRules ?? null;
+  const ruleNotes: string[] = [];
+  if (cr?.u21Exempt) {
+    ruleNotes.push('U21 players are exempt from senior squad registration caps — incoming U21 loanees do not consume a senior slot');
+  }
+  if (cr?.maxSquadSize) {
+    ruleNotes.push(`Max registered squad size: ${cr.maxSquadSize}`);
+  }
+  if (cr?.minHomegrownNation || cr?.minHomegrownClub) {
+    ruleNotes.push(
+      `Prioritise domestic loanees to protect Homegrown quotas (${[
+        cr.minHomegrownNation ? `HGN ≥ ${cr.minHomegrownNation}` : null,
+        cr.minHomegrownClub ? `HGC ≥ ${cr.minHomegrownClub}` : null,
+      ]
+        .filter(Boolean)
+        .join(', ')})`
+    );
+  }
+  if (typeof leagueContext?.transferWindowOpen === 'boolean') {
+    ruleNotes.push(
+      leagueContext.transferWindowOpen
+        ? 'Transfer/loan window is OPEN — execute loan bids and TransferRoom loan offers now'
+        : 'Window is currently CLOSED — shortlist parent-club loan targets and line up outgoing development loans for the next window'
+    );
+  }
+  const leagueLoanRulesNote =
+    ruleNotes.length > 0
+      ? ruleNotes.join(' · ') + '.'
+      : `Target parent clubs 1–2 divisions above ${resolvedLeagueName} for incoming loans (${recommendedWageSplitLabel}), and send outgoing development loans 1 tier below ${resolvedLeagueName} with locked Regular Starter playing time + a Recall Clause.`;
+
+  const loanStrategyNotes: string[] = [
+    incomingLoanPriorities.length > 0
+      ? `Incoming Loan Targets (${resolvedLeagueName}): Prioritise ${incomingLoanPriorities.map((i) => i.bucketCode).join(', ')} from higher-division U21/B-teams on ${recommendedWageSplitLabel} (zero Unused-Sub fees).`
+      : `Incoming Loans (${resolvedLeagueName}): Core 4-3-3 depth is covered internally — only add an opportunistic 0%-wage higher-tier loanee if they beat your ${tierBenchmarks.firstTeamStarterFloor.toFixed(1)}★ starter floor (attrs ≥ ${standoutAttrBaseline}/20).`,
+    developmentLoansOut.length > 0
+      ? `Outgoing Development Loans (${developmentLoansOut.length}): Send ${developmentLoansOut.slice(0, 4).map((d) => `${d.player.name} (${d.primaryBucketCode})`).join(', ')} to a club 1 tier below ${resolvedLeagueName} with locked 'Regular Starter' status + Recall Clause.`
+      : `Outgoing Development Loans: No unblocked 18–22yo prospects require a loan right now — keep 15–17yo raw academy teens in U18/U21 mentoring and keep First-Team Ready U21s in senior rotation.`,
+  ];
+  if (wageReliefLoanFallbacks.length > 0) {
+    const fallbackSum = wageReliefLoanFallbacks.reduce(
+      (s, a) => s + (a.player.wagePw || 0),
+      0
+    );
+    loanStrategyNotes.push(
+      `Wage-Relief Loan Fallback: If permanent buyers don't pay fees at ${resolvedLeagueName} level, offer ${wageReliefLoanFallbacks.slice(0, 3).map((w) => w.player.name).join(', ')} via TransferRoom on 50%–100% wage-share loans (up to £${fallbackSum.toLocaleString()}/wk payroll relief).`
+    );
+  }
+  if (doNotLoanGuardrails.length > 0) {
+    loanStrategyNotes.push(
+      `Do NOT Loan Out Guardrail: Keep ${doNotLoanGuardrails.slice(0, 4).map((g) => g.player.name).join(', ')} in your senior squad — they are already First-Team starters or designated U21 backup successors.`
+    );
+  }
+
+  const loanAdvice: ClubLoanStrategySummary = {
+    headline: `${resolvedLeagueName} Loan Playbook · ${clubTierLabel}`,
+    strategyNotes: loanStrategyNotes,
+    incomingLoanPriorities,
+    developmentLoansOut,
+    wageReliefLoanFallbacks,
+    activeLoansMonitor,
+    doNotLoanGuardrails,
+    leagueLoanRulesNote,
+  };
 
   // Build aligned, data-driven strategy bullets using the EXACT SAME canonical numbers
   const strategyBullets: string[] = [];
@@ -1431,17 +1717,17 @@ export function buildSquadTransferAudit(
         ? ` (est. burn £${monthlyBurnRate.toLocaleString()}/mo)`
         : '';
     strategyBullets.push(
-      `Bank balance is ${balanceLabel}${burnNote} — avoid cash fees; trim high-wage senior backups, promote U21 successors, and use free transfers/loans.`
+      `Bank balance is ${balanceLabel}${burnNote} — avoid cash fees in ${resolvedLeagueName}; trim high-wage senior backups, promote U21 successors, and use free transfers or ${recommendedWageSplitLabel} loans.`
     );
   } else if (balanceNum !== null) {
     strategyBullets.push(
-      `Bank balance is ${balanceLabel} — maintain disciplined wage structure and prioritize value signings.`
+      `Bank balance is ${balanceLabel} (${resolvedLeagueName}, starter attr baseline ≥ ${starterAttrBaseline}/20) — maintain disciplined wage structure and prioritize value signings & targeted loans.`
     );
   }
 
   if (wageComplianceSeverity === 'over' && wageHeadroomWeekly !== null) {
     strategyBullets.push(
-      `Materially over weekly wage cap by £${Math.abs(wageHeadroomWeekly).toLocaleString()}/wk (${wageVariancePct ?? 0}% over ${canonicalFinances.wageComplianceLabel}) — moving 1–2 surplus earners fixes compliance.`
+      `Materially over weekly wage cap by £${Math.abs(wageHeadroomWeekly).toLocaleString()}/wk (${wageVariancePct ?? 0}% over ${canonicalFinances.wageComplianceLabel}) — moving 1–2 surplus earners (sale or 100%-wage loan) fixes compliance.`
     );
   } else if (
     wageComplianceSeverity === 'minor_over' &&
@@ -1459,13 +1745,16 @@ export function buildSquadTransferAudit(
     );
   }
 
-  // Real squad depth & youth alignment summary bullet
+  // Real squad depth, loan & youth alignment summary bullet
   const depthParts: string[] = [];
   if (thinBucketCodes.length > 0) {
-    depthParts.push(`External signing gaps: ${thinBucketCodes.join(', ')}`);
+    depthParts.push(`External signing/loan gaps: ${thinBucketCodes.join(', ')}`);
   }
   if (promoteInternalBucketCodes.length > 0) {
     depthParts.push(`Promote from U21/Reserves (ready now): ${promoteInternalBucketCodes.join(', ')}`);
+  }
+  if (countsByVerdict['Loan Out'] > 0) {
+    depthParts.push(`Development loans out: ${countsByVerdict['Loan Out']}`);
   }
   if (successionGapCodes.length > 0) {
     depthParts.push(`Aging succession gaps (28+, no U23): ${successionGapCodes.join(', ')}`);
@@ -1478,7 +1767,7 @@ export function buildSquadTransferAudit(
   }
   if (countsByVerdict['Protect Youth Asset'] > 0 || youthReserveCount > 0) {
     depthParts.push(
-      `${countsByVerdict['Protect Youth Asset']} U21 assets protected (${youthReserveCount} U21/Reserve${onLoanCount > 0 ? `, ${onLoanCount} out on loan` : ''})`
+      `${countsByVerdict['Protect Youth Asset']} U21 assets protected (${youthReserveCount} U21/Reserve${onLoanCount > 0 ? `, ${onLoanCount} on loan` : ''})`
     );
   }
   if (depthParts.length > 0) {
@@ -1500,17 +1789,19 @@ export function buildSquadTransferAudit(
     isMateriallyOverWageBudget,
     monthlyBurnRate,
     strategyHeadline: isInDebt
-      ? `${clubTierLabel} · Debt Recovery Mode (${balanceLabel})`
+      ? `${clubTierLabel} · ${resolvedLeagueName} · Debt Recovery Mode (${balanceLabel})`
       : isMateriallyOverWageBudget
-        ? `${clubTierLabel} · Wage Budget Trim Required`
+        ? `${clubTierLabel} · ${resolvedLeagueName} · Wage Budget Trim Required`
         : wageComplianceSeverity === 'minor_over'
-          ? `${clubTierLabel} · Near Wage Cap (Minor Variance)`
-          : `${clubTierLabel} · Financially Stable`,
+          ? `${clubTierLabel} · ${resolvedLeagueName} · Near Wage Cap (Minor Variance)`
+          : `${clubTierLabel} · ${resolvedLeagueName} · Financially Stable`,
     strategyBullets,
   };
 
   return {
     clubProfile,
+    leagueLevelCalibration,
+    loanAdvice,
     totalWeeklyWage: squadWeeklyWageSum,
     potentialWeeklySavings: projectedWeeklySavings,
     projectedWeeklySavings,
