@@ -5,7 +5,6 @@ import {
   MessageSquare,
   ShieldCheck,
   TrendingUp,
-  X,
 } from 'lucide-react';
 import { PlayerRecord } from '../types/fm27';
 import {
@@ -17,6 +16,7 @@ import {
 import { evaluateScoutTargetCard } from '../utils/cardIntelligenceEngine';
 import type { ClubDnaPillarWeights } from '../utils/clubDnaEngine';
 import { AttributeRadarChart, PercentilePizzaChart } from './FootballAnalyticsCharts';
+import { MobileSheetFrame } from './MobileSheetFrame';
 
 interface ScoutTargetDetailModalProps {
   target: RecruitmentTarget | null;
@@ -79,46 +79,68 @@ export const ScoutTargetDetailModal: React.FC<ScoutTargetDetailModalProps> = ({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-sm p-3 sm:p-5 overflow-y-auto"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Deep scouting dossier for ${target.name}`}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 p-4 sm:p-6 space-y-5 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-4">
-          <div className="min-w-0 space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-bold text-white truncate">
-                {target.name}
-              </h2>
-              <span className="font-mono text-xs text-emerald-300 font-semibold">
-                {target.primaryPosition}
-              </span>
-              <span className="text-xs text-slate-400">
-                Age {target.age} · {target.nationality || 'Unknown'} · {clubLabel}
-              </span>
-            </div>
-            <p className="text-xs text-slate-400">
-              {intel.contractSummary} · 3-Yr Est. Cost:{' '}
-              <span className="font-mono text-slate-200">{intel.cost3YrLabel}</span> ·{' '}
-              <span className="text-slate-300">{intel.archetypeLabel}</span>
-            </p>
+    <MobileSheetFrame
+      isOpen={Boolean(target)}
+      onClose={onClose}
+      ariaLabel={`Deep scouting dossier for ${target.name}`}
+      closeAriaLabel="Close scout modal"
+      maxWidthClass="sm:max-w-3xl"
+      bodyClassName="p-4 sm:p-6 space-y-5"
+      header={
+        <div className="min-w-0 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base sm:text-lg font-bold text-white leading-tight break-words">
+              {target.name}
+            </h2>
+            <span className="font-mono text-xs text-emerald-300 font-semibold">
+              {target.primaryPosition}
+            </span>
+            <span className="text-xs text-slate-400">
+              Age {target.age} · {target.nationality || 'Unknown'} · {clubLabel}
+            </span>
           </div>
+          <p className="text-xs text-slate-400">
+            {intel.contractSummary} · 3-Yr Est. Cost:{' '}
+            <span className="font-mono text-slate-200">{intel.cost3YrLabel}</span> ·{' '}
+            <span className="text-slate-300">{intel.archetypeLabel}</span>
+          </p>
+        </div>
+      }
+      footer={
+        <div className="flex flex-wrap items-center justify-end gap-2.5">
           <button
             type="button"
-            onClick={onClose}
-            aria-label="Close scout modal"
-            className="min-h-[40px] min-w-[40px] inline-flex items-center justify-center rounded-xl border border-slate-800 bg-slate-950 text-slate-400 hover:text-white transition-colors shrink-0"
+            onClick={() => onToggleTrack(target)}
+            className={`min-h-[44px] inline-flex items-center gap-2 rounded-xl px-4 text-xs font-semibold border transition-colors cursor-pointer ${
+              isTracked
+                ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
+                : 'border-slate-700 bg-slate-950 text-slate-200 hover:border-emerald-500/40'
+            }`}
           >
-            <X className="h-4 w-4" />
+            {isTracked ? (
+              <>
+                <BookmarkCheck className="h-4 w-4" /> Tracked on Shortlist
+              </>
+            ) : (
+              <>
+                <Bookmark className="h-4 w-4" /> Track Target
+              </>
+            )}
           </button>
+
+          {onAskAnalyst && (
+            <button
+              type="button"
+              onClick={handleAsk}
+              className="min-h-[44px] inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 text-xs font-semibold text-white transition-colors cursor-pointer"
+            >
+              <MessageSquare className="h-4 w-4" /> Ask Analyst About{' '}
+              {target.name.split(' ').slice(-1)[0]}
+            </button>
+          )}
         </div>
+      }
+    >
 
         {/* Verdict Banner */}
         <div className={`rounded-xl border p-3.5 space-y-2 ${TONE_BORDER[intel.tone] || TONE_BORDER.slate}`}>
@@ -215,39 +237,6 @@ export const ScoutTargetDetailModal: React.FC<ScoutTargetDetailModalProps> = ({
           </div>
         </div>
 
-        {/* Footer Actions */}
-        <div className="flex flex-wrap items-center justify-end gap-2.5 pt-2 border-t border-slate-800">
-          <button
-            type="button"
-            onClick={() => onToggleTrack(target)}
-            className={`min-h-[44px] inline-flex items-center gap-2 rounded-xl px-4 text-xs font-semibold border transition-colors ${
-              isTracked
-                ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
-                : 'border-slate-700 bg-slate-950 text-slate-200 hover:border-emerald-500/40'
-            }`}
-          >
-            {isTracked ? (
-              <>
-                <BookmarkCheck className="h-4 w-4" /> Tracked on Shortlist
-              </>
-            ) : (
-              <>
-                <Bookmark className="h-4 w-4" /> Track Target
-              </>
-            )}
-          </button>
-
-          {onAskAnalyst && (
-            <button
-              type="button"
-              onClick={handleAsk}
-              className="min-h-[44px] inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 text-xs font-semibold text-white transition-colors"
-            >
-              <MessageSquare className="h-4 w-4" /> Ask Analyst About {target.name.split(' ').slice(-1)[0]}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
+      </MobileSheetFrame>
   );
 };

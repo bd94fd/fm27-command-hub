@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Send,
   Upload,
@@ -15,6 +15,7 @@ import {
   Shield,
   Briefcase,
   MessageSquare,
+  History,
   Copy,
   Check,
   ClipboardPaste,
@@ -54,6 +55,13 @@ import {
 import { useUploadWakeLock } from '../hooks/useUploadWakeLock';
 import { FmUploadProgressCard } from './FmUploadProgressCard';
 import {
+  ChatTurnPayload,
+  clearClubChatHistory,
+  loadClubChatHistory,
+  resolveChatClubKey,
+  saveClubChatHistory,
+} from '../services/chatStorage';
+import {
   AnalystReasoningMode,
   buildConversationTranscript,
   buildLiveTacticalAnalystContext,
@@ -77,6 +85,7 @@ import {
   toApiResponseError,
 } from '../utils/apiResponse';
 
+export type { ChatTurnPayload };
 export type PlayerAutoUpdate = ExtendedPlayerAutoUpdate;
 
 interface AttachedFmFile {
@@ -88,22 +97,6 @@ interface AttachedFmFile {
   parsedExport?: ParsedFmExportResult;
   initialMergeResult?: SquadMergeResult;
   hydratedSave?: HydratedSaveState;
-}
-
-export interface ChatTurnPayload {
-  id: string;
-  role: 'user' | 'assistant';
-  userText?: string;
-  imageNames?: string[];
-  screenDetected?: string;
-  inGameDate?: string;
-  analysisMarkdown?: string;
-  immediateClicks?: string[];
-  followUpQuestions?: string[];
-  chronicleTitle?: string;
-  chronicleOutcomeMetric?: string;
-  eventNumber?: number;
-  playerUpdatesApplied?: string[];
 }
 
 interface AutoSyncWorkspaceProps {
@@ -194,7 +187,40 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       ? saveDateProp
       : latestMatch?.date || '--';
 
-  const [turns, setTurns] = useState<ChatTurnPayload[]>([]);
+  const chatClubKey = useMemo(
+    () =>
+      resolveChatClubKey(
+        clubName,
+        hydratedFmSave?.decodedPayload?.meta?.clubUid ?? null
+      ),
+    [clubName, hydratedFmSave?.decodedPayload?.meta?.clubUid]
+  );
+
+  const [chatState, setChatState] = useState<{
+    clubKey: string;
+    turns: ChatTurnPayload[];
+  }>(() => ({
+    clubKey: chatClubKey,
+    turns: loadClubChatHistory(chatClubKey),
+  }));
+  const turns = chatState.clubKey === chatClubKey ? chatState.turns : [];
+  const setTurns: React.Dispatch<React.SetStateAction<ChatTurnPayload[]>> =
+    useCallback(
+      (action) => {
+        setChatState((prev) => {
+          const baseTurns =
+            prev.clubKey === chatClubKey
+              ? prev.turns
+              : loadClubChatHistory(chatClubKey);
+          const nextTurns =
+            typeof action === 'function' ? action(baseTurns) : action;
+          return { clubKey: chatClubKey, turns: nextTurns };
+        });
+      },
+      [chatClubKey]
+    );
+  const lastSnapshotResetNonceRef = useRef<number>(snapshotResetNonce);
+  const [mobileHubView, setMobileHubView] = useState<'chat' | 'journey'>('chat');
   const [importScope] = useState<FmImportScope>('managed_club_only');
   const [serverDecodeAvailable, setServerDecodeAvailable] = useState<boolean | null>(
     null
@@ -229,6 +255,29 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const feedEndRef = useRef<HTMLDivElement | null>(null);
   const uploadControlRef = useRef<UploadController | null>(null);
+
+  // Hydrate club-specific chat history when switching clubs or resetting memory
+  useEffect(() => {
+    if (snapshotResetNonce !== lastSnapshotResetNonceRef.current) {
+      lastSnapshotResetNonceRef.current = snapshotResetNonce;
+      setChatState({ clubKey: chatClubKey, turns: [] });
+      setChatError(null);
+      setChatFallbackNotice(null);
+      return;
+    }
+    if (chatState.clubKey !== chatClubKey) {
+      setChatState({
+        clubKey: chatClubKey,
+        turns: loadClubChatHistory(chatClubKey),
+      });
+    }
+  }, [chatClubKey, chatState.clubKey, snapshotResetNonce]);
+
+  // Persist updates for the currently hydrated club offline in localStorage
+  useEffect(() => {
+    if (chatState.clubKey !== chatClubKey) return;
+    saveClubChatHistory(chatClubKey, chatState.turns);
+  }, [chatClubKey, chatState.clubKey, chatState.turns]);
 
   const { wakeLockActive } = useUploadWakeLock({
     keepAwake: Boolean(fmDecodeStage) && !fmDecodeStage?.paused,
@@ -292,6 +341,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
 
   useEffect(() => {
     if (pendingPrompt) {
+      setMobileHubView('chat');
       setMessageInput(pendingPrompt);
       onClearPendingPrompt?.();
     }
@@ -1359,7 +1409,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               onChange={(e) =>
                 setReasoningMode(e.target.value as AnalystReasoningMode)
               }
-              className="px-2 py-1 text-[11px] font-medium bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded-lg"
+              className="min-h-[40px] md:min-h-0 px-2.5 md:px-2 py-1 text-base md:text-[11px] font-medium bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded-lg"
             >
               <option value="deep_high">Deep Analyst</option>
               <option value="max_xhigh">Max Synthesis</option>
@@ -1370,7 +1420,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               <button
                 type="button"
                 onClick={() => setShowSyncDetails((v) => !v)}
-                className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-lg border cursor-pointer transition ${
+                className={`min-h-[38px] md:min-h-0 inline-flex items-center gap-1 px-2.5 md:px-2 py-1 text-[11px] font-medium rounded-lg border cursor-pointer transition ${
                   activePreFlightValidation && !activePreFlightValidation.valid
                     ? 'text-amber-300 hover:text-amber-200 bg-amber-500/15 border-amber-500/40'
                     : 'text-slate-400 hover:text-slate-200 bg-slate-900 border-slate-800'
@@ -1415,7 +1465,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                   type="button"
                   onClick={handleCopyFullChat}
                   title="Copy the entire Analyst conversation to your clipboard"
-                  className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-emerald-300 hover:text-white bg-slate-900 border border-emerald-500/35 rounded-lg cursor-pointer transition"
+                  className="min-h-[38px] md:min-h-0 inline-flex items-center gap-1 px-2.5 md:px-2 py-1 text-[11px] font-medium text-emerald-300 hover:text-white bg-slate-900 border border-emerald-500/35 rounded-lg cursor-pointer transition"
                 >
                   {copiedId === 'full-chat' ? (
                     <>
@@ -1432,11 +1482,12 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                 <button
                   type="button"
                   onClick={() => {
+                    clearClubChatHistory(chatClubKey);
                     setTurns([]);
                     setChatError(null);
                     setChatFallbackNotice(null);
                   }}
-                  className="px-2 py-1 text-[11px] font-medium text-slate-400 hover:text-white bg-slate-900 border border-slate-800 rounded-lg cursor-pointer"
+                  className="min-h-[38px] md:min-h-0 px-2.5 md:px-2 py-1 text-[11px] font-medium text-slate-400 hover:text-white bg-slate-900 border border-slate-800 rounded-lg cursor-pointer"
                 >
                   Clear Chat
                 </button>
@@ -1598,8 +1649,85 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         </div>
       )}
 
+      {/* SHARED UPLOAD / DECODE PROGRESS CARD (visible across both mobile Hub views) */}
+      {fmDecodeStage && (
+        <div className="px-3.5 sm:px-5 pt-3.5 sm:pt-4">
+          <FmUploadProgressCard
+            stage={fmDecodeStage}
+            elapsedSec={decodeElapsedSec}
+            clubCoreReady={clubCoreReadyDuringDecode}
+            wakeLockActive={wakeLockActive}
+            onPause={() => uploadControlRef.current?.pause('manual')}
+            onResume={() => uploadControlRef.current?.resume()}
+            onDecodeOnPhone={() =>
+              uploadControlRef.current?.requestLocalFallback()
+            }
+            onCancel={() => {
+              uploadControlRef.current = null;
+              cancelFmSaveDecode();
+              setFmDecodeStage(null);
+              setClubCoreReadyDuringDecode(false);
+              onBackgroundSyncStatusChange?.(null);
+            }}
+          />
+        </div>
+      )}
+
+      {/* MOBILE HUB VIEW SPLIT: Analyst Chat | Save Journey (< md only) */}
+      <div
+        role="tablist"
+        aria-label="Mobile Hub view"
+        className="md:hidden px-3.5 pt-3 pb-1 border-b border-slate-200 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-950/50"
+      >
+        <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-200/70 dark:bg-slate-900 border border-slate-300 dark:border-slate-800">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mobileHubView === 'chat'}
+            onClick={() => setMobileHubView('chat')}
+            className={`min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-colors cursor-pointer ${
+              mobileHubView === 'chat'
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
+            }`}
+          >
+            <MessageSquare className="w-4 h-4 shrink-0" />
+            <span>Analyst Chat</span>
+            {turns.length > 0 && (
+              <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 font-mono text-[10px] leading-none text-emerald-300">
+                {turns.length}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mobileHubView === 'journey'}
+            onClick={() => setMobileHubView('journey')}
+            className={`min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-colors cursor-pointer ${
+              mobileHubView === 'journey'
+                ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
+            }`}
+          >
+            <History className="w-4 h-4 shrink-0" />
+            <span>Save Journey</span>
+            {latestJourneyReport && (
+              <span
+                aria-hidden="true"
+                className="w-2 h-2 rounded-full bg-sky-400 shrink-0"
+              />
+            )}
+          </button>
+        </div>
+      </div>
+
       {/* MAIN CHAT BODY + COMPOSER */}
-      <div className="p-3.5 sm:p-5 space-y-3.5">
+      <div
+        className={`${
+          mobileHubView === 'chat' ? 'block' : 'hidden md:block'
+        } p-3.5 sm:p-5 space-y-3.5`}
+      >
         {/* Compact Horizontal Quick-Prompt Chips */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
           {[
@@ -1637,16 +1765,16 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               type="button"
               disabled={isSending}
               onClick={() => handleSendToAnalyst(undefined, qp.prompt)}
-              className="shrink-0 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800/90 hover:bg-emerald-500/15 hover:text-emerald-300 border border-slate-200 dark:border-slate-700 rounded-full transition cursor-pointer disabled:opacity-50"
+              className="min-h-[36px] shrink-0 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800/90 hover:bg-emerald-500/15 hover:text-emerald-300 border border-slate-200 dark:border-slate-700 rounded-full transition cursor-pointer disabled:opacity-50"
             >
               {qp.label}
             </button>
           ))}
         </div>
 
-        {/* Scrollable Chat Feed (bounded height so mobile page never balloons) */}
+        {/* Scrollable Chat Feed (bounded dvh height so mobile page adapts to browser bars & keyboard) */}
         {(turns.length > 0 || isSending) && (
-          <div className="space-y-3 max-h-[55vh] overflow-y-auto pr-1">
+          <div className="space-y-3 max-h-[52dvh] md:max-h-[55dvh] overflow-y-auto pr-1">
             {turns.map((turn) => {
               if (turn.role === 'user') {
                 return (
@@ -1865,28 +1993,6 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           </div>
         )}
 
-        {/* Visual Upload & Decode Progress Card */}
-        {fmDecodeStage && (
-          <FmUploadProgressCard
-            stage={fmDecodeStage}
-            elapsedSec={decodeElapsedSec}
-            clubCoreReady={clubCoreReadyDuringDecode}
-            wakeLockActive={wakeLockActive}
-            onPause={() => uploadControlRef.current?.pause('manual')}
-            onResume={() => uploadControlRef.current?.resume()}
-            onDecodeOnPhone={() =>
-              uploadControlRef.current?.requestLocalFallback()
-            }
-            onCancel={() => {
-              uploadControlRef.current = null;
-              cancelFmSaveDecode();
-              setFmDecodeStage(null);
-              setClubCoreReadyDuringDecode(false);
-              onBackgroundSyncStatusChange?.(null);
-            }}
-          />
-        )}
-
         {chatFallbackNotice && (
           <div
             role="status"
@@ -1943,11 +2049,11 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
 
         {/* Compact Composer Bar */}
         <form onSubmit={(e) => handleSendToAnalyst(e)} className="space-y-2">
-          <div className="flex items-end gap-2">
+          <div className="flex items-end gap-1.5 sm:gap-2">
             <label
               htmlFor="chat-multi-file-upload"
               title="Import .fm save or attach a screenshot"
-              className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl cursor-pointer transition shrink-0"
+              className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl cursor-pointer transition shrink-0"
             >
               <Upload className="w-4 h-4 text-emerald-400" />
               <span className="hidden sm:inline">Import .fm / Image</span>
@@ -1965,7 +2071,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               type="button"
               onClick={handlePasteButtonClick}
               title="Paste text or a screenshot from your clipboard"
-              className="inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl cursor-pointer transition shrink-0"
+              className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl cursor-pointer transition shrink-0"
             >
               <ClipboardPaste className="w-4 h-4 text-sky-400" />
               <span className="hidden md:inline">Paste</span>
@@ -1978,13 +2084,13 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               value={messageInput}
               onChange={(e) => setMessageInput(e.target.value)}
               onPaste={handleTextareaPaste}
-              className="flex-1 min-w-0 px-3 py-2 text-xs leading-relaxed bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+              className="flex-1 min-w-0 min-h-[44px] px-3 py-2 text-base md:text-xs leading-relaxed bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
             />
 
             <button
               type="submit"
               disabled={isSending || Boolean(fmDecodeStage)}
-              className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 rounded-xl transition cursor-pointer shrink-0 disabled:opacity-50"
+              className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2.5 text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 rounded-xl transition cursor-pointer shrink-0 disabled:opacity-50"
             >
               <Send className="w-4 h-4" />
               <span className="hidden sm:inline">Send</span>
@@ -1992,7 +2098,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           </div>
 
           {hasLoadedSave && (
-            <div className="flex items-center justify-between text-[11px] text-slate-500">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
               <label
                 htmlFor="fm-fast-sync-composer-toggle"
                 className="inline-flex items-center gap-1.5 cursor-pointer select-none hover:text-slate-300"
@@ -2005,7 +2111,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                     fastSyncManuallyToggledRef.current = true;
                     setFastSync(e.target.checked);
                   }}
-                  className="accent-amber-500 w-3 h-3 cursor-pointer"
+                  className="accent-amber-500 w-3.5 h-3.5 cursor-pointer"
                 />
                 <Zap className="w-3 h-3 text-amber-400" />
                 <span>Fast Sync on next .fm upload</span>
@@ -2028,18 +2134,26 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         </form>
       </div>
 
-      <SaveSnapshotDiffPanel
-        refreshToken={`${hydratedFmSave?.saveDateLabel || ''}-${players.length}-${snapshotResetNonce ?? 0}`}
-        liveMatches={matches}
-        onJourneyReportChange={onJourneyReportChange}
-        onAskAnalyst={(prompt) => {
-          void dispatchToAnalyst({
-            promptText: prompt,
-            imagesToSend: [],
-            fmFilesToSend: [],
-          });
-        }}
-      />
+      {/* SAVE-TO-SAVE JOURNEY PANEL (separate mobile Hub view, always shown below chat on md+) */}
+      <div
+        className={
+          mobileHubView === 'journey' ? 'block p-3.5 md:p-0' : 'hidden md:block'
+        }
+      >
+        <SaveSnapshotDiffPanel
+          refreshToken={`${hydratedFmSave?.saveDateLabel || ''}-${players.length}-${snapshotResetNonce ?? 0}`}
+          liveMatches={matches}
+          onJourneyReportChange={onJourneyReportChange}
+          onAskAnalyst={(prompt) => {
+            setMobileHubView('chat');
+            void dispatchToAnalyst({
+              promptText: prompt,
+              imagesToSend: [],
+              fmFilesToSend: [],
+            });
+          }}
+        />
+      </div>
     </div>
   );
 };

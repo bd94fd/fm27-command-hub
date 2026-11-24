@@ -10,9 +10,9 @@ import {
   Sparkles,
   TrendingUp,
   User,
-  X,
   Zap,
 } from 'lucide-react';
+import { MobileSheetFrame } from './MobileSheetFrame';
 import { PlayerRecord, ShortlistRecord } from '../types/fm27';
 import {
   ClubGovernanceState,
@@ -602,26 +602,25 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
         : 'bg-amber-500/15 border-amber-500/40 text-amber-300';
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-2 sm:p-4"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-4xl max-h-[92vh] overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="sticky top-0 z-10 flex flex-wrap items-start justify-between gap-3 border-b border-slate-800 bg-slate-900/95 px-4 sm:px-5 py-3.5 backdrop-blur">
-          <div className="flex items-start gap-3">
+    <MobileSheetFrame
+      isOpen={Boolean(player)}
+      onClose={onClose}
+      ariaLabel={`Player profile for ${player.name}`}
+      closeAriaLabel="Close player modal"
+      maxWidthClass="sm:max-w-4xl"
+      bodyClassName="p-4 sm:p-5 space-y-4"
+      header={
+        <div className="space-y-2.5 min-w-0">
+          <div className="flex items-start gap-2.5 sm:gap-3 min-w-0">
             <div
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold text-sm font-mono"
+              className="flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold text-sm font-mono"
               title={realNumber ? `Squad Number #${realNumber}` : `Primary Position: ${posCode}`}
             >
               {realNumber ? `#${realNumber}` : posCode}
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-1.5">
-                <h2 className="text-base sm:text-lg font-bold text-white leading-tight">
+                <h2 className="text-base sm:text-lg font-bold text-white leading-tight break-words">
                   {player.name}
                 </h2>
                 <span className="rounded-md bg-slate-800 px-2 py-0.5 text-xs font-mono text-emerald-300">
@@ -712,11 +711,11 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             <button
               type="button"
               onClick={handleExportPlayerCardPng}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/35 bg-sky-500/15 hover:bg-sky-500/25 px-2.5 py-1.5 text-xs font-semibold text-sky-300 transition cursor-pointer"
+              className="min-h-[36px] inline-flex items-center gap-1.5 rounded-lg border border-sky-500/35 bg-sky-500/15 hover:bg-sky-500/25 px-2.5 py-1.5 text-xs font-semibold text-sky-300 transition cursor-pointer"
               title="Export 1-Click Shareable FM27 Player Card (PNG)"
             >
               <Download className="h-3.5 w-3.5" />
@@ -728,7 +727,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                 onClick={() =>
                   onToggleTrack ? onToggleTrack(player) : onAddRecruitment(player)
                 }
-                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
                   isTracked
                     ? 'bg-emerald-500/20 hover:bg-emerald-500/30 border-emerald-500/50 text-emerald-300'
                     : 'bg-indigo-500/15 hover:bg-indigo-500/25 border-indigo-500/30 text-indigo-300'
@@ -743,7 +742,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                 <select
                   value={selectedShortlistId || shortlists[0]?.id || ''}
                   onChange={(e) => setSelectedShortlistId(e.target.value)}
-                  className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1.5 text-xs text-slate-200"
+                  className="min-h-[36px] rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-200"
                 >
                   {shortlists.map((s) => (
                     <option key={s.id} value={s.id}>
@@ -752,26 +751,20 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                   ))}
                 </select>
                 <button
+                  type="button"
                   onClick={handleShortlistAdd}
-                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 px-2.5 py-1.5 text-xs font-medium text-emerald-300 transition"
+                  className="min-h-[36px] inline-flex items-center gap-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 px-2.5 py-1.5 text-xs font-medium text-emerald-300 transition cursor-pointer"
                 >
                   <BookmarkPlus className="h-3.5 w-3.5" />
                   {shortlistFeedback || 'Shortlist'}
                 </button>
               </div>
             )}
-            <button
-              onClick={onClose}
-              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition"
-              aria-label="Close player modal"
-            >
-              <X className="h-5 w-5" />
-            </button>
           </div>
         </div>
-
-        {/* Mobile-friendly single-line scrollable tabs */}
-        <div className="flex gap-1 overflow-x-auto border-b border-slate-800 bg-slate-950/40 px-4 sm:px-5 pt-2 no-scrollbar">
+      }
+      subHeader={
+        <div className="flex gap-1 overflow-x-auto border-b border-slate-800 bg-slate-950/50 px-4 sm:px-5 pt-1.5 no-scrollbar">
           {(
             [
               { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -785,8 +778,9 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
             return (
               <button
                 key={t.id}
+                type="button"
                 onClick={() => setActiveTab(t.id)}
-                className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-xs font-medium transition cursor-pointer ${
+                className={`min-h-[44px] inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-xs font-medium transition cursor-pointer ${
                   activeTab === t.id
                     ? 'border-emerald-400 text-emerald-300'
                     : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -798,9 +792,8 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
             );
           })}
         </div>
-
-        {/* Body */}
-        <div className="p-4 sm:p-5 space-y-4">
+      }
+    >
           {player.activeSuspensions && player.activeSuspensions.length > 0 && (() => {
             const appliesNext = player.activeSuspensions.some((b) =>
               isSuspensionActiveForCompetition(b, nextCompetitionName)
@@ -1810,8 +1803,6 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
               )}
             </div>
           )}
-        </div>
-      </div>
-    </div>
+    </MobileSheetFrame>
   );
 };

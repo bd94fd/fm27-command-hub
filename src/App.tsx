@@ -29,6 +29,8 @@ import {
   parsePwaLaunchParams,
   usePwaLifecycle,
 } from './hooks/usePwaLifecycle';
+import { useMobileKeyboard } from './hooks/useMobileKeyboard';
+import { clearAllChatHistory } from './services/chatStorage';
 import { PwaStatusBanners } from './components/PwaStatusBanners';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { MobileMoreSheet } from './components/MobileMoreSheet';
@@ -206,6 +208,7 @@ export default function App() {
   const [calibrationLabTab, setCalibrationLabTab] = useState<CalibrationLabTab>('roles');
   const [dictionaryVersion, setDictionaryVersion] = useState<number>(0);
   const [appToast, setAppToast] = useState<string | null>(null);
+  const { isKeyboardOpen } = useMobileKeyboard();
 
   const handleOpenCalibrationLab = useCallback((tab: CalibrationLabTab = 'roles') => {
     setCalibrationLabTab(tab);
@@ -611,6 +614,7 @@ export default function App() {
     idbRestoreCancelledRef.current = true;
     await clearPersistedFmState();
     clearProgressionArchive();
+    clearAllChatHistory();
     await clearAllSaveCache();
     // A late auto-save IndexedDB write may land after the wipe; clear once more
     await clearPersistedFmState();
@@ -1265,7 +1269,13 @@ export default function App() {
       />
 
       {/* Main Content Container (extra bottom padding on mobile for fixed 5-tab bar + safe area) */}
-      <main className="flex-1 max-w-[1400px] w-full mx-auto px-3 sm:px-6 pt-3 sm:pt-5 pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))] md:pb-8 space-y-4 sm:space-y-5">
+      <main
+        className={`flex-1 max-w-[1400px] w-full mx-auto px-3 sm:px-6 pt-3 sm:pt-5 ${
+          isKeyboardOpen
+            ? 'pb-4'
+            : 'pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))]'
+        } md:pb-8 space-y-4 sm:space-y-5`}
+      >
         {/* Live Background Sync Pill when user is already exploring Squad/Tactics/Staff/Transfers */}
         {backgroundSyncStatus && activeTab !== 'sync' && (
           <div
@@ -1749,6 +1759,7 @@ export default function App() {
         hasActiveSync={Boolean(backgroundSyncStatus)}
         isSyncPaused={Boolean(backgroundSyncStatus?.paused)}
         hasUpdateAvailable={pwa.updateAvailable}
+        hidden={isKeyboardOpen}
         onSelectPrimaryTab={(tab) => handleSelectTab(tab)}
         onScrollToTop={handleScrollToTop}
         onToggleMore={() => setShowMoreSheet((open) => !open)}

@@ -1,8 +1,9 @@
 import React from 'react';
-import { GitCompare, X } from 'lucide-react';
+import { GitCompare } from 'lucide-react';
 import type { RecruitmentTarget } from '../../types/fmSave';
 import { isScoutTargetTracked } from '../../services/fmStorage';
 import type { ActiveComparison } from './recruitmentTypes';
+import { MobileSheetFrame } from '../MobileSheetFrame';
 
 interface CompareTargetModalProps {
   activeComparison: ActiveComparison | null;
@@ -22,41 +23,57 @@ export const CompareTargetModal: React.FC<CompareTargetModalProps> = ({
   if (!activeComparison) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-3 sm:p-4"
-      onClick={() => setCompareTarget(null)}
-    >
-      <div
-        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl p-4 sm:p-5 space-y-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
-          <div>
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-sky-400 flex items-center gap-1.5">
-              <GitCompare className="h-3.5 w-3.5" />
-              1-Tap Compare vs Current Senior Starter
-            </div>
-            <h3 className="text-base font-bold text-white mt-0.5">
-              <span className="text-emerald-300">
-                {activeComparison.target.name}
-              </span>{' '}
-              <span className="text-slate-500">vs</span>{' '}
-              <span className="text-sky-300">
-                {activeComparison.starter
-                  ? activeComparison.starter.name
-                  : 'No Senior Starter'}
-              </span>
-            </h3>
+    <MobileSheetFrame
+      isOpen={Boolean(activeComparison)}
+      onClose={() => setCompareTarget(null)}
+      ariaLabel={`Compare ${activeComparison.target.name} against current senior starter`}
+      closeAriaLabel="Close comparison"
+      maxWidthClass="sm:max-w-2xl"
+      bodyClassName="p-4 sm:p-5 space-y-4"
+      header={
+        <div className="min-w-0">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-sky-400 flex items-center gap-1.5">
+            <GitCompare className="h-3.5 w-3.5 shrink-0" />
+            1-Tap Compare vs Current Senior Starter
           </div>
+          <h3 className="text-base font-bold text-white mt-0.5 break-words">
+            <span className="text-emerald-300">
+              {activeComparison.target.name}
+            </span>{' '}
+            <span className="text-slate-500">vs</span>{' '}
+            <span className="text-sky-300">
+              {activeComparison.starter
+                ? activeComparison.starter.name
+                : 'No Senior Starter'}
+            </span>
+          </h3>
+        </div>
+      }
+      footer={
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <button
             type="button"
-            onClick={() => setCompareTarget(null)}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition cursor-pointer"
-            aria-label="Close comparison"
+            onClick={() => {
+              const t = activeComparison.target;
+              setCompareTarget(null);
+              handleOpenTargetCard(t);
+            }}
+            className="min-h-[44px] rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 px-4 text-xs font-semibold text-slate-200 transition cursor-pointer"
           >
-            <X className="h-4 w-4" />
+            Open Full Card
+          </button>
+          <button
+            type="button"
+            onClick={() => handleToggleTrack(activeComparison.target)}
+            className="min-h-[44px] rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 px-4 text-xs font-semibold text-emerald-200 transition cursor-pointer"
+          >
+            {isScoutTargetTracked(trackedTargets, activeComparison.target)
+              ? '✓ Tracked'
+              : '+ Track'}
           </button>
         </div>
+      }
+    >
 
         {!activeComparison.comparison || !activeComparison.starter ? (
           <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-6 text-center text-xs text-slate-400">
@@ -251,29 +268,6 @@ export const CompareTargetModal: React.FC<CompareTargetModalProps> = ({
           </>
         )}
 
-        <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-800">
-          <button
-            type="button"
-            onClick={() => {
-              const t = activeComparison.target;
-              setCompareTarget(null);
-              handleOpenTargetCard(t);
-            }}
-            className="rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 transition cursor-pointer"
-          >
-            Open Full Card
-          </button>
-          <button
-            type="button"
-            onClick={() => handleToggleTrack(activeComparison.target)}
-            className="rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition cursor-pointer"
-          >
-            {isScoutTargetTracked(trackedTargets, activeComparison.target)
-              ? '✓ Tracked'
-              : '+ Track'}
-          </button>
-        </div>
-      </div>
-    </div>
+    </MobileSheetFrame>
   );
 };

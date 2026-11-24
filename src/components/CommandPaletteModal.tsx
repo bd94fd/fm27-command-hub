@@ -24,6 +24,7 @@ import {
   FORMATION_PRESETS,
   FormationPresetKey,
 } from '../utils/bestXiSolver';
+import { MobileSheetFrame } from './MobileSheetFrame';
 
 export type CommandTabId =
   | 'sync'
@@ -324,20 +325,16 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Quick-Jump Command Palette"
+    <MobileSheetFrame
+      isOpen={isOpen}
+      onClose={onClose}
+      ariaLabel="Quick-Jump Command Palette"
+      maxWidthClass="sm:max-w-xl"
+      alignTopDesktop
       onKeyDown={handleKeyDown}
-      className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/80 backdrop-blur-sm p-3 sm:p-6 pt-14 sm:pt-20"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-xl rounded-2xl border border-slate-700/90 bg-slate-900 text-slate-100 shadow-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Search Input Bar */}
-        <div className="flex items-center gap-2.5 border-b border-slate-800 px-4 py-3">
+      bodyClassName="p-2"
+      customHeader={
+        <div className="flex items-center gap-2.5 px-4 py-2.5">
           <Search className="h-4 w-4 text-emerald-400 shrink-0" />
           <input
             ref={inputRef}
@@ -345,68 +342,21 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Jump to player, staff, tab, formation, or scout target..."
-            className="w-full bg-transparent text-sm text-white placeholder:text-slate-400 focus:outline-none"
+            className="w-full min-h-[40px] bg-transparent text-base sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
           />
           <button
             type="button"
             onClick={onClose}
             aria-label="Close Command Palette"
-            className="rounded-lg bg-slate-800 hover:bg-slate-700 p-1 text-slate-400 hover:text-white transition cursor-pointer"
+            className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition cursor-pointer shrink-0"
           >
-            <X className="h-4 w-4" />
+            <X className="h-5 w-5" />
           </button>
         </div>
-
-        {/* Results List */}
-        <div className="max-h-[60vh] overflow-y-auto p-2 space-y-1">
-          {filteredItems.length === 0 ? (
-            <div className="py-10 text-center text-xs text-slate-400">
-              No matching players, staff, formations, or tabs for &ldquo;{query}&rdquo;.
-            </div>
-          ) : (
-            filteredItems.map((item, idx) => {
-              const isSelected = idx === activeIndex;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onMouseEnter={() => setActiveIndex(idx)}
-                  onClick={item.onSelect}
-                  className={`w-full flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left transition cursor-pointer ${
-                    isSelected
-                      ? 'bg-emerald-500/20 border border-emerald-500/40 text-white'
-                      : 'border border-transparent hover:bg-slate-800/70 text-slate-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    {renderCategoryIcon(item.category)}
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs sm:text-sm font-bold truncate">
-                          {item.title}
-                        </span>
-                        <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400">
-                          {item.category}
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-slate-400 truncate">
-                        {item.subtitle}
-                      </div>
-                    </div>
-                  </div>
-                  {item.badge && (
-                    <span className="shrink-0 rounded-md bg-slate-950/80 border border-slate-700 px-2 py-0.5 font-mono text-[10px] font-semibold text-emerald-300">
-                      {item.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })
-          )}
-        </div>
-
-        {/* Footer Hints (Desktop Only) */}
-        <div className="hidden sm:flex items-center justify-between border-t border-slate-800 bg-slate-950/70 px-4 py-2 text-[11px] text-slate-400">
+      }
+      footerClassName="hidden sm:block"
+      footer={
+        <div className="flex items-center justify-between text-[11px] text-slate-400">
           <div className="flex items-center gap-3">
             <span>
               <kbd className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-200">
@@ -431,7 +381,55 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
             Shortcut: ⌘K / Ctrl+K
           </span>
         </div>
+      }
+    >
+      {/* Results List */}
+      <div className="max-h-[62dvh] sm:max-h-[60dvh] space-y-1">
+        {filteredItems.length === 0 ? (
+          <div className="py-10 text-center text-xs text-slate-400">
+            No matching players, staff, formations, or tabs for &ldquo;{query}&rdquo;.
+          </div>
+        ) : (
+          filteredItems.map((item, idx) => {
+            const isSelected = idx === activeIndex;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onMouseEnter={() => setActiveIndex(idx)}
+                onClick={item.onSelect}
+                className={`w-full min-h-[44px] flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left transition cursor-pointer ${
+                  isSelected
+                    ? 'bg-emerald-500/20 border border-emerald-500/40 text-white'
+                    : 'border border-transparent hover:bg-slate-800/70 text-slate-200'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  {renderCategoryIcon(item.category)}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs sm:text-sm font-bold truncate">
+                        {item.title}
+                      </span>
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 shrink-0">
+                        {item.category}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-400 truncate">
+                      {item.subtitle}
+                    </div>
+                  </div>
+                </div>
+                {item.badge && (
+                  <span className="shrink-0 rounded-md bg-slate-950/80 border border-slate-700 px-2 py-0.5 font-mono text-[10px] font-semibold text-emerald-300">
+                    {item.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })
+        )}
       </div>
-    </div>
+    </MobileSheetFrame>
   );
 };
