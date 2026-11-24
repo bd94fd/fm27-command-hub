@@ -43,9 +43,11 @@ interface DecodeJobEntry {
   status: 'running' | 'done' | 'error';
   progress: string;
   payload?: unknown;
+  rawPayloadJson?: string;
   checkpointStage?: string;
   checkpointPayload?: unknown;
   checkpointDelivered?: boolean;
+  checkpointSeq?: number;
   error?: string;
   errorCode?: string;
   httpStatus?: number;
@@ -372,6 +374,7 @@ function startAsyncNativeFmDecodeJob(
   const stderrHistory: string[] = [];
   let stderrLineBuf = '';
   let stdoutBytes = 0;
+  let nextCheckpointSeq = 0;
   let settled = false;
 
   const killChild = () => {
@@ -382,10 +385,17 @@ function startAsyncNativeFmDecodeJob(
     }
   };
 
+  const releaseJobBuffers = () => {
+    stdoutChunks.length = 0;
+    job.checkpointPayload = undefined;
+    job.checkpointDelivered = true;
+  };
+
   const finalizeError = (errMessage: string) => {
     if (settled) return;
     settled = true;
     clearTimeout(timer);
+    releaseJobBuffers();
     cleanupTempFile();
     job.status = 'error';
     job.error = mapNativeDecoderError(errMessage);
@@ -432,6 +442,7 @@ function startAsyncNativeFmDecodeJob(
         }
       } else if (/^CHECKPOINT:\s*/i.test(line)) {
         const stageName = line.replace(/^CHECKPOINT:\s*/i, '').trim() || 'stage_2_club_core';
+        const cpSeq = ++nextCheckpointSeq;
         const stageCpPath = buildStageCheckpointPath(stageName);
         jobTempPaths.add(stageCpPath);
         jobTempPaths.add(`${stageCpPath}.tmp`);
@@ -450,7 +461,9 @@ function startAsyncNativeFmDecodeJob(
           })
           .then((rawCp) => {
             if (settled || job.status !== 'running') return;
+            if ((job.checkpointSeq ?? 0) > cpSeq) return;
             const parsedCp = JSON.parse(rawCp) as unknown;
+            job.checkpointSeq = cpSeq;
             job.checkpointStage = stageName;
             job.checkpointPayload = parsedCp;
             job.checkpointDelivered = false;
@@ -460,8 +473,12 @@ function startAsyncNativeFmDecodeJob(
             // Non-fatal: final payload will still arrive
           })
           .finally(() => {
+            activeTempPaths.delete(stageCpPath);
+            activeTempPaths.delete(`${stageCpPath}.tmp`);
             activeTempPaths.delete(readTargetPath);
             activeTempPaths.delete(`${readTargetPath}.tmp`);
+            jobTempPaths.delete(stageCpPath);
+            jobTempPaths.delete(`${stageCpPath}.tmp`);
             jobTempPaths.delete(readTargetPath);
             jobTempPaths.delete(`${readTargetPath}.tmp`);
             void fs.promises.unlink(readTargetPath).catch(() => {});
@@ -479,18 +496,22 @@ function startAsyncNativeFmDecodeJob(
       stderrHistory.push(stderrLineBuf.trim());
     }
     if (settled) {
+      releaseJobBuffers();
       cleanupTempFile();
       return;
     }
     clearTimeout(timer);
     cleanupTempFile();
     settled = true;
+    job.checkpointPayload = undefined;
+    job.checkpointDelivered = true;
 
     // Render free tier is capped at 512 MB. The kernel SIGKILLs the Python child
     // when the cgroup limit is hit; surface that as a 507 so the client falls
     // back to Pyodide/Fast Sync immediately instead of polling to the timeout.
     const wasOomKilled = code === 137 || signal === 'SIGKILL';
     if (wasOomKilled) {
+      stdoutChunks.length = 0;
       job.status = 'error';
       job.progress = 'Server memory limit reached';
       job.errorCode = 'SERVER_OOM';
@@ -498,14 +519,21 @@ function startAsyncNativeFmDecodeJob(
       job.error =
         'The server ran out of memory (512 MB Render free tier) while decoding this .fm save. Switching automatically to the local browser decoder — enable "Fast Sync" for very large saves.';
     } else if (code === 0) {
-      const rawJson = Buffer.concat(stdoutChunks).toString('utf8').trim();
+      let concatBuf: Buffer | null = Buffer.concat(stdoutChunks, stdoutBytes);
       stdoutChunks.length = 0;
+      const rawJson = concatBuf.toString('utf8').trim();
+      concatBuf = null;
       if (!rawJson) {
         job.status = 'error';
         job.error = 'Native Python decoder returned empty output.';
       } else {
         try {
-          job.payload = JSON.parse(rawJson);
+          // Validate JSON integrity transiently without pinning a duplicate V8 object tree in RAM
+          const validated = JSON.parse(rawJson) as unknown;
+          if (!validated || typeof validated !== 'object' || Array.isArray(validated)) {
+            throw new Error('Decoded payload must be a JSON object');
+          }
+          job.rawPayloadJson = rawJson;
           job.status = 'done';
           job.progress = 'Server Full Sync complete';
         } catch (parseErr: unknown) {
@@ -516,6 +544,7 @@ function startAsyncNativeFmDecodeJob(
         }
       }
     } else {
+      stdoutChunks.length = 0;
       const combinedStderr = stderrHistory.join('\n').trim();
       job.status = 'error';
       job.error = mapNativeDecoderError(
@@ -543,22 +572,35 @@ export function createFmDecodeRouter(options?: {
     });
   });
 
-  router.post('/fm27/decode-save/init', async (req, res) => {
-    await pruneExpiredUploadsAndJobs();
-    const runtime = await resolveRuntime();
-    if (!runtime.available || !runtime.pythonBin) {
-      return res.status(503).json({
-        error:
-          'Native Python fmsave is not available on this server. Falling back to local browser Pyodide decoder.',
-        serverDecodeAvailable: false,
-      });
-    }
+  router.post(
+    '/fm27/decode-save/init',
+    express.json({ limit: '1mb' }),
+    async (req, res) => {
+      await pruneExpiredUploadsAndJobs();
+      const runtime = await resolveRuntime();
+      if (!runtime.available || !runtime.pythonBin) {
+        return res.status(503).json({
+          error:
+            'Native Python fmsave is not available on this server. Falling back to local browser Pyodide decoder.',
+          serverDecodeAvailable: false,
+        });
+      }
 
-    if (pendingUploads.size >= MAX_PENDING_UPLOADS) {
-      return res.status(429).json({
-        error: 'Too many concurrent save uploads in progress. Please try again in a moment.',
-      });
-    }
+      const hasRunningJob = Array.from(decodeJobs.values()).some(
+        (j) => j.status === 'running'
+      );
+      if (hasRunningJob) {
+        return res.status(503).json({
+          error:
+            'Another .fm save decode is currently in progress on the server. Falling back to local browser decoder.',
+        });
+      }
+
+      if (pendingUploads.size >= MAX_PENDING_UPLOADS) {
+        return res.status(429).json({
+          error: 'Too many concurrent save uploads in progress. Please try again in a moment.',
+        });
+      }
 
     const rawTotalBytes = (req.body as { totalBytes?: unknown } | undefined)?.totalBytes;
     let expectedTotalBytes: number | undefined;
@@ -720,93 +762,97 @@ export function createFmDecodeRouter(options?: {
     return res.json({ ok: true });
   });
 
-  router.post('/fm27/decode-save/finish', async (req, res) => {
-    await pruneExpiredUploadsAndJobs();
-    const runtime = await resolveRuntime();
-    if (!runtime.available || !runtime.pythonBin) {
-      return res.status(503).json({
-        error:
-          'Native Python fmsave is not available on this server. Falling back to local browser Pyodide decoder.',
-        serverDecodeAvailable: false,
-      });
-    }
+  router.post(
+    '/fm27/decode-save/finish',
+    express.json({ limit: '1mb' }),
+    async (req, res) => {
+      await pruneExpiredUploadsAndJobs();
+      const runtime = await resolveRuntime();
+      if (!runtime.available || !runtime.pythonBin) {
+        return res.status(503).json({
+          error:
+            'Native Python fmsave is not available on this server. Falling back to local browser Pyodide decoder.',
+          serverDecodeAvailable: false,
+        });
+      }
 
-    const body = (req.body || {}) as {
-      uploadId?: unknown;
-      filename?: unknown;
-      scope?: unknown;
-      fastSync?: unknown;
-      clubHint?: unknown;
-    };
+      const body = (req.body || {}) as {
+        uploadId?: unknown;
+        filename?: unknown;
+        scope?: unknown;
+        fastSync?: unknown;
+        clubHint?: unknown;
+      };
 
-    const uploadId = typeof body.uploadId === 'string' ? body.uploadId.trim() : '';
-    if (!isValidUuid(uploadId)) {
-      return res.status(400).json({ error: 'Missing or invalid uploadId.' });
-    }
+      const uploadId = typeof body.uploadId === 'string' ? body.uploadId.trim() : '';
+      if (!isValidUuid(uploadId)) {
+        return res.status(400).json({ error: 'Missing or invalid uploadId.' });
+      }
 
-    const entry = pendingUploads.get(uploadId);
-    if (!entry) {
-      return res.status(404).json({
-        error: 'Upload session not found, already finalized, or expired.',
-      });
-    }
-    // Atomically claim the upload so duplicate /finish calls cannot spawn duplicate jobs
-    pendingUploads.delete(uploadId);
+      const entry = pendingUploads.get(uploadId);
+      if (!entry) {
+        return res.status(404).json({
+          error: 'Upload session not found, already finalized, or expired.',
+        });
+      }
+      // Atomically claim the upload so duplicate /finish calls cannot spawn duplicate jobs
+      pendingUploads.delete(uploadId);
 
-    if (entry.bytesReceived <= 0) {
-      await fs.promises.unlink(entry.filePath).catch(() => {});
-      return res.status(400).json({
-        error: 'Uploaded .fm save is empty (0 bytes received).',
-      });
-    }
-    if (
-      entry.expectedTotalBytes !== undefined &&
-      entry.bytesReceived < entry.expectedTotalBytes
-    ) {
-      await fs.promises.unlink(entry.filePath).catch(() => {});
-      return res.status(400).json({
-        error: `Uploaded .fm save is incomplete (${entry.bytesReceived} of ${entry.expectedTotalBytes} bytes received).`,
-      });
-    }
+      if (entry.bytesReceived <= 0) {
+        await fs.promises.unlink(entry.filePath).catch(() => {});
+        return res.status(400).json({
+          error: 'Uploaded .fm save is empty (0 bytes received).',
+        });
+      }
+      if (
+        entry.expectedTotalBytes !== undefined &&
+        entry.bytesReceived < entry.expectedTotalBytes
+      ) {
+        await fs.promises.unlink(entry.filePath).catch(() => {});
+        return res.status(400).json({
+          error: `Uploaded .fm save is incomplete (${entry.bytesReceived} of ${entry.expectedTotalBytes} bytes received).`,
+        });
+      }
 
-    // Prevent concurrent Python decodes from exceeding Render Free tier 512 MB RAM
-    const hasRunningJob = Array.from(decodeJobs.values()).some(
-      (j) => j.status === 'running'
-    );
-    if (hasRunningJob) {
-      await fs.promises.unlink(entry.filePath).catch(() => {});
-      return res.status(503).json({
-        error:
-          'Another .fm save decode is currently in progress on the server. Falling back to local browser decoder.',
-      });
-    }
+      // Prevent concurrent Python decodes from exceeding Render Free tier 512 MB RAM
+      const hasRunningJob = Array.from(decodeJobs.values()).some(
+        (j) => j.status === 'running'
+      );
+      if (hasRunningJob) {
+        await fs.promises.unlink(entry.filePath).catch(() => {});
+        return res.status(503).json({
+          error:
+            'Another .fm save decode is currently in progress on the server. Falling back to local browser decoder.',
+        });
+      }
 
-    if (decodeJobs.size >= MAX_TRACKED_JOBS) {
-      // Evict oldest completed job if at capacity
-      for (const [oldId, oldJob] of decodeJobs.entries()) {
-        if (oldJob.status !== 'running') {
-          decodeJobs.delete(oldId);
-          break;
+      if (decodeJobs.size >= MAX_TRACKED_JOBS) {
+        // Evict oldest completed job if at capacity
+        for (const [oldId, oldJob] of decodeJobs.entries()) {
+          if (oldJob.status !== 'running') {
+            decodeJobs.delete(oldId);
+            break;
+          }
         }
       }
+
+      const displayFilename = sanitizeDisplayFilename(body.filename);
+      const scope = normalizeServerScope(body.scope);
+      const fastSync = normalizeServerFastSync(body.fastSync);
+      const clubHint = sanitizeClubHint(body.clubHint);
+      const mapperPath = path.resolve(process.cwd(), 'public', 'fm-save-mapper.py');
+      const jobId = crypto.randomUUID();
+
+      startAsyncNativeFmDecodeJob(jobId, runtime.pythonBin, mapperPath, entry.filePath, {
+        scope,
+        fastSync,
+        clubHint,
+        displayFilename,
+      });
+
+      return res.json({ jobId });
     }
-
-    const displayFilename = sanitizeDisplayFilename(body.filename);
-    const scope = normalizeServerScope(body.scope);
-    const fastSync = normalizeServerFastSync(body.fastSync);
-    const clubHint = sanitizeClubHint(body.clubHint);
-    const mapperPath = path.resolve(process.cwd(), 'public', 'fm-save-mapper.py');
-    const jobId = crypto.randomUUID();
-
-    startAsyncNativeFmDecodeJob(jobId, runtime.pythonBin, mapperPath, entry.filePath, {
-      scope,
-      fastSync,
-      clubHint,
-      displayFilename,
-    });
-
-    return res.json({ jobId });
-  });
+  );
 
   router.get('/fm27/decode-save/job/:jobId', async (req, res) => {
     await pruneExpiredUploadsAndJobs();
@@ -824,10 +870,17 @@ export function createFmDecodeRouter(options?: {
     }
 
     if (job.status === 'done') {
+      const rawPayloadJson = job.rawPayloadJson;
       const payload = job.payload;
       const progress = job.progress;
       // Release potentially large decoded payload from server RAM immediately upon delivery
       decodeJobs.delete(jobId);
+      if (typeof rawPayloadJson === 'string') {
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        return res.send(
+          `{"status":"done","progress":${JSON.stringify(progress)},"payload":${rawPayloadJson}}`
+        );
+      }
       return res.json({
         status: 'done',
         progress,
@@ -865,6 +918,43 @@ export function createFmDecodeRouter(options?: {
       progress: job.progress,
     });
   });
+
+  // Router-level JSON formatter for body-parser 413 / 400 errors (covers standalone mounts too)
+  router.use(
+    (
+      err: {
+        type?: string;
+        status?: number;
+        statusCode?: number;
+        name?: string;
+      },
+      _req: express.Request,
+      res: express.Response,
+      next: express.NextFunction
+    ) => {
+      if (res.headersSent) {
+        return next(err);
+      }
+      if (
+        err &&
+        (err.type === 'entity.too.large' ||
+          err.status === 413 ||
+          err.statusCode === 413 ||
+          err.name === 'PayloadTooLargeError')
+      ) {
+        return res.status(413).json({
+          error:
+            'Upload chunk exceeded the 8 MB per-chunk server limit (total .fm save limit is 1024 MB / 1 GB).',
+        });
+      }
+      if (err && err.type === 'entity.parse.failed') {
+        return res.status(400).json({
+          error: 'Malformed JSON request body. Please retry the request.',
+        });
+      }
+      return next(err);
+    }
+  );
 
   return router;
 }

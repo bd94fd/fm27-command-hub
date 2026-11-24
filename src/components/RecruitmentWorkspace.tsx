@@ -141,12 +141,19 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
   const [compareTrayTargets, setCompareTrayTargets] = useState<RecruitmentTarget[]>([]);
   const [isMultiCompareOpen, setIsMultiCompareOpen] = useState<boolean>(false);
 
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    window.setTimeout(() => {
+      setToastMessage((prev) => (prev === msg ? null : prev));
+    }, 2600);
+  };
+
   const handleToggleCompareTray = (target: RecruitmentTarget) => {
     setCompareTrayTargets((prev) => {
       const exists = prev.some((t) => t.uid === target.uid);
       if (exists) return prev.filter((t) => t.uid !== target.uid);
       if (prev.length >= 3) {
-        setToastMessage('Compare tray holds up to 3 players — remove one first.');
+        showToast('Compare tray holds up to 3 players — remove one first.');
         return prev;
       }
       return [...prev, target];
@@ -190,13 +197,6 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
   );
 
   const trackedTargets = controlledTrackedTargets ?? localTrackedTargets;
-
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    window.setTimeout(() => {
-      setToastMessage((prev) => (prev === msg ? null : prev));
-    }, 2600);
-  };
 
   const handleToggleTrack = (target: RecruitmentTarget) => {
     if (onToggleTrackTarget) {
@@ -668,6 +668,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
                               divisionBenchmarks={divisionBenchmarks}
                               lastMatchTactic={lastMatchTactic}
                               governance={governance}
+                              clubDnaWeights={clubDnaWeights}
                             />
                           );
                         }
@@ -692,6 +693,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
               divisionBenchmarks={divisionBenchmarks}
               lastMatchTactic={lastMatchTactic}
               governance={governance}
+              clubDnaWeights={clubDnaWeights}
             />
           )}
         </>
@@ -732,6 +734,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
         divisionBenchmarks={divisionBenchmarks}
         lastMatchTactic={lastMatchTactic}
         governance={governance}
+        clubDnaWeights={clubDnaWeights}
         isTracked={
           deepScoutTarget
             ? isScoutTargetTracked(trackedTargets, deepScoutTarget)

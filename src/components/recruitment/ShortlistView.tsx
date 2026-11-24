@@ -15,6 +15,7 @@ import {
   getPositionRelevantAttributes,
 } from '../../utils/recruitmentHelpers';
 import { evaluateScoutTargetCard } from '../../utils/cardIntelligenceEngine';
+import type { ClubDnaPillarWeights } from '../../utils/clubDnaEngine';
 import { archetypeBadgeClass } from './recruitmentBadges';
 
 interface ShortlistViewProps {
@@ -28,6 +29,7 @@ interface ShortlistViewProps {
   divisionBenchmarks: DivisionBenchmarks | null;
   lastMatchTactic: LastMatchTacticBlueprint | null;
   governance: ClubGovernanceState | null;
+  clubDnaWeights?: ClubDnaPillarWeights;
 }
 
 export const ShortlistView: React.FC<ShortlistViewProps> = ({
@@ -41,6 +43,7 @@ export const ShortlistView: React.FC<ShortlistViewProps> = ({
   divisionBenchmarks,
   lastMatchTactic,
   governance,
+  clubDnaWeights,
 }) => {
   return (
     <div className="space-y-3">
@@ -174,6 +177,7 @@ export const ShortlistView: React.FC<ShortlistViewProps> = ({
                     divisionBenchmarks,
                     activeTactic: lastMatchTactic,
                     governance,
+                    clubDnaWeights,
                   });
                   const toneCls =
                     intel.tone === 'emerald'

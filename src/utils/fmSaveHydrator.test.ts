@@ -3015,3 +3015,100 @@ test('Large .fm hardening: Render OOM 507 fallback, orphan sweep, hidden-tab wat
   assert.equal(oomResult.meta.saveName, 'fallback.fm');
 });
 
+test('activeInjuries hydrates status=Injured (excluded by solveBestXi) and ST positionRatings qualify strikers in dualPhaseRoleEngine', async () => {
+  const { solveBestXi } = await import('./bestXiSolver');
+  const { evaluateDualPhaseRoles } = await import('./dualPhaseRoleEngine');
+
+  const baseAttrs = {
+    corners: 8, crossing: 10, dribbling: 14, finishing: 16, first_touch: 14,
+    free_kick_taking: 8, heading: 13, long_shots: 12, long_throws: 6,
+    marking: 6, passing: 12, penalty_taking: 13, tackling: 7, technique: 14,
+    aggression: 12, anticipation: 15, bravery: 13, composure: 15, concentration: 13,
+    decisions: 14, determination: 16, flair: 13, leadership: 11, off_the_ball: 16,
+    positioning: 8, teamwork: 13, vision: 12, work_rate: 15,
+    acceleration: 15, agility: 14, balance: 13, jumping_reach: 13,
+    natural_fitness: 14, pace: 15, stamina: 14, strength: 13,
+  };
+
+  const payload: DecodedFmSavePayload = {
+    meta: {
+      saveName: 'injury-striker.fm',
+      clubName: 'KVV Zelzate',
+      gameDate: '2027-02-15',
+      build: '27.1.0',
+    },
+    players: [
+      {
+        uid: 1001,
+        name: 'Injured Star ST',
+        position: 'ST',
+        age: 24,
+        nationality: 'BEL',
+        ability: 4.5,
+        potential: 4.5,
+        condition: 98,
+        matchSharpness: 95,
+        wagePw: 1200,
+        expires: '30/06/2028',
+        positionRatings: { ST: 20 },
+        attributes: baseAttrs,
+      },
+      {
+        uid: 1002,
+        name: 'Fit Backup ST',
+        position: 'ST',
+        age: 22,
+        nationality: 'BEL',
+        ability: 3.5,
+        potential: 4.0,
+        condition: 95,
+        matchSharpness: 92,
+        wagePw: 800,
+        expires: '30/06/2028',
+        positionRatings: { ST: 20 },
+        attributes: { ...baseAttrs, finishing: 14, pace: 14 },
+      },
+    ],
+    playedMatches: [],
+    upcomingFixtures: [],
+    staff: [],
+    tactics: [],
+    mentoring: [],
+    extractionWarnings: [],
+    activeInjuries: [
+      {
+        playerUid: 1001,
+        playerName: 'Injured Star ST',
+        typeName: 'Hamstring Strain',
+        date: '15/03/2027',
+      },
+    ],
+  } as unknown as DecodedFmSavePayload;
+
+  const hydrated = hydrateAppFromDecodedFmSave(payload, [], []);
+  const injuredPlayer = hydrated.updatedSquad.find((p) => p.uid === 1001);
+  const fitPlayer = hydrated.updatedSquad.find((p) => p.uid === 1002);
+  assert.ok(injuredPlayer);
+  assert.ok(fitPlayer);
+  assert.equal(injuredPlayer.status, 'Injured');
+  assert.notEqual(fitPlayer.status, 'Injured');
+
+  const dualPhase = evaluateDualPhaseRoles(fitPlayer);
+  assert.ok(
+    dualPhase.topInPossession.some((r) => r.position === 'ST' || r.position === 'STC'),
+    'Expected striker with positionRatings { ST: 20 } to score for Striker IP roles'
+  );
+  assert.ok(
+    dualPhase.topOutOfPossession.some((r) => r.position === 'ST' || r.position === 'STC'),
+    'Expected striker with positionRatings { ST: 20 } to score for Striker OOP roles'
+  );
+
+  const solved = solveBestXi(hydrated.updatedSquad, {
+    shape: '4-3-3 DM Wide',
+    excludeInjured: true,
+  });
+  const xiUids = solved.startingXI.map((s) => s.player?.uid).filter(Boolean);
+  assert.ok(!xiUids.includes(1001), 'Injured striker must be excluded when excludeInjured=true');
+  assert.ok(xiUids.includes(1002), 'Fit backup striker must start ahead of injured player');
+});
+

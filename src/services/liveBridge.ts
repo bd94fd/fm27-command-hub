@@ -11,13 +11,48 @@ export interface LiveBridgeStatus {
   endpoint: string;
   inGameDate: string | null;
   nextMatch: string | null;
+  gameState?: string | null;
+  duringMatch?: boolean;
   error?: string;
 }
 
-export const DEFAULT_LIVE_BRIDGE_URL = 'http://127.0.0.1:2727';
+/**
+ * Default port for farukkavlak/fm-cli BepInEx HTTP bridge (scans 7777..7786).
+ * Note: direct browser fetches from HTTPS deployments to http://127.0.0.1 require
+ * running locally or via a CORS-enabled local proxy.
+ */
+export const DEFAULT_LIVE_BRIDGE_URL = 'http://127.0.0.1:7777';
+
+interface RawLiveBridgePayload {
+  inGameDate?: string;
+  date?: string;
+  Date?: string;
+  nextMatch?: string;
+  NextMatch?: string;
+  state?: string;
+  State?: string;
+  duringMatch?: boolean;
+  DuringMatch?: boolean;
+}
+
+function parseBridgePayload(rawText: string): RawLiveBridgePayload | null {
+  const trimmed = rawText.trim();
+  if (!trimmed || (!trimmed.startsWith('{') && !trimmed.startsWith('['))) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as RawLiveBridgePayload)
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
- * Probes an optional local FM27 companion HTTP endpoint with a short timeout.
+ * Probes an optional local FM27 companion HTTP endpoint (farukkavlak/fm-cli /state
+ * with legacy /status fallback) using a short timeout.
  */
 export async function probeLiveBridge(
   endpoint = DEFAULT_LIVE_BRIDGE_URL,
@@ -28,29 +63,62 @@ export async function probeLiveBridge(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const res = await fetch(`${cleanEndpoint}/status`, {
+    let lastStatus: number | null = null;
+    for (const route of ['/state', '/status']) {
+      const res = await fetch(`${cleanEndpoint}${route}`, {
+        method: 'GET',
+        signal: controller.signal,
+      });
+      lastStatus = res.status;
+      if (!res.ok) {
+        if (res.status === 404) continue;
+        return {
+          connected: false,
+          endpoint: cleanEndpoint,
+          inGameDate: null,
+          nextMatch: null,
+          error: `HTTP ${res.status}`,
+        };
+      }
+      // fm-cli returns JSON with Content-Type: text/plain; parse via text() -> JSON.parse()
+      const rawText = await res.text();
+      const data = parseBridgePayload(rawText);
+      if (!data) continue;
+      return {
+        connected: true,
+        endpoint: cleanEndpoint,
+        inGameDate: data.inGameDate ?? data.Date ?? data.date ?? null,
+        nextMatch: data.nextMatch ?? data.NextMatch ?? null,
+        gameState: data.State ?? data.state ?? null,
+        duringMatch:
+          typeof data.DuringMatch === 'boolean'
+            ? data.DuringMatch
+            : typeof data.duringMatch === 'boolean'
+              ? data.duringMatch
+              : undefined,
+      };
+    }
+
+    // Fallback liveness check against fm-cli /health
+    const healthRes = await fetch(`${cleanEndpoint}/health`, {
       method: 'GET',
       signal: controller.signal,
     });
-    if (!res.ok) {
+    if (healthRes.ok) {
       return {
-        connected: false,
+        connected: true,
         endpoint: cleanEndpoint,
         inGameDate: null,
         nextMatch: null,
-        error: `HTTP ${res.status}`,
       };
     }
-    const data = (await res.json()) as {
-      inGameDate?: string;
-      date?: string;
-      nextMatch?: string;
-    };
+
     return {
-      connected: true,
+      connected: false,
       endpoint: cleanEndpoint,
-      inGameDate: data.inGameDate ?? data.date ?? null,
-      nextMatch: data.nextMatch ?? null,
+      inGameDate: null,
+      nextMatch: null,
+      error: `HTTP ${lastStatus ?? healthRes.status}`,
     };
   } catch (err) {
     return {

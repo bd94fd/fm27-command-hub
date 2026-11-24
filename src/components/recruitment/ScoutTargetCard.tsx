@@ -8,6 +8,7 @@ import type {
   RecruitmentTarget,
 } from '../../types/fmSave';
 import { evaluateScoutTargetCard } from '../../utils/cardIntelligenceEngine';
+import type { ClubDnaPillarWeights } from '../../utils/clubDnaEngine';
 import { archetypeBadgeClass } from './recruitmentBadges';
 import type { EnrichedScoutTargetWithDna } from './recruitmentTypes';
 
@@ -34,6 +35,7 @@ interface ScoutTargetCardProps {
   divisionBenchmarks: DivisionBenchmarks | null;
   lastMatchTactic: LastMatchTacticBlueprint | null;
   governance: ClubGovernanceState | null;
+  clubDnaWeights?: ClubDnaPillarWeights;
 }
 
 export const ScoutTargetCard: React.FC<ScoutTargetCardProps> = ({
@@ -48,6 +50,7 @@ export const ScoutTargetCard: React.FC<ScoutTargetCardProps> = ({
   divisionBenchmarks,
   lastMatchTactic,
   governance,
+  clubDnaWeights,
 }) => {
   const { target, bestRole, archetype, dna, relevantAttributes, depth, contractDisplay } =
     item;
@@ -168,6 +171,7 @@ export const ScoutTargetCard: React.FC<ScoutTargetCardProps> = ({
           divisionBenchmarks,
           activeTactic: lastMatchTactic,
           governance,
+          clubDnaWeights,
         });
         const toneCls =
           intel.tone === 'emerald'

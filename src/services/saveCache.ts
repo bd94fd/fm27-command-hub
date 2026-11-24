@@ -1069,6 +1069,12 @@ export async function getCachedJourneyBriefing(
 function openSaveCacheDb(): Promise<IDBDatabase | null> {
   if (typeof indexedDB === 'undefined') return Promise.resolve(null);
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (db: IDBDatabase | null) => {
+      if (settled) return;
+      settled = true;
+      resolve(db);
+    };
     try {
       const req = indexedDB.open(SAVE_CACHE_DB_NAME, 1);
       req.onupgradeneeded = () => {
@@ -1080,10 +1086,11 @@ function openSaveCacheDb(): Promise<IDBDatabase | null> {
           db.createObjectStore(SNAPSHOT_HISTORY_STORE);
         }
       };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => resolve(null);
+      req.onsuccess = () => finish(req.result);
+      req.onerror = () => finish(null);
+      req.onblocked = () => finish(null);
     } catch {
-      resolve(null);
+      finish(null);
     }
   });
 }
@@ -1097,43 +1104,82 @@ export async function putCachedSavePayload<T>(
   if (!db) return false;
   const key = buildSaveCacheKey(saveName, inGameDate);
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      try {
+        db.close();
+      } catch {
+        // ignore close errors
+      }
+      resolve(ok);
+    };
     try {
       const tx = db.transaction(SAVE_CACHE_STORE, 'readwrite');
       const store = tx.objectStore(SAVE_CACHE_STORE);
       const cachedAt = new Date().toISOString();
       store.put({ key, cachedAt, payload }, key);
 
-      const allReq = store.getAll();
-      allReq.onsuccess = () => {
-        const all = (allReq.result as Array<{ key?: string; cachedAt?: string }>) || [];
-        if (all.length > MAX_CACHED_SAVES) {
-          all.sort((a, b) => {
-            const cmp = (a.cachedAt || '').localeCompare(b.cachedAt || '');
-            if (cmp !== 0) return cmp;
-            if (a.key === key && b.key !== key) return 1;
-            if (b.key === key && a.key !== key) return -1;
-            return 0;
-          });
-          const excess = all.slice(0, all.length - MAX_CACHED_SAVES);
-          for (const old of excess) {
-            if (old?.key) {
-              store.delete(old.key);
-            }
+      const pruneEntries = (meta: Array<{ key: string; cachedAt: string }>) => {
+        if (meta.length <= MAX_CACHED_SAVES) return;
+        meta.sort((a, b) => {
+          const cmp = a.cachedAt.localeCompare(b.cachedAt);
+          if (cmp !== 0) return cmp;
+          if (a.key === key && b.key !== key) return 1;
+          if (b.key === key && a.key !== key) return -1;
+          return 0;
+        });
+        const excess = meta.slice(0, meta.length - MAX_CACHED_SAVES);
+        for (const old of excess) {
+          if (old.key) {
+            store.delete(old.key);
           }
         }
       };
 
-      tx.oncomplete = () => {
-        db.close();
-        resolve(true);
-      };
-      tx.onerror = () => {
-        db.close();
-        resolve(false);
-      };
+      // Use cursor iteration when supported so pruning never holds all full save payloads in RAM at once
+      if (typeof store.openCursor === 'function') {
+        const meta: Array<{ key: string; cachedAt: string }> = [];
+        const cursorReq = store.openCursor();
+        cursorReq.onsuccess = () => {
+          const cursor = cursorReq.result;
+          if (cursor) {
+            const val = cursor.value as { key?: string; cachedAt?: string } | undefined;
+            const entryKey =
+              typeof val?.key === 'string'
+                ? val.key
+                : typeof cursor.key === 'string'
+                  ? cursor.key
+                  : '';
+            if (entryKey) {
+              meta.push({
+                key: entryKey,
+                cachedAt: typeof val?.cachedAt === 'string' ? val.cachedAt : '',
+              });
+            }
+            cursor.continue();
+          } else {
+            pruneEntries(meta);
+          }
+        };
+      } else {
+        const allReq = store.getAll();
+        allReq.onsuccess = () => {
+          const all = (allReq.result as Array<{ key?: string; cachedAt?: string }>) || [];
+          pruneEntries(
+            all
+              .filter((item): item is { key: string; cachedAt?: string } => Boolean(item?.key))
+              .map((item) => ({ key: item.key, cachedAt: item.cachedAt || '' }))
+          );
+        };
+      }
+
+      tx.oncomplete = () => finish(true);
+      tx.onerror = () => finish(false);
+      tx.onabort = () => finish(false);
     } catch {
-      db.close();
-      resolve(false);
+      finish(false);
     }
   });
 }
@@ -1146,21 +1192,28 @@ export async function getCachedSavePayload<T>(
   if (!db) return null;
   const key = buildSaveCacheKey(saveName, inGameDate);
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (val: T | null) => {
+      if (settled) return;
+      settled = true;
+      try {
+        db.close();
+      } catch {
+        // ignore close errors
+      }
+      resolve(val);
+    };
     try {
       const tx = db.transaction(SAVE_CACHE_STORE, 'readonly');
       const req = tx.objectStore(SAVE_CACHE_STORE).get(key);
       req.onsuccess = () => {
         const record = req.result as { payload?: T } | undefined;
-        db.close();
-        resolve(record?.payload ?? null);
+        finish(record?.payload ?? null);
       };
-      req.onerror = () => {
-        db.close();
-        resolve(null);
-      };
+      req.onerror = () => finish(null);
+      tx.onabort = () => finish(null);
     } catch {
-      db.close();
-      resolve(null);
+      finish(null);
     }
   });
 }
@@ -1174,6 +1227,17 @@ export async function putSaveHistoryPoint(
   const db = await openSaveCacheDb();
   if (!db) return false;
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      try {
+        db.close();
+      } catch {
+        // ignore close errors
+      }
+      resolve(ok);
+    };
     try {
       const tx = db.transaction(SNAPSHOT_HISTORY_STORE, 'readwrite');
       const store = tx.objectStore(SNAPSHOT_HISTORY_STORE);
@@ -1191,17 +1255,11 @@ export async function putSaveHistoryPoint(
         }
       };
 
-      tx.oncomplete = () => {
-        db.close();
-        resolve(true);
-      };
-      tx.onerror = () => {
-        db.close();
-        resolve(false);
-      };
+      tx.oncomplete = () => finish(true);
+      tx.onerror = () => finish(false);
+      tx.onabort = () => finish(false);
     } catch {
-      db.close();
-      resolve(false);
+      finish(false);
     }
   });
 }
@@ -1213,6 +1271,17 @@ export async function listSaveHistoryPoints(): Promise<SaveHistoryPoint[]> {
   const db = await openSaveCacheDb();
   if (!db) return [];
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (items: SaveHistoryPoint[]) => {
+      if (settled) return;
+      settled = true;
+      try {
+        db.close();
+      } catch {
+        // ignore close errors
+      }
+      resolve(items);
+    };
     try {
       const tx = db.transaction(SNAPSHOT_HISTORY_STORE, 'readonly');
       const req = tx.objectStore(SNAPSHOT_HISTORY_STORE).getAll();
@@ -1221,16 +1290,12 @@ export async function listSaveHistoryPoints(): Promise<SaveHistoryPoint[]> {
           (item) => item && typeof item.cacheKey === 'string' && Array.isArray(item.players)
         );
         items.sort((a, b) => b.capturedAt.localeCompare(a.capturedAt));
-        db.close();
-        resolve(items);
+        finish(items);
       };
-      req.onerror = () => {
-        db.close();
-        resolve([]);
-      };
+      req.onerror = () => finish([]);
+      tx.onabort = () => finish([]);
     } catch {
-      db.close();
-      resolve([]);
+      finish([]);
     }
   });
 }
@@ -1242,20 +1307,25 @@ export async function deleteSaveHistoryPoint(cacheKey: string): Promise<boolean>
   const db = await openSaveCacheDb();
   if (!db) return false;
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      try {
+        db.close();
+      } catch {
+        // ignore close errors
+      }
+      resolve(ok);
+    };
     try {
       const tx = db.transaction(SNAPSHOT_HISTORY_STORE, 'readwrite');
       tx.objectStore(SNAPSHOT_HISTORY_STORE).delete(cacheKey);
-      tx.oncomplete = () => {
-        db.close();
-        resolve(true);
-      };
-      tx.onerror = () => {
-        db.close();
-        resolve(false);
-      };
+      tx.oncomplete = () => finish(true);
+      tx.onerror = () => finish(false);
+      tx.onabort = () => finish(false);
     } catch {
-      db.close();
-      resolve(false);
+      finish(false);
     }
   });
 }
@@ -1267,20 +1337,25 @@ export async function clearSaveHistoryPoints(): Promise<boolean> {
   const db = await openSaveCacheDb();
   if (!db) return false;
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      try {
+        db.close();
+      } catch {
+        // ignore close errors
+      }
+      resolve(ok);
+    };
     try {
       const tx = db.transaction(SNAPSHOT_HISTORY_STORE, 'readwrite');
       tx.objectStore(SNAPSHOT_HISTORY_STORE).clear();
-      tx.oncomplete = () => {
-        db.close();
-        resolve(true);
-      };
-      tx.onerror = () => {
-        db.close();
-        resolve(false);
-      };
+      tx.oncomplete = () => finish(true);
+      tx.onerror = () => finish(false);
+      tx.onabort = () => finish(false);
     } catch {
-      db.close();
-      resolve(false);
+      finish(false);
     }
   });
 }
@@ -1293,21 +1368,26 @@ export async function clearAllSaveCache(): Promise<boolean> {
   const db = await openSaveCacheDb();
   if (!db) return false;
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      try {
+        db.close();
+      } catch {
+        // ignore close errors
+      }
+      resolve(ok);
+    };
     try {
       const tx = db.transaction([SAVE_CACHE_STORE, SNAPSHOT_HISTORY_STORE], 'readwrite');
       tx.objectStore(SAVE_CACHE_STORE).clear();
       tx.objectStore(SNAPSHOT_HISTORY_STORE).clear();
-      tx.oncomplete = () => {
-        db.close();
-        resolve(true);
-      };
-      tx.onerror = () => {
-        db.close();
-        resolve(false);
-      };
+      tx.oncomplete = () => finish(true);
+      tx.onerror = () => finish(false);
+      tx.onabort = () => finish(false);
     } catch {
-      db.close();
-      resolve(false);
+      finish(false);
     }
   });
 }

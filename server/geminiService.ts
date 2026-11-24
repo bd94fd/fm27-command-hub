@@ -7,11 +7,11 @@ import {
 
 export const MODEL_DISCOVERY_TTL_MS = 5 * 60 * 1000; // 5 minutes
 export const FAST_MODEL_ID = 'gemini-3.5-flash-lite';
-export const DEEP_MODEL_ID = 'gemini-3.5-flash';
+export const DEEP_MODEL_ID = 'gemini-3.6-flash';
 
 export type ReasoningMode = 'fast_lite' | 'deep_high' | 'max_xhigh';
 
-const RETIRED_MODEL_RE = /^(?:models\/)?gemini-(?:1\.|2\.0|2\.5|3\.8)/i;
+const RETIRED_MODEL_RE = /^(?:models\/)?gemini-(?:1\.|2\.0|2\.5)/i;
 
 export function normalizeModelName(name: string): string {
   return name.trim().replace(/^models\//i, '');
@@ -269,7 +269,7 @@ export class GeminiService {
   }
 
   /**
-   * Resolves the target model, respecting Fast (gemini-3.5-flash-lite) vs. Deep (gemini-3.5-flash)
+   * Resolves the target model, respecting Fast (gemini-3.5-flash-lite) vs. Deep (gemini-3.6-flash)
    * client preferences and optional GEMINI_MODEL override while filtering out retired models.
    */
   async resolveModel(options?: {

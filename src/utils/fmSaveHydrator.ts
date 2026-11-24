@@ -822,6 +822,24 @@ export function hydrateAppFromDecodedFmSave(
     bansByUid.set(ban.playerUid, arr);
   }
 
+  // Hydrate active injuries from decoded.activeInjuries so Best XI / Match Prep / AI Analyst respect injured status
+  const injuredUids = new Set<number>();
+  const injuredNames = new Set<string>();
+  for (const inj of decoded.activeInjuries || []) {
+    if (!inj) continue;
+    if (typeof inj.playerUid === 'number' && inj.playerUid > 0) {
+      injuredUids.add(inj.playerUid);
+    }
+    if (typeof inj.playerName === 'string' && inj.playerName.trim()) {
+      injuredNames.add(normalizePlayerName(inj.playerName));
+    }
+  }
+  const isPlayerActivelyInjured = (uid: number | undefined, name: string | undefined): boolean => {
+    if (typeof uid === 'number' && uid > 0 && injuredUids.has(uid)) return true;
+    if (name && injuredNames.has(normalizePlayerName(name))) return true;
+    return false;
+  };
+
   const changedPlayers: Array<{ name: string; changes: string[] }> = [];
   const matchedSaveUids = new Set<number>();
   const removedPlayers: PlayerRecord[] = [];
@@ -1042,6 +1060,9 @@ export function hydrateAppFromDecodedFmSave(
         next.status
       );
     }
+    if (isPlayerActivelyInjured(dp.uid, dp.name || existing.name)) {
+      next.status = 'Injured';
+    }
     const pHistory =
       dp.seasonHistory || lookupUidRecord(decoded.playerSeasonHistory, dp.uid);
     if (pHistory && pHistory.length > 0) {
@@ -1108,10 +1129,17 @@ export function hydrateAppFromDecodedFmSave(
           : dp.age && dp.age <= 21
             ? 'Youth'
             : 'Surplus';
-    const assignedStatus: PlayerRecord['status'] = resolveSquadStatusFromPlayingTime(
-      dp.contractDetails?.promisedPlayingTime,
-      fallbackStatus
-    );
+    const baseAssignedStatus: PlayerRecord['status'] =
+      resolveSquadStatusFromPlayingTime(
+        dp.contractDetails?.promisedPlayingTime,
+        fallbackStatus
+      );
+    const assignedStatus: PlayerRecord['status'] = isPlayerActivelyInjured(
+      dp.uid,
+      dp.name
+    )
+      ? 'Injured'
+      : baseAssignedStatus;
 
     const pRatings =
       dp.last5Ratings || lookupUidRecord(decoded.playerMatchStats, dp.uid) || [];

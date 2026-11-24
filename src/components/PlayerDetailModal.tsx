@@ -318,10 +318,14 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
     { label: 'Strength', value: readOptionalAttr(a.strength) },
   ];
 
+  const posUpperNormalized = (player.position || '').toUpperCase();
   const isGoalkeeper =
-    player.position.toUpperCase().includes('GK') ||
-    (typeof a.reflexes === 'number' && a.reflexes >= 8) ||
-    (typeof a.handling === 'number' && a.handling >= 8);
+    posUpperNormalized.includes('GK') ||
+    (!posUpperNormalized.trim() &&
+      typeof a.reflexes === 'number' &&
+      a.reflexes >= 12 &&
+      typeof a.handling === 'number' &&
+      a.handling >= 12);
 
   const gkAttrs: Array<{ label: string; value: number | null }> = [
     { label: 'Aerial Reach', value: readOptionalAttr(a.aerialReach) },
@@ -343,8 +347,23 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
   const seasonHistory = player.seasonHistory || [];
 
   const getPositionScore = (code: string): number => {
-    if (player.positionRatings && typeof player.positionRatings[code] === 'number') {
-      return player.positionRatings[code];
+    if (player.positionRatings) {
+      if (typeof player.positionRatings[code] === 'number') {
+        return player.positionRatings[code];
+      }
+      const upper = code.toUpperCase();
+      if (upper === 'ST' && typeof player.positionRatings['STC'] === 'number') {
+        return player.positionRatings['STC'];
+      }
+      if (upper === 'STC' && typeof player.positionRatings['ST'] === 'number') {
+        return player.positionRatings['ST'];
+      }
+      const matchedKey = Object.keys(player.positionRatings).find(
+        (k) => k.toUpperCase() === upper
+      );
+      if (matchedKey && typeof player.positionRatings[matchedKey] === 'number') {
+        return player.positionRatings[matchedKey];
+      }
     }
     const posUpper = player.position.toUpperCase();
     if (posUpper.includes(code)) return 19;

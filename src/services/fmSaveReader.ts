@@ -277,18 +277,44 @@ export async function decodeFmSaveViaServer(
   const fetchOrThrowUnavailable = async (
     url: string,
     init: RequestInit,
-    allowFallbackStatus: boolean
+    allowFallbackStatus: boolean,
+    timeoutMs?: number
   ): Promise<Response> => {
     let res: Response;
+    const reqController =
+      timeoutMs && typeof AbortController !== 'undefined'
+        ? new AbortController()
+        : null;
+    const onCallerAbort = () => reqController?.abort();
+    signal?.addEventListener('abort', onCallerAbort, { once: true });
+    let timedOut = false;
+    const reqTimer =
+      reqController && timeoutMs
+        ? setTimeout(() => {
+            timedOut = true;
+            reqController.abort();
+          }, timeoutMs)
+        : null;
     try {
-      res = await fetchImpl(url, { ...init, signal });
+      res = await fetchImpl(url, {
+        ...init,
+        signal: reqController?.signal ?? signal,
+      });
     } catch (err: unknown) {
-      if (err instanceof Error && err.name === 'AbortError') {
+      if (
+        !timedOut &&
+        (signal?.aborted || (err instanceof Error && err.name === 'AbortError'))
+      ) {
         throw new Error('CANCELLED_BY_USER');
       }
       throw new ServerDecodeUnavailableError(
-        'Server decoder unreachable; falling back to local browser Pyodide.'
+        timedOut
+          ? 'Server decoder timed out while starting; falling back to local browser Pyodide.'
+          : 'Server decoder unreachable; falling back to local browser Pyodide.'
       );
+    } finally {
+      if (reqTimer) clearTimeout(reqTimer);
+      signal?.removeEventListener('abort', onCallerAbort);
     }
 
     if (
@@ -318,7 +344,8 @@ export async function decodeFmSaveViaServer(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ totalBytes }),
     },
-    true
+    true,
+    SERVER_INIT_TIMEOUT_MS
   );
   if (!initRes.ok) {
     throw new Error(
@@ -575,7 +602,8 @@ export async function decodeFmSaveViaServer(
         clubHint: options.clubHint || '',
       }),
     },
-    true
+    true,
+    SERVER_INIT_TIMEOUT_MS
   );
 
   if (!finishRes.ok) {
@@ -620,7 +648,7 @@ export async function decodeFmSaveViaServer(
       }
       onProgress?.({
         stage: 'parse',
-        step: 'Server Full Sync',
+        step: `Server ${syncModeLabel}`,
         elapsedSec: elapsedSec(),
         label: `Server busy — reconnecting to decode status (${consecutivePollErrors}/${SERVER_POLL_MAX_RETRIES})...`,
       });
@@ -641,7 +669,7 @@ export async function decodeFmSaveViaServer(
       }
       onProgress?.({
         stage: 'parse',
-        step: 'Server Full Sync',
+        step: `Server ${syncModeLabel}`,
         elapsedSec: elapsedSec(),
         label: `Server busy (HTTP ${jobRes.status}) — reconnecting to decode status (${consecutivePollErrors}/${SERVER_POLL_MAX_RETRIES})...`,
       });
@@ -718,9 +746,9 @@ export async function decodeFmSaveViaServer(
     if (jobData.status === 'done' && jobData.payload) {
       onProgress?.({
         stage: 'parse',
-        step: 'Server Full Sync',
+        step: `Server ${syncModeLabel}`,
         elapsedSec: elapsedSec(),
-        label: 'Server Full Sync complete — hydrating Command Hub...',
+        label: `Server ${syncModeLabel} complete — hydrating Command Hub...`,
       });
       return jobData.payload;
     }
@@ -731,9 +759,9 @@ export async function decodeFmSaveViaServer(
 
     onProgress?.({
       stage: 'parse',
-      step: 'Server Full Sync',
+      step: `Server ${syncModeLabel}`,
       elapsedSec: elapsedSec(),
-      label: `Server Full Sync: ${lastProgress}`,
+      label: `Server ${syncModeLabel}: ${lastProgress}`,
     });
 
     await sleepWithAbort(pollIntervalMs, signal);

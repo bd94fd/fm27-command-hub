@@ -86,6 +86,8 @@ export function buildMatchMomentumSummary(
   let expectedPoints = 0;
   let goalsFor = 0;
   let goalsAgainst = 0;
+  let xgGoalsFor = 0;
+  let xgGoalsAgainst = 0;
   let xGFor = 0;
   let xGAgainst = 0;
   let matchesWithXg = 0;
@@ -104,6 +106,8 @@ export function buildMatchMomentumSummary(
       Number.isFinite(m.xGAgainst)
     ) {
       matchesWithXg += 1;
+      xgGoalsFor += gf;
+      xgGoalsAgainst += ga;
       xGFor += m.xGFor;
       xGAgainst += m.xGAgainst;
       expectedPoints += estimateExpectedPoints(m.xGFor, m.xGAgainst);
@@ -113,8 +117,10 @@ export function buildMatchMomentumSummary(
   }
 
   const pointsDelta = Number((actualPoints - expectedPoints).toFixed(1));
-  const finishingDelta = Number((goalsFor - xGFor).toFixed(2));
-  const defensiveDelta = Number((xGAgainst - goalsAgainst).toFixed(2));
+  const finishingDelta =
+    matchesWithXg > 0 ? Number((xgGoalsFor - xGFor).toFixed(2)) : 0;
+  const defensiveDelta =
+    matchesWithXg > 0 ? Number((xGAgainst - xgGoalsAgainst).toFixed(2)) : 0;
 
   let verdictTitle = 'Results Match Underlying Performance';
   let verdictDetail =

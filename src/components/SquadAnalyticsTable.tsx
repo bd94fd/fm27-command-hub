@@ -7,7 +7,10 @@ import type {
   LastMatchTacticBlueprint,
   SquadPlannerSlot,
 } from '../types/fmSave';
-import { buildSquadTransferAudit } from '../utils/transferAudit';
+import {
+  buildSquadTransferAudit,
+  type ClubFinancialInput,
+} from '../utils/transferAudit';
 import {
   clearProgressionArchive,
   computeProgressionDiff,
@@ -45,6 +48,7 @@ interface SquadAnalyticsTableProps {
   matches?: MatchLogEntry[];
   clubName?: string;
   saveDate?: string;
+  finances?: ClubFinancialInput | null;
   divisionBenchmarks?: DivisionBenchmarks | null;
   governance?: ClubGovernanceState | null;
   lastMatchTactic?: LastMatchTacticBlueprint | null;
@@ -60,6 +64,7 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
   matches = [],
   clubName,
   saveDate = '--',
+  finances = null,
   divisionBenchmarks = null,
   governance = null,
   lastMatchTactic = null,
@@ -136,8 +141,14 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
   }, [hasCustomColumnsForPreset, activeColumns, activePreset]);
 
   const enrichedRows = useMemo(
-    () => buildEnrichedSquadRows(players, undefined, nextCompetitionName),
-    [players, nextCompetitionName]
+    () =>
+      buildEnrichedSquadRows(
+        players,
+        undefined,
+        nextCompetitionName,
+        divisionBenchmarks
+      ),
+    [players, nextCompetitionName, divisionBenchmarks]
   );
 
   const firstTeamCount = useMemo(
@@ -277,8 +288,14 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
   );
 
   const squadTransferAudit = useMemo(
-    () => buildSquadTransferAudit(players, saveDate, undefined, divisionBenchmarks),
-    [players, saveDate, divisionBenchmarks]
+    () =>
+      buildSquadTransferAudit(
+        players,
+        saveDate,
+        finances ?? undefined,
+        divisionBenchmarks
+      ),
+    [players, saveDate, finances, divisionBenchmarks]
   );
 
   const transferVerdictById = useMemo(

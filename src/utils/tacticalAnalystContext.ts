@@ -1826,6 +1826,13 @@ export function diagnoseTacticalAnalystPayload(
   const boardObjectivesCount = gov?.boardObjectives.length ?? 0;
   const clubPromisesCount = gov?.clubPromises.length ?? 0;
   const playerPromiseAuditsCount = gov?.playerPromiseAudits.length ?? 0;
+  const expectedPromiseAuditsInPayloadCount =
+    gov?.playerPromiseAudits.filter(
+      (a) =>
+        a.status === 'breached' ||
+        a.status === 'at_risk' ||
+        a.status === 'on_track'
+    ).length ?? 0;
   const atRiskPromisesCount =
     gov?.playerPromiseAudits.filter(
       (a) => a.status === 'breached' || a.status === 'at_risk'
@@ -1839,7 +1846,7 @@ export function diagnoseTacticalAnalystPayload(
     (governanceSectionPresent &&
       (boardObjectivesCount === 0 || boardObjectivesInPayload) &&
       (clubPromisesCount === 0 || clubPromisesInPayload) &&
-      (playerPromiseAuditsCount === 0 || playingTimeAuditInPayload));
+      (expectedPromiseAuditsInPayloadCount === 0 || playingTimeAuditInPayload));
 
   if (gov && !governanceSectionPresent) {
     warnings.push(
@@ -1856,9 +1863,9 @@ export function diagnoseTacticalAnalystPayload(
       `${clubPromisesCount} decoded club/manager promise(s) did not map into liveAppContext.`
     );
   }
-  if (playerPromiseAuditsCount > 0 && !playingTimeAuditInPayload) {
+  if (expectedPromiseAuditsInPayloadCount > 0 && !playingTimeAuditInPayload) {
     warnings.push(
-      `${playerPromiseAuditsCount} squad playing-time promise audit(s) did not map into liveAppContext.`
+      `${expectedPromiseAuditsInPayloadCount} squad playing-time promise audit(s) did not map into liveAppContext.`
     );
   }
 

@@ -378,14 +378,20 @@ export interface EnrichedSquadRow {
 export function buildEnrichedSquadRows(
   players: PlayerRecord[],
   dnaWeights?: ClubDnaPillarWeights,
-  nextCompetitionName?: string | null
+  nextCompetitionName?: string | null,
+  divisionBenchmarks?: Parameters<typeof evaluatePlayerClubDna>[3]
 ): EnrichedSquadRow[] {
   const weights = dnaWeights || loadPersistedClubDnaWeights() || DEFAULT_CLUB_DNA_WEIGHTS;
   return players.map((player) => {
     const posGroup = getPositionGroup(player.position);
     const durability = evaluateDurability(player);
     const physical = evaluatePhysicalVerdict(player);
-    const dna = evaluatePlayerClubDna(player.position, player.attributes, weights);
+    const dna = evaluatePlayerClubDna(
+      player.position,
+      player.attributes,
+      weights,
+      divisionBenchmarks ?? null
+    );
     const contract = evaluateContractStanding(player);
     const development = evaluateDevelopmentAdvice(player, null);
     const bans = Array.isArray(player.activeSuspensions)
@@ -543,9 +549,14 @@ export function filterAndSortSquadRows(
       case 'engine':
         cmp = a.physical.score - b.physical.score;
         return cmp * dir;
-      case 'rating':
-        cmp = (a.player.rating || 0) - (b.player.rating || 0);
-        return cmp * dir;
+      case 'rating': {
+        const av = a.player.rating;
+        const bv = b.player.rating;
+        if (av == null && bv == null) return 0;
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        return (av - bv) * dir;
+      }
       case 'apps':
         cmp = (a.player.minutes || 0) - (b.player.minutes || 0);
         if (cmp === 0) cmp = parseAppsCount(a.player.apps) - parseAppsCount(b.player.apps);
@@ -564,16 +575,27 @@ export function filterAndSortSquadRows(
           (a.player.xA || 0) -
           ((b.player.xG || 0) + (b.player.xA || 0));
         return cmp * dir;
-      case 'wage':
-        cmp = (a.player.wagePw || 0) - (b.player.wagePw || 0);
-        return cmp * dir;
-      case 'value':
-        cmp = (a.player.marketValue || 0) - (b.player.marketValue || 0);
-        return cmp * dir;
+      case 'wage': {
+        const av = a.player.wagePw;
+        const bv = b.player.wagePw;
+        if (av == null && bv == null) return 0;
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        return (av - bv) * dir;
+      }
+      case 'value': {
+        const av = a.player.marketValue;
+        const bv = b.player.marketValue;
+        if (av == null && bv == null) return 0;
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        return (av - bv) * dir;
+      }
       case 'expiry': {
-        const ay = a.expiryYear ? Number(a.expiryYear) : 9999;
-        const by = b.expiryYear ? Number(b.expiryYear) : 9999;
-        cmp = ay - by;
+        if (!a.expiryYear && !b.expiryYear) return 0;
+        if (!a.expiryYear) return 1;
+        if (!b.expiryYear) return -1;
+        cmp = Number(a.expiryYear) - Number(b.expiryYear);
         return cmp * dir;
       }
       default:

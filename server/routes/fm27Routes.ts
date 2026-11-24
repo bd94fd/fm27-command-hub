@@ -195,11 +195,32 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
       }> = [];
 
       if (Array.isArray(history) && history.length > 0) {
+        const sanitizedHistory: Array<{ role: 'user' | 'model'; text: string }> = [];
         for (const h of history.slice(-6)) {
-          if (!h.text || !h.text.trim()) continue;
+          const text = typeof h?.text === 'string' ? h.text.trim() : '';
+          if (!text) continue;
+          const role: 'user' | 'model' = h.role === 'user' ? 'user' : 'model';
+          // Gemini multi-turn contents must begin with a user turn
+          if (sanitizedHistory.length === 0 && role !== 'user') continue;
+          const prev = sanitizedHistory[sanitizedHistory.length - 1];
+          if (prev && prev.role === role) {
+            // Merge consecutive same-role turns rather than failing with HTTP 400
+            prev.text = `${prev.text}\n\n${text}`;
+          } else {
+            sanitizedHistory.push({ role, text });
+          }
+        }
+        // Drop any trailing unanswered user turn before appending the new user turn
+        while (
+          sanitizedHistory.length > 0 &&
+          sanitizedHistory[sanitizedHistory.length - 1].role === 'user'
+        ) {
+          sanitizedHistory.pop();
+        }
+        for (const item of sanitizedHistory) {
           contents.push({
-            role: h.role === 'user' ? 'user' : 'model',
-            parts: [{ text: h.text }],
+            role: item.role,
+            parts: [{ text: item.text }],
           });
         }
       }

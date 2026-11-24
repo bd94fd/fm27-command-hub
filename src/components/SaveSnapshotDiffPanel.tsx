@@ -65,18 +65,66 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
   const [aiError, setAiError] = useState<string | null>(null);
   const [confirmClearAll, setConfirmClearAll] = useState(false);
   const autoTriggeredPairsRef = useRef<Set<string>>(new Set());
+  const latestSeenTopKeyRef = useRef<string>('');
+  const aiBriefingRef = useRef<AiJourneyBriefingResult | null>(null);
+  aiBriefingRef.current = aiBriefing;
+
+  const pickNewestSameClubPair = (
+    items: SaveHistoryPoint[]
+  ): [SaveHistoryPoint, SaveHistoryPoint] | null => {
+    if (items.length < 2) return null;
+    const latest = items[0];
+    const latestClub = (latest.clubName || '').trim().toLowerCase();
+    const sameClub = latestClub
+      ? items.filter(
+          (i) => (i.clubName || '').trim().toLowerCase() === latestClub
+        )
+      : items;
+    if (sameClub.length < 2) return null;
+    const parseSaveDateMs = (raw: string | undefined): number => {
+      if (!raw) return 0;
+      const dmy = raw.trim().match(/^(\d{1,2})\/(\d{1,2})\/(20\d{2})$/);
+      if (dmy) {
+        return Date.UTC(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
+      }
+      const parsed = Date.parse(raw);
+      return Number.isNaN(parsed) ? 0 : parsed;
+    };
+    const chronological = [...sameClub].sort((a, b) => {
+      const da = parseSaveDateMs(a.inGameDate);
+      const db = parseSaveDateMs(b.inGameDate);
+      if (da !== db) return db - da;
+      return b.capturedAt.localeCompare(a.capturedAt);
+    });
+    return [chronological[1], chronological[0]];
+  };
 
   const loadSnapshots = useCallback(async () => {
     setLoading(true);
     const items = await listSaveHistoryPoints();
     setSnapshots(items);
+    const topKey = items[0]?.cacheKey ?? '';
+    const hasNewTopSnapshot = Boolean(topKey && topKey !== latestSeenTopKeyRef.current);
+    latestSeenTopKeyRef.current = topKey;
+
     if (items.length >= 2) {
-      setToKey((prev) =>
-        items.some((i) => i.cacheKey === prev) ? prev : items[0].cacheKey
-      );
-      setFromKey((prev) =>
-        items.some((i) => i.cacheKey === prev) ? prev : items[1].cacheKey
-      );
+      const bestPair = pickNewestSameClubPair(items);
+      if (bestPair) {
+        const [older, newer] = bestPair;
+        setToKey((prev) =>
+          !hasNewTopSnapshot && items.some((i) => i.cacheKey === prev)
+            ? prev
+            : newer.cacheKey
+        );
+        setFromKey((prev) =>
+          !hasNewTopSnapshot && items.some((i) => i.cacheKey === prev)
+            ? prev
+            : older.cacheKey
+        );
+      } else {
+        setToKey(items[0].cacheKey);
+        setFromKey(items[0].cacheKey);
+      }
     } else if (items.length === 1) {
       setToKey(items[0].cacheKey);
       setFromKey(items[0].cacheKey);
@@ -114,7 +162,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
   const handleGenerateAiBriefing = useCallback(
     async (forceRefresh = false, silentOnFailure = false) => {
       if (!journey || !fromSnapshot || !toSnapshot) return;
-      if (!forceRefresh && aiBriefing) return;
+      if (!forceRefresh && aiBriefingRef.current) return;
       setAiLoading(true);
       setAiError(null);
       try {
@@ -190,7 +238,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
         setAiLoading(false);
       }
     },
-    [journey, fromSnapshot, toSnapshot, aiBriefing]
+    [journey, fromSnapshot, toSnapshot]
   );
 
   // Load cached AI briefing when pair changes — and auto-trigger once for newly synced uncached pairs

@@ -157,10 +157,19 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
   const [aiDebriefByMatchId, setAiDebriefByMatchId] = useState<
     Record<string, PostMatchDebriefData>
   >({});
+  const [aiDebriefErrorByMatchId, setAiDebriefErrorByMatchId] = useState<
+    Record<string, string>
+  >({});
   const [loadingAiMatchId, setLoadingAiMatchId] = useState<string | null>(null);
 
   const handleRequestAiDebrief = async (m: MatchLogEntry) => {
     setLoadingAiMatchId(m.id);
+    setAiDebriefErrorByMatchId((prev) => {
+      if (!(m.id in prev)) return prev;
+      const next = { ...prev };
+      delete next[m.id];
+      return next;
+    });
     try {
       const res = await fetch('/api/fm27/match-debrief', {
         method: 'POST',
@@ -187,7 +196,17 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
           },
         }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        let errDetail = `AI debrief unavailable (HTTP ${res.status})`;
+        try {
+          const errJson = (await res.json()) as { error?: string };
+          if (errJson?.error) errDetail = errJson.error;
+        } catch {
+          // keep status fallback
+        }
+        setAiDebriefErrorByMatchId((prev) => ({ ...prev, [m.id]: errDetail }));
+        return;
+      }
       const data = (await res.json()) as Partial<PostMatchDebriefData>;
       if (data.headlineVerdict && Array.isArray(data.primaryTacticalFlaws)) {
         setAiDebriefByMatchId((prev) => ({
@@ -202,9 +221,20 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
             source: 'Gemini 3.5 Tactical Analyst',
           },
         }));
+      } else {
+        setAiDebriefErrorByMatchId((prev) => ({
+          ...prev,
+          [m.id]: 'AI debrief response was incomplete — showing deterministic Playbook audit.',
+        }));
       }
-    } catch {
-      // Fall back silently to deterministic Playbook v2.0 debrief
+    } catch (err) {
+      setAiDebriefErrorByMatchId((prev) => ({
+        ...prev,
+        [m.id]:
+          err instanceof Error
+            ? err.message
+            : 'Could not reach AI debrief service — showing deterministic Playbook audit.',
+      }));
     } finally {
       setLoadingAiMatchId(null);
     }
@@ -258,6 +288,13 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
       (sum, m) => sum + (m.xGAgainst ?? 0),
       0
     );
+    let xgGoalsFor = 0;
+    let xgGoalsAgainst = 0;
+    for (const m of xgMatches) {
+      const [gf, ga] = parseScoreGoals(m.score);
+      xgGoalsFor += gf;
+      xgGoalsAgainst += ga;
+    }
     let goalsFor = 0;
     let goalsAgainst = 0;
     let cleanSheets = 0;
@@ -286,6 +323,8 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
       count: xgMatches.length,
       totalXgFor,
       totalXgAgainst,
+      xgGoalsFor,
+      xgGoalsAgainst,
       goalsFor,
       goalsAgainst,
       cleanSheets,
@@ -470,8 +509,8 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                     >
                       xGD {filteredXgStats.totalXgFor - filteredXgStats.totalXgAgainst >= 0 ? '+' : ''}
                       {(filteredXgStats.totalXgFor - filteredXgStats.totalXgAgainst).toFixed(2)} · Fin{' '}
-                      {filteredXgStats.goalsFor - filteredXgStats.totalXgFor >= 0 ? '+' : ''}
-                      {(filteredXgStats.goalsFor - filteredXgStats.totalXgFor).toFixed(2)}
+                      {filteredXgStats.xgGoalsFor - filteredXgStats.totalXgFor >= 0 ? '+' : ''}
+                      {(filteredXgStats.xgGoalsFor - filteredXgStats.totalXgFor).toFixed(2)}
                     </div>
                   </>
                 ) : (
@@ -890,6 +929,12 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                             )}
                           </div>
                         </div>
+
+                        {aiDebriefErrorByMatchId[m.id] && (
+                          <div className="rounded-lg border border-amber-500/30 bg-amber-950/30 px-2.5 py-1.5 text-[11px] text-amber-200">
+                            {aiDebriefErrorByMatchId[m.id]}
+                          </div>
+                        )}
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1">
                           <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5 space-y-1">

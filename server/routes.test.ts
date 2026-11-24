@@ -1,9 +1,12 @@
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import express from 'express';
 import { createApp } from '../server.ts';
 import { loadServerConfig } from './config.ts';
 import { AnalystTimeoutError, GeminiService } from './geminiService.ts';
+import { createFm27Router } from './routes/fm27Routes.ts';
+import { createFmDecodeRouter } from './routes/fmDecodeRoutes.ts';
 
 async function startTestServer(app: Awaited<ReturnType<typeof createApp>>) {
   const server = http.createServer(app);
@@ -174,7 +177,7 @@ describe('server routes & JSON 404', () => {
           list: async () => ({
             models: [
               { name: 'models/gemini-3.5-flash-lite' },
-              { name: 'models/gemini-3.5-flash' },
+              { name: 'models/gemini-3.6-flash' },
             ],
           }),
           generateContent: (async (req: {
@@ -610,6 +613,122 @@ describe('server routes & JSON 404', () => {
     await fetch(`${srv.baseUrl}/api/fm27/decode-save/upload/${seqBody.uploadId}`, {
       method: 'DELETE',
     });
+  });
+
+  it('standalone createFmDecodeRouter returns JSON 413 on oversized chunk and JSON 400 on malformed JSON body', async () => {
+    const decodeApp = express();
+    decodeApp.use(
+      '/api',
+      createFmDecodeRouter({
+        detectRuntime: async () => ({
+          available: true,
+          pythonBin: 'python3',
+          pythonVersion: '3.12',
+          fmsaveVersion: '0.14.3',
+          checkedAtMs: Date.now(),
+        }),
+      })
+    );
+    const decodeSrv = await startTestServer(decodeApp);
+    try {
+      // Malformed JSON to /init must return JSON 400, never HTML
+      const badJsonRes = await fetch(`${decodeSrv.baseUrl}/api/fm27/decode-save/init`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{invalid-json',
+      });
+      assert.equal(badJsonRes.status, 400);
+      assert.match(badJsonRes.headers.get('content-type') || '', /application\/json/);
+      const badBody = (await badJsonRes.json()) as { error?: string };
+      assert.ok(badBody.error);
+
+      // Chunk exceeding 8 MB limit must return JSON 413, never HTML
+      const oversizedChunk = Buffer.alloc(8 * 1024 * 1024 + 64, 0x41);
+      const tooBigRes = await fetch(`${decodeSrv.baseUrl}/api/fm27/decode-save/chunk`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'x-fm-upload-id': '11111111-2222-4333-8444-555555555555',
+          'x-fm-chunk-offset': '0',
+        },
+        body: oversizedChunk,
+      });
+      assert.equal(tooBigRes.status, 413);
+      assert.match(tooBigRes.headers.get('content-type') || '', /application\/json/);
+      const tooBigBody = (await tooBigRes.json()) as { error?: string };
+      assert.match(tooBigBody.error || '', /too large|8 MB/i);
+    } finally {
+      await decodeSrv.close();
+    }
+  });
+
+  it('POST /api/fm27/tactical-chat normalizes leading model turns, consecutive same-role turns, and trailing unanswered user turns', async () => {
+    let capturedContents: Array<{ role: string; parts: Array<{ text?: string }> }> = [];
+    const config = loadServerConfig({ GEMINI_API_KEY: 'test-key' } as NodeJS.ProcessEnv);
+    const geminiService = new GeminiService({
+      config,
+      clientFactory: () => ({
+        models: {
+          list: async () => ({
+            models: [{ name: 'models/gemini-3.5-flash-lite' }],
+          }),
+          generateContent: (async (req: {
+            contents: Array<{ role: string; parts: Array<{ text?: string }> }>;
+          }) => {
+            capturedContents = req.contents;
+            return {
+              get text() {
+                return JSON.stringify({
+                  screenDetected: 'Tactical Review',
+                  inGameDate: '2027-02-15',
+                  analysisMarkdown: 'Alternating history accepted cleanly.',
+                  immediateClicks: ['Keep shape'],
+                  chronicleTitle: 'History Sanity Check',
+                  chronicleOutcomeMetric: 'OK',
+                  isMatchResult: false,
+                  playerUpdates: [],
+                });
+              },
+            };
+          }) as never,
+        },
+      }),
+    });
+
+    const chatApp = express();
+    chatApp.use(express.json({ limit: '5mb' }));
+    chatApp.use('/api', createFm27Router({ geminiService }));
+    const chatSrv = await startTestServer(chatApp);
+    try {
+      const res = await fetch(`${chatSrv.baseUrl}/api/fm27/tactical-chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: 'How do we beat the press?',
+          clubContext: 'Club: KVV Zelzate',
+          history: [
+            { role: 'model', text: 'Stray leading model reply' },
+            { role: 'user', text: 'First question' },
+            { role: 'user', text: 'Follow-up before answer' },
+            { role: 'model', text: 'Answer 1' },
+            { role: 'model', text: 'Answer 2' },
+            { role: 'user', text: 'Previous failed turn without reply' },
+          ],
+        }),
+      });
+      assert.equal(res.status, 200);
+      assert.equal(capturedContents.length, 3);
+      assert.equal(capturedContents[0].role, 'user');
+      assert.equal(capturedContents[1].role, 'model');
+      assert.equal(capturedContents[2].role, 'user');
+      assert.match(capturedContents[0].parts[0].text || '', /First question/);
+      assert.match(capturedContents[0].parts[0].text || '', /Follow-up before answer/);
+      assert.match(capturedContents[1].parts[0].text || '', /Answer 1/);
+      assert.match(capturedContents[1].parts[0].text || '', /Answer 2/);
+      assert.match(capturedContents[2].parts[0].text || '', /How do we beat the press/);
+    } finally {
+      await chatSrv.close();
+    }
   });
 });
 

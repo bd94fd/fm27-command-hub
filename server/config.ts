@@ -18,7 +18,7 @@ export interface ServerConfig {
 export const FALLBACK_GEMINI_MODEL = 'gemini-3.5-flash-lite';
 export const PREFERRED_GEMINI_MODELS = [
   'gemini-3.5-flash-lite',
-  'gemini-3.5-flash',
+  'gemini-3.6-flash',
 ] as const;
 export const DEFAULT_AI_TIMEOUT_MS = 45_000;
 export const DEEP_AI_TIMEOUT_MS = 60_000;

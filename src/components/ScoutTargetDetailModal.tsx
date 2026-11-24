@@ -15,6 +15,7 @@ import {
   RecruitmentTarget,
 } from '../types/fmSave';
 import { evaluateScoutTargetCard } from '../utils/cardIntelligenceEngine';
+import type { ClubDnaPillarWeights } from '../utils/clubDnaEngine';
 import { AttributeRadarChart, PercentilePizzaChart } from './FootballAnalyticsCharts';
 
 interface ScoutTargetDetailModalProps {
@@ -23,6 +24,7 @@ interface ScoutTargetDetailModalProps {
   divisionBenchmarks?: DivisionBenchmarks | null;
   lastMatchTactic?: LastMatchTacticBlueprint | null;
   governance?: ClubGovernanceState | null;
+  clubDnaWeights?: ClubDnaPillarWeights;
   isTracked: boolean;
   onToggleTrack: (target: RecruitmentTarget) => void;
   onAskAnalyst?: (prompt: string) => void;
@@ -51,6 +53,7 @@ export const ScoutTargetDetailModal: React.FC<ScoutTargetDetailModalProps> = ({
   divisionBenchmarks = null,
   lastMatchTactic = null,
   governance = null,
+  clubDnaWeights,
   isTracked,
   onToggleTrack,
   onAskAnalyst,
@@ -62,6 +65,7 @@ export const ScoutTargetDetailModal: React.FC<ScoutTargetDetailModalProps> = ({
     divisionBenchmarks,
     activeTactic: lastMatchTactic,
     governance,
+    clubDnaWeights,
   });
 
   const weeklyWage = Math.round(target.demandedWageEur || 0);

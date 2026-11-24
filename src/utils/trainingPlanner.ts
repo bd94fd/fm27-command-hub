@@ -95,6 +95,32 @@ export interface DynamicTrainingInputRow {
   directive: string;
 }
 
+function parseTrainingRowDate(rawDate: string): Date | null {
+  if (!rawDate) return null;
+  // Prefer the last UK DD/MM/YYYY date in range labels like "Now (15/09/2027) → 18/09/2027" or "Before 22/09/2027"
+  const dmyMatches = Array.from(rawDate.matchAll(/(\d{1,2})\/(\d{1,2})\/(20\d{2})/g));
+  if (dmyMatches.length > 0) {
+    const match = dmyMatches[dmyMatches.length - 1];
+    const day = Number(match[1]);
+    const month = Number(match[2]);
+    const year = Number(match[3]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return new Date(Date.UTC(year, month - 1, day));
+    }
+  }
+  const isoMatch = rawDate.match(/(20\d{2})-(\d{1,2})-(\d{1,2})/);
+  if (isoMatch) {
+    const year = Number(isoMatch[1]);
+    const month = Number(isoMatch[2]);
+    const day = Number(isoMatch[3]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return new Date(Date.UTC(year, month - 1, day));
+    }
+  }
+  const parsed = Date.parse(rawDate);
+  return Number.isNaN(parsed) ? null : new Date(parsed);
+}
+
 /**
  * Normalizes dynamic fixture-periodised rows into a 7-day Mon-Sun planner.
  */
@@ -104,9 +130,9 @@ export function buildWeeklyPlannerFromDynamicSchedule(
   const byDay = new Map<number, DynamicTrainingInputRow>();
 
   for (const row of rows.slice(0, 7)) {
-    const parsed = Date.parse(row.date);
-    if (!Number.isNaN(parsed)) {
-      const jsDay = new Date(parsed).getDay(); // 0=Sun..6=Sat
+    const parsedDate = parseTrainingRowDate(row.date);
+    if (parsedDate) {
+      const jsDay = parsedDate.getUTCDay(); // 0=Sun..6=Sat
       const monIdx = (jsDay + 6) % 7;
       if (!byDay.has(monIdx)) {
         byDay.set(monIdx, row);
@@ -161,18 +187,52 @@ export function buildWeeklyPlannerFromDynamicSchedule(
 
 function resolveDayIndex(label: string, fallbackIndex: number): number {
   const lower = (label || '').trim().toLowerCase();
-  if (lower.startsWith('mon')) return 0;
-  if (lower.startsWith('tue')) return 1;
-  if (lower.startsWith('wed')) return 2;
-  if (lower.startsWith('thu')) return 3;
-  if (lower.startsWith('fri')) return 4;
-  if (lower.startsWith('sat')) return 5;
-  if (lower.startsWith('sun')) return 6;
+  // English & Dutch day prefixes (SemHiel2003/fm27-trainer exports EN + NL)
+  if (lower.startsWith('mon') || lower.startsWith('maa') || lower === 'ma') return 0;
+  if (lower.startsWith('tue') || lower.startsWith('din') || lower === 'di') return 1;
+  if (lower.startsWith('wed') || lower.startsWith('woe') || lower === 'wo') return 2;
+  if (lower.startsWith('thu') || lower.startsWith('don') || lower === 'do') return 3;
+  if (lower.startsWith('fri') || lower.startsWith('vri') || lower === 'vr') return 4;
+  if (lower.startsWith('sat') || lower.startsWith('zat') || lower === 'za') return 5;
+  if (lower.startsWith('sun') || lower.startsWith('zon') || lower === 'zo') return 6;
+  const parsedDate = parseTrainingRowDate(label);
+  if (parsedDate) {
+    return (parsedDate.getUTCDay() + 6) % 7;
+  }
   return Math.max(0, Math.min(6, fallbackIndex));
+}
+
+function splitDelimitedLine(line: string, delimiter: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === delimiter && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current.trim());
+  return result;
 }
 
 /**
  * Parses SemHiel2003/fm27-trainer JSON or CSV schedule exports into a 7-day planner.
+ * Supports:
+ * - Upstream v0.2.8 JSON: { effectiveness, weeks: [{ start, schedule_name, days: [{ date, role, slots }] }] }
+ * - Legacy JSON: { days: [...] }, { schedule: [...] | { Monday: [...] } }, or [...]
+ * - Upstream v0.2.8 8-column EN/NL CSV: date,day,period,type,session1,session2,extra,schedule
+ * - Legacy 3/4-column CSV: Day,Slot1,Slot2,Slot3
  */
 export function parseFm27TrainerSchedule(
   rawText: string
@@ -180,75 +240,103 @@ export function parseFm27TrainerSchedule(
   const trimmed = rawText.trim();
   if (!trimmed) return null;
 
-  // 1. Try JSON (fm27-trainer formats: { days: [...] }, { schedule: { Monday: [...] } }, or [...])
+  // 1. Try JSON
   if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
     try {
       const parsed = JSON.parse(trimmed) as unknown;
       const slotsByDay = new Map<number, [string, string, string]>();
+      const dateByDay = new Map<number, string>();
+      const contextByDay = new Map<number, string>();
       let sourceLabel = 'Imported fm27-trainer JSON';
+
+      const ingestDayArray = (rawDays: unknown[]) => {
+        rawDays.slice(0, 7).forEach((entry, idx) => {
+          if (entry && typeof entry === 'object') {
+            const rec = entry as Record<string, unknown>;
+            const daySource = String(rec.day ?? rec.name ?? rec.date ?? '');
+            const dIdx = resolveDayIndex(daySource, idx);
+            const arr = Array.isArray(rec.sessions)
+              ? rec.sessions
+              : Array.isArray(rec.slots)
+                ? rec.slots
+                : [
+                    rec.slot1 ?? rec.session1,
+                    rec.slot2 ?? rec.session2,
+                    rec.slot3 ?? rec.extra ?? rec.session3,
+                  ];
+            slotsByDay.set(dIdx, [
+              String(arr[0] || 'Rest'),
+              String(arr[1] || 'Rest'),
+              String(arr[2] || 'Rest'),
+            ]);
+            if (typeof rec.date === 'string' && rec.date.trim()) {
+              dateByDay.set(dIdx, rec.date.trim());
+            }
+            if (typeof rec.role === 'string' && rec.role.trim()) {
+              contextByDay.set(dIdx, rec.role.trim());
+            }
+          }
+        });
+      };
 
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         const obj = parsed as Record<string, unknown>;
         if (typeof obj.name === 'string' && obj.name.trim()) {
           sourceLabel = obj.name.trim();
+        } else if (typeof obj.schedule_name === 'string' && obj.schedule_name.trim()) {
+          sourceLabel = obj.schedule_name.trim();
         }
-        const rawDays = Array.isArray(obj.days)
-          ? obj.days
-          : Array.isArray(obj.schedule)
-            ? obj.schedule
+
+        // Upstream SemHiel2003/fm27-trainer v0.2.8 export format: { effectiveness, weeks: [...] }
+        const weeks = Array.isArray(obj.weeks) ? obj.weeks : null;
+        const firstWeek =
+          weeks && weeks.length > 0 && weeks[0] && typeof weeks[0] === 'object'
+            ? (weeks[0] as Record<string, unknown>)
             : null;
 
-        if (rawDays) {
-          rawDays.slice(0, 7).forEach((entry, idx) => {
-            if (entry && typeof entry === 'object') {
-              const rec = entry as Record<string, unknown>;
-              const dIdx = resolveDayIndex(String(rec.day ?? rec.name ?? ''), idx);
-              const arr = Array.isArray(rec.sessions)
-                ? rec.sessions
-                : Array.isArray(rec.slots)
-                  ? rec.slots
-                  : [rec.slot1 ?? rec.session1, rec.slot2 ?? rec.session2, rec.slot3 ?? rec.extra ?? rec.session3];
-              slotsByDay.set(dIdx, [
-                String(arr[0] ?? 'Rest'),
-                String(arr[1] ?? 'Rest'),
-                String(arr[2] ?? 'Rest'),
-              ]);
-            }
-          });
-        } else if (obj.schedule && typeof obj.schedule === 'object') {
-          const sched = obj.schedule as Record<string, unknown>;
-          Object.entries(sched).forEach(([k, v], idx) => {
-            const dIdx = resolveDayIndex(k, idx);
-            if (Array.isArray(v)) {
-              slotsByDay.set(dIdx, [
-                String(v[0] ?? 'Rest'),
-                String(v[1] ?? 'Rest'),
-                String(v[2] ?? 'Rest'),
-              ]);
-            }
-          });
+        if (firstWeek && Array.isArray(firstWeek.days)) {
+          if (
+            typeof firstWeek.schedule_name === 'string' &&
+            firstWeek.schedule_name.trim()
+          ) {
+            sourceLabel = firstWeek.schedule_name.trim();
+          } else if (typeof firstWeek.start === 'string' && firstWeek.start.trim()) {
+            sourceLabel = `fm27-trainer Week (${firstWeek.start.trim()})`;
+          }
+          ingestDayArray(firstWeek.days);
+        } else {
+          const rawDays = Array.isArray(obj.days)
+            ? obj.days
+            : Array.isArray(obj.schedule)
+              ? obj.schedule
+              : null;
+
+          if (rawDays) {
+            ingestDayArray(rawDays);
+          } else if (obj.schedule && typeof obj.schedule === 'object') {
+            const sched = obj.schedule as Record<string, unknown>;
+            Object.entries(sched).forEach(([k, v], idx) => {
+              const dIdx = resolveDayIndex(k, idx);
+              if (Array.isArray(v)) {
+                slotsByDay.set(dIdx, [
+                  String(v[0] || 'Rest'),
+                  String(v[1] || 'Rest'),
+                  String(v[2] || 'Rest'),
+                ]);
+              }
+            });
+          }
         }
       } else if (Array.isArray(parsed)) {
         parsed.slice(0, 7).forEach((entry, idx) => {
           if (Array.isArray(entry)) {
             slotsByDay.set(idx, [
-              String(entry[0] ?? 'Rest'),
-              String(entry[1] ?? 'Rest'),
-              String(entry[2] ?? 'Rest'),
+              String(entry[0] || 'Rest'),
+              String(entry[1] || 'Rest'),
+              String(entry[2] || 'Rest'),
             ]);
           } else if (entry && typeof entry === 'object') {
-            const rec = entry as Record<string, unknown>;
-            const dIdx = resolveDayIndex(String(rec.day ?? rec.name ?? ''), idx);
-            const arr = Array.isArray(rec.sessions)
-              ? rec.sessions
-              : Array.isArray(rec.slots)
-                ? rec.slots
-                : [rec.slot1 ?? rec.session1, rec.slot2 ?? rec.session2, rec.slot3 ?? rec.extra ?? rec.session3];
-            slotsByDay.set(dIdx, [
-              String(arr[0] ?? 'Rest'),
-              String(arr[1] ?? 'Rest'),
-              String(arr[2] ?? 'Rest'),
-            ]);
+            ingestDayArray([entry]);
           }
         });
       }
@@ -262,7 +350,8 @@ export function parseFm27TrainerSchedule(
               dayIndex: idx,
               dayShort: wd.short,
               dayFull: wd.full,
-              fixtureContext: 'Custom Schedule',
+              dateLabel: dateByDay.get(idx),
+              fixtureContext: contextByDay.get(idx) ?? 'Custom Schedule',
               slots: [
                 classifyTrainingSession(tuple[0]),
                 classifyTrainingSession(tuple[1]),
@@ -277,19 +366,87 @@ export function parseFm27TrainerSchedule(
     }
   }
 
-  // 2. Try CSV (Day, Slot 1, Slot 2, Slot 3)
+  // 2. Try CSV (supports SemHiel2003/fm27-trainer 8-col EN/NL CSV + legacy 3/4-col CSV)
   const lines = trimmed
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean);
   if (lines.length === 0) return null;
 
-  const dataLines = /^day\s*[,;\t]/i.test(lines[0]) ? lines.slice(1) : lines;
+  const firstLine = lines[0];
+  const delimiter = firstLine.includes('\t')
+    ? '\t'
+    : firstLine.includes(';') && !firstLine.includes(',')
+      ? ';'
+      : ',';
+  const headerCols = splitDelimitedLine(firstLine, delimiter).map((c) =>
+    c.toLowerCase()
+  );
+
+  // Detect upstream 8-column header: date,day,period,type,session1,session2,extra,schedule
+  // or Dutch: datum,dag,periode,type,sessie1,sessie2,extra,schema
+  const isUpstream8ColHeader =
+    (headerCols[0] === 'date' || headerCols[0] === 'datum') &&
+    headerCols.some((c) => c === 'session1' || c === 'sessie1');
+  const isLegacyDayHeader =
+    !isUpstream8ColHeader && /^(?:day|dag)\s*[,;\t]/i.test(firstLine);
+
+  const dataLines =
+    isUpstream8ColHeader || isLegacyDayHeader ? lines.slice(1) : lines;
   const slotsByDay = new Map<number, [string, string, string]>();
+  const dateByDay = new Map<number, string>();
+  const contextByDay = new Map<number, string>();
+  let csvSourceLabel = 'Imported CSV Schedule';
+
+  const s1Idx = isUpstream8ColHeader
+    ? headerCols.findIndex((c) => c === 'session1' || c === 'sessie1')
+    : -1;
+  const s2Idx = isUpstream8ColHeader
+    ? headerCols.findIndex((c) => c === 'session2' || c === 'sessie2')
+    : -1;
+  const extraIdx = isUpstream8ColHeader
+    ? headerCols.findIndex((c) => c === 'extra' || c === 'session3' || c === 'sessie3')
+    : -1;
+  const dayColIdx = isUpstream8ColHeader
+    ? headerCols.findIndex((c) => c === 'day' || c === 'dag')
+    : 0;
+  const typeColIdx = isUpstream8ColHeader
+    ? headerCols.findIndex((c) => c === 'type')
+    : -1;
+  const schedColIdx = isUpstream8ColHeader
+    ? headerCols.findIndex((c) => c === 'schedule' || c === 'schema')
+    : -1;
 
   dataLines.slice(0, 7).forEach((line, idx) => {
-    const cols = line.split(/[,;\t]/).map((c) => c.replace(/^"|"$/g, '').trim());
-    if (cols.length >= 4) {
+    const cols = splitDelimitedLine(line, delimiter);
+    if (isUpstream8ColHeader && s1Idx >= 0) {
+      const dayLabel =
+        (dayColIdx >= 0 ? cols[dayColIdx] : '') || cols[0] || '';
+      const dIdx = resolveDayIndex(dayLabel, idx);
+      slotsByDay.set(dIdx, [
+        cols[s1Idx] || 'Rest',
+        (s2Idx >= 0 ? cols[s2Idx] : '') || 'Rest',
+        (extraIdx >= 0 ? cols[extraIdx] : '') || 'Rest',
+      ]);
+      if (cols[0]) dateByDay.set(dIdx, cols[0]);
+      if (typeColIdx >= 0 && cols[typeColIdx]) {
+        contextByDay.set(dIdx, cols[typeColIdx]);
+      }
+      if (schedColIdx >= 0 && cols[schedColIdx]) {
+        csvSourceLabel = cols[schedColIdx];
+      }
+    } else if (cols.length >= 7 && /^\d{4}-\d{2}-\d{2}$/.test(cols[0])) {
+      // Headerless upstream 8-column row
+      const dIdx = resolveDayIndex(cols[1] || cols[0], idx);
+      slotsByDay.set(dIdx, [
+        cols[4] || 'Rest',
+        cols[5] || 'Rest',
+        cols[6] || 'Rest',
+      ]);
+      dateByDay.set(dIdx, cols[0]);
+      if (cols[3]) contextByDay.set(dIdx, cols[3]);
+      if (cols[7]) csvSourceLabel = cols[7];
+    } else if (cols.length >= 4) {
       const dIdx = resolveDayIndex(cols[0], idx);
       slotsByDay.set(dIdx, [cols[1] || 'Rest', cols[2] || 'Rest', cols[3] || 'Rest']);
     } else if (cols.length === 3) {
@@ -300,14 +457,15 @@ export function parseFm27TrainerSchedule(
   if (slotsByDay.size === 0) return null;
 
   return {
-    sourceLabel: 'Imported CSV Schedule',
+    sourceLabel: csvSourceLabel,
     days: WEEKDAYS.map((wd, idx) => {
       const tuple = slotsByDay.get(idx) ?? ['Rest', 'Rest', 'Rest'];
       return {
         dayIndex: idx,
         dayShort: wd.short,
         dayFull: wd.full,
-        fixtureContext: 'Custom CSV Schedule',
+        dateLabel: dateByDay.get(idx),
+        fixtureContext: contextByDay.get(idx) ?? 'Custom CSV Schedule',
         slots: [
           classifyTrainingSession(tuple[0]),
           classifyTrainingSession(tuple[1]),

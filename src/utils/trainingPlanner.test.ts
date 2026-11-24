@@ -52,11 +52,83 @@ describe('trainingPlanner', () => {
     assert.ok(summary.restCount >= 2);
   });
 
-  it('builds 7-day planner from dynamic schedule rows', () => {
+  it('builds 7-day planner from dynamic schedule rows including UK DD/MM/YYYY date range alignment', () => {
     const days = buildWeeklyPlannerFromDynamicSchedule([]);
     assert.equal(days.length, 7);
     assert.equal(days[0].dayShort, 'Mon');
     assert.equal(days[6].dayShort, 'Sun');
+
+    const ukAligned = buildWeeklyPlannerFromDynamicSchedule([
+      {
+        week: 'W1',
+        date: '16/02/2027', // Tuesday
+        fixtureContext: 'Training Day',
+        slot1: 'Quickness',
+        slot2: 'Ball Retention',
+        slot3: 'Rest',
+        directive: 'Speed work',
+      },
+      {
+        week: 'W1',
+        date: '15/02/2027', // Monday
+        fixtureContext: 'Training Day',
+        slot1: 'Match Tactics',
+        slot2: 'Attacking Movement',
+        slot3: 'Team Bonding',
+        directive: 'Tactical prep',
+      },
+    ]);
+    assert.equal(ukAligned[0].dayShort, 'Mon');
+    assert.equal(ukAligned[0].dateLabel, '15/02/2027');
+    assert.ok(ukAligned[0].slots.some((s) => s.label === 'Match Tactics'));
+    assert.equal(ukAligned[1].dayShort, 'Tue');
+    assert.equal(ukAligned[1].dateLabel, '16/02/2027');
+    assert.ok(ukAligned[1].slots.some((s) => s.label === 'Quickness'));
+  });
+
+  it('parses real SemHiel2003/fm27-trainer v0.2.8 weeks[] JSON and 8-column EN/NL CSV formats', () => {
+    const v028Json = JSON.stringify({
+      effectiveness: { overall: 92 },
+      weeks: [
+        {
+          start: '2027-02-15',
+          schedule_name: 'High Tempo 1-Match Week',
+          days: [
+            { date: '2027-02-15', role: 'training', slots: ['Quickness', 'Match Tactics', 'Team Bonding'] },
+            { date: '2027-02-20', role: 'match', slots: ['Matchday', 'Rest', 'Rest'] },
+            { date: '2027-02-21', role: 'recovery', slots: ['Recovery', 'Match Review', 'Rest'] },
+          ],
+        },
+      ],
+    });
+    const parsedJson = parseFm27TrainerSchedule(v028Json);
+    assert.ok(parsedJson);
+    assert.equal(parsedJson.sourceLabel, 'High Tempo 1-Match Week');
+    assert.equal(parsedJson.days[0].slots[0].label, 'Quickness');
+    assert.equal(parsedJson.days[5].slots[0].category, 'match');
+    assert.equal(parsedJson.days[6].slots[0].category, 'recovery');
+
+    const en8ColCsv = [
+      'date,day,period,type,session1,session2,extra,schedule',
+      '2027-02-15,Monday,In-Season,Training,Quickness,Match Tactics,Team Bonding,High Tempo 1-Match Week',
+      '2027-02-20,Saturday,In-Season,Match,Matchday,Rest,Rest,High Tempo 1-Match Week',
+    ].join('\n');
+    const parsedEnCsv = parseFm27TrainerSchedule(en8ColCsv);
+    assert.ok(parsedEnCsv);
+    assert.equal(parsedEnCsv.sourceLabel, 'High Tempo 1-Match Week');
+    assert.equal(parsedEnCsv.days[0].slots[0].label, 'Quickness');
+    assert.equal(parsedEnCsv.days[5].slots[0].category, 'match');
+
+    const nl8ColCsv = [
+      'datum,dag,periode,type,sessie1,sessie2,extra,schema',
+      '2027-02-15,maandag,Seizoen,Training,Snelheid,Wedstrijdtactiek,Teambinding,Hoog Tempo',
+      '2027-02-21,zondag,Seizoen,Herstel,Herstel,Nabespreking,Rust,Hoog Tempo',
+    ].join('\n');
+    const parsedNlCsv = parseFm27TrainerSchedule(nl8ColCsv);
+    assert.ok(parsedNlCsv);
+    assert.equal(parsedNlCsv.sourceLabel, 'Hoog Tempo');
+    assert.equal(parsedNlCsv.days[0].slots[0].label, 'Snelheid');
+    assert.equal(parsedNlCsv.days[6].slots[0].label, 'Herstel');
   });
 });
 

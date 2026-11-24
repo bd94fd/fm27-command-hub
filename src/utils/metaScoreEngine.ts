@@ -176,7 +176,9 @@ export function computeClubBenchmark(
   clubName: string,
   players: PlayerRecord[]
 ): LeagueClubBenchmark {
-  const values = players
+  const ownedPlayers = players.filter((p) => !p.onLoan);
+  const valueSource = ownedPlayers.length > 0 ? ownedPlayers : players;
+  const values = valueSource
     .map((p) => p.marketValue)
     .filter((v): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0)
     .sort((a, b) => a - b);

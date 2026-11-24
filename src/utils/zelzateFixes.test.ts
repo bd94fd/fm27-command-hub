@@ -371,18 +371,18 @@ test('KVV Zelzate Fix #5 & Gemini 404 retry: MatchLogArchive explicitly labels s
   const service = new GeminiService({
     config: loadServerConfig({
       GEMINI_API_KEY: 'test-key-not-real',
-      GEMINI_MODEL: 'gemini-3.5-flash',
+      GEMINI_MODEL: 'gemini-3.6-flash',
     }),
     clientFactory: () => ({
       models: {
         list: async () => {
           listCallCount += 1;
-          return { models: [{ name: 'models/gemini-3.5-flash' }, { name: 'models/gemini-3.5-flash-lite' }] };
+          return { models: [{ name: 'models/gemini-3.6-flash' }, { name: 'models/gemini-3.5-flash-lite' }] };
         },
         generateContent: async (req) => {
           calledModels.push(req.model);
-          if (req.model === 'gemini-3.5-flash') {
-            const err = new Error('models/gemini-3.5-flash NOT_FOUND') as Error & { status?: number };
+          if (req.model === 'gemini-3.6-flash') {
+            const err = new Error('models/gemini-3.6-flash NOT_FOUND') as Error & { status?: number };
             err.status = 404;
             throw err;
           }
@@ -397,7 +397,7 @@ test('KVV Zelzate Fix #5 & Gemini 404 retry: MatchLogArchive explicitly labels s
     { reasoningMode: 'deep_high' }
   );
   assert.equal((result as { text?: string }).text, '{"ok":true}');
-  assert.deepEqual(calledModels, ['gemini-3.5-flash', 'gemini-3.5-flash-lite']);
+  assert.deepEqual(calledModels, ['gemini-3.6-flash', 'gemini-3.5-flash-lite']);
   assert.equal(listCallCount, 1);
 
   // Discovery cache was invalidated on 404, so next discoverModels re-fetches

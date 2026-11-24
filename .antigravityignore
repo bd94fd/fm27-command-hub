@@ -1,0 +1,13 @@
+# Antigravity context & indexing exclusions (conserves tokens & quota)
+package-lock.json
+node_modules/
+dist/
+build/
+coverage/
+public/__pycache__/
+src/utils/__fixtures__/
+.agents/teamwork/
+*.fm
+*.zip
+*.pyc
+*.log

@@ -74,6 +74,11 @@ def _fallback_count(section: str) -> int:
     return int(_PATCH_TELEMETRY["fallbacks"].get(section, 0))
 
 
+def reset_patch_telemetry() -> None:
+    """Clear per-save fallback counts so consecutive imports in a reused worker start clean."""
+    _PATCH_TELEMETRY["fallbacks"] = {}
+
+
 def _build_core(build_str: str) -> str:
     return str(build_str or "").split("+", 1)[0].strip()
 
@@ -524,7 +529,8 @@ def apply_fmsave_runtime_patches() -> bool:
                 if layouts.table is fm27_27_1_0.CLUB_TABLE
                 else fm27_27_1_0.CLUB_TABLE
             )
-            _note_fallback("club_table")
+            # Attaching a preventive fallback_table is normal runtime overlay behavior ("patched"),
+            # not an active fallback recovery — never trigger a false calibration advisory on clean saves.
             return replace(layouts, fallback_table=alt_table)
         return layouts
 

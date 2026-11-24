@@ -50,7 +50,7 @@ const GROUP_TO_POSITIONS: Record<string, string[]> = {
   'Attacking midfield': ['AMC'],
   'Wide midfield': ['ML', 'MR'],
   'Wide attack': ['AML', 'AMR'],
-  Striker: ['STC'],
+  Striker: ['STC', 'ST'],
 };
 
 const MIN_POSITION_RATING = 15;
@@ -162,18 +162,40 @@ export function computeTouchlineAttributeFit(
 
 function inferPositionRatings(player: PlayerRecord): Record<string, number> {
   if (player.positionRatings && Object.keys(player.positionRatings).length > 0) {
-    return player.positionRatings;
+    const normalized: Record<string, number> = {};
+    for (const [k, v] of Object.entries(player.positionRatings)) {
+      const up = k.trim().toUpperCase();
+      if (!up || typeof v !== 'number' || !Number.isFinite(v)) continue;
+      normalized[up] = Math.max(normalized[up] ?? 0, v);
+      if (up === 'ST') {
+        normalized['STC'] = Math.max(normalized['STC'] ?? 0, v);
+      } else if (up === 'STC') {
+        normalized['ST'] = Math.max(normalized['ST'] ?? 0, v);
+      }
+    }
+    if (Object.keys(normalized).length > 0) {
+      return normalized;
+    }
   }
   const map: Record<string, number> = {};
   const primary = player.position.toUpperCase().replace(/[^A-Z,/\s]/g, '');
   const tokens = primary.split(/[\s,/]+/).filter(Boolean);
   for (const tok of tokens) {
-    if (tok === 'ST') map['STC'] = 20;
-    else map[tok] = 20;
+    if (tok === 'ST' || tok === 'STC') {
+      map['STC'] = 20;
+      map['ST'] = 20;
+    } else {
+      map[tok] = 20;
+    }
   }
   for (const sec of player.secondaryPositions ?? []) {
-    const code = sec.toUpperCase() === 'ST' ? 'STC' : sec.toUpperCase();
-    if (!(code in map)) map[code] = 15;
+    const up = sec.toUpperCase();
+    if (up === 'ST' || up === 'STC') {
+      if (!('STC' in map)) map['STC'] = 15;
+      if (!('ST' in map)) map['ST'] = 15;
+    } else if (!(up in map)) {
+      map[up] = 15;
+    }
   }
   return map;
 }

@@ -460,10 +460,6 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
     return exact.length > 0 ? exact : OUT_OF_POSSESSION_ROLES;
   }, [selectedSlot]);
 
-  if (players.length === 0) {
-    return null;
-  }
-
   const activeAvgFit = useMemo(() => {
     const filled = activeSlots.filter((s) => s.player !== null);
     if (filled.length === 0) return 0;
@@ -471,6 +467,10 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
       filled.reduce((sum, s) => sum + s.combinedFitPct, 0) / filled.length
     );
   }, [activeSlots]);
+
+  if (players.length === 0) {
+    return null;
+  }
 
   return (
     <div className="p-4 sm:p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-4">

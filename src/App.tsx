@@ -78,6 +78,7 @@ import {
   DeepJourneyReport,
   listSaveHistoryPoints,
   putSaveHistoryPoint,
+  type SaveHistoryPoint,
 } from './services/saveCache';
 import {
   buildClubGovernanceState,
@@ -401,37 +402,78 @@ export default function App() {
       applyPersistedSnapshot(saved);
     }
 
-    void loadPersistedFmStateFromIndexedDb().then((idbSaved) => {
-      // A reset may have landed while the IndexedDB read was in flight
-      if (idbRestoreCancelledRef.current) return;
-      if (!hasPersistedContent(idbSaved)) return;
-      // Only a strictly newer IndexedDB cache may replace the localStorage session
-      if (!isIndexedDbSnapshotNewer(idbSaved, saved)) return;
-      applyPersistedSnapshot(idbSaved);
-    });
+    const buildSameClubBootJourney = (
+      items: SaveHistoryPoint[],
+      bootMatches: MatchLogEntry[]
+    ): DeepJourneyReport | null => {
+      if (items.length < 2) return null;
+      const latestClub = (items[0].clubName || '').trim().toLowerCase();
+      const sameClub = latestClub
+        ? items.filter(
+            (i) => (i.clubName || '').trim().toLowerCase() === latestClub
+          )
+        : items;
+      if (sameClub.length < 2) return null;
+      const parseSaveDateMs = (raw: string | undefined): number => {
+        if (!raw) return 0;
+        const dmy = raw.trim().match(/^(\d{1,2})\/(\d{1,2})\/(20\d{2})$/);
+        if (dmy) {
+          return Date.UTC(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
+        }
+        const parsed = Date.parse(raw);
+        return Number.isNaN(parsed) ? 0 : parsed;
+      };
+      const chronological = [...sameClub].sort((a, b) => {
+        const da = parseSaveDateMs(a.inGameDate);
+        const db = parseSaveDateMs(b.inGameDate);
+        if (da !== db) return db - da;
+        return b.capturedAt.localeCompare(a.capturedAt);
+      });
+      return buildDeepJourneyReport(
+        chronological[1],
+        chronological[0],
+        sameClub,
+        bootMatches
+      );
+    };
 
-    // Hydrate Save-to-Save Journey Report immediately on boot so Analyst Chat always has it
-    void listSaveHistoryPoints().then((items) => {
-      if (idbRestoreCancelledRef.current) return;
-      if (items.length >= 2) {
-        const initialMatches = saved?.matches ?? [];
-        const report = buildDeepJourneyReport(
-          items[1],
-          items[0],
-          items,
-          initialMatches
-        );
-        setLatestJourneyReport(report);
-      }
-    });
+    void loadPersistedFmStateFromIndexedDb()
+      .then((idbSaved) => {
+        // A reset may have landed while the IndexedDB read was in flight
+        if (idbRestoreCancelledRef.current) return saved;
+        if (!hasPersistedContent(idbSaved)) return saved;
+        // Only a strictly newer IndexedDB cache may replace the localStorage session
+        if (!isIndexedDbSnapshotNewer(idbSaved, saved)) return saved;
+        applyPersistedSnapshot(idbSaved);
+        return idbSaved;
+      })
+      .then((activeSnapshot) => {
+        // Only unlock auto-save after IndexedDB recency resolution completes so
+        // an older localStorage restore can never overwrite a newer IndexedDB snapshot.
+        skipNextAutosaveRef.current = false;
+        if (idbRestoreCancelledRef.current) return;
+        // Hydrate Save-to-Save Journey Report immediately on boot so Analyst Chat always has it
+        void listSaveHistoryPoints().then((items) => {
+          if (idbRestoreCancelledRef.current) return;
+          const report = buildSameClubBootJourney(
+            items,
+            activeSnapshot?.matches ?? []
+          );
+          if (report) {
+            setLatestJourneyReport(report);
+          }
+        });
+      })
+      .catch(() => {
+        skipNextAutosaveRef.current = false;
+      });
   }, [applyPersistedSnapshot]);
 
   // Automatically persist non-empty state across browser refreshes & sessions
   useEffect(() => {
-    // The first pass still holds pre-restore defaults; persisting them would clobber
-    // the snapshot the mount effect is restoring (and beat the IndexedDB recency check).
+    // Wait until initial mount restore (incl. IndexedDB recency check) has settled
+    // so an older localStorage snapshot never clobbers a newer IndexedDB cache.
     if (skipNextAutosaveRef.current) {
-      skipNextAutosaveRef.current = false;
       return;
     }
     if (isResettingRef.current) return;
@@ -557,8 +599,44 @@ export default function App() {
   };
 
   const handleExportBackup = () => {
-    const json = exportFmStateBackupJson();
-    if (!json) return;
+    let json = exportFmStateBackupJson();
+    // Fall back to live in-memory React state for large saves persisted in IndexedDB only
+    if (
+      !json &&
+      (players.length > 0 ||
+        matches.length > 0 ||
+        staff.length > 0 ||
+        recruitmentCases.length > 0 ||
+        shortlists.length > 0)
+    ) {
+      json = JSON.stringify(
+        {
+          version: 1,
+          lastSyncedAt: new Date().toISOString(),
+          saveDate,
+          nextFixture,
+          leagueStandingSub,
+          wageSpend,
+          balance,
+          clubName: hydratedFmSave?.decodedPayload?.meta?.clubName,
+          players,
+          matches,
+          staff,
+          recruitmentCases,
+          shortlists,
+          hydratedFmSave,
+          activeShape,
+          customSlots,
+          applyToAnalystOnly,
+        },
+        null,
+        2
+      );
+    }
+    if (!json) {
+      showGlobalToast('No loaded save data to back up yet');
+      return;
+    }
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -674,7 +752,7 @@ export default function App() {
         hydrated.updatedSquad
       );
       const parsedPos = Number(
-        (hydrated.leagueStandingLabel || '').match(/^(\d+)/)?.[1] ?? ''
+        (hydrated.leagueStandingLabel || '').match(/^#?(\d+)/)?.[1] ?? ''
       );
       const standing = decoded.leagueStanding;
       const promisesAtRisk =
@@ -725,11 +803,32 @@ export default function App() {
         .then(async () => {
           const items = await listSaveHistoryPoints();
           setSnapshotResetNonce((n) => n + 1);
-          if (items.length >= 2) {
+          const targetClub = (snapshotPoint.clubName || '').trim().toLowerCase();
+          const sameClub = targetClub
+            ? items.filter(
+                (i) => (i.clubName || '').trim().toLowerCase() === targetClub
+              )
+            : items;
+          if (sameClub.length >= 2) {
+            const parseSaveDateMs = (raw: string | undefined): number => {
+              if (!raw) return 0;
+              const dmy = raw.trim().match(/^(\d{1,2})\/(\d{1,2})\/(20\d{2})$/);
+              if (dmy) {
+                return Date.UTC(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
+              }
+              const parsed = Date.parse(raw);
+              return Number.isNaN(parsed) ? 0 : parsed;
+            };
+            const chronological = [...sameClub].sort((a, b) => {
+              const da = parseSaveDateMs(a.inGameDate);
+              const db = parseSaveDateMs(b.inGameDate);
+              if (da !== db) return db - da;
+              return b.capturedAt.localeCompare(a.capturedAt);
+            });
             const report = buildDeepJourneyReport(
-              items[1],
-              items[0],
-              items,
+              chronological[1],
+              chronological[0],
+              sameClub,
               hydrated.updatedMatches
             );
             setLatestJourneyReport(report);
@@ -1302,6 +1401,28 @@ export default function App() {
                 matches={matches}
                 clubName={hydratedFmSave?.decodedPayload?.meta?.clubName}
                 saveDate={saveDate}
+                finances={
+                  hydratedFmSave?.decodedPayload?.finances ||
+                  hydratedFmSave?.canonicalBalanceNum !== null
+                    ? {
+                        balanceNum:
+                          hydratedFmSave?.canonicalBalanceNum ??
+                          hydratedFmSave?.decodedPayload?.finances?.balance ??
+                          null,
+                        wagePayrollWeekly:
+                          hydratedFmSave?.decodedPayload?.finances
+                            ?.wagePayrollWeekly ?? null,
+                        wageBudgetWeekly:
+                          hydratedFmSave?.decodedPayload?.finances
+                            ?.wageBudgetWeekly ?? null,
+                        transferBudgetRemaining:
+                          hydratedFmSave?.decodedPayload?.finances
+                            ?.transferBudgetRemaining ?? null,
+                        monthlyBurnRate:
+                          hydratedFmSave?.financialRunway?.monthlyBurnRate ?? null,
+                      }
+                    : null
+                }
                 divisionBenchmarks={hydratedFmSave?.divisionBenchmarks ?? null}
                 governance={liveGovernance ?? hydratedFmSave?.governance ?? null}
                 lastMatchTactic={liveLastMatchTactic ?? hydratedFmSave?.lastMatchTactic ?? null}

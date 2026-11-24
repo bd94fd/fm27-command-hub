@@ -180,12 +180,13 @@ export function evaluateSquadPlayerCard(
     governance?: ClubGovernanceState | null;
     activeTactic?: LastMatchTacticBlueprint | null;
     transferVerdict?: TransferActionVerdict | null;
+    clubDnaWeights?: Parameters<typeof evaluatePlayerClubDna>[2];
   }
 ): CardIntelligenceSummary {
   const dna = evaluatePlayerClubDna(
     player.position,
     player.attributes,
-    undefined,
+    options?.clubDnaWeights,
     options?.divisionBenchmarks ?? null
   );
   const pizzaSlices = computePositionPercentilePizza(
@@ -284,7 +285,7 @@ export function evaluateSquadPlayerCard(
     ? `Last Tactic: ${tacticalSlot.inPossessionRole || player.ipRole} IP / ${tacticalSlot.outOfPossessionRole || player.oopRole} OOP`
     : `Best Fit: ${player.ipRole || 'Standard'} IP / ${player.oopRole || 'Standard'} OOP`;
 
-  const inlineRationale = `${verdictLabel} · DNA ${dna.overallDnaScore}% · ${valueTag}${
+  const inlineRationale = `DNA ${dna.overallDnaScore}% · ${valueTag}${
     promiseTag ? ` · ${promiseTag}` : ''
   }`;
 
@@ -312,13 +313,14 @@ export function evaluateScoutTargetCard(
     divisionBenchmarks?: DivisionBenchmarks | null;
     activeTactic?: LastMatchTacticBlueprint | null;
     governance?: ClubGovernanceState | null;
+    clubDnaWeights?: Parameters<typeof evaluatePlayerClubDna>[2];
   }
 ): ScoutCardIntelligenceSummary {
   const synthetic = buildScoutTargetPlayerRecord(target);
   const dna = evaluatePlayerClubDna(
     synthetic.position,
     synthetic.attributes,
-    undefined,
+    options?.clubDnaWeights,
     options?.divisionBenchmarks ?? null
   );
   const roleFit = computeTargetBestRoleFit(target);
@@ -364,7 +366,7 @@ export function evaluateScoutTargetCard(
     ? evaluatePlayerClubDna(
         starter.position,
         starter.attributes,
-        undefined,
+        options?.clubDnaWeights,
         options?.divisionBenchmarks ?? null
       ).overallDnaScore
     : null;
@@ -434,7 +436,7 @@ export function evaluateScoutTargetCard(
         ? `${comparison.ageDelta <= 0 ? `${Math.abs(comparison.ageDelta)}y younger` : `${comparison.ageDelta}y older`} · ${comparison.wageDelta <= 0 ? `£${Math.abs(comparison.wageDelta)}/wk cheaper` : `+£${comparison.wageDelta}/wk`}`
         : null;
 
-  const inlineRationale = `${verdictLabel} · ${starterBit} · ${valueTag}`;
+  const inlineRationale = `${starterBit} · ${valueTag}`;
 
   return {
     verdictLabel,

@@ -6,6 +6,7 @@ import {
   evaluateBackroomDepartmentEfficiency,
   formatStars,
   getBestStaffRoleRating,
+  isStaffContractExpiringSoon,
 } from './staffRatings';
 
 const sampleCoach: StaffRecord = {
@@ -84,6 +85,13 @@ test('calculateAllStaffRoleRatings applies 2x DDM weighting to coaching stars', 
   assert.equal(highDdm?.stars, 4.5);
   assert.equal(lowDdm?.stars, 3.0);
   assert.ok((highDdm?.score ?? 0) - (lowDdm?.score ?? 0) >= 25);
+});
+
+test('isStaffContractExpiringSoon parses UK DD/MM/YYYY and ISO YYYY-MM-DD dates accurately', () => {
+  assert.equal(isStaffContractExpiringSoon('30/06/2028', '15/02/2028'), true);
+  assert.equal(isStaffContractExpiringSoon('30/06/2029', '15/02/2028'), false);
+  assert.equal(isStaffContractExpiringSoon('2028-06-30', '2028-02-15'), true);
+  assert.equal(isStaffContractExpiringSoon('2029-06-30', '2028-02-15'), false);
 });
 
 

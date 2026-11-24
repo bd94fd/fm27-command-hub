@@ -357,6 +357,37 @@ export function buildCoachingCategoryMatrix(
   });
 }
 
+function parseFmDate(raw: string | undefined): Date | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === '--' || trimmed === 'Unknown') return null;
+
+  // UK FM27 format: DD/MM/YYYY (or DD-MM-YYYY)
+  const dmy = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](20\d{2})$/);
+  if (dmy) {
+    const day = Number(dmy[1]);
+    const month = Number(dmy[2]);
+    const year = Number(dmy[3]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return new Date(Date.UTC(year, month - 1, day));
+    }
+  }
+
+  // ISO format: YYYY-MM-DD
+  const iso = trimmed.match(/^(20\d{2})-(\d{1,2})-(\d{1,2})/);
+  if (iso) {
+    const year = Number(iso[1]);
+    const month = Number(iso[2]);
+    const day = Number(iso[3]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return new Date(Date.UTC(year, month - 1, day));
+    }
+  }
+
+  const parsed = Date.parse(trimmed);
+  return Number.isNaN(parsed) ? null : new Date(parsed);
+}
+
 /**
  * Flags staff contracts expiring within ~6 months of the save date (or in the current save year).
  */
@@ -369,15 +400,13 @@ export function isStaffContractExpiringSoon(
   if (!expYearMatch) return false;
   const expYear = Number(expYearMatch[1]);
 
-  const refDate =
-    saveDate && saveDate !== '--' && !Number.isNaN(Date.parse(saveDate))
-      ? new Date(saveDate)
-      : new Date();
-  const refYear = refDate.getFullYear();
+  const refDate = parseFmDate(saveDate) ?? new Date();
+  const refYear = refDate.getUTCFullYear();
 
-  const parsedExp = Date.parse(expires);
-  if (!Number.isNaN(parsedExp)) {
-    const diffDays = (parsedExp - refDate.getTime()) / (1000 * 60 * 60 * 24);
+  const parsedExp = parseFmDate(expires);
+  if (parsedExp) {
+    const diffDays =
+      (parsedExp.getTime() - refDate.getTime()) / (1000 * 60 * 60 * 24);
     return diffDays <= 190;
   }
   return expYear <= refYear;

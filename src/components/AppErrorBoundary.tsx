@@ -6,6 +6,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, RotateCcw } from 'lucide-react';
 import { clearPersistedFmState } from '../services/fmStorage';
+import { clearAllSaveCache } from '../services/saveCache';
 import { clearProgressionArchive } from '../utils/progressionDiff';
 
 interface AppErrorBoundaryProps {
@@ -54,6 +55,7 @@ export class AppErrorBoundary extends Component<
     try {
       await clearPersistedFmState();
       clearProgressionArchive();
+      await clearAllSaveCache();
     } catch {
       // ignore storage errors
     }

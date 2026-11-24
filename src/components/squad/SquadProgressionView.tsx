@@ -2,6 +2,7 @@ import React from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { Sparkles, Trash2, TrendingUp } from 'lucide-react';
 import type { PlayerRecord } from '../../types/fm27';
+import { MAX_PROGRESSION_SNAPSHOTS } from '../../utils/progressionDiff';
 import type { ProgressionDiffReport, ProgressionSnapshot } from '../../utils/progressionDiff';
 
 interface SquadProgressionViewProps {
@@ -48,7 +49,7 @@ export const SquadProgressionView: React.FC<SquadProgressionViewProps> = ({
           <p className="text-xs text-slate-600 dark:text-slate-400 max-w-md mx-auto">
             {progressionArchive.length === 1
               ? `1 snapshot captured (${progressionArchive[0].saveDate}). Sync a second .fm save from a later in-game date to unlock attribute risers/fallers, Mentoring Determination Jumps, and Youth Intake Radar.`
-              : 'Sync at least two .fm saves from different in-game dates to track rolling 30-save progression diffs.'}
+              : `Sync at least two .fm saves from different in-game dates to track rolling ${MAX_PROGRESSION_SNAPSHOTS}-save progression diffs.`}
           </p>
           {progressionArchive.length === 1 && (
             <button
@@ -77,7 +78,7 @@ export const SquadProgressionView: React.FC<SquadProgressionViewProps> = ({
               <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">
                 {progressionDiff.latestSaveDate}
               </span>{' '}
-              ({progressionArchive.length}/30 archived saves)
+              ({progressionArchive.length}/{MAX_PROGRESSION_SNAPSHOTS} archived saves)
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <label className="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">

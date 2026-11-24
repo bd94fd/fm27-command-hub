@@ -83,6 +83,7 @@ interface AttachedFmFile {
   badgeLabel: string;
   promptContext: string;
   parsedExport?: ParsedFmExportResult;
+  initialMergeResult?: SquadMergeResult;
   hydratedSave?: HydratedSaveState;
 }
 
@@ -342,7 +343,9 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         fmFile.parsedExport.parsedPlayers.length > 0 &&
         onBulkMergePlayers
       ) {
-        const mergeRes = onBulkMergePlayers(fmFile.parsedExport.parsedPlayers);
+        const mergeRes =
+          fmFile.initialMergeResult ??
+          onBulkMergePlayers(fmFile.parsedExport.parsedPlayers);
         if (mergeRes.changedPlayers.length > 0) {
           for (const cp of mergeRes.changedPlayers) {
             bulkUpdatedPlayerNames.push(cp.name);
@@ -635,6 +638,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             appendOfflineBriefing('AI service unavailable / offline');
             return;
           }
+          setTurns((prev) => prev.filter((t) => t.id !== userTurn.id));
           setChatFallbackNotice(null);
           setChatError(primaryDetail);
           return;
@@ -681,7 +685,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           id: `chat-match-${Date.now()}`,
           eventNumber: assignedEventNum,
           date: data.inGameDate || effectiveSaveDate,
-          competition: mf.competition || 'League / Cup',
+          competition: mf.competition || 'Competitive Match',
           opponent: mf.opponent,
           venue: mf.venue === 'H' ? 'H' : 'A',
           result:
@@ -737,10 +741,12 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           appendOfflineBriefing('AI service unavailable / offline');
           return;
         }
+        setTurns((prev) => prev.filter((t) => t.id !== userTurn.id));
         setChatFallbackNotice(null);
         setChatError(failureDetail);
         return;
       }
+      setTurns((prev) => prev.filter((t) => t.id !== userTurn.id));
       setChatFallbackNotice(null);
       setChatError(
         err instanceof Error
@@ -943,9 +949,10 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         try {
           const text = await file.text();
           const parsed = parseFmStructuredExport(text, file.name);
-          if (parsed.parsedPlayers.length > 0 && onBulkMergePlayers) {
-            onBulkMergePlayers(parsed.parsedPlayers);
-          }
+          const initialMergeResult =
+            parsed.parsedPlayers.length > 0 && onBulkMergePlayers
+              ? onBulkMergePlayers(parsed.parsedPlayers)
+              : undefined;
           if (parsed.detectedDate && onUpdateSaveDate) {
             onUpdateSaveDate(parsed.detectedDate);
           }
@@ -963,6 +970,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               badgeLabel: `${file.name} (${countDesc})`,
               promptContext: parsed.promptContext,
               parsedExport: parsed,
+              initialMergeResult,
             },
           ]);
         } catch {

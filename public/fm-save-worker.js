@@ -1,12 +1,12 @@
 /**
  * FM27 Command Hub — Browser Web Worker for local FM26/FM27 .fm Save Parsing.
  *
- * Uses Pyodide 3.14 (with native Python 3.14 zstd/zlib support) + fmsave (0.14.1)
+ * Uses Pyodide 3.14 (with native Python 3.14 zstd/zlib support) + fmsave (0.14.3)
  * + zero-copy WORKERFS so large 50–300 MB .fm save files are mounted and read
  * directly from disk inside the browser with zero network upload and zero ArrayBuffer copies.
  */
 
-const PYODIDE_VERSION = '314.0.7';
+const PYODIDE_VERSION = '314.0.8';
 const FMSAVE_VERSION = '0.14.3';
 const PYODIDE_INDEX_URL = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
 const MOUNT_DIR = '/mnt_save';
