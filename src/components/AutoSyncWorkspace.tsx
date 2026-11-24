@@ -48,7 +48,9 @@ import type {
 } from '../utils/fmSaveHydrator';
 import {
   buildCompactFmImportDeltaContext,
+  DEFAULT_CHAT_REASONING_MODE,
   formatAnalystModeLabel,
+  resolveChatTurnReasoningMode,
   shouldDefaultFastSync,
   formatStepTimingLabel,
   trimTrailingPeriod,
@@ -288,8 +290,9 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     useState<PreFlightPayloadValidationResult | null>(null);
   const [dismissedPreFlightSignature, setDismissedPreFlightSignature] =
     useState<string | null>(null);
-  const [reasoningMode, setReasoningMode] =
-    useState<AnalystReasoningMode>('deep_high');
+  const [reasoningMode, setReasoningMode] = useState<AnalystReasoningMode>(
+    DEFAULT_CHAT_REASONING_MODE
+  );
   const [messageInput, setMessageInput] = useState('');
   const [uploadedImages, setUploadedImages] = useState<
     Array<{ base64: string; mimeType: string; name: string }>
@@ -497,12 +500,16 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     imagesToSend: Array<{ base64: string; mimeType: string; name: string }>;
     fmFilesToSend: AttachedFmFile[];
     journeyReportOverride?: DeepJourneyReport | null;
+    isJourneyComparison?: boolean;
+    reasoningModeOverride?: AnalystReasoningMode;
   }) => {
     const {
       promptText,
       imagesToSend,
       fmFilesToSend,
       journeyReportOverride,
+      isJourneyComparison,
+      reasoningModeOverride,
     } = params;
 
     const bulkMergedDiffSummaries: string[] = [];
@@ -739,13 +746,25 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
 
       const historyForApi = buildConversationTranscript(priorTurnsForHistory, 6);
 
+      const isFmSaveImportTurn = fmFilesToSend.some(
+        (f) => f.kind === 'FM_SAVE_DECODED'
+      );
+      const effectiveReasoningMode = resolveChatTurnReasoningMode(
+        reasoningMode,
+        {
+          isFmSaveImport: isFmSaveImportTurn,
+          isJourneyComparison,
+          explicitOverride: reasoningModeOverride,
+        }
+      );
+
       const requestPayload = {
         message: finalPrompt,
         history: historyForApi,
         images: imagesToSend,
         importedFileContext: importedFileContext || undefined,
         liveAppContext,
-        reasoningMode,
+        reasoningMode: effectiveReasoningMode,
         nextEventNumber: nextEventNum,
         currentSaveDate: effectiveSaveDate,
         clubName:
@@ -789,14 +808,15 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       };
 
       const isDeepAnalystMode =
-        reasoningMode === 'deep_high' || reasoningMode === 'max_xhigh';
-      const primaryModeLabel = formatAnalystModeLabel(reasoningMode);
+        effectiveReasoningMode === 'deep_high' ||
+        effectiveReasoningMode === 'max_xhigh';
+      const primaryModeLabel = formatAnalystModeLabel(effectiveReasoningMode);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let data: any;
       let failure: ApiResponseError | null = null;
       try {
-        data = await postTacticalChat(reasoningMode);
+        data = await postTacticalChat(effectiveReasoningMode);
       } catch (firstErr) {
         if (requestAbort?.signal.aborted) {
           updateTurnsForClub(targetClubKey, (prev) =>
@@ -824,7 +844,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             return;
           }
           try {
-            data = await postTacticalChat(reasoningMode);
+            data = await postTacticalChat(effectiveReasoningMode);
             failure = null;
           } catch (retryErr) {
             if (requestAbort?.signal.aborted) {
@@ -1627,9 +1647,9 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               }
               className="min-h-[44px] md:min-h-[32px] px-2.5 md:px-2 py-1 text-base md:text-[11px] font-medium bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded-lg"
             >
+              <option value="fast_lite">Fast Co-Pilot</option>
               <option value="deep_high">Deep Analyst</option>
               <option value="max_xhigh">Max Synthesis</option>
-              <option value="fast_lite">Fast Co-Pilot</option>
             </select>
 
             {showSyncStatusControl && (
@@ -2386,6 +2406,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                   promptText: prompt,
                   imagesToSend: [],
                   fmFilesToSend: [],
+                  isJourneyComparison: true,
                 });
               }}
             />

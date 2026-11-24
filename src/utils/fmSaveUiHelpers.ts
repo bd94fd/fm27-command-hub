@@ -40,6 +40,34 @@ export function formatStepTimingLabel(stepKey: string): string {
   return STEP_TIMING_LABELS[stepKey] || stepKey.replace(/_/g, ' ');
 }
 
+export type ChatReasoningModeOption = 'fast_lite' | 'deep_high' | 'max_xhigh';
+
+export const DEFAULT_CHAT_REASONING_MODE: ChatReasoningModeOption = 'fast_lite';
+
+/**
+ * Quota-smart routing for Free-tier Gemini keys:
+ * - First .fm save import audits and Save-to-Save Journey comparisons automatically
+ *   use the best model (`deep_high`, or `max_xhigh` if explicitly selected).
+ * - Everyday interactive chat defaults to `fast_lite` (Fast Co-Pilot) for higher
+ *   Free-tier quota and faster replies while still honouring manual mode switches.
+ */
+export function resolveChatTurnReasoningMode(
+  selectedMode: ChatReasoningModeOption,
+  options?: {
+    isFmSaveImport?: boolean;
+    isJourneyComparison?: boolean;
+    explicitOverride?: ChatReasoningModeOption;
+  }
+): ChatReasoningModeOption {
+  if (options?.explicitOverride) {
+    return options.explicitOverride;
+  }
+  if (options?.isFmSaveImport || options?.isJourneyComparison) {
+    return selectedMode === 'max_xhigh' ? 'max_xhigh' : 'deep_high';
+  }
+  return selectedMode;
+}
+
 export function formatAnalystModeLabel(mode: string): string {
   if (mode === 'max_xhigh') return 'Max Synthesis';
   if (mode === 'fast_lite') return 'Fast Co-Pilot';

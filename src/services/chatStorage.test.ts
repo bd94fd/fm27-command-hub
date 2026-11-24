@@ -142,3 +142,35 @@ test('fmSaveUiHelpers formats analyst modes cleanly, trims double periods, and k
   assert.doesNotMatch(delta, /docEventBulletBlock|sheetRowValues/);
 });
 
+test('resolveChatTurnReasoningMode uses Deep Analyst for .fm imports and save comparisons, and Fast Co-Pilot by default for regular chat', async () => {
+  const { DEFAULT_CHAT_REASONING_MODE, resolveChatTurnReasoningMode } =
+    await import('../utils/fmSaveUiHelpers.ts');
+
+  assert.equal(DEFAULT_CHAT_REASONING_MODE, 'fast_lite');
+  // Everyday chat respects default fast_lite and manual switches
+  assert.equal(resolveChatTurnReasoningMode('fast_lite'), 'fast_lite');
+  assert.equal(resolveChatTurnReasoningMode('deep_high'), 'deep_high');
+  assert.equal(resolveChatTurnReasoningMode('max_xhigh'), 'max_xhigh');
+
+  // First .fm save import automatically upgrades fast_lite -> deep_high (and keeps max_xhigh if chosen)
+  assert.equal(
+    resolveChatTurnReasoningMode('fast_lite', { isFmSaveImport: true }),
+    'deep_high'
+  );
+  assert.equal(
+    resolveChatTurnReasoningMode('max_xhigh', { isFmSaveImport: true }),
+    'max_xhigh'
+  );
+
+  // Save-to-save Journey comparisons automatically use deep_high
+  assert.equal(
+    resolveChatTurnReasoningMode('fast_lite', { isJourneyComparison: true }),
+    'deep_high'
+  );
+  assert.equal(
+    resolveChatTurnReasoningMode('fast_lite', { explicitOverride: 'deep_high' }),
+    'deep_high'
+  );
+});
+
+
