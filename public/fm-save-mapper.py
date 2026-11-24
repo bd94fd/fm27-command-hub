@@ -8649,10 +8649,13 @@ def _run_cli(argv: list[str] | None = None) -> int:
             try:
                 snap = json.loads(snapshot_json)
                 _attach_cli_meta(snap)
-                tmp_cp = f"{checkpoint_file}.tmp"
+                safe_stage = re.sub(r"[^a-zA-Z0-9_-]+", "_", str(stage_name or "stage")).strip("_") or "stage"
+                base_cp = checkpoint_file[:-5] if checkpoint_file.lower().endswith(".json") else checkpoint_file
+                stage_cp_file = f"{base_cp}-{safe_stage}.json"
+                tmp_cp = f"{stage_cp_file}.tmp"
                 with open(tmp_cp, "w", encoding="utf-8") as fh:
                     json.dump(snap, fh)
-                os.replace(tmp_cp, checkpoint_file)
+                os.replace(tmp_cp, stage_cp_file)
                 sys.stderr.write(f"CHECKPOINT: {stage_name}\n")
                 sys.stderr.flush()
             except Exception:

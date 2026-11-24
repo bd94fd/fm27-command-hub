@@ -27,7 +27,7 @@ const MAX_TRACKED_JOBS = 40;
 const STRICT_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TMP_UPLOAD_FILE_RE = /^fm27-save-[0-9a-f-]{36}\.fm$/i;
-const TMP_CHECKPOINT_FILE_RE = /^fm27-cp-[0-9a-f-]{36}\.json(?:\.tmp)?$/i;
+const TMP_CHECKPOINT_FILE_RE = /^fm27-cp-[0-9a-f-]{36}(?:-[a-z0-9_-]+)?\.json(?:\.tmp)?$/i;
 const ORPHAN_SWEEP_MIN_AGE_MS = PENDING_UPLOAD_TTL_MS;
 
 interface PendingUploadEntry {
@@ -298,6 +298,15 @@ function startAsyncNativeFmDecodeJob(
     os.tmpdir(),
     `fm27-cp-${jobId}.json`
   );
+  const buildStageCheckpointPath = (stageName: string): string => {
+    const safeStage =
+      stageName.replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') ||
+      'stage';
+    const base = tmpCheckpointPath.toLowerCase().endsWith('.json')
+      ? tmpCheckpointPath.slice(0, -5)
+      : tmpCheckpointPath;
+    return `${base}-${safeStage}.json`;
+  };
   const cliArgs = [
     mapperPath,
     '--file',
@@ -315,27 +324,27 @@ function startAsyncNativeFmDecodeJob(
     cliArgs.push('--club-hint', args.clubHint);
   }
 
+  const jobTempPaths = new Set<string>([
+    tmpSavePath,
+    tmpCheckpointPath,
+    `${tmpCheckpointPath}.tmp`,
+  ]);
+  for (const p of jobTempPaths) {
+    activeTempPaths.add(p);
+  }
+
   let cleanedUp = false;
   const cleanupTempFile = () => {
     if (cleanedUp) return;
     cleanedUp = true;
-    activeTempPaths.delete(tmpSavePath);
-    activeTempPaths.delete(tmpCheckpointPath);
-    activeTempPaths.delete(`${tmpCheckpointPath}.tmp`);
-    void fs.promises.unlink(tmpSavePath).catch(() => {
-      // ignore if already removed
-    });
-    void fs.promises.unlink(tmpCheckpointPath).catch(() => {
-      // ignore if already removed
-    });
-    void fs.promises.unlink(`${tmpCheckpointPath}.tmp`).catch(() => {
-      // ignore if already removed
-    });
+    for (const p of jobTempPaths) {
+      activeTempPaths.delete(p);
+      void fs.promises.unlink(p).catch(() => {
+        // ignore if already removed
+      });
+    }
+    jobTempPaths.clear();
   };
-
-  activeTempPaths.add(tmpSavePath);
-  activeTempPaths.add(tmpCheckpointPath);
-  activeTempPaths.add(`${tmpCheckpointPath}.tmp`);
 
   let child: ReturnType<typeof spawn>;
   try {
@@ -423,8 +432,22 @@ function startAsyncNativeFmDecodeJob(
         }
       } else if (/^CHECKPOINT:\s*/i.test(line)) {
         const stageName = line.replace(/^CHECKPOINT:\s*/i, '').trim() || 'stage_2_club_core';
+        const stageCpPath = buildStageCheckpointPath(stageName);
+        jobTempPaths.add(stageCpPath);
+        jobTempPaths.add(`${stageCpPath}.tmp`);
+        activeTempPaths.add(stageCpPath);
+        activeTempPaths.add(`${stageCpPath}.tmp`);
+
+        let readTargetPath = stageCpPath;
         void fs.promises
-          .readFile(tmpCheckpointPath, 'utf8')
+          .readFile(stageCpPath, 'utf8')
+          .catch((err: NodeJS.ErrnoException) => {
+            if (err && err.code === 'ENOENT') {
+              readTargetPath = tmpCheckpointPath;
+              return fs.promises.readFile(tmpCheckpointPath, 'utf8');
+            }
+            throw err;
+          })
           .then((rawCp) => {
             if (settled || job.status !== 'running') return;
             const parsedCp = JSON.parse(rawCp) as unknown;
@@ -437,7 +460,11 @@ function startAsyncNativeFmDecodeJob(
             // Non-fatal: final payload will still arrive
           })
           .finally(() => {
-            void fs.promises.unlink(tmpCheckpointPath).catch(() => {});
+            activeTempPaths.delete(readTargetPath);
+            activeTempPaths.delete(`${readTargetPath}.tmp`);
+            jobTempPaths.delete(readTargetPath);
+            jobTempPaths.delete(`${readTargetPath}.tmp`);
+            void fs.promises.unlink(readTargetPath).catch(() => {});
           });
       }
     }

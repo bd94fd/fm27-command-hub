@@ -30,11 +30,11 @@ These rules capture all hard-won lessons, architecture invariants, and quality s
 ---
 
 ## 4. Mobile-Safe `.fm` Binary Save Parsing
-Applies to `public/fm-save-worker.js`, `public/fm-save-mapper.py`, `src/workers/fmSaveWorkerClient.ts`, and `src/services/fmSaveReader.ts`:
-- **Pyodide 3.14 Native Zstd + Zero-Copy `WORKERFS`:** Use Pyodide 3.14 native `compression.zstd` (never C-extension `backports.zstd`) and mount browser `File` objects via `WORKERFS`. When falling back to `BUFFER_TMP`, always unlink temp files in `finally`.
+Applies to `public/fm-save-worker.js`, `public/fm-save-mapper.py`, `public/fm_layout_patcher.py`, `src/workers/fmSaveWorkerClient.ts`, and `src/services/fmSaveReader.ts`:
+- **Pyodide 3.14 Native Zstd + Zero-Copy `WORKERFS`:** Use Pyodide 3.14 native `compression.zstd` (never C-extension `backports.zstd`) and mount browser `File` objects via `WORKERFS`. When falling back to `BUFFER_TMP`, always unlink temp files in `finally` (and refuse ArrayBuffers >64 MB on MEMFS).
 - **Single-Pass `game_db` Decode & Memory Hygiene:** Keep single-pass `game_db` decoding for large saves, scope queries strictly to `club_uid=managed_club_uid`, call `gc.collect()` between stages, and destroy PyProxies (`destroy?.()`).
 - **Full Sync Default on Mobile:** Default to Full Sync (not Fast Sync) on mobile devices.
-- **Mobile Resilience Guardrails:** Preserve the mobile tab-resume watchdog, extraction manifest, 20s fixtures cap, `fmsave 0.14.3+` staff attribute scaling, and squad pagination.
+- **Mobile & Render Resilience Guardrails:** Preserve the mobile hidden-tab watchdog, extraction manifest, 20s fixtures cap, `fmsave 0.14.3+` staff attribute scaling, Render 507 OOM fallback, future-patch self-diagnostics (`fm_layout_patcher.py`), and squad pagination.
 
 ---
 
@@ -60,6 +60,6 @@ Applies to `src/data/fm27Roles.json`, `src/utils/bestXiSolver.ts`, `src/utils/tr
 ---
 
 ## 7. AI Service, UX & Reliability Guardrails
-- **Gemini Timeouts & Failover (`server/config.ts`, `server/geminiService.ts`):** Preserve `45s` standard / `60s` deep Analyst timeouts, 503 overload retry delays, and automatic Fast-model failover (~67% primary budget / ~33% reserved for Fast failover).
-- **Silent Firebase Domain Errors:** Silently ignore Firebase `auth/unauthorized-domain` in the UI (console only — never show a user-facing error banner).
-- **Core UX Features to Preserve:** FM-style Squad view presets with customisable columns, mobile cards, and frozen-column table; plain-English Player Cards with squad-relative charts and PNG export; Youth Intake Radar & Succession Gap flags; offline PWA Service Worker, Screen Wake Lock, Cmd+K Command Palette, and React Error Boundaries.
+- **Gemini Timeouts, Context Budget & Failover (`server/config.ts`, `server/geminiService.ts`):** Preserve `45s` standard / `60s` deep Analyst timeouts, `18,000`-char live context budget, 503 overload retry delays, automatic Fast-model failover (`GEMINI_FAST_MODEL`, ~67% primary / ~33% Fast reserve), and JSON-only `/api` error responses.
+- **TypeScript Strict Mode:** Keep `"strict": true` enabled in `tsconfig.json` (with `dist` and `.agent` excluded) and ensure `npm run lint` passes with zero errors.
+- **Core UX Features to Preserve:** FM-style Squad view presets with customisable columns, mobile cards, and frozen-column table; plain-English Player Cards with squad-relative charts and PNG export; Youth Intake Radar & Succession Gap flags; offline PWA Service Worker (with `NetworkFirst` runtime worker/mapper/patcher assets), Screen Wake Lock, Cmd+K Command Palette, and React Error Boundaries.
