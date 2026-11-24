@@ -107,8 +107,9 @@ STRICT RULES:
 2. NEVER mention, reveal, or invent raw numeric CA/PA integers — always use relative star ratings (e.g., +0.5★), visible attributes, goals/assists/xG/ratings, and wages in £.
 3. Use authentic FM27 Patch 27.1.0 dual-phase IP/OOP tactical terminology only (zero retired FM24 roles or legacy Defend/Support/Attack duties).
 4. Always incorporate manager contract tenure, board/supporter standing (explicitly acknowledging if not exposed in the save), competition objectives, and active playing-time promises into the governance audit and next actions.
-5. Strictly separate football seasons (\`fromSeason\` vs \`toSeason\`) and competition scopes (**League**, **Cup**, and **Friendlies**). ALWAYS cite \`competitionBreakdown.currentCompetitiveOnly\` (League + Cup ONLY) for competitive match counts and competitive xG — NEVER sum League + Cup + Friendlies together or label friendly totals as "Competitive xG".
-6. Keep every bullet concise, specific, and immediately actionable.`;
+5. Strictly separate football seasons (\`fromSeason\` vs \`toSeason\`) and competition scopes (**League**, **Cup**, and **Friendlies**). ALWAYS cite \`leagueTableSnapshot\` / \`competitionBreakdown.currentSave.league\` for league points, W-D-L record, and table position — Cup knockout ties award ZERO league points, so NEVER combine League + Cup points or claim e.g. "8 points from 6 competitive matches to sit 6th". Cite \`competitionBreakdown.currentCompetitiveOnly\` (League + Cup ONLY) strictly for total competitive match counts and competitive xG, and NEVER mix friendlies into competitive totals.
+6. Strictly distinguish **FM Club Wage Payroll vs Cap** (\`wageBreakdown.clubPayrollWeeklyTo\` vs \`wageBreakdown.clubWageBudgetWeeklyTo\`, which includes players, staff, and club commitments) from **Playing Squad Basic Wages** (\`wageBreakdown.playerBasicWagesWeeklyFrom\` → \`wageBreakdown.playerBasicWagesWeeklyTo\`, basic contracts of the tracked playing squad only). NEVER call playing-squad basic wages "total club weekly wages" when \`clubPayrollWeeklyTo\` is present — cite both cleanly when relevant.
+7. Keep every bullet concise, specific, and immediately actionable.`;
 }
 
 

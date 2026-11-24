@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { PlayerRecord } from '../types/fm27';
+import { MatchLogEntry, PlayerRecord } from '../types/fm27';
 import {
   classifyWageCompliance,
   formatClubMoney,
@@ -22,6 +22,12 @@ import {
 } from './progressionDiff';
 import { GeminiService } from '../../server/geminiService';
 import { loadServerConfig } from '../../server/config';
+import { buildJourneyReportSystemPrompt } from '../../server/prompts';
+import {
+  buildDeepJourneyReport,
+  createSaveHistoryPoint,
+  JOURNEY_BRIEFING_CACHE_PREFIX,
+} from '../services/saveCache';
 import { evaluateSeasonProduction, getRealShirtNumber } from './playerCardAnalysis';
 import { DecodedFmSavePayload, hydrateAppFromDecodedFmSave } from './fmSaveHydrator';
 
@@ -579,4 +585,111 @@ test('Irregularity fixes: pre-season 0 GP never blames Fast Sync, no fake shirt 
   assert.equal(cb.rating, 7.4);
   assert.equal(cb.statsSource, 'From Recent Matches');
 });
+
+test('Journey Report reconciles Club Wage Payroll vs Player Basic Wages and prevents fake Cup+League points', () => {
+  const prevPlayers = [
+    makePlayer({ id: 'p1', uid: 1, name: 'Player A', wagePw: 5000 }),
+    makePlayer({ id: 'p2', uid: 2, name: 'Player B', wagePw: 3090 }),
+  ];
+  const currPlayers = [
+    makePlayer({ id: 'p1', uid: 1, name: 'Player A', wagePw: 5000 }),
+    makePlayer({ id: 'p2', uid: 2, name: 'Player B', wagePw: 2987 }),
+  ];
+  const makeMatch = (overrides: Partial<MatchLogEntry>): MatchLogEntry => ({
+    id: 'm1',
+    eventNumber: 1,
+    date: '22/08/2027',
+    competition: 'Eerste Nationale VV',
+    opponent: 'Club',
+    venue: 'H',
+    score: '1-0',
+    result: 'W',
+    xGFor: 1.0,
+    xGAgainst: 0.8,
+    possession: 50,
+    passCompletion: 80,
+    shotsFor: '10',
+    shotsAgainst: '6',
+    cccFor: 1,
+    cccAgainst: 0,
+    goalTimeline: '',
+    potm: '',
+    tacticalAudit: '',
+    defensiveWatchpoints: '',
+    source: 'FM_SAVE',
+    ...overrides,
+  });
+  const liveMatches: MatchLogEntry[] = [
+    makeMatch({ id: 'l1', eventNumber: 1, date: '22/08/2027', opponent: 'Club 1', venue: 'H', score: '2-0', result: 'W', xGFor: 1.5, xGAgainst: 0.8 }),
+    makeMatch({ id: 'l2', eventNumber: 2, date: '29/08/2027', opponent: 'Club 2', venue: 'A', score: '2-1', result: 'W', xGFor: 1.2, xGAgainst: 1.1 }),
+    makeMatch({ id: 'l3', eventNumber: 3, date: '05/09/2027', opponent: 'Club 3', venue: 'H', score: '1-2', result: 'L', xGFor: 0.9, xGAgainst: 1.2 }),
+    makeMatch({ id: 'l4', eventNumber: 4, date: '12/09/2027', opponent: 'Club 4', venue: 'A', score: '0-1', result: 'L', xGFor: 0.68, xGAgainst: 0.94 }),
+    makeMatch({ id: 'c1', eventNumber: 5, date: '16/08/2027', competition: 'Croky Cup', opponent: 'Cup 1', venue: 'H', score: '1-1', result: 'D', xGFor: 2.1, xGAgainst: 1.7 }),
+    makeMatch({ id: 'c2', eventNumber: 6, date: '08/09/2027', competition: 'Croky Cup', opponent: 'Cup 2', venue: 'A', score: '1-1', result: 'D', xGFor: 2.14, xGAgainst: 1.92 }),
+  ];
+
+  // Previous legacy snapshot lacks wagePayrollWeekly; current snapshot has both club payroll & budget
+  const prevSnap = createSaveHistoryPoint({
+    saveName: 'auto save.fm',
+    inGameDate: '11/08/2027',
+    clubName: 'KVV Zelzate',
+    players: prevPlayers,
+    balance: '-£631K',
+    balanceNum: -631_000,
+    wageBudgetWeekly: 10203,
+  });
+  const currSnap = createSaveHistoryPoint({
+    saveName: 'auto save.fm',
+    inGameDate: '15/09/2027',
+    clubName: 'KVV Zelzate',
+    players: currPlayers,
+    matches: liveMatches,
+    balance: '-£749K',
+    balanceNum: -749_000,
+    wagePayrollWeekly: 10257,
+    wageBudgetWeekly: 10203,
+    leaguePosition: 6,
+    played: 4,
+    won: 2,
+    drawn: 0,
+    lost: 2,
+    points: 6,
+    goalsFor: 5,
+    goalsAgainst: 4,
+  });
+
+  const report = buildDeepJourneyReport(prevSnap, currSnap, [prevSnap, currSnap], liveMatches);
+
+  // 1. Club payroll is preserved alongside basic player wages without fabricating a fake delta vs legacy snapshot
+  assert.equal(report.baseDiff.kpiDeltas.fromTotalWagePw, 8090);
+  assert.equal(report.baseDiff.kpiDeltas.toTotalWagePw, 7987);
+  assert.equal(report.baseDiff.kpiDeltas.totalWageDeltaPw, -103);
+  assert.equal(report.baseDiff.kpiDeltas.fromClubWagePayrollWeekly, null);
+  assert.equal(report.baseDiff.kpiDeltas.toClubWagePayrollWeekly, 10257);
+  assert.equal(report.baseDiff.kpiDeltas.clubWagePayrollDeltaPw, null);
+  assert.equal(report.baseDiff.kpiDeltas.toWageBudgetWeekly, 10203);
+
+  const ai = report.aiPayload as Record<string, any>;
+  assert.equal(ai.wageBreakdown.clubPayrollWeeklyTo, 10257);
+  assert.equal(ai.wageBreakdown.clubWageBudgetWeeklyTo, 10203);
+  assert.equal(ai.wageBreakdown.playerBasicWagesWeeklyTo, 7987);
+  assert.equal(ai.wageBreakdown.playerBasicWagesDeltaPw, -103);
+
+  // 2. League table points are strictly 6 pts from 4 league GP, and Cup/Competitive buckets have NO fake points field
+  assert.equal(ai.leagueTableSnapshot.current.played, 4);
+  assert.equal(ai.leagueTableSnapshot.current.points, 6);
+  assert.equal(ai.leagueTableSnapshot.current.position, 6);
+  assert.equal(ai.competitionBreakdown.currentSave.league.points, 6);
+  assert.equal('points' in ai.competitionBreakdown.currentSave.cup, false);
+  assert.equal('points' in ai.competitionBreakdown.currentSave.friendly, false);
+  assert.equal('points' in ai.competitionBreakdown.currentCompetitiveOnly, false);
+  assert.equal(ai.competitionBreakdown.currentCompetitiveOnly.played, 6);
+
+  // 3. Cache prefix bumped so stale buggy narratives refresh cleanly, and prompt enforces both rules
+  assert.equal(JOURNEY_BRIEFING_CACHE_PREFIX, 'journey_brief_v2::');
+  const prompt = buildJourneyReportSystemPrompt('KVV Zelzate');
+  assert.match(prompt, /Cup knockout ties award ZERO league points/i);
+  assert.match(prompt, /FM Club Wage Payroll vs Cap/i);
+});
+
 

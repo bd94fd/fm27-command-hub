@@ -54,6 +54,7 @@ export interface SaveHistoryPoint {
   balance?: string;
   balanceNum?: number | null;
   monthlyBurnRate?: number | null;
+  wagePayrollWeekly?: number | null;
   wageBudgetWeekly?: number | null;
   leaguePosition?: number | null;
   played?: number | null;
@@ -93,6 +94,7 @@ export interface JourneyTimelinePoint {
   friendlyPlayed: number;
   balanceNum: number | null;
   totalWagePw: number;
+  clubWagePayrollWeekly?: number | null;
   avgAbility: number;
   avgAge: number;
   squadCount: number;
@@ -195,6 +197,10 @@ export interface SnapshotKpiDeltas {
   totalWageDeltaPw: number;
   fromTotalWagePw: number;
   toTotalWagePw: number;
+  fromClubWagePayrollWeekly?: number | null;
+  toClubWagePayrollWeekly?: number | null;
+  clubWagePayrollDeltaPw?: number | null;
+  toWageBudgetWeekly?: number | null;
   fromBalance?: string;
   toBalance?: string;
   fromLeaguePosition?: number | null;
@@ -236,6 +242,7 @@ export function createSaveHistoryPoint(params: {
   balance?: string;
   balanceNum?: number | null;
   monthlyBurnRate?: number | null;
+  wagePayrollWeekly?: number | null;
   wageBudgetWeekly?: number | null;
   leaguePosition?: number | null;
   played?: number | null;
@@ -314,6 +321,7 @@ export function createSaveHistoryPoint(params: {
     balance: params.balance,
     balanceNum: params.balanceNum ?? null,
     monthlyBurnRate: params.monthlyBurnRate ?? null,
+    wagePayrollWeekly: params.wagePayrollWeekly ?? null,
     wageBudgetWeekly: params.wageBudgetWeekly ?? null,
     leaguePosition: params.leaguePosition ?? null,
     played: params.played ?? null,
@@ -459,6 +467,18 @@ export function diffSaveHistoryPoints(
       : 0;
   const fromTotalWagePw = previous.players.reduce((sum, p) => sum + (p.wagePw || 0), 0);
   const toTotalWagePw = current.players.reduce((sum, p) => sum + (p.wagePw || 0), 0);
+  const fromClubWagePayrollWeekly =
+    typeof previous.wagePayrollWeekly === 'number' && Number.isFinite(previous.wagePayrollWeekly)
+      ? previous.wagePayrollWeekly
+      : null;
+  const toClubWagePayrollWeekly =
+    typeof current.wagePayrollWeekly === 'number' && Number.isFinite(current.wagePayrollWeekly)
+      ? current.wagePayrollWeekly
+      : null;
+  const clubWagePayrollDeltaPw =
+    fromClubWagePayrollWeekly !== null && toClubWagePayrollWeekly !== null
+      ? toClubWagePayrollWeekly - fromClubWagePayrollWeekly
+      : null;
 
   return {
     fromDate: previous.inGameDate,
@@ -479,6 +499,13 @@ export function diffSaveHistoryPoints(
       totalWageDeltaPw: toTotalWagePw - fromTotalWagePw,
       fromTotalWagePw,
       toTotalWagePw,
+      fromClubWagePayrollWeekly,
+      toClubWagePayrollWeekly,
+      clubWagePayrollDeltaPw,
+      toWageBudgetWeekly:
+        typeof current.wageBudgetWeekly === 'number' && Number.isFinite(current.wageBudgetWeekly)
+          ? current.wageBudgetWeekly
+          : null,
       fromBalance: previous.balance,
       toBalance: current.balance,
       fromLeaguePosition: previous.leaguePosition ?? null,
@@ -651,6 +678,10 @@ export function buildDeepJourneyReport(
       friendlyPlayed: snapBreakdown?.friendly.played ?? 0,
       balanceNum: s.balanceNum ?? null,
       totalWagePw,
+      clubWagePayrollWeekly:
+        typeof s.wagePayrollWeekly === 'number' && Number.isFinite(s.wagePayrollWeekly)
+          ? s.wagePayrollWeekly
+          : null,
       avgAbility,
       avgAge,
       squadCount,
@@ -975,6 +1006,24 @@ export function buildDeepJourneyReport(
     },
   };
 
+  // Strip league-style points from non-league buckets (Cup knockout ties, Friendlies, and combined
+  // Competitive totals) so AI narratives NEVER cite fake combined points (e.g. "8 pts from 6 matches"
+  // when 2 of those matches were Cup knockout draws worth 0 league points).
+  const stripNonLeaguePoints = (rec: CompetitionBucketRecord) => {
+    const { points: _omittedNonLeaguePoints, ...rest } = rec;
+    return rest;
+  };
+  const sanitizeBreakdownForAi = (bd: CompetitionScopeBreakdown | null) =>
+    bd
+      ? {
+          seasonLabel: bd.seasonLabel,
+          league: bd.league,
+          cup: stripNonLeaguePoints(bd.cup),
+          friendly: stripNonLeaguePoints(bd.friendly),
+          competitive: stripNonLeaguePoints(bd.competitive),
+        }
+      : null;
+
   const aiPayload = {
     clubName: current.clubName,
     fromDate: previous.inGameDate,
@@ -983,13 +1032,48 @@ export function buildDeepJourneyReport(
     toSeason,
     sameSeason,
     totalSavesTracked: timeline.length,
-    competitionBreakdown: {
-      previousSave: fromBreakdown,
-      currentSave: toBreakdown,
+    leagueTableSnapshot: {
+      previous: {
+        position: previous.leaguePosition ?? null,
+        played: previous.played ?? fromBreakdown?.league.played ?? null,
+        won: previous.won ?? fromBreakdown?.league.won ?? null,
+        drawn: previous.drawn ?? fromBreakdown?.league.drawn ?? null,
+        lost: previous.lost ?? fromBreakdown?.league.lost ?? null,
+        points: previous.points ?? fromBreakdown?.league.points ?? null,
+        goalsFor: previous.goalsFor ?? fromBreakdown?.league.goalsFor ?? null,
+        goalsAgainst: previous.goalsAgainst ?? fromBreakdown?.league.goalsAgainst ?? null,
+      },
+      current: {
+        position: current.leaguePosition ?? null,
+        played: current.played ?? toBreakdown?.league.played ?? null,
+        won: current.won ?? toBreakdown?.league.won ?? null,
+        drawn: current.drawn ?? toBreakdown?.league.drawn ?? null,
+        lost: current.lost ?? toBreakdown?.league.lost ?? null,
+        points: current.points ?? toBreakdown?.league.points ?? null,
+        goalsFor: current.goalsFor ?? toBreakdown?.league.goalsFor ?? null,
+        goalsAgainst: current.goalsAgainst ?? toBreakdown?.league.goalsAgainst ?? null,
+      },
       strictRule:
-        'competitive = league + cup ONLY. NEVER add friendly totals into competitive xG or match counts.',
-      currentCompetitiveOnly: toBreakdown?.competitive ?? null,
-      currentFriendlyOnly: toBreakdown?.friendly ?? null,
+        'ONLY league matches award league points. Cup knockout ties award ZERO league points — NEVER quote combined League+Cup points or claim Cup draws contribute to league points.',
+    },
+    competitionBreakdown: {
+      previousSave: sanitizeBreakdownForAi(fromBreakdown),
+      currentSave: sanitizeBreakdownForAi(toBreakdown),
+      strictRule:
+        'competitive = league + cup ONLY (for total competitive match counts and competitive xG). NEVER add friendly totals into competitive xG, and NEVER sum Cup results into League points.',
+      currentCompetitiveOnly: toBreakdown ? stripNonLeaguePoints(toBreakdown.competitive) : null,
+      currentFriendlyOnly: toBreakdown ? stripNonLeaguePoints(toBreakdown.friendly) : null,
+    },
+    wageBreakdown: {
+      clubPayrollWeeklyFrom: baseDiff.kpiDeltas.fromClubWagePayrollWeekly ?? null,
+      clubPayrollWeeklyTo: baseDiff.kpiDeltas.toClubWagePayrollWeekly ?? null,
+      clubPayrollDeltaPw: baseDiff.kpiDeltas.clubWagePayrollDeltaPw ?? null,
+      clubWageBudgetWeeklyTo: baseDiff.kpiDeltas.toWageBudgetWeekly ?? null,
+      playerBasicWagesWeeklyFrom: baseDiff.kpiDeltas.fromTotalWagePw,
+      playerBasicWagesWeeklyTo: baseDiff.kpiDeltas.toTotalWagePw,
+      playerBasicWagesDeltaPw: baseDiff.kpiDeltas.totalWageDeltaPw,
+      strictRule:
+        'clubPayrollWeekly is FM total club wage payroll (players + staff + committed club wages) measured against clubWageBudgetWeekly. playerBasicWagesWeekly is the sum of basic weekly contracts for tracked playing squad members ONLY. Always distinguish them and NEVER call playerBasicWagesWeekly total club weekly wages.',
     },
     kpiDeltas: baseDiff.kpiDeltas,
     timeline: timeline.slice(-8),
@@ -1051,19 +1135,24 @@ export function buildDeepJourneyReport(
   };
 }
 
+export const JOURNEY_BRIEFING_CACHE_PREFIX = 'journey_brief_v2::';
+
 export async function putCachedJourneyBriefing(
   fromKey: string,
   toKey: string,
   briefing: AiJourneyBriefingResult
 ): Promise<boolean> {
-  return putCachedSavePayload(`journey_brief::${fromKey}`, toKey, briefing);
+  return putCachedSavePayload(`${JOURNEY_BRIEFING_CACHE_PREFIX}${fromKey}`, toKey, briefing);
 }
 
 export async function getCachedJourneyBriefing(
   fromKey: string,
   toKey: string
 ): Promise<AiJourneyBriefingResult | null> {
-  return getCachedSavePayload<AiJourneyBriefingResult>(`journey_brief::${fromKey}`, toKey);
+  return getCachedSavePayload<AiJourneyBriefingResult>(
+    `${JOURNEY_BRIEFING_CACHE_PREFIX}${fromKey}`,
+    toKey
+  );
 }
 
 function openSaveCacheDb(): Promise<IDBDatabase | null> {
@@ -1596,7 +1685,7 @@ export async function getSaveCacheStats(): Promise<SaveCacheStats> {
         const keys = Array.isArray(keysReq.result) ? keysReq.result : [];
         for (const rawKey of keys) {
           const key = String(rawKey || '');
-          if (key.startsWith('journey_brief::')) {
+          if (key.startsWith('journey_brief::') || key.startsWith(JOURNEY_BRIEFING_CACHE_PREFIX)) {
             cachedBriefingsCount += 1;
           } else if (key.length > 0) {
             cachedSavesCount += 1;

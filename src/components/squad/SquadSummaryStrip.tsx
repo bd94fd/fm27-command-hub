@@ -32,7 +32,7 @@ export const SquadSummaryStrip: React.FC<SquadSummaryStripProps> = ({
         )}
         {summary.totalWagePw > 0 && (
           <span>
-            Wages{' '}
+            Player Wages{' '}
             <strong className="text-slate-800 dark:text-slate-200">
               {formatWeeklyWage(summary.totalWagePw)}
             </strong>

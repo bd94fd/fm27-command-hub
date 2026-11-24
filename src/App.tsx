@@ -921,6 +921,7 @@ export default function App() {
         balance: hydrated.balanceLabel || undefined,
         balanceNum: hydrated.canonicalBalanceNum ?? decoded.finances?.balance ?? null,
         monthlyBurnRate: hydrated.financialRunway?.monthlyBurnRate ?? null,
+        wagePayrollWeekly: decoded.finances?.wagePayrollWeekly ?? null,
         wageBudgetWeekly: decoded.finances?.wageBudgetWeekly ?? null,
         leaguePosition:
           standing?.position ?? (Number.isFinite(parsedPos) && parsedPos > 0 ? parsedPos : null),
@@ -1511,7 +1512,7 @@ export default function App() {
               <div>
                 <div className="text-xs text-slate-500 dark:text-slate-400">
                   {hydratedFmSave?.squadOutputLabel
-                    ? 'Live Squad Season Output (From .fm)'
+                    ? 'Live Squad Season Output (All Comp)'
                     : 'Cumulative Expected Goals'}
                 </div>
                 <div className="text-lg font-bold font-mono tabular-nums text-emerald-700 dark:text-emerald-400 mt-0.5">
@@ -1544,13 +1545,22 @@ export default function App() {
 
               <div>
                 <div className="text-xs text-slate-500 dark:text-slate-400">
-                  Club Finances &amp; Wage Compliance
+                  Club Payroll &amp; Wage Compliance
                 </div>
                 <div className="text-lg font-bold font-mono tabular-nums text-slate-900 dark:text-slate-100 mt-0.5">
                   {wageSpend}
                 </div>
                 <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                   Balance: {balance} · {players.length}-Man Squad
+                  {(() => {
+                    const basicSum = players.reduce((sum, p) => sum + (p.wagePw || 0), 0);
+                    const clubPayroll = hydratedFmSave?.decodedPayload?.finances?.wagePayrollWeekly;
+                    if (basicSum <= 0) return null;
+                    if (typeof clubPayroll === 'number' && Math.abs(clubPayroll - basicSum) < 5) {
+                      return null;
+                    }
+                    return ` · Player Basic: £${basicSum.toLocaleString()}/wk`;
+                  })()}
                 </div>
               </div>
             </div>

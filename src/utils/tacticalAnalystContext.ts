@@ -443,13 +443,15 @@ export function buildLiveTacticalAnalystContext(
       ? hydratedFmSave.activeSuspensions
       : players.flatMap((p) => p.activeSuspensions || []);
 
-  // 1. Club Standing, Next Opponent, Upcoming Schedule & Wage Runway
+  const squadBasicWageSum = players.reduce((s, p) => s + (p.wagePw || 0), 0);
   const clubLines: string[] = [
     '=== LIVE CLUB SNAPSHOT ===',
     `Club: ${clubName !== '--' ? clubName : decoded?.meta.clubName || 'Managed Club'} | Mgr: ${managerName !== '--' ? managerName : decoded?.meta.managerName || 'Human Manager'} | Date: ${saveDate}`,
     `Standing: ${hydratedFmSave?.leagueRecordLabel || `${summary.played}GP (${summary.wins}W-${summary.draws}D-${summary.losses}L, ${summary.points}Pts)`} · ${leagueStandingSub}`,
     `Next: ${nextFixture}${nextCompetitionName ? ` [${nextCompetitionName}]` : ''}`,
-    `Finances: Bal ${balance} | Wages ${wageSpend}${
+    `Finances: Bal ${balance} | Club Payroll ${wageSpend}${
+      squadBasicWageSum > 0 ? ` | Player Basic Wages £${squadBasicWageSum.toLocaleString()}/wk` : ''
+    }${
       hydratedFmSave?.financialRunway
         ? ` | Runway: ${hydratedFmSave.financialRunway.status} (${hydratedFmSave.financialRunway.runwayMonths < 999 ? `${hydratedFmSave.financialRunway.runwayMonths}m` : 'Pos'}, net £${Math.round(hydratedFmSave.financialRunway.monthlyBurnRate).toLocaleString()}/mo)`
         : ''
@@ -1340,7 +1342,12 @@ export function buildLiveTacticalAnalystContext(
     const compLine = compTo
       ? `Competition Split (${jr.toSeason}): League ${formatBucketCompactSummary(compTo.league)} | Cup ${formatBucketCompactSummary(compTo.cup)} | Friendlies ${formatBucketCompactSummary(compTo.friendly)}`
       : null;
-    const kpiLine = `KPI Deltas: Squad ${jr.baseDiff.kpiDeltas.toSquadCount} (${jr.baseDiff.kpiDeltas.squadCountDelta >= 0 ? '+' : ''}${jr.baseDiff.kpiDeltas.squadCountDelta}), Avg ★ ${jr.baseDiff.kpiDeltas.toAvgAbility.toFixed(2)} (${jr.baseDiff.kpiDeltas.avgAbilityDelta >= 0 ? '+' : ''}${jr.baseDiff.kpiDeltas.avgAbilityDelta.toFixed(2)}★), Wages £${jr.baseDiff.kpiDeltas.toTotalWagePw.toLocaleString()}/wk (${formatSignedCurrency(jr.baseDiff.kpiDeltas.totalWageDeltaPw)}/wk), Balance ${jr.baseDiff.kpiDeltas.fromBalance || '--'} -> ${jr.baseDiff.kpiDeltas.toBalance || '--'}`;
+    const clubPayrollPart =
+      typeof jr.baseDiff.kpiDeltas.toClubWagePayrollWeekly === 'number' &&
+      jr.baseDiff.kpiDeltas.toClubWagePayrollWeekly > 0
+        ? `, Club Payroll £${jr.baseDiff.kpiDeltas.toClubWagePayrollWeekly.toLocaleString()}/wk`
+        : '';
+    const kpiLine = `KPI Deltas: Squad ${jr.baseDiff.kpiDeltas.toSquadCount} (${jr.baseDiff.kpiDeltas.squadCountDelta >= 0 ? '+' : ''}${jr.baseDiff.kpiDeltas.squadCountDelta}), Avg ★ ${jr.baseDiff.kpiDeltas.toAvgAbility.toFixed(2)} (${jr.baseDiff.kpiDeltas.avgAbilityDelta >= 0 ? '+' : ''}${jr.baseDiff.kpiDeltas.avgAbilityDelta.toFixed(2)}★), Player Basic Wages £${jr.baseDiff.kpiDeltas.toTotalWagePw.toLocaleString()}/wk (${formatSignedCurrency(jr.baseDiff.kpiDeltas.totalWageDeltaPw)}/wk)${clubPayrollPart}, Balance ${jr.baseDiff.kpiDeltas.fromBalance || '--'} -> ${jr.baseDiff.kpiDeltas.toBalance || '--'}`;
     const journeyHeader = `=== SAVE-TO-SAVE JOURNEY REPORT (${jr.fromDate} [${jr.fromSeason}] -> ${jr.toDate} [${jr.toSeason}], ${jr.timeline.length} saves${jr.sameSeason ? '' : ' — CROSS-SEASON'}) ===`;
     blocks.push({
       id: 'journey_report',

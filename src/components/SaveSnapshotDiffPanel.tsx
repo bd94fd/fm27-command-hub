@@ -375,7 +375,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
       timelineMetric === 'avgAbility'
         ? 'Mean Current Ability (★) across tracked squad'
         : timelineMetric === 'totalWagePw'
-          ? 'Total weekly playing-squad payroll (£/wk)'
+          ? 'Basic weekly playing-squad contracts (£/wk — excludes staff & club commitments)'
           : timelineMetric === 'xgDiff'
             ? 'Competitive xG Differential (League + Cup ONLY — excludes friendlies)'
             : 'League table standing (higher line = better table rank)';
@@ -408,7 +408,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
             {(
               [
                 { id: 'avgAbility', label: 'Avg Stars ★' },
-                { id: 'totalWagePw', label: 'Wage Bill' },
+                { id: 'totalWagePw', label: 'Player Wages' },
                 { id: 'xgDiff', label: 'Comp xG' },
                 { id: 'leaguePosition', label: 'League Pos' },
               ] as const
@@ -661,7 +661,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
 
                 <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3">
                   <div className="text-[10px] uppercase tracking-wider text-slate-400">
-                    Weekly Wage Bill
+                    Player Wages (Basic)
                   </div>
                   <div className="mt-1 flex items-baseline justify-between font-mono tabular-nums">
                     <span className="text-sm font-bold text-white">
@@ -677,6 +677,17 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                       {formatSignedCurrency(diff.kpiDeltas.totalWageDeltaPw)}
                     </span>
                   </div>
+                  {typeof diff.kpiDeltas.toClubWagePayrollWeekly === 'number' &&
+                    diff.kpiDeltas.toClubWagePayrollWeekly > 0 && (
+                      <div className="mt-0.5 text-[10px] font-mono text-slate-400 tabular-nums truncate">
+                        Club Payroll: £{diff.kpiDeltas.toClubWagePayrollWeekly.toLocaleString()}
+                        {typeof diff.kpiDeltas.toWageBudgetWeekly === 'number' &&
+                        diff.kpiDeltas.toWageBudgetWeekly > 0
+                          ? ` / £${diff.kpiDeltas.toWageBudgetWeekly.toLocaleString()}`
+                          : ''}{' '}
+                        p/w
+                      </div>
+                    )}
                 </div>
 
                 <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3">
@@ -720,6 +731,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                       [
                         {
                           label: 'League',
+                          isLeague: true,
                           rec: journey.competitionComparison.to.league,
                           prev: journey.sameSeason ? journey.competitionComparison.from?.league ?? null : null,
                           tone: 'text-emerald-300 border-emerald-500/30 bg-emerald-950/15',
@@ -727,13 +739,15 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                         },
                         {
                           label: 'Cup',
+                          isLeague: false,
                           rec: journey.competitionComparison.to.cup,
                           prev: journey.sameSeason ? journey.competitionComparison.from?.cup ?? null : null,
                           tone: 'text-sky-300 border-sky-500/30 bg-sky-950/15',
-                          subtitle: 'Knockout ties · included in competitive xG',
+                          subtitle: 'Knockout ties · 0 league pts · in comp xG',
                         },
                         {
                           label: 'Friendlies',
+                          isLeague: false,
                           rec: journey.competitionComparison.to.friendly,
                           prev: journey.sameSeason ? journey.competitionComparison.from?.friendly ?? null : null,
                           tone: 'text-amber-300 border-amber-500/25 bg-amber-950/10',
@@ -742,7 +756,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                       ] as const
                     ).map((bucket) => {
                       const ppg =
-                        bucket.rec.played > 0
+                        bucket.isLeague && bucket.rec.played > 0
                           ? (bucket.rec.points / bucket.rec.played).toFixed(2)
                           : null;
                       const winPct =
@@ -780,7 +794,9 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                               </div>
                               <div className="flex flex-wrap items-center justify-between gap-1 text-[10px] text-slate-300">
                                 <span>
-                                  {ppg} PPG · {winPct}% Win
+                                  {bucket.isLeague
+                                    ? `${bucket.rec.points} Pts · ${ppg} PPG · ${winPct}% Win`
+                                    : `${winPct}% Win`}
                                 </span>
                                 <span>
                                   {bucket.rec.xgFor !== null && bucket.rec.xgAgainst !== null
