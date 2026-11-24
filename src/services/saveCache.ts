@@ -1099,10 +1099,30 @@ export async function putCachedSavePayload<T>(
   return new Promise((resolve) => {
     try {
       const tx = db.transaction(SAVE_CACHE_STORE, 'readwrite');
-      tx.objectStore(SAVE_CACHE_STORE).put(
-        { key, cachedAt: new Date().toISOString(), payload },
-        key
-      );
+      const store = tx.objectStore(SAVE_CACHE_STORE);
+      const cachedAt = new Date().toISOString();
+      store.put({ key, cachedAt, payload }, key);
+
+      const allReq = store.getAll();
+      allReq.onsuccess = () => {
+        const all = (allReq.result as Array<{ key?: string; cachedAt?: string }>) || [];
+        if (all.length > MAX_CACHED_SAVES) {
+          all.sort((a, b) => {
+            const cmp = (a.cachedAt || '').localeCompare(b.cachedAt || '');
+            if (cmp !== 0) return cmp;
+            if (a.key === key && b.key !== key) return 1;
+            if (b.key === key && a.key !== key) return -1;
+            return 0;
+          });
+          const excess = all.slice(0, all.length - MAX_CACHED_SAVES);
+          for (const old of excess) {
+            if (old?.key) {
+              store.delete(old.key);
+            }
+          }
+        }
+      };
+
       tx.oncomplete = () => {
         db.close();
         resolve(true);

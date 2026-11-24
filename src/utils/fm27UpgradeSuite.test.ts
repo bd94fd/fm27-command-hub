@@ -12,10 +12,14 @@ import {
   evaluateSquadPlayerCard,
 } from './cardIntelligenceEngine';
 import {
+  MAX_CACHED_SAVES,
+  SAVE_CACHE_STORE,
   buildDeepJourneyReport,
   clearAllSaveCache,
   clearSaveHistoryPoints,
   createSaveHistoryPoint,
+  getCachedSavePayload,
+  putCachedSavePayload,
 } from '../services/saveCache';
 import { buildLiveTacticalAnalystContext } from './tacticalAnalystContext';
 import { JOURNEY_REPORT_SCHEMA } from '../../server/schemas';
@@ -519,6 +523,94 @@ test('clearSaveHistoryPoints and clearAllSaveCache degrade cleanly when IndexedD
   const allCleared = await clearAllSaveCache();
   assert.equal(typeof historyCleared, 'boolean');
   assert.equal(typeof allCleared, 'boolean');
+});
+
+test('putCachedSavePayload enforces MAX_CACHED_SAVES limit in parsed_saves', async () => {
+  const stores = new Map<string, Map<string, unknown>>([
+    [SAVE_CACHE_STORE, new Map()],
+  ]);
+  const originalIndexedDb = (globalThis as { indexedDB?: unknown }).indexedDB;
+
+  const mockIndexedDb = {
+    open: () => {
+      const openReq: Record<string, unknown> = {
+        result: {
+          objectStoreNames: { contains: (name: string) => stores.has(name) },
+          createObjectStore: (name: string) => {
+            if (!stores.has(name)) stores.set(name, new Map());
+          },
+          close: () => {},
+          transaction: (storeName: string) => {
+            const storeMap = stores.get(storeName) ?? new Map<string, unknown>();
+            const tx: Record<string, unknown> = {
+              oncomplete: null as (() => void) | null,
+              onerror: null as (() => void) | null,
+              objectStore: () => ({
+                put: (val: unknown, key: string) => {
+                  storeMap.set(key, val);
+                },
+                get: (key: string) => {
+                  const req: Record<string, unknown> = {
+                    result: storeMap.get(key),
+                    onsuccess: null as (() => void) | null,
+                    onerror: null as (() => void) | null,
+                  };
+                  queueMicrotask(() => (req.onsuccess as (() => void) | null)?.());
+                  return req;
+                },
+                getAll: () => {
+                  const req: Record<string, unknown> = {
+                    result: Array.from(storeMap.values()),
+                    onsuccess: null as (() => void) | null,
+                    onerror: null as (() => void) | null,
+                  };
+                  queueMicrotask(() => {
+                    (req.onsuccess as (() => void) | null)?.();
+                    queueMicrotask(() => (tx.oncomplete as (() => void) | null)?.());
+                  });
+                  return req;
+                },
+                delete: (key: string) => {
+                  storeMap.delete(key);
+                },
+              }),
+            };
+            return tx;
+          },
+        },
+        onupgradeneeded: null as (() => void) | null,
+        onsuccess: null as (() => void) | null,
+        onerror: null as (() => void) | null,
+      };
+      queueMicrotask(() => (openReq.onsuccess as (() => void) | null)?.());
+      return openReq;
+    },
+  };
+
+  (globalThis as { indexedDB?: unknown }).indexedDB = mockIndexedDb;
+  try {
+    assert.equal(MAX_CACHED_SAVES, 5);
+    for (let i = 1; i <= MAX_CACHED_SAVES + 2; i++) {
+      const ok = await putCachedSavePayload('auto_save.fm', `0${i}/08/2027`, { idx: i });
+      assert.equal(ok, true);
+      await new Promise((r) => setTimeout(r, 2));
+    }
+
+    const storeMap = stores.get(SAVE_CACHE_STORE)!;
+    assert.equal(storeMap.size, MAX_CACHED_SAVES);
+
+    // Oldest two entries (idx 1 and 2) should have been evicted; newest 5 remain
+    assert.equal(await getCachedSavePayload('auto_save.fm', '01/08/2027'), null);
+    assert.equal(await getCachedSavePayload('auto_save.fm', '02/08/2027'), null);
+    assert.deepEqual(await getCachedSavePayload('auto_save.fm', '03/08/2027'), { idx: 3 });
+    assert.deepEqual(await getCachedSavePayload('auto_save.fm', '07/08/2027'), { idx: 7 });
+  } finally {
+    if (originalIndexedDb === undefined) {
+      delete (globalThis as { indexedDB?: unknown }).indexedDB;
+    } else {
+      (globalThis as { indexedDB?: unknown }).indexedDB = originalIndexedDb;
+    }
+  }
 });
 
 test('squadPlannerHelper decodes raw FM27 27-slot indices, strips Setting 1..N placeholders, and explains FM27 IP/OOP roles', () => {
