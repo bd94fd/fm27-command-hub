@@ -18,7 +18,7 @@ Use this file to pick up any fresh mobile sprint chat in 1 turn without re-readi
 ## Sprint Status
 - [x] **Sprint 1A:** Android PWA icons (`180/192/512/maskable`), `manifest.json` shortcuts + `.fm` `file_handlers`, `index.html` viewport/safe areas, `vite.config.ts` `registerType: 'prompt'`, `usePwaLifecycle`, `PwaStatusBanners` (Offline / Safe Update / Install), `App.tsx` safe-area header & launch hooks.
 - [x] **Sprint 1B:** Resumable `.fm` uploads (`GET /upload/:uploadId/status`, `fmSaveReader.ts` pause/auto-pause/resume + speed/ETA), `useUploadWakeLock`, visual progress bar, `beforeunload`, Google Drive stall tip, always-visible mobile 1-tap "Sync .fm" button + tests.
-- [ ] **Sprint 2A:** `MobileBottomNav` (5 tabs, tap-active-to-scroll-top), `MobileMoreSheet` (Matches, Staff, KB, Local Cache Status, Install, Backup/Reset), simplified mobile header.
+- [x] **Sprint 2A:** `MobileBottomNav` (5 tabs, tap-active-to-scroll-top), `MobileMoreSheet` (Matches, Staff, KB, Local Cache Status, Install, Backup/Reset), simplified mobile header.
 - [ ] **Sprint 2B:** `chatStorage.ts` (per-club offline chat history), `useMobileKeyboard.ts`, mobile `Analyst Chat | Save Journey` toggle, `16px` inputs, `dvh` heights, `MobileSheetFrame` across all 5 modals + tests.
 - [ ] **Sprint 3A:** `PitchInspectStrip`, compact non-overlapping mobile pitch + bench rail in `InteractivePitchBuilder.tsx`, complete-KPI mobile cards in Squad/Transfers/Matches + sticky-col table cue.
 - [ ] **Sprint 3B:** `ChartRankedListToggle`, tap-to-select tooltips & mobile viewBoxes in `FootballAnalyticsCharts.tsx`, Player Card mobile visual polish in `PlayerDetailModal.tsx`, final `360px` overflow audit.

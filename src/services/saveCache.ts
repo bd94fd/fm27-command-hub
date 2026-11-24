@@ -1392,4 +1392,76 @@ export async function clearAllSaveCache(): Promise<boolean> {
   });
 }
 
+export interface SaveCacheStats {
+  cachedSavesCount: number;
+  cachedBriefingsCount: number;
+  snapshotPointsCount: number;
+  indexedDbAvailable: boolean;
+}
+
+/**
+ * Lightweight IndexedDB cache census using key-only / count-only queries
+ * so mobile browsers never pull full decoded save payloads into RAM.
+ */
+export async function getSaveCacheStats(): Promise<SaveCacheStats> {
+  const empty: SaveCacheStats = {
+    cachedSavesCount: 0,
+    cachedBriefingsCount: 0,
+    snapshotPointsCount: 0,
+    indexedDbAvailable: false,
+  };
+  const db = await openSaveCacheDb();
+  if (!db) return empty;
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (stats: SaveCacheStats) => {
+      if (settled) return;
+      settled = true;
+      try {
+        db.close();
+      } catch {
+        // ignore close errors
+      }
+      resolve(stats);
+    };
+    try {
+      const tx = db.transaction([SAVE_CACHE_STORE, SNAPSHOT_HISTORY_STORE], 'readonly');
+      const keysReq = tx.objectStore(SAVE_CACHE_STORE).getAllKeys();
+      const snapCountReq = tx.objectStore(SNAPSHOT_HISTORY_STORE).count();
+      let cachedSavesCount = 0;
+      let cachedBriefingsCount = 0;
+      let snapshotPointsCount = 0;
+
+      keysReq.onsuccess = () => {
+        const keys = Array.isArray(keysReq.result) ? keysReq.result : [];
+        for (const rawKey of keys) {
+          const key = String(rawKey || '');
+          if (key.startsWith('journey_brief::')) {
+            cachedBriefingsCount += 1;
+          } else if (key.length > 0) {
+            cachedSavesCount += 1;
+          }
+        }
+      };
+
+      snapCountReq.onsuccess = () => {
+        snapshotPointsCount = typeof snapCountReq.result === 'number' ? snapCountReq.result : 0;
+      };
+
+      tx.oncomplete = () =>
+        finish({
+          cachedSavesCount,
+          cachedBriefingsCount,
+          snapshotPointsCount,
+          indexedDbAvailable: true,
+        });
+      tx.onerror = () => finish({ ...empty, indexedDbAvailable: true });
+      tx.onabort = () => finish({ ...empty, indexedDbAvailable: true });
+    } catch {
+      finish(empty);
+    }
+  });
+}
+
+
 

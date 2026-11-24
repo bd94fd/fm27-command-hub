@@ -6,21 +6,15 @@
 import React, { useState, useEffect, useRef, Suspense, lazy, useCallback, useMemo } from 'react';
 import {
   BookOpen,
-  Briefcase,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   Database,
   Download,
-  MessageSquare,
   RefreshCw,
   Search,
-  Shield,
   Trash2,
-  Trophy,
   Upload,
-  UserCheck,
-  Users,
 } from 'lucide-react';
 import { EMPTY_CLUB_META, SQUAD_PLAYERS } from './data/squadData';
 import { COMPETITIVE_MATCH_LOGS } from './data/matchAndTacticsData';
@@ -36,6 +30,8 @@ import {
   usePwaLifecycle,
 } from './hooks/usePwaLifecycle';
 import { PwaStatusBanners } from './components/PwaStatusBanners';
+import { MobileBottomNav } from './components/MobileBottomNav';
+import { MobileMoreSheet } from './components/MobileMoreSheet';
 import { computeCompetitiveSummary } from './utils/fmSyncEngine';
 import {
   mergeParsedPlayersIntoSquad,
@@ -205,6 +201,7 @@ export default function App() {
   const [selectedStaff, setSelectedStaff] = useState<StaffRecord | null>(null);
   const [showKnowledgeBase, setShowKnowledgeBase] = useState<boolean>(false);
   const [showCommandPalette, setShowCommandPalette] = useState<boolean>(false);
+  const [showMoreSheet, setShowMoreSheet] = useState<boolean>(false);
   const [calibrationLabOpen, setCalibrationLabOpen] = useState<boolean>(false);
   const [calibrationLabTab, setCalibrationLabTab] = useState<CalibrationLabTab>('roles');
   const [dictionaryVersion, setDictionaryVersion] = useState<number>(0);
@@ -340,7 +337,14 @@ export default function App() {
 
   const [tacticsSubTab, setTacticsSubTab] = useState<'pitch' | 'prep' | 'setpieces' | 'playbook'>('pitch');
 
+  const handleScrollToTop = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, []);
+
   const handleSelectTab = (tab: ActiveTab) => {
+    setShowMoreSheet(false);
     if (tab === 'setpieces') {
       setTacticsSubTab('setpieces');
       setActiveTab('tactics');
@@ -348,9 +352,7 @@ export default function App() {
       if (tab === 'tactics') setTacticsSubTab('pitch');
       setActiveTab(tab);
     }
-    if (typeof window !== 'undefined') {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
+    handleScrollToTop();
   };
 
   const handleToggleTrackTarget = (target: RecruitmentTarget): boolean => {
@@ -1065,9 +1067,9 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col">
       {/* Top Navigation Shell */}
       <header
-        className="sticky top-0 z-30 flex items-center justify-between gap-x-4 px-4 sm:px-6 pb-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800"
+        className="sticky top-0 z-30 flex items-center justify-between gap-x-2.5 sm:gap-x-4 px-3.5 sm:px-6 pb-2.5 sm:pb-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800"
         style={{
-          paddingTop: 'calc(0.75rem + env(safe-area-inset-top, 0px))',
+          paddingTop: 'calc(0.65rem + env(safe-area-inset-top, 0px))',
         }}
       >
         <a
@@ -1076,12 +1078,12 @@ export default function App() {
             e.preventDefault();
             handleSelectTab('sync');
           }}
-          className="text-base sm:text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100 truncate min-w-0 flex-1 md:flex-initial"
+          className="min-h-[44px] md:min-h-0 flex items-center text-base sm:text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100 min-w-0 flex-1 md:flex-initial"
         >
-          {clubName}
+          <span className="truncate">{clubName}</span>
         </a>
 
-        {/* Desktop Navigation Tabs (mobile uses fixed bottom bar below) */}
+        {/* Desktop Navigation Tabs (mobile uses 5-tab fixed bottom bar + More sheet below) */}
         <nav
           aria-label="Primary sections"
           className="hidden md:flex items-center gap-4 lg:gap-5 text-xs lg:text-sm font-medium text-slate-600 dark:text-slate-400 overflow-x-auto"
@@ -1112,8 +1114,8 @@ export default function App() {
           ))}
         </nav>
 
-        {/* Actions: Mobile 1-Tap Sync .fm + Quick Search + FM27 Knowledge Base + Backup/Restore/Reset */}
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        {/* Actions: Mobile stays uncluttered (1-Tap Sync .fm + Quick Search); KB/Backup/Restore/Reset move to More sheet on mobile */}
+        <div className="flex items-center gap-2 shrink-0">
           <input
             ref={quickFmFileInputRef}
             type="file"
@@ -1129,7 +1131,7 @@ export default function App() {
             className="hidden"
           />
 
-          {/* Always-visible 1-tap mobile Sync .fm CTA */}
+          {/* Always-visible 1-tap mobile Sync .fm CTA (44px+ touch target) */}
           <button
             type="button"
             onClick={handleMobileQuickSyncClick}
@@ -1138,7 +1140,7 @@ export default function App() {
                 ? 'View active .fm save upload progress'
                 : 'Pick a .fm save file to sync immediately'
             }
-            className={`md:hidden inline-flex items-center justify-center gap-1.5 min-h-[38px] px-2.5 py-1.5 text-xs font-bold rounded-lg transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+            className={`md:hidden inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3 py-2 text-xs font-bold rounded-xl transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               backgroundSyncStatus
                 ? backgroundSyncStatus.paused
                   ? 'text-slate-950 bg-amber-400 hover:bg-amber-300'
@@ -1171,10 +1173,10 @@ export default function App() {
             onClick={() => setShowCommandPalette(true)}
             aria-label="Quick Search players, staff, and scout targets"
             title="Quick Search players, staff, and scout targets"
-            className="inline-flex items-center justify-center gap-1.5 min-h-[38px] min-w-[38px] px-2 sm:px-2.5 py-1.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+            className="inline-flex items-center justify-center gap-1.5 min-h-[44px] min-w-[44px] md:min-h-[38px] md:min-w-[38px] px-2.5 py-1.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl md:rounded-lg transition-colors cursor-pointer whitespace-nowrap"
           >
-            <Search className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="hidden sm:inline">Search</span>
+            <Search className="w-4 h-4 md:w-3.5 md:h-3.5 text-emerald-400" />
+            <span className="hidden md:inline">Search</span>
           </button>
 
           <button
@@ -1182,10 +1184,10 @@ export default function App() {
             onClick={() => setShowKnowledgeBase(true)}
             aria-label="Open FM27 Patch 27.1.0 Knowledge Base"
             title="Open FM27 Patch 27.1.0 Knowledge Base"
-            className="inline-flex items-center justify-center gap-1 min-h-[38px] min-w-[38px] px-2 sm:px-2.5 py-1.5 text-xs font-semibold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+            className="hidden md:inline-flex items-center justify-center gap-1 min-h-[38px] min-w-[38px] px-2.5 py-1.5 text-xs font-semibold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
           >
             <BookOpen className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">FM27 KB</span>
+            <span>FM27 KB</span>
           </button>
 
           {players.length > 0 || recruitmentCases.length > 0 ? (
@@ -1195,7 +1197,7 @@ export default function App() {
                 onClick={handleExportBackup}
                 aria-label="Export campaign snapshot as JSON backup"
                 title="Export campaign snapshot as JSON backup"
-                className="inline-flex items-center justify-center gap-1 min-h-[38px] min-w-[38px] px-2 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer"
+                className="hidden md:inline-flex items-center justify-center gap-1 min-h-[38px] min-w-[38px] px-2 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5 text-emerald-400" />
                 <span className="hidden lg:inline">Backup</span>
@@ -1214,7 +1216,7 @@ export default function App() {
                     ? 'Click again to wipe saved memory and return to Awaiting .fm Save'
                     : 'Clear saved memory and return to clean Awaiting Save state'
                 }
-                className={`inline-flex items-center justify-center gap-1 min-h-[38px] min-w-[38px] px-2 py-1.5 text-xs font-medium rounded-lg border transition-colors cursor-pointer ${
+                className={`hidden md:inline-flex items-center justify-center gap-1 min-h-[38px] min-w-[38px] px-2 py-1.5 text-xs font-medium rounded-lg border transition-colors cursor-pointer ${
                   confirmResetPending
                     ? 'text-rose-200 bg-rose-950/80 border-rose-500/60 hover:bg-rose-900/80'
                     : 'text-slate-400 hover:text-red-400 bg-slate-800/80 hover:bg-red-950/40 border-slate-700/80 hover:border-red-800/50'
@@ -1222,14 +1224,7 @@ export default function App() {
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span className={confirmResetPending ? 'inline' : 'hidden lg:inline'}>
-                  {confirmResetPending ? (
-                    <>
-                      <span className="sm:hidden">Confirm?</span>
-                      <span className="hidden sm:inline">Confirm Reset?</span>
-                    </>
-                  ) : (
-                    'Reset'
-                  )}
+                  {confirmResetPending ? 'Confirm Reset?' : 'Reset'}
                 </span>
               </button>
             </>
@@ -1239,10 +1234,10 @@ export default function App() {
               onClick={() => backupFileInputRef.current?.click()}
               aria-label="Restore previous campaign from a JSON backup file"
               title="Restore previous campaign from a JSON backup file"
-              className="inline-flex items-center justify-center gap-1 min-h-[38px] min-w-[38px] px-2 sm:px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer"
+              className="hidden md:inline-flex items-center justify-center gap-1 min-h-[38px] min-w-[38px] px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer"
             >
               <Upload className="w-3.5 h-3.5 text-blue-400" />
-              <span className="hidden sm:inline">Restore</span>
+              <span>Restore</span>
             </button>
           )}
         </div>
@@ -1269,8 +1264,8 @@ export default function App() {
         onDismissInstall={pwa.dismissInstallBanner}
       />
 
-      {/* Main Content Container (extra bottom padding on mobile for fixed bottom nav) */}
-      <main className="flex-1 max-w-[1400px] w-full mx-auto px-3 sm:px-6 pt-3 sm:pt-5 pb-24 md:pb-8 space-y-4 sm:space-y-5">
+      {/* Main Content Container (extra bottom padding on mobile for fixed 5-tab bar + safe area) */}
+      <main className="flex-1 max-w-[1400px] w-full mx-auto px-3 sm:px-6 pt-3 sm:pt-5 pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))] md:pb-8 space-y-4 sm:space-y-5">
         {/* Live Background Sync Pill when user is already exploring Squad/Tactics/Staff/Transfers */}
         {backgroundSyncStatus && activeTab !== 'sync' && (
           <div
@@ -1747,50 +1742,61 @@ export default function App() {
         </span>
       </footer>
 
-      {/* Fixed Thumb-Friendly Mobile Bottom Navigation Bar (All 6 Sections 1-Tap Accessible) */}
-      <nav
-        aria-label="Mobile navigation"
-        className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-slate-900/95 backdrop-blur border-t border-slate-800 px-1.5 pt-1.5 grid grid-cols-6 gap-1"
-        style={{
-          paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))',
+      {/* Fixed Thumb-Friendly 5-Tab Mobile Bottom Navigation Bar */}
+      <MobileBottomNav
+        activeTab={activeTab}
+        isMoreOpen={showMoreSheet}
+        hasActiveSync={Boolean(backgroundSyncStatus)}
+        isSyncPaused={Boolean(backgroundSyncStatus?.paused)}
+        hasUpdateAvailable={pwa.updateAvailable}
+        onSelectPrimaryTab={(tab) => handleSelectTab(tab)}
+        onScrollToTop={handleScrollToTop}
+        onToggleMore={() => setShowMoreSheet((open) => !open)}
+        onCloseMore={() => setShowMoreSheet(false)}
+      />
+
+      {/* Slide-Up Mobile More Sheet (Matches, Staff, FM27 KB, Local Cache Status, Install, Backup/Restore, Reset) */}
+      <MobileMoreSheet
+        isOpen={showMoreSheet}
+        onClose={() => setShowMoreSheet(false)}
+        activeTab={activeTab}
+        onSelectSecondaryTab={(tab) => handleSelectTab(tab)}
+        onOpenKnowledgeBase={() => setShowKnowledgeBase(true)}
+        matchesCount={matches.length}
+        staffCount={staff.length}
+        playersCount={players.length}
+        hasLoadedSave={Boolean(hydratedFmSave || players.length > 0)}
+        hasBackupableData={players.length > 0 || recruitmentCases.length > 0}
+        clubName={clubName}
+        saveDate={saveDate}
+        isOnline={pwa.isOnline}
+        isRestoredFromMemory={isRestoredFromMemory}
+        isInstalled={pwa.isInstalled}
+        canPromptInstall={pwa.canPromptInstall}
+        isIosSafari={pwa.isIosSafari}
+        updateAvailable={pwa.updateAvailable}
+        onPromptInstall={() => {
+          void pwa.promptInstall().then((outcome) => {
+            if (outcome === 'accepted') {
+              showGlobalToast('FM27 Hub installed to your home screen.');
+            }
+          });
         }}
-      >
-        {(
-          [
-            { id: 'sync', label: 'Hub', icon: MessageSquare },
-            { id: 'squad', label: 'Squad', icon: Users },
-            { id: 'tactics', label: 'Tactics', icon: Shield },
-            { id: 'recruitment', label: 'Transfers', icon: Briefcase },
-            { id: 'matches', label: 'Matches', icon: Trophy },
-            { id: 'staff', label: 'Staff', icon: UserCheck },
-          ] as const
-        ).map((item) => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => handleSelectTab(item.id)}
-              className={`min-w-0 flex flex-col items-center justify-center gap-0.5 rounded-lg px-0.5 py-1.5 text-[9px] sm:text-[10px] leading-tight font-medium transition-colors ${
-                isActive
-                  ? 'text-emerald-400 bg-emerald-500/15 font-semibold'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Icon className="w-4 h-4 shrink-0" />
-              <span className="truncate max-w-full">{item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
+        onApplyUpdate={pwa.applyUpdate}
+        onExportBackup={handleExportBackup}
+        onRequestRestore={() => backupFileInputRef.current?.click()}
+        confirmResetPending={confirmResetPending}
+        onResetMemory={() => {
+          void handleClearMemory();
+        }}
+      />
 
       {/* Global Floating Toast Notification */}
       {appToast && (
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-20 md:bottom-6 right-4 z-50 flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-slate-900/95 px-4 py-2.5 text-xs font-semibold text-emerald-200 shadow-2xl backdrop-blur"
+          className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] md:bottom-6 right-4 z-50 flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-slate-900/95 px-4 py-2.5 text-xs font-semibold text-emerald-200 shadow-2xl backdrop-blur"
         >
           <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
           <span>{appToast}</span>
