@@ -1,7 +1,7 @@
 import React from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { PlayerRecord } from '../../types/fm27';
-import { AttributeRadarChart } from '../FootballAnalyticsCharts';
+import { AttributeRadarChart } from '../charts/PlayerRadarAndPizzaCharts';
 import { COMPARE_ROWS } from './squadTableConfig';
 
 interface SquadCompareViewProps {

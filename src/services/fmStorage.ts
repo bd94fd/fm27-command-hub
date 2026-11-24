@@ -57,6 +57,8 @@ export interface FmHubPersistedState {
   customSlots?: PersistedCustomSlot[];
   applyToAnalystOnly?: boolean;
   archivedSaveSnapshots?: ArchivedSaveSnapshot[];
+  /** Set true only when localStorage required quota compaction so full IndexedDB upgrades it on reload. */
+  localStorageCompacted?: boolean;
 }
 
 export interface FmHubPreviousSnapshot {
@@ -212,6 +214,7 @@ export function migratePersistedState(raw: unknown): FmHubPersistedState | null 
     customSlots,
     applyToAnalystOnly: Boolean(parsed.applyToAnalystOnly),
     archivedSaveSnapshots,
+    ...(parsed.localStorageCompacted ? { localStorageCompacted: true } : {}),
   };
 }
 
@@ -237,8 +240,16 @@ export function loadPersistedFmState(): FmHubPersistedState | null {
   }
 }
 
+interface LocalPayloadBuildOptions {
+  maxTargets?: number;
+  slimDecoded?: boolean;
+  dropHydrated?: boolean;
+  localStorageCompacted?: boolean;
+}
+
 /**
- * Safely persist current state into localStorage (with schemaVersion: 2).
+ * Safely persist current state into localStorage (with tiered QuotaExceededError
+ * compaction) and full-fidelity IndexedDB (via a serialized latest-wins queue).
  */
 export async function savePersistedFmState(
   state: Omit<FmHubPersistedState, 'version' | 'lastSyncedAt'>
@@ -247,38 +258,66 @@ export async function savePersistedFmState(
     return false;
   }
 
-  const buildPayload = (maxTargets?: number): FmHubPersistedState => {
-    let compactHydrated = state.hydratedFmSave;
+  // Stamp ONE canonical timestamp shared by IndexedDB and localStorage so a
+  // quota-compacted localStorage fallback can never appear newer than IndexedDB.
+  const syncedAt = new Date().toISOString();
+
+  const buildPayload = (
+    opts: LocalPayloadBuildOptions = {}
+  ): FmHubPersistedState => {
+    let compactHydrated = opts.dropHydrated ? null : state.hydratedFmSave;
     if (compactHydrated) {
       const targets = Array.isArray(compactHydrated.recruitmentTargets)
-        ? typeof maxTargets === 'number'
-          ? compactHydrated.recruitmentTargets.slice(0, maxTargets)
+        ? typeof opts.maxTargets === 'number'
+          ? compactHydrated.recruitmentTargets.slice(0, opts.maxTargets)
           : compactHydrated.recruitmentTargets
         : [];
-      compactHydrated = {
-        ...compactHydrated,
-        recruitmentTargets: targets,
-        decodedPayload: compactHydrated.decodedPayload
+      const decodedPayload = compactHydrated.decodedPayload
+        ? opts.slimDecoded
           ? {
+              ...compactHydrated.decodedPayload,
+              // Top-level state.players / state.matches / state.staff already carry full arrays
+              players: [],
+              playedMatches: [],
+              staff: [],
+              recruitmentTargets: [],
+            }
+          : {
               ...compactHydrated.decodedPayload,
               // Avoid duplicating 500 scouted targets inside localStorage
               recruitmentTargets: [],
             }
-          : compactHydrated.decodedPayload,
-      };
+        : compactHydrated.decodedPayload;
+
+      compactHydrated = opts.slimDecoded
+        ? {
+            ...compactHydrated,
+            updatedSquad: [],
+            updatedMatches: [],
+            updatedStaff: [],
+            analystPromptContext: '',
+            recruitmentTargets: targets,
+            decodedPayload,
+          }
+        : {
+            ...compactHydrated,
+            recruitmentTargets: targets,
+            decodedPayload,
+          };
     }
     return {
       ...state,
       hydratedFmSave: compactHydrated,
       version: 1,
       schemaVersion: CURRENT_SCHEMA_VERSION,
-      lastSyncedAt: new Date().toISOString(),
+      lastSyncedAt: syncedAt,
       activeShape: state.activeShape || '4-3-3 DM Wide',
       customSlots: Array.isArray(state.customSlots) ? state.customSlots : [],
       applyToAnalystOnly: Boolean(state.applyToAnalystOnly),
       archivedSaveSnapshots: Array.isArray(state.archivedSaveSnapshots)
         ? state.archivedSaveSnapshots
         : [],
+      ...(opts.localStorageCompacted ? { localStorageCompacted: true } : {}),
     };
   };
 
@@ -286,23 +325,43 @@ export async function savePersistedFmState(
 
   let localSaved = false;
   if (window.localStorage) {
-    try {
-      window.localStorage.setItem(FM27_STORAGE_KEY, JSON.stringify(fullPayload));
-      localSaved = true;
-    } catch (err) {
+    const localTiers: Array<() => FmHubPersistedState> = [
+      () => fullPayload,
+      () => buildPayload({ maxTargets: 150, localStorageCompacted: true }),
+      () =>
+        buildPayload({
+          maxTargets: 40,
+          slimDecoded: true,
+          localStorageCompacted: true,
+        }),
+      () =>
+        buildPayload({
+          maxTargets: 0,
+          dropHydrated: true,
+          localStorageCompacted: true,
+        }),
+    ];
+    let lastLocalErr: unknown = null;
+    for (const makeTierPayload of localTiers) {
       try {
-        window.localStorage.setItem(FM27_STORAGE_KEY, JSON.stringify(buildPayload(150)));
+        window.localStorage.setItem(
+          FM27_STORAGE_KEY,
+          JSON.stringify(makeTierPayload())
+        );
         localSaved = true;
-      } catch {
-        console.warn('Failed to save FM27 state to localStorage:', err);
-        localSaved = false;
+        break;
+      } catch (err) {
+        lastLocalErr = err;
       }
+    }
+    if (!localSaved && lastLocalErr) {
+      console.warn('Failed to save FM27 state to localStorage:', lastLocalErr);
     }
   }
 
   let idbSaved = false;
   try {
-    idbSaved = await savePersistedFmStateToIndexedDb(fullPayload);
+    idbSaved = await enqueueIndexedDbStateWrite(fullPayload);
   } catch (err) {
     console.warn('Failed to save FM27 state to IndexedDB:', err);
   }
@@ -312,6 +371,54 @@ export async function savePersistedFmState(
 
 const IDB_DB_NAME = 'fm27_command_hub_idb';
 const IDB_STORE_NAME = 'hub_state';
+
+// Latest-wins serialized IndexedDB write queue so rapid UI state changes never
+// race overlapping IDB transactions or write stale snapshots out of order.
+let activeIdbWritePromise: Promise<void> | null = null;
+let queuedIdbPayload: FmHubPersistedState | null = null;
+let queuedIdbWaiters: Array<(ok: boolean) => void> = [];
+let idbWriteGeneration = 0;
+
+function enqueueIndexedDbStateWrite(
+  payload: FmHubPersistedState
+): Promise<boolean> {
+  const gen = idbWriteGeneration;
+  queuedIdbPayload = payload;
+  return new Promise<boolean>((resolve) => {
+    queuedIdbWaiters.push(resolve);
+    if (activeIdbWritePromise) return;
+
+    const drain = async () => {
+      while (queuedIdbPayload !== null) {
+        const nextPayload = queuedIdbPayload;
+        const waiters = queuedIdbWaiters;
+        queuedIdbPayload = null;
+        queuedIdbWaiters = [];
+
+        if (gen !== idbWriteGeneration) {
+          for (const w of waiters) w(false);
+          continue;
+        }
+        const ok = await savePersistedFmStateToIndexedDb(nextPayload);
+        for (const w of waiters) w(ok);
+      }
+    };
+
+    activeIdbWritePromise = drain().finally(() => {
+      activeIdbWritePromise = null;
+    });
+  });
+}
+
+async function cancelAndDrainQueuedIdbWrites(): Promise<void> {
+  idbWriteGeneration += 1;
+  queuedIdbPayload = null;
+  const waiters = queuedIdbWaiters.splice(0);
+  for (const w of waiters) w(false);
+  if (activeIdbWritePromise) {
+    await activeIdbWritePromise.catch(() => {});
+  }
+}
 
 function openFm27IndexedDb(): Promise<IDBDatabase | null> {
   if (typeof window === 'undefined' || !('indexedDB' in window) || !window.indexedDB) {
@@ -341,24 +448,25 @@ export async function savePersistedFmStateToIndexedDb(
   const db = await openFm27IndexedDb();
   if (!db) return false;
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      try {
+        db.close();
+      } catch {
+        // ignore close errors
+      }
+      resolve(ok);
+    };
     try {
       const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
       tx.objectStore(IDB_STORE_NAME).put(payload, FM27_STORAGE_KEY);
-      tx.oncomplete = () => {
-        db.close();
-        resolve(true);
-      };
-      tx.onerror = () => {
-        db.close();
-        resolve(false);
-      };
-      tx.onabort = () => {
-        db.close();
-        resolve(false);
-      };
+      tx.oncomplete = () => finish(true);
+      tx.onerror = () => finish(false);
+      tx.onabort = () => finish(false);
     } catch {
-      db.close();
-      resolve(false);
+      finish(false);
     }
   });
 }
@@ -367,46 +475,54 @@ export async function loadPersistedFmStateFromIndexedDb(): Promise<FmHubPersiste
   const db = await openFm27IndexedDb();
   if (!db) return null;
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (val: FmHubPersistedState | null) => {
+      if (settled) return;
+      settled = true;
+      try {
+        db.close();
+      } catch {
+        // ignore close errors
+      }
+      resolve(val);
+    };
     try {
       const tx = db.transaction(IDB_STORE_NAME, 'readonly');
       const req = tx.objectStore(IDB_STORE_NAME).get(FM27_STORAGE_KEY);
-      req.onsuccess = () => {
-        db.close();
-        resolve(req.result ? migratePersistedState(req.result) : null);
-      };
-      req.onerror = () => {
-        db.close();
-        resolve(null);
-      };
+      req.onsuccess = () =>
+        finish(req.result ? migratePersistedState(req.result) : null);
+      req.onerror = () => finish(null);
+      tx.onabort = () => finish(null);
     } catch {
-      db.close();
-      resolve(null);
+      finish(null);
     }
   });
 }
 
 export async function clearPersistedFmStateFromIndexedDb(): Promise<void> {
+  await cancelAndDrainQueuedIdbWrites();
   const db = await openFm27IndexedDb();
   if (!db) return;
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      try {
+        db.close();
+      } catch {
+        // ignore close errors
+      }
+      resolve();
+    };
     try {
       const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
       tx.objectStore(IDB_STORE_NAME).delete(FM27_STORAGE_KEY);
-      tx.oncomplete = () => {
-        db.close();
-        resolve();
-      };
-      tx.onerror = () => {
-        db.close();
-        resolve();
-      };
-      tx.onabort = () => {
-        db.close();
-        resolve();
-      };
+      tx.oncomplete = () => finish();
+      tx.onerror = () => finish();
+      tx.onabort = () => finish();
     } catch {
-      db.close();
-      resolve();
+      finish();
     }
   });
 }

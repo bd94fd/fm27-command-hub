@@ -42,13 +42,25 @@ export function persistedStateTimestamp(
 }
 
 /**
- * An IndexedDB snapshot may only replace the localStorage session when it is
- * strictly newer and non-empty, so a stale cache can never roll state back.
+ * An IndexedDB snapshot may replace the localStorage session when it is strictly
+ * newer and non-empty, OR when localStorage had to be quota-compacted and the
+ * full-fidelity IndexedDB snapshot is at least as recent.
  */
 export function isIndexedDbSnapshotNewer(
   idbState: FmHubPersistedState | null | undefined,
   localState: FmHubPersistedState | null | undefined
 ): boolean {
   if (!hasPersistedContent(idbState)) return false;
-  return persistedStateTimestamp(idbState) > persistedStateTimestamp(localState);
+  const idbMs = persistedStateTimestamp(idbState);
+  const localMs = persistedStateTimestamp(localState);
+  if (idbMs > localMs) return true;
+  if (
+    Boolean(localState?.localStorageCompacted) &&
+    !idbState.localStorageCompacted &&
+    idbMs > 0 &&
+    idbMs >= localMs
+  ) {
+    return true;
+  }
+  return false;
 }

@@ -342,7 +342,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Jump to player, staff, tab, formation, or scout target..."
-            className="w-full min-h-[40px] bg-transparent text-base sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
+            className="w-full min-h-[44px] sm:min-h-[38px] bg-transparent text-base sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
           />
           <button
             type="button"

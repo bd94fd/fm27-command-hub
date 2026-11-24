@@ -242,6 +242,141 @@ export const FM27_ENGINE_KNOWLEDGE_BASE = `=== FOOTBALL MANAGER 27 (PATCH 27.1.0
  * so the Tactical Analyst uses the EXACT same Best XI solver, competition-aware suspension
  * logic, Transfers positional depth chart, and Set-Piece rankings as every other tab.
  */
+export type ContextPriorityTier = 'P0' | 'P1' | 'P2' | 'P3';
+
+export interface PriorityContextBlock {
+  id: string;
+  tier: ContextPriorityTier;
+  fullText: string;
+  compactText?: string;
+  renderToFit?: (availableChars: number) => string;
+}
+
+/**
+ * Defensive final safety scrubber ensuring zero raw numeric CA/PA tokens ever
+ * leak into the AI prompt payload (even from user notes or decoded strings).
+ */
+export function scrubRawCaPaTokens(text: string): string {
+  return text
+    .replace(/\b(?:Current\s+Ability|Potential\s+Ability)\s*[:=]\s*\d{1,3}\b/gi, '[redacted]')
+    .replace(/\b(?:CA|PA)\s*[:=]\s*\d{1,3}\b/gi, '[redacted]')
+    .replace(/\b(?:CA|PA)\s+\d{2,3}\b/g, '[redacted]');
+}
+
+/**
+ * Deterministically assembles priority-tiered context sections strictly within `maxChars`
+ * without brute-force tail slicing that would chop critical P0 blocks (PosFam, IP/OOP
+ * blueprint, competition-scoped bans, playing-time promises, season G/xG/A/xA, Journey).
+ */
+export function assemblePriorityBudgetedContext(
+  blocks: PriorityContextBlock[],
+  maxChars: number = MAX_LIVE_ANALYST_CONTEXT_CHARS
+): string {
+  const nonEmpty = blocks.filter((b) => b.fullText.trim().length > 0);
+  if (nonEmpty.length === 0) return '';
+
+  const activeText = new Map<string, string | null>(
+    nonEmpty.map((b) => [b.id, b.fullText])
+  );
+
+  const measureCurrent = (): number => {
+    let total = 0;
+    let count = 0;
+    for (const b of nonEmpty) {
+      const txt = activeText.get(b.id);
+      if (txt && txt.length > 0) {
+        total += txt.length + (count > 0 ? 2 : 0);
+        count++;
+      }
+    }
+    return total;
+  };
+
+  const joinCurrent = (): string =>
+    nonEmpty
+      .map((b) => activeText.get(b.id))
+      .filter((txt): txt is string => Boolean(txt && txt.length > 0))
+      .join('\n\n');
+
+  if (measureCurrent() <= maxChars) {
+    return scrubRawCaPaTokens(joinCurrent());
+  }
+
+  // Step 1: Trim or omit optional P3 appendices first (e.g. FM27 research appendix)
+  for (let i = nonEmpty.length - 1; i >= 0 && measureCurrent() > maxChars; i--) {
+    const b = nonEmpty[i];
+    if (b.tier !== 'P3') continue;
+    const currentTxt = activeText.get(b.id) ?? '';
+    const withoutThis = measureCurrent() - currentTxt.length - 2;
+    const avail = maxChars - withoutThis - 2;
+    if (b.renderToFit && avail > 180) {
+      const fitted = b.renderToFit(avail);
+      activeText.set(b.id, fitted.length > 0 ? fitted : null);
+    } else if (b.compactText && withoutThis + 2 + b.compactText.length <= maxChars) {
+      activeText.set(b.id, b.compactText);
+    } else {
+      activeText.set(b.id, null);
+    }
+  }
+
+  // Step 2: Compact, then drop P2 supplementary blocks (recruitment, staff, squad planner)
+  for (let i = nonEmpty.length - 1; i >= 0 && measureCurrent() > maxChars; i--) {
+    const b = nonEmpty[i];
+    if (b.tier !== 'P2' || !b.compactText) continue;
+    activeText.set(b.id, b.compactText);
+  }
+  for (let i = nonEmpty.length - 1; i >= 0 && measureCurrent() > maxChars; i--) {
+    const b = nonEmpty[i];
+    if (b.tier !== 'P2') continue;
+    activeText.set(b.id, null);
+  }
+
+  // Step 3: Compact P1 high-priority blocks (preserving core signals)
+  for (let i = nonEmpty.length - 1; i >= 0 && measureCurrent() > maxChars; i--) {
+    const b = nonEmpty[i];
+    if (b.tier !== 'P1' || !b.compactText) continue;
+    activeText.set(b.id, b.compactText);
+  }
+
+  // Step 4: Dynamically size any P0 renderToFit block (e.g. Squad Profiles) so complete lines fit cleanly
+  const refitDynamicP0 = () => {
+    for (const b of nonEmpty) {
+      if (b.tier !== 'P0' || !b.renderToFit) continue;
+      if (measureCurrent() <= maxChars) break;
+      const cur = activeText.get(b.id) ?? '';
+      const otherChars = measureCurrent() - cur.length;
+      const avail = Math.max(0, maxChars - otherChars);
+      if (avail > 0) {
+        activeText.set(b.id, b.renderToFit(avail));
+      }
+    }
+  };
+  refitDynamicP0();
+
+  // Step 5: If still over budget under extreme saves, compact P0 optional sub-details
+  // (never drops PosFam, IP/OOP blueprint, competition-scoped bans, promises, G/xG/A/xA, or Journey deltas)
+  for (let i = nonEmpty.length - 1; i >= 0 && measureCurrent() > maxChars; i--) {
+    const b = nonEmpty[i];
+    if (b.tier !== 'P0' || !b.compactText) continue;
+    activeText.set(b.id, b.compactText);
+  }
+  refitDynamicP0();
+
+  // Step 6: Last-resort drop of lowest-priority P1 blocks if an ultra-dense P0 payload still exceeds budget
+  for (let i = nonEmpty.length - 1; i >= 0 && measureCurrent() > maxChars; i--) {
+    const b = nonEmpty[i];
+    if (b.tier !== 'P1') continue;
+    activeText.set(b.id, null);
+  }
+  refitDynamicP0();
+
+  const assembled = scrubRawCaPaTokens(joinCurrent());
+  if (assembled.length <= maxChars) {
+    return assembled;
+  }
+  return `${assembled.slice(0, Math.max(0, maxChars - 20)).trimEnd()}\n[Context trimmed]`;
+}
+
 export const MAX_LIVE_ANALYST_CONTEXT_CHARS = 15500;
 
 export function buildLiveTacticalAnalystContext(
@@ -267,20 +402,27 @@ export function buildLiveTacticalAnalystContext(
   } = state;
 
   const hasSaveOrSquad = players.length > 0 || Boolean(hydratedFmSave);
-  const sections: string[] = [
-    [
-      '=== FM27 PATCH 27.1.0 & PLAYBOOK v2.0 CORE RULES ===',
-      '- Dual-Phase IP/OOP ONLY (no Defend/Support/Attack duties): Tracking Winger (TW) OOP both flanks; Balanced Ground Build-Up + Short/Mixed GK Dist + Standard Passing; Patch 27.1.0 Holding Full-Back presses more aggressively and counter-attack transitions + wide OOP pressing are re-tuned.',
-      '- Laws: 1 tweak/20-25m; never sub both CBs protecting lead; <=2 2H sub windows (60-63m, 75m+); keep 3 midfielders late (never 4-2-4); <=125m double-GW cap + Post-Match Rest.',
-      '- Truth: ZERO raw CA/PA; match War Room XI, 100%-Fit XI, Last-Match Tactic, Governance/Promises, Transfers Action Plan & PosFam; NEVER put SURPLUS/Sell players on bench when cover exists; NEVER loan Promote-to-Backup youth; cite full season stats (Apps, Mins, G/xG, A/xA, Rt).',
-    ].join('\n'),
+  const blocks: PriorityContextBlock[] = [
+    {
+      id: 'core_rules',
+      tier: 'P0',
+      fullText: [
+        '=== FM27 PATCH 27.1.0 & PLAYBOOK v2.0 CORE RULES ===',
+        '- Dual-Phase IP/OOP ONLY (no Defend/Support/Attack duties): Tracking Winger (TW) OOP both flanks; Balanced Ground Build-Up + Short/Mixed GK Dist + Standard Passing; Patch 27.1.0 Holding Full-Back presses more aggressively and counter-attack transitions + wide OOP pressing are re-tuned.',
+        '- Laws: 1 tweak/20-25m; never sub both CBs protecting lead; <=2 2H sub windows (60-63m, 75m+); keep 3 midfielders late (never 4-2-4); <=125m double-GW cap + Post-Match Rest.',
+        '- Truth: ZERO raw CA/PA; match War Room XI, 100%-Fit XI, Last-Match Tactic, Governance/Promises, Transfers Action Plan & PosFam; NEVER put SURPLUS/Sell players on bench when cover exists; NEVER loan Promote-to-Backup youth; cite full season stats (Apps, Mins, G/xG, A/xA, Rt).',
+      ].join('\n'),
+    },
   ];
 
   if (!hasSaveOrSquad) {
-    sections.push(
-      '=== CURRENT APP STATE: AWAITING .FM SAVE OR EXPORT IMPORT ===\nNo .fm save or squad export loaded yet (0 players, 0 matches). Answer tactically using FM27 Patch 27.1.0 & Playbook v2.0 principles without inventing fake players.'
-    );
-    return sections.join('\n\n').slice(0, MAX_LIVE_ANALYST_CONTEXT_CHARS);
+    blocks.push({
+      id: 'awaiting_save',
+      tier: 'P0',
+      fullText:
+        '=== CURRENT APP STATE: AWAITING .FM SAVE OR EXPORT IMPORT ===\nNo .fm save or squad export loaded yet (0 players, 0 matches). Answer tactically using FM27 Patch 27.1.0 & Playbook v2.0 principles without inventing fake players.',
+    });
+    return assemblePriorityBudgetedContext(blocks, MAX_LIVE_ANALYST_CONTEXT_CHARS);
   }
 
   const decoded = hydratedFmSave?.decodedPayload;
@@ -431,7 +573,19 @@ export function buildLiveTacticalAnalystContext(
     );
   }
 
-  sections.push(clubLines.join('\n'));
+  // Keep a compact P0 variant that ALWAYS retains Club/Date/Standing/Next/Finances + Competition-Scoped Suspensions + Active Injuries
+  const clubCompactLines = clubLines.filter(
+    (line) =>
+      !line.startsWith('Upcoming: ') &&
+      !line.startsWith('Table (') &&
+      !line.startsWith('Division Benchmarks (')
+  );
+  blocks.push({
+    id: 'club_snapshot',
+    tier: 'P0',
+    fullText: clubLines.join('\n'),
+    compactText: clubCompactLines.join('\n'),
+  });
 
   // 2b. Governance, Manager Contract, Board/Supporter Confidence, Objectives & Playing-Time Promises
   // Live-evaluate against the latest FM27 Binary Dictionary so newly calibrated offset rules appear immediately
@@ -487,7 +641,15 @@ export function buildLiveTacticalAnalystContext(
           .join(' | ')}`
       );
     }
-    sections.push(govLines.join('\n'));
+    const govCompactLines = govLines.filter(
+      (line) => !line.startsWith('Board Rating: ')
+    );
+    blocks.push({
+      id: 'governance_promises',
+      tier: 'P0',
+      fullText: govLines.join('\n'),
+      compactText: govCompactLines.join('\n'),
+    });
   }
 
   // 2c. Last Match / Active FM27 Save Tactic Blueprint (Full IP/OOP Roles + Instructions + Patch 27.1.0 Audit)
@@ -590,7 +752,15 @@ export function buildLiveTacticalAnalystContext(
     if (lastTactic.tacticalEffectivenessNotes.length > 0) {
       tacLines.push(`Patch 27.1.0 Audit: ${lastTactic.tacticalEffectivenessNotes.slice(0, 3).join(' | ')}`);
     }
-    sections.push(tacLines.join('\n'));
+    const tacCompactLines = tacLines.filter(
+      (line) => !line.startsWith('Matchday Subs: ') && !line.startsWith('Patch 27.1.0 Audit: ')
+    );
+    blocks.push({
+      id: 'last_tactic',
+      tier: 'P0',
+      fullText: tacLines.join('\n'),
+      compactText: tacCompactLines.join('\n'),
+    });
   }
 
   // 3. Exact War Room Starting XI (Unified with InteractivePitchBuilder / TacticalWarRoom)
@@ -635,9 +805,11 @@ export function buildLiveTacticalAnalystContext(
           `${s.slotId}:${s.playerName}(${s.ipRole}/${s.oopRole},C${s.condition ?? '?'}%)`
       )
       .join(' | ');
-    sections.push(
-      `=== ACTIVE PITCH BUILDER LINEUP OVERRIDE (${ov.shape}${ov.applyToAnalystOnly ? ' · Analyst-Only' : ''}) ===\n${ovCompact}`
-    );
+    blocks.push({
+      id: 'war_room_xi',
+      tier: 'P0',
+      fullText: `=== ACTIVE PITCH BUILDER LINEUP OVERRIDE (${ov.shape}${ov.applyToAnalystOnly ? ' · Analyst-Only' : ''}) ===\n${ovCompact}`,
+    });
   } else if (effectiveWarRoomXi.length > 0) {
     const cbNames = effectiveWarRoomXi
       .filter((s) => s.positionGroup === 'Centre-Back' && s.player)
@@ -654,9 +826,11 @@ export function buildLiveTacticalAnalystContext(
       activeShape === '4-3-3 DM Wide'
         ? '=== WAR ROOM COMPUTED DUAL-PHASE 4-3-3 STARTING XI ==='
         : `=== WAR ROOM COMPUTED ${activeShape} STARTING XI ===`;
-    sections.push(
-      `${header}\nAvgFit:${warRoomSolved.averageFitPct}% | CB Lock: ${cbNames || 'N/A'}\n${xiCompact}`
-    );
+    blocks.push({
+      id: 'war_room_xi',
+      tier: 'P0',
+      fullText: `${header}\nAvgFit:${warRoomSolved.averageFitPct}% | CB Lock: ${cbNames || 'N/A'}\n${xiCompact}`,
+    });
   }
 
   // 4. 100%-Fit Full-Strength Best XI & Rotated B-Team
@@ -669,11 +843,14 @@ export function buildLiveTacticalAnalystContext(
       .filter((s) => s.player)
       .map((s) => `${s.label}:${s.player!.name}(${s.combinedFitPct}%)`)
       .join(' | ');
-    sections.push(
-      `=== 100%-FIT FULL-STRENGTH BEST XI (${activeShape}) ===\nXI: ${fullXiLine}${
+    blocks.push({
+      id: 'full_fit_xi',
+      tier: 'P1',
+      fullText: `=== 100%-FIT FULL-STRENGTH BEST XI (${activeShape}) ===\nXI: ${fullXiLine}${
         bTeamLine ? `\nB-Team: ${bTeamLine}` : ''
-      }`
-    );
+      }`,
+      compactText: `=== 100%-FIT FULL-STRENGTH BEST XI (${activeShape}) ===\nXI: ${fullXiLine}`,
+    });
   }
 
   // 5. Transfers & Squad Advice Positional Depth Chart (exact match with Transfers tab canonical split)
@@ -733,9 +910,25 @@ export function buildLiveTacticalAnalystContext(
                   : 'OK';
         return `${n.code}[${flag} ${n.currentCount}Sen/${n.effectiveReadyCount}Ready vs ${n.idealMin}-${n.idealMax}${coverNote}${readyU21Note}${academyNote}]:${ranked || 'NONE'}`;
       });
-    sections.push(
-      `=== TRANSFERS & SQUAD ADVICE POSITIONAL DEPTH CHART (First-Team Floor: ${transferAudit.tierBenchmarks.firstTeamRotationFloor.toFixed(1)}★ Ready / ${transferAudit.tierBenchmarks.firstTeamStarterFloor.toFixed(1)}★ Starter) ===\n${depthLines.join(' | ')}`
-    );
+    const compactDepthLines = transferAudit.positionalNeeds
+      .filter(
+        (n) =>
+          n.status === 'Need Signing' ||
+          n.status === 'Promote Internal' ||
+          n.hasSuccessionGap ||
+          n.status === 'Overstocked'
+      )
+      .map((n) => `${n.code}[${n.status} ${n.currentCount}Sen/${n.effectiveReadyCount}Ready]`);
+    const depthHeader = `=== TRANSFERS & SQUAD ADVICE POSITIONAL DEPTH CHART (First-Team Floor: ${transferAudit.tierBenchmarks.firstTeamRotationFloor.toFixed(1)}★ Ready / ${transferAudit.tierBenchmarks.firstTeamStarterFloor.toFixed(1)}★ Starter) ===`;
+    blocks.push({
+      id: 'transfers_depth',
+      tier: 'P1',
+      fullText: `${depthHeader}\n${depthLines.join(' | ')}`,
+      compactText:
+        compactDepthLines.length > 0
+          ? `${depthHeader}\n${compactDepthLines.join(' | ')}`
+          : undefined,
+    });
   }
 
   // 5b. Authoritative Transfers & Squad Advice Action Plan (exact match with Transfers -> Squad Advice tab)
@@ -864,9 +1057,24 @@ export function buildLiveTacticalAnalystContext(
   }
 
   if (actionPlanLines.length > 0) {
-    sections.push(
-      `=== TRANSFERS & SQUAD ADVICE ACTION PLAN (MUST MATCH TRANSFERS TAB) ===\n${actionPlanLines.join('\n')}`
+    const essentialActionLines = actionPlanLines.filter(
+      (line) =>
+        line.startsWith('IN-GAME SURPLUS') ||
+        line.startsWith('Promote to Backup') ||
+        line.startsWith('Sell / Transfer List') ||
+        line.startsWith('APP ADVICE — Recommended to Sell') ||
+        line.startsWith('Renew Now:')
     );
+    const header = '=== TRANSFERS & SQUAD ADVICE ACTION PLAN (MUST MATCH TRANSFERS TAB) ===';
+    blocks.push({
+      id: 'transfers_action_plan',
+      tier: 'P1',
+      fullText: `${header}\n${actionPlanLines.join('\n')}`,
+      compactText:
+        essentialActionLines.length > 0
+          ? `${header}\n${essentialActionLines.join('\n')}`
+          : undefined,
+    });
   }
 
   // 6. Corners & Set-Piece Specialist Rankings (exact match with Set Pieces tab)
@@ -883,9 +1091,11 @@ export function buildLiveTacticalAnalystContext(
       .slice(0, 2)
       .map((t) => `${t.name}(Cor${t.corners})`)
       .join(', ');
-    sections.push(
-      `=== CORNERS & SET-PIECE SPECIALIST RANKINGS ===\nAerial: ${aerialStr} | L-Foot: ${ltStr} | R-Foot: ${rtStr}`
-    );
+    blocks.push({
+      id: 'set_pieces',
+      tier: 'P1',
+      fullText: `=== CORNERS & SET-PIECE SPECIALIST RANKINGS ===\nAerial: ${aerialStr} | L-Foot: ${ltStr} | R-Foot: ${rtStr}`,
+    });
   }
 
   // 6b. FM27 Squad Planner, Backroom Staff & Recruitment / Shortlist Targets
@@ -927,11 +1137,17 @@ export function buildLiveTacticalAnalystContext(
             .map(({ raw, meta }) => `${meta.code}(${nextSeasonMap.get(raw.slot) ?? 0} left)`)
         : [];
 
-    sections.push(
-      `=== FM27 SQUAD PLANNER DEPTH (CURRENT SEASON) ===\n${plannerStr}${
+    blocks.push({
+      id: 'squad_planner',
+      tier: 'P2',
+      fullText: `=== FM27 SQUAD PLANNER DEPTH (CURRENT SEASON) ===\n${plannerStr}${
         thinNextYear.length > 0 ? `\nNext Season Thin Spots (+1yr): ${thinNextYear.join(', ')}` : ''
-      }`
-    );
+      }`,
+      compactText:
+        thinNextYear.length > 0
+          ? `=== FM27 SQUAD PLANNER DEPTH (CURRENT SEASON) ===\nNext Season Thin Spots (+1yr): ${thinNextYear.join(', ')}`
+          : undefined,
+    });
   }
 
   const effectiveStaff =
@@ -969,12 +1185,18 @@ export function buildLiveTacticalAnalystContext(
       })
       .slice(0, 5)
       .map((st) => `${st.name}(${st.role},exp ${st.expires})`);
-    sections.push(
-      `=== BACKROOM STAFF (${effectiveStaff.length}) ===\nRoles: ${effectiveStaff
+    blocks.push({
+      id: 'backroom_staff',
+      tier: 'P2',
+      fullText: `=== BACKROOM STAFF (${effectiveStaff.length}) ===\nRoles: ${effectiveStaff
         .slice(0, 8)
         .map((st) => `${st.role}:${st.name}`)
-        .join(' | ')}${expiringStaff.length > 0 ? `\nExpiring Soon: ${expiringStaff.join(' | ')}` : ''}`
-    );
+        .join(' | ')}${expiringStaff.length > 0 ? `\nExpiring Soon: ${expiringStaff.join(' | ')}` : ''}`,
+      compactText:
+        expiringStaff.length > 0
+          ? `=== BACKROOM STAFF (${effectiveStaff.length}) ===\nExpiring Soon: ${expiringStaff.join(' | ')}`
+          : undefined,
+    });
   }
 
   const scoutPool: RecruitmentTarget[] = [
@@ -1021,7 +1243,13 @@ export function buildLiveTacticalAnalystContext(
           .join(' | ')}`
       );
     }
-    sections.push(recLines.join('\n'));
+    blocks.push({
+      id: 'recruitment',
+      tier: 'P2',
+      fullText: recLines.join('\n'),
+      compactText:
+        recLines.length > 2 ? [recLines[0], recLines[1]].join('\n') : undefined,
+    });
   }
 
   // 7. Match xG Momentum Analytics & Recent 5 Matches (placed before squad profiles so form is never trimmed)
@@ -1082,12 +1310,17 @@ export function buildLiveTacticalAnalystContext(
           : '';
       return `[${tag} ${seasonTag}] ${m.date} ${m.opponent}(${m.venue}) ${m.result} ${m.score}${xgPart}`;
     });
-    sections.push(
-      `=== RECENT MATCHES & XG ANALYTICS (BY SEASON & COMPETITION) ===\n${scopeLines.join('\n') || `Season Record: ${summary.played}GP`}\nRecent Results: ${matchLines.join(' | ')}`
-    );
+    const matchHeader = '=== RECENT MATCHES & XG ANALYTICS (BY SEASON & COMPETITION) ===';
+    const scopeBody = scopeLines.join('\n') || `Season Record: ${summary.played}GP`;
+    blocks.push({
+      id: 'recent_matches',
+      tier: 'P1',
+      fullText: `${matchHeader}\n${scopeBody}\nRecent Results: ${matchLines.join(' | ')}`,
+      compactText: `${matchHeader}\n${scopeBody}\nRecent Results: ${matchLines.slice(0, 3).join(' | ')}`,
+    });
   }
 
-  // 7b. Save-to-Save Journey Trajectory (when 2+ snapshots cached)
+  // 7b. Save-to-Save Journey Trajectory (when 2+ snapshots cached) — P0 Protected
   if (latestJourneyReport) {
     const jr = latestJourneyReport;
     const imp = jr.improved.slice(0, 4).map((i) => `${i.title}${i.deltaLabel ? ` (${i.deltaLabel})` : ''}`).join(' | ');
@@ -1108,9 +1341,12 @@ export function buildLiveTacticalAnalystContext(
       ? `Competition Split (${jr.toSeason}): League ${formatBucketCompactSummary(compTo.league)} | Cup ${formatBucketCompactSummary(compTo.cup)} | Friendlies ${formatBucketCompactSummary(compTo.friendly)}`
       : null;
     const kpiLine = `KPI Deltas: Squad ${jr.baseDiff.kpiDeltas.toSquadCount} (${jr.baseDiff.kpiDeltas.squadCountDelta >= 0 ? '+' : ''}${jr.baseDiff.kpiDeltas.squadCountDelta}), Avg ★ ${jr.baseDiff.kpiDeltas.toAvgAbility.toFixed(2)} (${jr.baseDiff.kpiDeltas.avgAbilityDelta >= 0 ? '+' : ''}${jr.baseDiff.kpiDeltas.avgAbilityDelta.toFixed(2)}★), Wages £${jr.baseDiff.kpiDeltas.toTotalWagePw.toLocaleString()}/wk (${formatSignedCurrency(jr.baseDiff.kpiDeltas.totalWageDeltaPw)}/wk), Balance ${jr.baseDiff.kpiDeltas.fromBalance || '--'} -> ${jr.baseDiff.kpiDeltas.toBalance || '--'}`;
-    sections.push(
-      [
-        `=== SAVE-TO-SAVE JOURNEY REPORT (${jr.fromDate} [${jr.fromSeason}] -> ${jr.toDate} [${jr.toSeason}], ${jr.timeline.length} saves${jr.sameSeason ? '' : ' — CROSS-SEASON'}) ===`,
+    const journeyHeader = `=== SAVE-TO-SAVE JOURNEY REPORT (${jr.fromDate} [${jr.fromSeason}] -> ${jr.toDate} [${jr.toSeason}], ${jr.timeline.length} saves${jr.sameSeason ? '' : ' — CROSS-SEASON'}) ===`;
+    blocks.push({
+      id: 'journey_report',
+      tier: 'P0',
+      fullText: [
+        journeyHeader,
         kpiLine,
         compLine,
         `Improved: ${imp || 'None'}`,
@@ -1119,8 +1355,16 @@ export function buildLiveTacticalAnalystContext(
         note ? `Things to Note: ${note}` : null,
       ]
         .filter(Boolean)
-        .join('\n')
-    );
+        .join('\n'),
+      compactText: [
+        journeyHeader,
+        kpiLine,
+        `Improved: ${imp || 'None'} | Worsened: ${wor || 'None'}`,
+        topDeltas ? `Standout Player Deltas: ${topDeltas}` : null,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    });
   }
 
   // 8. First-Team & Key Squad Profiles with FULL Season Stats, Wages, Standing, PosFam & Transfer Verdict (zero raw CA/PA)
@@ -1169,11 +1413,56 @@ export function buildLiveTacticalAnalystContext(
   const queriedPlayers = queryLower
     ? sortedSquad.filter((p) => isMentionedInQuery(p))
     : [];
-  const queriedIds = new Set(queriedPlayers.map((p) => p.id));
-  const topSquad = [
-    ...queriedPlayers,
-    ...sortedSquad.filter((p) => !queriedIds.has(p.id)),
-  ].slice(0, 26);
+  const xiPlayerIds = new Set(
+    effectiveWarRoomXi
+      .map((s) => s.player?.id)
+      .filter((id): id is string => Boolean(id))
+  );
+  const promiseRiskNames = new Set(
+    (gov?.playerPromiseAudits ?? [])
+      .filter((a) => a.status === 'breached' || a.status === 'at_risk')
+      .map((a) => a.playerName.toLowerCase())
+  );
+  const suspendedIds = new Set(
+    players
+      .filter((p) =>
+        activeSuspensions.some(
+          (b) =>
+            (typeof p.uid === 'number' && b.playerUid === p.uid) ||
+            (b.playerName && b.playerName.toLowerCase() === p.name.toLowerCase())
+        )
+      )
+      .map((p) => p.id)
+  );
+
+  // Deterministic squad priority ordering:
+  // 1) Explicitly queried players -> 2) Active War Room XI starters -> 3) Promised/banned/injured/surplus/promoted -> 4) Remaining squad
+  const seenIds = new Set<string>();
+  const orderedSquadPool: PlayerRecord[] = [];
+  const pushUnique = (list: PlayerRecord[]) => {
+    for (const p of list) {
+      if (!seenIds.has(p.id)) {
+        seenIds.add(p.id);
+        orderedSquadPool.push(p);
+      }
+    }
+  };
+  pushUnique(queriedPlayers);
+  pushUnique(sortedSquad.filter((p) => xiPlayerIds.has(p.id)));
+  pushUnique(
+    sortedSquad.filter((p) => {
+      const adv = adviceById.get(p.id);
+      return (
+        suspendedIds.has(p.id) ||
+        p.status === 'Injured' ||
+        isSurplusPlayer(p) ||
+        promiseRiskNames.has(p.name.toLowerCase()) ||
+        Boolean(adv?.tags.some((t) => t.startsWith('Promote to Backup')))
+      );
+    })
+  );
+  pushUnique(sortedSquad);
+  const topSquad = orderedSquadPool.slice(0, 26);
 
   const squadLines = topSquad.map((p) => {
     const a = p.attributes;
@@ -1235,9 +1524,43 @@ export function buildLiveTacticalAnalystContext(
       : '0m';
     return `${p.name}${unitTag}|${p.position}|${p.age}y|${p.ability.toFixed(1)}★/${p.potential.toFixed(1)}★|${standing}|£${p.wagePw}/wk|${formatShortExpiry(p.expires)}|C${p.condition ?? '?'}%|${posFamStr ? `${posFamStr}|` : ''}${statsStr}|P${a.pace}S${a.stamina}J${a.jumpingReach}Pa${a.passing}F${a.finishing}T${a.tackling}D${a.decisions}W${a.workRate}${shortVerdict}${banTag}${injTag}`;
   });
-  sections.push(
-    `=== SQUAD PROFILES & SEASON STATS (${topSquad.length} OF ${players.length}) ===\n${squadLines.join('\n')}`
-  );
+
+  const renderSquadProfilesToFit = (availableChars: number): string => {
+    const headerBase = `=== SQUAD PROFILES & SEASON STATS (${topSquad.length} OF ${players.length}) ===`;
+    const fullBlock = `${headerBase}\n${squadLines.join('\n')}`;
+    if (fullBlock.length <= availableChars) {
+      return fullBlock;
+    }
+    const kept: string[] = [];
+    // Reserve space for header + overflow note
+    const reserve = headerBase.length + 64;
+    let used = reserve;
+    for (const line of squadLines) {
+      const needed = line.length + (kept.length > 0 ? 1 : 0);
+      if (used + needed <= availableChars) {
+        kept.push(line);
+        used += needed;
+      } else {
+        break;
+      }
+    }
+    if (kept.length === 0 && squadLines.length > 0) {
+      kept.push(squadLines[0]);
+    }
+    const omitted = Math.max(0, players.length - kept.length);
+    const dynamicHeader = `=== SQUAD PROFILES & SEASON STATS (${kept.length} OF ${players.length}) ===`;
+    return `${dynamicHeader}\n${kept.join('\n')}${
+      omitted > 0 ? `\n(+${omitted} additional squad players omitted for context budget)` : ''
+    }`;
+  };
+
+  blocks.push({
+    id: 'squad_profiles',
+    tier: 'P0',
+    fullText: `=== SQUAD PROFILES & SEASON STATS (${topSquad.length} OF ${players.length}) ===\n${squadLines.join('\n')}`,
+    renderToFit: renderSquadProfilesToFit,
+  });
+
   const researchBlock = buildAiResearchContextBlock({
     clubName: clubName || 'Club',
     players: topSquad,
@@ -1245,21 +1568,15 @@ export function buildLiveTacticalAnalystContext(
     includeDualPhase: true,
   });
 
-  const coreOutput = sections.join('\n\n');
-  let output: string;
-  if (coreOutput.length + 2 + researchBlock.length <= MAX_LIVE_ANALYST_CONTEXT_CHARS) {
-    output = `${coreOutput}\n\n${researchBlock}`;
-  } else if (coreOutput.length <= MAX_LIVE_ANALYST_CONTEXT_CHARS) {
-    // Preserve Squad Profiles & Journey Report intact; trim optional research appendix first
-    const remaining = MAX_LIVE_ANALYST_CONTEXT_CHARS - coreOutput.length - 2;
-    output =
-      remaining > 180
-        ? `${coreOutput}\n\n${researchBlock.slice(0, remaining).trimEnd()}`
-        : coreOutput;
-  } else {
-    output = `${coreOutput.slice(0, MAX_LIVE_ANALYST_CONTEXT_CHARS - 20).trimEnd()}\n[Context trimmed]`;
-  }
-  return output;
+  blocks.push({
+    id: 'ai_research',
+    tier: 'P3',
+    fullText: researchBlock,
+    renderToFit: (avail) =>
+      avail > 180 ? researchBlock.slice(0, avail).trimEnd() : '',
+  });
+
+  return assemblePriorityBudgetedContext(blocks, MAX_LIVE_ANALYST_CONTEXT_CHARS);
 }
 
 /**

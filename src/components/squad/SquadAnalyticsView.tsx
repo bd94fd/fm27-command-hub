@@ -11,11 +11,13 @@ import type { SquadTransferAuditSummary, TransferActionVerdict } from '../../uti
 import { evaluateSquadPlayerCard } from '../../utils/cardIntelligenceEngine';
 import {
   AttributeRadarChart,
-  InteractiveScatterExplorer,
-  MatchXgMomentumChart,
   PercentilePizzaChart,
+} from '../charts/PlayerRadarAndPizzaCharts';
+import { MatchXgMomentumChart } from '../charts/MatchXgMomentumChart';
+import {
+  InteractiveScatterExplorer,
   SquadDepthAndPlannerChart,
-} from '../FootballAnalyticsCharts';
+} from '../charts/SquadScatterAndPlannerCharts';
 
 interface SquadAnalyticsViewProps {
   players: PlayerRecord[];

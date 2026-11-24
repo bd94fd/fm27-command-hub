@@ -1095,25 +1095,101 @@ function openSaveCacheDb(): Promise<IDBDatabase | null> {
   });
 }
 
-export async function putCachedSavePayload<T>(
-  saveName: string,
-  inGameDate: string,
-  payload: T
-): Promise<boolean> {
-  const db = await openSaveCacheDb();
-  if (!db) return false;
-  const key = buildSaveCacheKey(saveName, inGameDate);
+function isQuotaError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { name?: string; message?: string };
+  return (
+    e.name === 'QuotaExceededError' ||
+    e.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+    /quota/i.test(String(e.message || ''))
+  );
+}
+
+async function evictOldestCachedSavesForQuota(
+  db: IDBDatabase,
+  excludeKey?: string,
+  maxToEvict = 2
+): Promise<number> {
   return new Promise((resolve) => {
     let settled = false;
-    const finish = (ok: boolean) => {
+    const finish = (evicted: number) => {
       if (settled) return;
       settled = true;
-      try {
-        db.close();
-      } catch {
-        // ignore close errors
+      resolve(evicted);
+    };
+    try {
+      const tx = db.transaction(SAVE_CACHE_STORE, 'readwrite');
+      const store = tx.objectStore(SAVE_CACHE_STORE);
+      const entries: Array<{ key: string; cachedAt: string }> = [];
+      let evictedCount = 0;
+
+      const deleteOldest = () => {
+        const candidates = entries
+          .filter((e) => e.key && e.key !== excludeKey)
+          .sort((a, b) => a.cachedAt.localeCompare(b.cachedAt))
+          .slice(0, maxToEvict);
+        for (const c of candidates) {
+          store.delete(c.key);
+          evictedCount += 1;
+        }
+      };
+
+      if (typeof store.openCursor === 'function') {
+        const cursorReq = store.openCursor();
+        cursorReq.onsuccess = () => {
+          const cursor = cursorReq.result;
+          if (cursor) {
+            const val = cursor.value as { key?: string; cachedAt?: string } | undefined;
+            const entryKey =
+              typeof val?.key === 'string'
+                ? val.key
+                : typeof cursor.key === 'string'
+                  ? cursor.key
+                  : '';
+            if (entryKey) {
+              entries.push({
+                key: entryKey,
+                cachedAt: typeof val?.cachedAt === 'string' ? val.cachedAt : '',
+              });
+            }
+            cursor.continue();
+          } else {
+            deleteOldest();
+          }
+        };
+      } else {
+        const allReq = store.getAll();
+        allReq.onsuccess = () => {
+          const all = (allReq.result as Array<{ key?: string; cachedAt?: string }>) || [];
+          for (const item of all) {
+            if (item?.key) {
+              entries.push({ key: item.key, cachedAt: item.cachedAt || '' });
+            }
+          }
+          deleteOldest();
+        };
       }
-      resolve(ok);
+
+      tx.oncomplete = () => finish(evictedCount);
+      tx.onerror = () => finish(0);
+      tx.onabort = () => finish(0);
+    } catch {
+      finish(0);
+    }
+  });
+}
+
+function writeCachedSavePayloadOnce<T>(
+  db: IDBDatabase,
+  key: string,
+  payload: T
+): Promise<{ ok: boolean; quotaExceeded: boolean }> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (ok: boolean, quotaExceeded = false) => {
+      if (settled) return;
+      settled = true;
+      resolve({ ok, quotaExceeded });
     };
     try {
       const tx = db.transaction(SAVE_CACHE_STORE, 'readwrite');
@@ -1175,13 +1251,41 @@ export async function putCachedSavePayload<T>(
         };
       }
 
-      tx.oncomplete = () => finish(true);
-      tx.onerror = () => finish(false);
-      tx.onabort = () => finish(false);
-    } catch {
-      finish(false);
+      tx.oncomplete = () => finish(true, false);
+      tx.onerror = () => finish(false, isQuotaError(tx.error));
+      tx.onabort = () => finish(false, isQuotaError(tx.error));
+    } catch (err) {
+      finish(false, isQuotaError(err));
     }
   });
+}
+
+export async function putCachedSavePayload<T>(
+  saveName: string,
+  inGameDate: string,
+  payload: T
+): Promise<boolean> {
+  const db = await openSaveCacheDb();
+  if (!db) return false;
+  const key = buildSaveCacheKey(saveName, inGameDate);
+  try {
+    const first = await writeCachedSavePayloadOnce(db, key, payload);
+    if (first.ok) return true;
+    if (first.quotaExceeded) {
+      const evicted = await evictOldestCachedSavesForQuota(db, key, MAX_CACHED_SAVES);
+      if (evicted > 0) {
+        const retry = await writeCachedSavePayloadOnce(db, key, payload);
+        return retry.ok;
+      }
+    }
+    return false;
+  } finally {
+    try {
+      db.close();
+    } catch {
+      // ignore close errors
+    }
+  }
 }
 
 export async function getCachedSavePayload<T>(
@@ -1218,50 +1322,106 @@ export async function getCachedSavePayload<T>(
   });
 }
 
-/**
- * Persists a compact SaveHistoryPoint in IndexedDB (pruning oldest beyond MAX_SNAPSHOT_POINTS).
- */
-export async function putSaveHistoryPoint(
+function writeSaveHistoryPointOnce(
+  db: IDBDatabase,
   point: SaveHistoryPoint
-): Promise<boolean> {
-  const db = await openSaveCacheDb();
-  if (!db) return false;
+): Promise<{ ok: boolean; quotaExceeded: boolean }> {
   return new Promise((resolve) => {
     let settled = false;
-    const finish = (ok: boolean) => {
+    const finish = (ok: boolean, quotaExceeded = false) => {
       if (settled) return;
       settled = true;
-      try {
-        db.close();
-      } catch {
-        // ignore close errors
-      }
-      resolve(ok);
+      resolve({ ok, quotaExceeded });
     };
     try {
       const tx = db.transaction(SNAPSHOT_HISTORY_STORE, 'readwrite');
       const store = tx.objectStore(SNAPSHOT_HISTORY_STORE);
       store.put(point, point.cacheKey);
 
-      const allReq = store.getAll();
-      allReq.onsuccess = () => {
-        const all = (allReq.result as SaveHistoryPoint[]) || [];
-        if (all.length > MAX_SNAPSHOT_POINTS) {
-          all.sort((a, b) => a.capturedAt.localeCompare(b.capturedAt));
-          const excess = all.slice(0, all.length - MAX_SNAPSHOT_POINTS);
-          for (const old of excess) {
+      const pruneMeta = (meta: Array<{ cacheKey: string; capturedAt: string }>) => {
+        if (meta.length <= MAX_SNAPSHOT_POINTS) return;
+        meta.sort((a, b) => a.capturedAt.localeCompare(b.capturedAt));
+        const excess = meta.slice(0, meta.length - MAX_SNAPSHOT_POINTS);
+        for (const old of excess) {
+          if (old.cacheKey) {
             store.delete(old.cacheKey);
           }
         }
       };
 
-      tx.oncomplete = () => finish(true);
-      tx.onerror = () => finish(false);
-      tx.onabort = () => finish(false);
-    } catch {
-      finish(false);
+      // Use cursor iteration when supported so pruning stays memory-light on mobile
+      if (typeof store.openCursor === 'function') {
+        const meta: Array<{ cacheKey: string; capturedAt: string }> = [];
+        const cursorReq = store.openCursor();
+        cursorReq.onsuccess = () => {
+          const cursor = cursorReq.result;
+          if (cursor) {
+            const val = cursor.value as { cacheKey?: string; capturedAt?: string } | undefined;
+            const entryKey =
+              typeof val?.cacheKey === 'string'
+                ? val.cacheKey
+                : typeof cursor.key === 'string'
+                  ? cursor.key
+                  : '';
+            if (entryKey) {
+              meta.push({
+                cacheKey: entryKey,
+                capturedAt: typeof val?.capturedAt === 'string' ? val.capturedAt : '',
+              });
+            }
+            cursor.continue();
+          } else {
+            pruneMeta(meta);
+          }
+        };
+      } else {
+        const allReq = store.getAll();
+        allReq.onsuccess = () => {
+          const all = (allReq.result as SaveHistoryPoint[]) || [];
+          pruneMeta(
+            all
+              .filter((item) => Boolean(item?.cacheKey))
+              .map((item) => ({ cacheKey: item.cacheKey, capturedAt: item.capturedAt || '' }))
+          );
+        };
+      }
+
+      tx.oncomplete = () => finish(true, false);
+      tx.onerror = () => finish(false, isQuotaError(tx.error));
+      tx.onabort = () => finish(false, isQuotaError(tx.error));
+    } catch (err) {
+      finish(false, isQuotaError(err));
     }
   });
+}
+
+/**
+ * Persists a compact SaveHistoryPoint in IndexedDB (pruning oldest beyond MAX_SNAPSHOT_POINTS,
+ * with automatic 1-shot QuotaExceededError eviction of cached full saves).
+ */
+export async function putSaveHistoryPoint(
+  point: SaveHistoryPoint
+): Promise<boolean> {
+  const db = await openSaveCacheDb();
+  if (!db) return false;
+  try {
+    const first = await writeSaveHistoryPointOnce(db, point);
+    if (first.ok) return true;
+    if (first.quotaExceeded) {
+      const evicted = await evictOldestCachedSavesForQuota(db, undefined, MAX_CACHED_SAVES);
+      if (evicted > 0) {
+        const retry = await writeSaveHistoryPointOnce(db, point);
+        return retry.ok;
+      }
+    }
+    return false;
+  } finally {
+    try {
+      db.close();
+    } catch {
+      // ignore close errors
+    }
+  }
 }
 
 /**

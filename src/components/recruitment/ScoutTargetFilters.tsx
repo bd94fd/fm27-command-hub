@@ -77,7 +77,7 @@ export const ScoutTargetFilters: React.FC<ScoutTargetFiltersProps> = ({
               key={grp}
               type="button"
               onClick={() => setTargetPosGroup(grp)}
-              className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition cursor-pointer ${
+              className={`min-h-[44px] sm:min-h-[30px] rounded-lg px-2.5 py-1 text-xs sm:text-[11px] font-semibold border transition cursor-pointer whitespace-nowrap ${
                 targetPosGroup === grp
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                   : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
@@ -102,7 +102,7 @@ export const ScoutTargetFilters: React.FC<ScoutTargetFiltersProps> = ({
               key={band.id}
               type="button"
               onClick={() => setTargetAgeBand(band.id)}
-              className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition cursor-pointer ${
+              className={`min-h-[44px] sm:min-h-[30px] rounded-lg px-2.5 py-1 text-xs sm:text-[11px] font-semibold border transition cursor-pointer whitespace-nowrap ${
                 targetAgeBand === band.id
                   ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
                   : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
@@ -126,7 +126,7 @@ export const ScoutTargetFilters: React.FC<ScoutTargetFiltersProps> = ({
               setDnaArchetypeFilter('ALL');
               setVisibleTargetCount(24);
             }}
-            className={`rounded-lg px-2 py-0.5 text-[11px] font-semibold border transition cursor-pointer ${
+            className={`min-h-[44px] sm:min-h-[28px] rounded-lg px-2.5 sm:px-2 py-1 sm:py-0.5 text-xs sm:text-[11px] font-semibold border transition cursor-pointer whitespace-nowrap ${
               dnaArchetypeFilter === 'ALL'
                 ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                 : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
@@ -142,7 +142,7 @@ export const ScoutTargetFilters: React.FC<ScoutTargetFiltersProps> = ({
                 setDnaArchetypeFilter(arch.id);
                 setVisibleTargetCount(24);
               }}
-              className={`rounded-lg px-2 py-0.5 text-[11px] font-semibold border transition cursor-pointer ${
+              className={`min-h-[44px] sm:min-h-[28px] rounded-lg px-2.5 sm:px-2 py-1 sm:py-0.5 text-xs sm:text-[11px] font-semibold border transition cursor-pointer whitespace-nowrap ${
                 dnaArchetypeFilter === arch.id
                   ? archetypeBadgeClass(arch.badgeTone)
                   : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
@@ -156,7 +156,7 @@ export const ScoutTargetFilters: React.FC<ScoutTargetFiltersProps> = ({
         <button
           type="button"
           onClick={() => setShowDnaTuner((v) => !v)}
-          className="rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700 px-2.5 py-1 text-[11px] font-semibold text-emerald-300 transition cursor-pointer"
+          className="min-h-[44px] sm:min-h-[30px] rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700 px-3 sm:px-2.5 py-1 text-xs sm:text-[11px] font-semibold text-emerald-300 transition cursor-pointer whitespace-nowrap"
         >
           {showDnaTuner ? 'Hide DNA Weight Sliders' : 'Tune Club DNA Weights'}
         </button>
@@ -243,7 +243,7 @@ export const ScoutTargetFilters: React.FC<ScoutTargetFiltersProps> = ({
               key={btn.id}
               type="button"
               onClick={() => setTargetFilter(btn.id)}
-              className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition cursor-pointer ${
+              className={`min-h-[44px] sm:min-h-[30px] rounded-lg px-2.5 py-1 text-xs sm:text-[11px] font-semibold border transition cursor-pointer whitespace-nowrap ${
                 targetFilter === btn.id
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                   : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
@@ -260,7 +260,7 @@ export const ScoutTargetFilters: React.FC<ScoutTargetFiltersProps> = ({
               setExactPosFilter(e.target.value);
               setVisibleTargetCount(24);
             }}
-            className="rounded-lg bg-slate-950 border border-slate-700 px-2 py-1 text-[11px] font-semibold text-slate-200 focus:border-emerald-500 focus:outline-none"
+            className="min-h-[44px] sm:min-h-[30px] rounded-lg bg-slate-950 border border-slate-700 px-2.5 sm:px-2 py-1 text-base sm:text-[11px] font-semibold text-slate-200 focus:border-emerald-500 focus:outline-none"
           >
             <option value="ALL">All Exact Slots</option>
             {(['GK', 'DC', 'DL', 'DR', 'DM', 'MC', 'AMC', 'AML', 'AMR', 'STC'] as const).map((slot) => (
@@ -285,7 +285,7 @@ export const ScoutTargetFilters: React.FC<ScoutTargetFiltersProps> = ({
               );
               setVisibleTargetCount(24);
             }}
-            className="rounded-lg bg-slate-950 border border-slate-700 px-2 py-1 text-[11px] font-semibold text-slate-200 focus:border-emerald-500 focus:outline-none"
+            className="min-h-[44px] sm:min-h-[30px] rounded-lg bg-slate-950 border border-slate-700 px-2.5 sm:px-2 py-1 text-base sm:text-[11px] font-semibold text-slate-200 focus:border-emerald-500 focus:outline-none"
           >
             <option value="GAP_FIT">Sort: Gap &amp; Role Fit</option>
             <option value="CLUB_DNA">Sort: Club DNA Score (0–100)</option>
@@ -302,7 +302,7 @@ export const ScoutTargetFilters: React.FC<ScoutTargetFiltersProps> = ({
               setGenuineGapsOnly((prev) => !prev);
               setVisibleTargetCount(24);
             }}
-            className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition cursor-pointer ${
+            className={`min-h-[44px] sm:min-h-[30px] rounded-lg px-2.5 py-1 text-xs sm:text-[11px] font-semibold border transition cursor-pointer whitespace-nowrap ${
               genuineGapsOnly
                 ? 'bg-emerald-500/25 text-emerald-200 border-emerald-400 ring-1 ring-emerald-400/40 shadow-sm shadow-emerald-500/20'
                 : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'

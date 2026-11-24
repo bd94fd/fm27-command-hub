@@ -674,9 +674,30 @@ export async function decodeFmSaveViaServer(
       const statusBody = (await statusRes.json()) as {
         bytesReceived?: number;
         receivedOffsets?: number[];
+        receivedRanges?: Array<{ offset?: number; length?: number }>;
       };
 
-      if (
+      const validRanges = Array.isArray(statusBody.receivedRanges)
+        ? statusBody.receivedRanges.filter(
+            (r): r is { offset: number; length: number } =>
+              Boolean(r) &&
+              typeof r.offset === 'number' &&
+              Number.isFinite(r.offset) &&
+              typeof r.length === 'number' &&
+              r.length > 0
+          )
+        : [];
+
+      if (validRanges.length > 0) {
+        for (const c of chunks) {
+          const fullyCovered = validRanges.some(
+            (r) => r.offset <= c.offset && r.offset + r.length >= c.end
+          );
+          if (fullyCovered) {
+            completedOffsets.add(c.offset);
+          }
+        }
+      } else if (
         Array.isArray(statusBody.receivedOffsets) &&
         statusBody.receivedOffsets.length > 0
       ) {
@@ -730,6 +751,9 @@ export async function decodeFmSaveViaServer(
               },
             }
       );
+      const chunkByteLength = chunkBuffer.byteLength;
+      // Allocate the Blob wrapper once per chunk so retries don't churn mobile GC
+      const chunkBlob = new Blob([chunkBuffer], { type: 'application/octet-stream' });
       let chunkUploaded = false;
 
       for (let attempt = 0; attempt <= SERVER_CHUNK_MAX_RETRIES; attempt++) {
@@ -760,8 +784,9 @@ export async function decodeFmSaveViaServer(
               'Content-Type': 'application/octet-stream',
               'x-fm-upload-id': uploadId,
               'x-fm-chunk-offset': String(chunk.offset),
+              'x-fm-chunk-length': String(chunkByteLength),
             },
-            body: new Blob([chunkBuffer], { type: 'application/octet-stream' }),
+            body: chunkBlob,
             signal: attemptController?.signal ?? activeSignal,
           });
         } catch (err: unknown) {

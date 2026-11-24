@@ -4,7 +4,7 @@ import type { PlayerRecord } from '../../types/fm27';
 import type { RecruitmentTarget } from '../../types/fmSave';
 import { buildMultiPlayerComparison } from '../../utils/playerComparisonEngine';
 import { findTopSeniorStarterForPosition } from '../../utils/recruitmentHelpers';
-import { MultiPlayerComparisonChart } from '../FootballAnalyticsCharts';
+import { MultiPlayerComparisonChart } from '../charts/MultiPlayerComparisonChart';
 import { MobileSheetFrame } from '../MobileSheetFrame';
 
 interface SelectionCompareDockProps {
