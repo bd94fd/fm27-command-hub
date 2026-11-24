@@ -855,7 +855,15 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
 
         let fastDetail: string | null = null;
         let fastSucceeded = false;
-        if (isDeepAnalystMode && isRecoverableAnalystFailure(failure)) {
+        // On HTTP 429/503 the server already ran retries and failed over across
+        // Deep -> Fast -> Emergency models. Skip a redundant second client HTTP
+        // round-trip so the user gets an instant Offline Briefing instead of waiting twice.
+        const shouldClientRetryFast =
+          isDeepAnalystMode &&
+          isRecoverableAnalystFailure(failure) &&
+          failure.status !== 429 &&
+          failure.status !== 503;
+        if (shouldClientRetryFast) {
           setChatFallbackNotice(
             `${primaryModeLabel} failed — ${primaryDetail}. Automatically retrying with Fast Co-Pilot…`
           );

@@ -9,8 +9,17 @@ export const MODEL_DISCOVERY_TTL_MS = 5 * 60 * 1000; // 5 minutes
 export const FAST_MODEL_ID = 'gemini-3.5-flash-lite';
 export const DEEP_MODEL_ID = 'gemini-3.6-flash';
 export const EMERGENCY_OVERLOAD_MODEL_ID = 'gemini-3.8-flash';
+export const EMERGENCY_LITE_MODEL_ID = 'gemini-3.1-flash-lite';
 
 export type ReasoningMode = 'fast_lite' | 'deep_high' | 'max_xhigh';
+
+export interface UpstreamFailureDiagnostic {
+  at: string;
+  model: string;
+  status: number | null;
+  code: string | null;
+  reason: string;
+}
 
 const RETIRED_MODEL_RE = /^(?:models\/)?gemini-(?:1\.|2\.0|2\.5)/i;
 
@@ -69,13 +78,15 @@ export class AnalystTimeoutError extends Error {
 }
 
 export class AnalystOverloadError extends Error {
-  readonly status = 503;
+  readonly status: 429 | 503;
 
   constructor(
-    message = 'The AI Tactical Analyst is temporarily busy due to high demand. Automatic retries and model failover were attempted — please wait a few seconds and try again.'
+    message = 'The AI Tactical Analyst is temporarily busy due to high demand. Automatic retries and model failover were attempted — please wait a few seconds and try again.',
+    status: 429 | 503 = 503
   ) {
     super(message);
     this.name = 'AnalystOverloadError';
+    this.status = status;
   }
 }
 
@@ -86,6 +97,28 @@ export function isNotFoundError(err: unknown): boolean {
   }
   const msg = err instanceof Error ? err.message : String(err);
   return /\b404\b|NOT_FOUND|no longer available|not found/i.test(msg);
+}
+
+export function isQuotaRateLimitError(err: unknown): boolean {
+  if (!err) return false;
+  if (err instanceof AnalystOverloadError) {
+    return err.status === 429;
+  }
+  if (typeof err === 'object') {
+    const status = (err as { status?: unknown }).status;
+    const code = (err as { code?: unknown }).code;
+    if (status === 429 || code === 429) {
+      return true;
+    }
+  }
+  const msg = err instanceof Error ? err.message : String(err);
+  return /\b429\b|RESOURCE_EXHAUSTED|quota|rate limit/i.test(msg);
+}
+
+export function isHardDailyQuotaError(err: unknown): boolean {
+  if (!isQuotaRateLimitError(err)) return false;
+  const msg = err instanceof Error ? err.message : String(err);
+  return /PerDay|daily|limit:\s*0|exceeded your current quota/i.test(msg);
 }
 
 export function isTransientOverloadError(err: unknown): boolean {
@@ -104,46 +137,89 @@ export function isTransientOverloadError(err: unknown): boolean {
   );
 }
 
+/**
+ * Extracts a short, non-sensitive upstream status/code/reason summary from a Gemini SDK error
+ * (redacts any URLs or token-like strings).
+ */
+export function extractSafeUpstreamError(err: unknown): {
+  status: number | null;
+  code: string | null;
+  reason: string;
+} {
+  let status: number | null = null;
+  let code: string | null = null;
+  if (err && typeof err === 'object') {
+    const rawStatus = (err as { status?: unknown }).status;
+    const rawCode = (err as { code?: unknown }).code;
+    if (typeof rawStatus === 'number') status = rawStatus;
+    else if (typeof rawCode === 'number') status = rawCode;
+    if (typeof rawCode === 'string') code = rawCode;
+  }
+
+  const raw = err instanceof Error ? err.message : String(err || '');
+  let reason = raw.trim();
+
+  if (reason.includes('{"error"') || reason.startsWith('{')) {
+    const jsonStart = reason.indexOf('{');
+    try {
+      const parsed = JSON.parse(reason.slice(jsonStart)) as {
+        error?: { message?: string; status?: string; code?: number };
+        message?: string;
+      };
+      if (typeof parsed.error?.code === 'number') status = parsed.error.code;
+      if (typeof parsed.error?.status === 'string') code = parsed.error.status;
+      if (parsed.error?.message || parsed.message) {
+        reason = String(parsed.error?.message || parsed.message);
+      }
+    } catch {
+      // Keep raw fallback
+    }
+  }
+
+  const sanitized = reason
+    .replace(/https?:\/\/\S+/gi, '')
+    .replace(/AIza[0-9A-Za-z_-]{10,}/g, '[REDACTED]')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return {
+    status,
+    code,
+    reason: sanitized.slice(0, 180) || 'Unknown upstream error',
+  };
+}
+
+export function buildOverloadErrorFromCause(err: unknown): AnalystOverloadError {
+  if (isQuotaRateLimitError(err)) {
+    return new AnalystOverloadError(
+      'Google Gemini API rate limit or daily quota has been reached for this API key across all fallback models. Please wait a minute (or check your Google AI Studio billing/quota) and try again.',
+      429
+    );
+  }
+  return new AnalystOverloadError(
+    'The AI Tactical Analyst is temporarily busy due to high demand. Automatic retries and model failover were attempted — please wait a few seconds and try again.',
+    503
+  );
+}
+
 export function formatFriendlyGeminiError(err: unknown): string {
   if (err instanceof AnalystTimeoutError) {
     return err.message;
   }
-  if (err instanceof AnalystOverloadError || isTransientOverloadError(err)) {
+  if (err instanceof AnalystOverloadError) {
+    return err.message;
+  }
+  if (isQuotaRateLimitError(err)) {
+    return 'Google Gemini API rate limit or daily quota has been reached for this API key across all fallback models. Please wait a minute (or check your Google AI Studio billing/quota) and try again.';
+  }
+  if (isTransientOverloadError(err)) {
     return 'The AI Tactical Analyst is temporarily busy due to high demand. Automatic retries and model failover were attempted — please wait a few seconds and try again.';
   }
-  const raw = err instanceof Error ? err.message : String(err || '');
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    return 'The Tactical Analyst encountered an unexpected error. Please try again.';
+  const safe = extractSafeUpstreamError(err);
+  if (safe.reason && safe.reason !== 'Unknown upstream error') {
+    return safe.reason;
   }
-  // Unwrap raw JSON error blobs returned by Google GenAI SDK / upstream proxies
-  if (trimmed.includes('{"error"') || trimmed.startsWith('{')) {
-    const jsonStart = trimmed.indexOf('{');
-    try {
-      const parsed = JSON.parse(trimmed.slice(jsonStart)) as {
-        error?: { message?: string; status?: string; code?: number };
-        message?: string;
-      };
-      const innerCode = parsed.error?.code;
-      const innerStatus = parsed.error?.status || '';
-      const innerMsg = parsed.error?.message || parsed.message || '';
-      if (
-        innerCode === 503 ||
-        innerCode === 429 ||
-        /UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded/i.test(
-          `${innerStatus} ${innerMsg}`
-        )
-      ) {
-        return 'The AI Tactical Analyst is temporarily busy due to high demand. Automatic retries and model failover were attempted — please wait a few seconds and try again.';
-      }
-      if (innerMsg) {
-        return innerMsg;
-      }
-    } catch {
-      return 'The Tactical Analyst encountered a temporary service error. Please try again in a moment.';
-    }
-  }
-  return trimmed;
+  return 'The Tactical Analyst encountered an unexpected error. Please try again.';
 }
 
 function isTimeoutLike(err: unknown): boolean {
@@ -197,6 +273,7 @@ export class GeminiService {
   private readonly now: () => number;
   private readonly sleep: (ms: number) => Promise<void>;
   private discoveryCache: DiscoveryCacheEntry | null = null;
+  private lastUpstreamFailure: UpstreamFailureDiagnostic | null = null;
 
   constructor(options: GeminiServiceOptions = {}) {
     this.config = options.config ?? loadServerConfig();
@@ -208,6 +285,10 @@ export class GeminiService {
 
   getConfig(): ServerConfig {
     return this.config;
+  }
+
+  getLastUpstreamFailure(): UpstreamFailureDiagnostic | null {
+    return this.lastUpstreamFailure;
   }
 
   hasApiKey(): boolean {
@@ -414,8 +495,18 @@ export class GeminiService {
         // Prevent Node unhandledRejection if timeoutPromise settles first and callPromise rejects later
         callPromise.catch(() => {});
 
-        return await Promise.race([callPromise, timeoutPromise]);
+        const result = await Promise.race([callPromise, timeoutPromise]);
+        this.lastUpstreamFailure = null;
+        return result;
       } catch (err: unknown) {
+        const safe = extractSafeUpstreamError(err);
+        this.lastUpstreamFailure = {
+          at: new Date(this.now()).toISOString(),
+          model,
+          status: safe.status,
+          code: safe.code,
+          reason: safe.reason,
+        };
         if (isTimeoutLike(err)) {
           throw new AnalystTimeoutError(timeoutMs);
         }
@@ -434,7 +525,11 @@ export class GeminiService {
             : model !== fallbackModel
               ? fallbackModel
               : DEEP_MODEL_ID;
-      const candidates = [first, EMERGENCY_OVERLOAD_MODEL_ID];
+      const candidates = [
+        first,
+        EMERGENCY_OVERLOAD_MODEL_ID,
+        EMERGENCY_LITE_MODEL_ID,
+      ];
       const unique: string[] = [];
       for (const candidate of candidates) {
         if (
@@ -465,6 +560,11 @@ export class GeminiService {
           lastErr = err;
           if (!isTransientOverloadError(err)) {
             throw err;
+          }
+          // Do not burn retries hammering a model whose daily quota is exhausted;
+          // move immediately to the next distinct model in the failover chain.
+          if (isHardDailyQuotaError(err)) {
+            break;
           }
           if (attempt < retryDelays.length) {
             const delayMs = retryDelays[attempt];
@@ -517,7 +617,7 @@ export class GeminiService {
               );
             } catch (emergencyErr: unknown) {
               if (isTransientOverloadError(emergencyErr) || isNotFoundError(emergencyErr)) {
-                throw new AnalystOverloadError();
+                throw buildOverloadErrorFromCause(emergencyErr);
               }
               throw emergencyErr;
             }
@@ -546,7 +646,9 @@ export class GeminiService {
           isTransientOverloadError(lastFailoverErr) ||
           isNotFoundError(lastFailoverErr)
         ) {
-          throw new AnalystOverloadError();
+          throw buildOverloadErrorFromCause(
+            isNotFoundError(lastFailoverErr) ? err : lastFailoverErr
+          );
         }
         throw lastFailoverErr;
       }

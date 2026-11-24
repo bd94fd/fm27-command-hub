@@ -397,6 +397,87 @@ describe('server/geminiService', () => {
     );
     assert.equal(seenCalls[seenCalls.length - 1].thinkingLevel, ThinkingLevel.LOW);
   });
+
+  it('fast-skips hard daily quota 429 without hammering, cascades to gemini-3.1-flash-lite, and records sanitized lastUpstreamFailure', async () => {
+    const calledModels: string[] = [];
+    let sleepCalls = 0;
+
+    const service = new GeminiService({
+      config: loadServerConfig({ GEMINI_API_KEY: 'test-key' } as NodeJS.ProcessEnv),
+      sleep: async () => {
+        sleepCalls += 1;
+      },
+      clientFactory: () => ({
+        models: {
+          generateContent: (async (params: { model: string }) => {
+            calledModels.push(params.model);
+            if (params.model === 'gemini-3.1-flash-lite') {
+              return { text: '{"ok":true,"tier4":true}' };
+            }
+            const err = new Error(
+              '{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"You exceeded your current quota (GenerateRequestsPerDayPerProjectPerModel-FreeTier)."}}'
+            ) as Error & { status?: number };
+            err.status = 429;
+            throw err;
+          }) as never,
+        },
+      }),
+    });
+
+    const res = await service.generateContent(
+      { contents: 'Squad & Wage Audit' },
+      { reasoningMode: 'deep_high' }
+    );
+    assert.equal(res.text, '{"ok":true,"tier4":true}');
+    assert.equal(sleepCalls, 0, 'hard daily quota should immediately cascade without retry sleeps');
+    assert.deepEqual(calledModels, [
+      'gemini-3.6-flash',
+      'gemini-3.5-flash-lite',
+      'gemini-3.8-flash',
+      'gemini-3.1-flash-lite',
+    ]);
+    // Cleared on success
+    assert.equal(service.getLastUpstreamFailure(), null);
+
+    // When all 4 tiers return 429 quota, throw AnalystOverloadError with status 429 and record safe diagnostic
+    const exhaustedService = new GeminiService({
+      config: loadServerConfig({ GEMINI_API_KEY: 'test-key' } as NodeJS.ProcessEnv),
+      sleep: async () => {},
+      clientFactory: () => ({
+        models: {
+          generateContent: (async () => {
+            const err = new Error(
+              '{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"You exceeded your current quota (PerDay). See https://ai.google.dev/quota AIzaSyFAKEKEY123456"}}'
+            ) as Error & { status?: number };
+            err.status = 429;
+            throw err;
+          }) as never,
+        },
+      }),
+    });
+
+    await assert.rejects(
+      () =>
+        exhaustedService.generateContent(
+          { contents: 'Squad & Wage Audit' },
+          { reasoningMode: 'deep_high' }
+        ),
+      (err: unknown) => {
+        const e = err as { name?: string; status?: number; message?: string };
+        return (
+          e?.name === 'AnalystOverloadError' &&
+          e?.status === 429 &&
+          /quota/i.test(e?.message || '')
+        );
+      }
+    );
+    const diag = exhaustedService.getLastUpstreamFailure();
+    assert.ok(diag);
+    assert.equal(diag.status, 429);
+    assert.equal(diag.code, 'RESOURCE_EXHAUSTED');
+    assert.doesNotMatch(diag.reason, /AIzaSy|https?:\/\//);
+  });
 });
+
 
 

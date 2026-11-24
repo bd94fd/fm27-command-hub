@@ -5,6 +5,7 @@ import {
   DEEP_MODEL_ID,
   formatFriendlyGeminiError,
   GeminiService,
+  isQuotaRateLimitError,
   isRetiredGeminiModel,
   isTransientOverloadError,
   type ReasoningMode,
@@ -61,6 +62,7 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
       fallbackModel: config.fallbackModel,
       analystTimeoutMs: config.aiTimeoutMs,
       deepAnalystTimeoutMs: config.deepAiTimeoutMs,
+      lastAiFailure: gemini.getLastUpstreamFailure(),
     });
   });
 
@@ -133,7 +135,13 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
         error instanceof AnalystOverloadError ||
         isTransientOverloadError(error)
       ) {
-        return res.status(503).json({
+        const status =
+          error instanceof AnalystOverloadError
+            ? error.status
+            : isQuotaRateLimitError(error)
+              ? 429
+              : 503;
+        return res.status(status).json({
           error:
             error instanceof AnalystOverloadError
               ? error.message
@@ -262,7 +270,13 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
         return res.status(504).json({ error: error.message });
       }
       if (error instanceof AnalystOverloadError || isTransientOverloadError(error)) {
-        return res.status(503).json({ error: formatFriendlyGeminiError(error) });
+        const status =
+          error instanceof AnalystOverloadError
+            ? error.status
+            : isQuotaRateLimitError(error)
+              ? 429
+              : 503;
+        return res.status(status).json({ error: formatFriendlyGeminiError(error) });
       }
       return res.status(500).json({ error: formatFriendlyGeminiError(error) });
     }
@@ -333,7 +347,13 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
         return res.status(504).json({ error: error.message });
       }
       if (error instanceof AnalystOverloadError || isTransientOverloadError(error)) {
-        return res.status(503).json({ error: formatFriendlyGeminiError(error) });
+        const status =
+          error instanceof AnalystOverloadError
+            ? error.status
+            : isQuotaRateLimitError(error)
+              ? 429
+              : 503;
+        return res.status(status).json({ error: formatFriendlyGeminiError(error) });
       }
       return res.status(500).json({ error: formatFriendlyGeminiError(error) });
     }
@@ -409,7 +429,13 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
         return res.status(504).json({ error: error.message });
       }
       if (error instanceof AnalystOverloadError || isTransientOverloadError(error)) {
-        return res.status(503).json({ error: formatFriendlyGeminiError(error) });
+        const status =
+          error instanceof AnalystOverloadError
+            ? error.status
+            : isQuotaRateLimitError(error)
+              ? 429
+              : 503;
+        return res.status(status).json({ error: formatFriendlyGeminiError(error) });
       }
       return res.status(500).json({ error: formatFriendlyGeminiError(error) });
     }
