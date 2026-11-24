@@ -536,7 +536,9 @@ export default function App() {
       });
   }, [applyPersistedSnapshot]);
 
-  // Automatically persist non-empty state across browser refreshes & sessions
+  // Automatically persist non-empty state across browser refreshes & sessions.
+  // Debounces rapid bursts (180ms) to avoid back-to-back main-thread JSON.stringify
+  // stalls on Android Chrome, while flushing immediately on pagehide/visibilitychange.
   useEffect(() => {
     // Wait until initial mount restore (incl. IndexedDB recency check) has settled
     // so an older localStorage snapshot never clobbers a newer IndexedDB cache.
@@ -552,7 +554,8 @@ export default function App() {
       shortlists.length > 0
     ) {
       let cancelled = false;
-      void savePersistedFmState({
+      let flushed = false;
+      const snapshotToPersist = {
         saveDate,
         nextFixture,
         leagueStandingSub,
@@ -568,17 +571,42 @@ export default function App() {
         activeShape,
         customSlots,
         applyToAnalystOnly,
-      })
-        .then((saved) => {
-          if (!cancelled && saved) {
-            setIsRestoredFromMemory(true);
-          }
-        })
-        .catch((err) => {
-          console.warn('Failed to auto-save FM27 state:', err);
-        });
+      };
+
+      const flushSave = () => {
+        if (cancelled || flushed || isResettingRef.current) return;
+        flushed = true;
+        void savePersistedFmState(snapshotToPersist)
+          .then((saved) => {
+            if (!cancelled && saved) {
+              setIsRestoredFromMemory(true);
+            }
+          })
+          .catch((err) => {
+            console.warn('Failed to auto-save FM27 state:', err);
+          });
+      };
+
+      const timer = window.setTimeout(flushSave, 180);
+      const handleVisibilityFlush = () => {
+        if (document.visibilityState === 'hidden') {
+          window.clearTimeout(timer);
+          flushSave();
+        }
+      };
+      const handlePageHide = () => {
+        window.clearTimeout(timer);
+        flushSave();
+      };
+
+      window.addEventListener('pagehide', handlePageHide);
+      document.addEventListener('visibilitychange', handleVisibilityFlush);
+
       return () => {
         cancelled = true;
+        window.clearTimeout(timer);
+        window.removeEventListener('pagehide', handlePageHide);
+        document.removeEventListener('visibilitychange', handleVisibilityFlush);
       };
     }
   }, [

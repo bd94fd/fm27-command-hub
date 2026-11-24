@@ -2165,7 +2165,7 @@ test('Server Chunked Decode Guardrails: Express server/routes/fmDecodeRoutes.ts 
   assert.match(decodeRouterSrc, /MAX_TOTAL_UPLOAD_BYTES\s*=\s*1024\s*\*\s*1024\s*\*\s*1024/);
   assert.match(decodeRouterSrc, /SERVER_DECODE_TIMEOUT_MS\s*=\s*480_000/);
   assert.match(decodeRouterSrc, /lastActivityAt/);
-  assert.match(decodeRouterSrc, /stdoutChunks\.push/);
+  assert.match(decodeRouterSrc, /outStream\.write\(/);
   assert.match(decodeRouterSrc, /express\.raw\(\{\s*type:\s*['"]application\/octet-stream['"]\s*,\s*limit:\s*['"]8mb['"]/);
   assert.match(decodeRouterSrc, /fs\.promises\.open/);
   assert.match(decodeRouterSrc, /x-fm-chunk-offset/);

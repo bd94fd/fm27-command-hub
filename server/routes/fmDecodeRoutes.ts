@@ -19,6 +19,7 @@ interface ServerPythonRuntime {
 const PYTHON_PROBE_TTL_MS = 60_000;
 const SERVER_DECODE_TIMEOUT_MS = 480_000; // 480s (8 min) for large multi-season saves
 const SERVER_DECODE_MAX_STDOUT_BYTES = 100 * 1024 * 1024;
+const SMALL_JSON_STRICT_VALIDATE_BYTES = 2 * 1024 * 1024; // Strict JSON.parse up to 2 MB; streaming O(1)-RAM validator above
 const MAX_TOTAL_UPLOAD_BYTES = 1024 * 1024 * 1024; // 1024 MB (1 GB) total chunked save limit
 const MAX_TOTAL_PENDING_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB total across all concurrent pending uploads
 const PENDING_UPLOAD_TTL_MS = 15 * 60 * 1000; // 15 minutes of inactivity
@@ -29,13 +30,82 @@ const STRICT_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TMP_UPLOAD_FILE_RE = /^fm27-save-[0-9a-f-]{36}\.fm$/i;
 const TMP_CHECKPOINT_FILE_RE = /^fm27-cp-[0-9a-f-]{36}(?:-[a-z0-9_-]+)?\.json(?:\.tmp)?$/i;
+const TMP_OUTPUT_FILE_RE = /^fm27-out-[0-9a-f-]{36}\.json$/i;
 const ORPHAN_SWEEP_MIN_AGE_MS = PENDING_UPLOAD_TTL_MS;
+
+export interface ByteRange {
+  offset: number;
+  length: number;
+}
+
+/**
+ * Pure helper: merges overlapping or adjacent [offset, offset + length) intervals
+ * into sorted, disjoint ByteRange segments so retried/overlapping chunks are
+ * strictly idempotent and never double-counted.
+ */
+export function mergeByteRanges(ranges: ReadonlyArray<ByteRange>): ByteRange[] {
+  const valid = ranges
+    .filter(
+      (r) =>
+        Number.isSafeInteger(r.offset) &&
+        r.offset >= 0 &&
+        Number.isSafeInteger(r.length) &&
+        r.length > 0
+    )
+    .sort((a, b) => a.offset - b.offset || a.length - b.length);
+  if (valid.length === 0) return [];
+
+  const merged: ByteRange[] = [{ offset: valid[0].offset, length: valid[0].length }];
+  for (let i = 1; i < valid.length; i++) {
+    const curr = valid[i];
+    const last = merged[merged.length - 1];
+    const lastEnd = last.offset + last.length;
+    const currEnd = curr.offset + curr.length;
+    if (curr.offset <= lastEnd) {
+      if (currEnd > lastEnd) {
+        last.length = currEnd - last.offset;
+      }
+    } else {
+      merged.push({ offset: curr.offset, length: curr.length });
+    }
+  }
+  return merged;
+}
+
+export function computeCoveredBytes(mergedRanges: ReadonlyArray<ByteRange>): number {
+  let total = 0;
+  for (const r of mergedRanges) {
+    total += r.length;
+  }
+  return total;
+}
+
+export function isContiguousRangeCovered(
+  mergedRanges: ReadonlyArray<ByteRange>,
+  expectedTotalBytes: number
+): boolean {
+  if (!Number.isSafeInteger(expectedTotalBytes) || expectedTotalBytes <= 0) {
+    return false;
+  }
+  return (
+    mergedRanges.length === 1 &&
+    mergedRanges[0].offset === 0 &&
+    mergedRanges[0].length === expectedTotalBytes
+  );
+}
 
 interface PendingUploadEntry {
   filePath: string;
+  fileHandle: fs.promises.FileHandle | null;
+  fileHandleOpening: Promise<fs.promises.FileHandle> | null;
+  inFlightWrites: number;
+  closing: boolean;
+  closePromise: Promise<void> | null;
+  writeDrainResolvers: Array<() => void>;
   bytesReceived: number;
   expectedTotalBytes?: number;
   receivedChunks?: Map<number, number>;
+  coveredRanges: ByteRange[];
   createdAt: number;
   lastActivityAt: number;
 }
@@ -45,8 +115,9 @@ interface DecodeJobEntry {
   progress: string;
   payload?: unknown;
   rawPayloadJson?: string;
+  rawPayloadPath?: string;
   checkpointStage?: string;
-  checkpointPayload?: unknown;
+  checkpointPayloadJson?: string;
   checkpointDelivered?: boolean;
   checkpointSeq?: number;
   error?: string;
@@ -60,6 +131,7 @@ interface DecodeJobEntry {
 const pendingUploads = new Map<string, PendingUploadEntry>();
 const decodeJobs = new Map<string, DecodeJobEntry>();
 const activeTempPaths = new Set<string>();
+const activeDecodeChildren = new Set<ReturnType<typeof spawn>>();
 let cachedPythonRuntime: ServerPythonRuntime | null = null;
 
 function getTotalPendingUploadBytes(excludeUploadId?: string): number {
@@ -75,19 +147,187 @@ function isValidUuid(val: unknown): val is string {
   return typeof val === 'string' && STRICT_UUID_RE.test(val.trim());
 }
 
+async function acquireUploadFileHandle(
+  entry: PendingUploadEntry
+): Promise<fs.promises.FileHandle | null> {
+  if (entry.closing) return null;
+  if (entry.fileHandle) return entry.fileHandle;
+  if (!entry.fileHandleOpening) {
+    entry.fileHandleOpening = fs.promises
+      .open(entry.filePath, 'r+')
+      .then((fh) => {
+        entry.fileHandleOpening = null;
+        if (entry.closing) {
+          void fh.close().catch(() => {});
+          return fh;
+        }
+        entry.fileHandle = fh;
+        return fh;
+      })
+      .catch((err) => {
+        entry.fileHandleOpening = null;
+        throw err;
+      });
+  }
+  const fh = await entry.fileHandleOpening;
+  if (entry.closing) return null;
+  return fh;
+}
+
+function closeUploadHandle(entry: PendingUploadEntry): Promise<void> {
+  if (entry.closePromise) return entry.closePromise;
+  entry.closing = true;
+  entry.closePromise = (async () => {
+    if (entry.fileHandleOpening) {
+      await entry.fileHandleOpening.catch(() => {});
+    }
+    if (entry.inFlightWrites > 0) {
+      await new Promise<void>((resolve) => {
+        entry.writeDrainResolvers.push(resolve);
+      });
+    }
+    const fh = entry.fileHandle;
+    entry.fileHandle = null;
+    if (fh) {
+      await fh.close().catch(() => {});
+    }
+  })();
+  return entry.closePromise;
+}
+
+async function disposePendingUpload(
+  uploadId: string,
+  entry: PendingUploadEntry,
+  unlinkFile = true
+): Promise<void> {
+  pendingUploads.delete(uploadId);
+  await closeUploadHandle(entry);
+  if (unlinkFile) {
+    await fs.promises.unlink(entry.filePath).catch(() => {
+      // ignore if already removed
+    });
+  }
+}
+
+async function cleanupJobOutputFile(job: DecodeJobEntry): Promise<void> {
+  const outPath = job.rawPayloadPath;
+  job.rawPayloadPath = undefined;
+  job.rawPayloadJson = undefined;
+  job.checkpointPayloadJson = undefined;
+  if (!outPath) return;
+  activeTempPaths.delete(outPath);
+  await fs.promises.unlink(outPath).catch(() => {
+    // ignore if already removed
+  });
+}
+
+/**
+ * Validates that a large JSON output file is a well-formed JSON object
+ * in constant O(1) memory (~64 KB read chunks), avoiding a V8 JSON.parse()
+ * heap spike on Render's 512 MB tier.
+ */
+async function validateJsonObjectFileStreaming(filePath: string): Promise<void> {
+  const stat = await fs.promises.stat(filePath);
+  if (stat.size === 0) {
+    throw new Error('Empty JSON output');
+  }
+  if (stat.size <= SMALL_JSON_STRICT_VALIDATE_BYTES) {
+    const raw = (await fs.promises.readFile(filePath, 'utf8')).trim();
+    if (!raw) {
+      throw new Error('Empty JSON output');
+    }
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Decoded payload must be a JSON object');
+    }
+    return;
+  }
+
+  // Constant-memory streaming structural validator for payloads > 2 MB
+  const stack: number[] = []; // 1 = '{', 2 = '['
+  let started = false;
+  let finishedRoot = false;
+  let inString = false;
+  let escaped = false;
+
+  const stream = fs.createReadStream(filePath, { highWaterMark: 64 * 1024 });
+  for await (const chunk of stream) {
+    const buf = chunk as Buffer;
+    for (let i = 0; i < buf.length; i++) {
+      const b = buf[i];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (b === 0x5c) {
+          // '\'
+          escaped = true;
+          continue;
+        }
+        if (b === 0x22) {
+          // '"'
+          inString = false;
+          continue;
+        }
+        if (b < 0x20) {
+          throw new Error('Unescaped control character in JSON string');
+        }
+        continue;
+      }
+
+      // Skip JSON whitespace
+      if (b === 0x20 || b === 0x09 || b === 0x0a || b === 0x0d) {
+        continue;
+      }
+
+      if (finishedRoot) {
+        throw new Error('Unexpected trailing content after JSON object');
+      }
+
+      if (!started) {
+        if (b !== 0x7b) {
+          throw new Error('Decoded payload must be a JSON object');
+        }
+        started = true;
+        stack.push(1);
+        continue;
+      }
+
+      if (b === 0x22) {
+        inString = true;
+      } else if (b === 0x7b) {
+        stack.push(1);
+      } else if (b === 0x5b) {
+        stack.push(2);
+      } else if (b === 0x7d) {
+        if (stack.pop() !== 1) {
+          throw new Error('Mismatched closing brace in JSON');
+        }
+        if (stack.length === 0) {
+          finishedRoot = true;
+        }
+      } else if (b === 0x5d) {
+        if (stack.pop() !== 2) {
+          throw new Error('Mismatched closing bracket in JSON');
+        }
+      }
+    }
+  }
+
+  if (!started || !finishedRoot || inString || stack.length !== 0) {
+    throw new Error('Truncated or unbalanced JSON object output');
+  }
+}
+
 async function pruneExpiredUploadsAndJobs(): Promise<void> {
   const now = Date.now();
-  const expiredUnlinks: Array<Promise<void>> = [];
+  const cleanupTasks: Array<Promise<void>> = [];
 
   for (const [uploadId, entry] of pendingUploads.entries()) {
     // Prune strictly by inactivity (lastActivityAt), never createdAt, so slow mobile uploads never expire mid-transfer
     if (now - entry.lastActivityAt > PENDING_UPLOAD_TTL_MS) {
-      pendingUploads.delete(uploadId);
-      expiredUnlinks.push(
-        fs.promises.unlink(entry.filePath).catch(() => {
-          // ignore if already removed
-        })
-      );
+      cleanupTasks.push(disposePendingUpload(uploadId, entry, true));
     }
   }
 
@@ -99,34 +339,43 @@ async function pruneExpiredUploadsAndJobs(): Promise<void> {
         : DECODE_JOB_TTL_MS;
     if (now - refTime > ttl) {
       decodeJobs.delete(jobId);
+      cleanupTasks.push(cleanupJobOutputFile(job));
     }
   }
 
-  if (expiredUnlinks.length > 0) {
-    await Promise.all(expiredUnlinks);
+  if (cleanupTasks.length > 0) {
+    await Promise.all(cleanupTasks);
   }
 }
 
 export async function cleanupAllPendingUploadsAndJobs(): Promise<void> {
-  const unlinks: Array<Promise<void>> = [];
-  for (const [uploadId, entry] of pendingUploads.entries()) {
-    pendingUploads.delete(uploadId);
-    unlinks.push(
-      fs.promises.unlink(entry.filePath).catch(() => {
-        // ignore if already removed
-      })
-    );
+  for (const child of activeDecodeChildren) {
+    try {
+      child.kill('SIGKILL');
+    } catch {
+      // ignore
+    }
   }
-  decodeJobs.clear();
-  if (unlinks.length > 0) {
-    await Promise.all(unlinks);
+  activeDecodeChildren.clear();
+
+  const tasks: Array<Promise<void>> = [];
+  for (const [uploadId, entry] of pendingUploads.entries()) {
+    tasks.push(disposePendingUpload(uploadId, entry, true));
+  }
+  for (const [jobId, job] of decodeJobs.entries()) {
+    decodeJobs.delete(jobId);
+    tasks.push(cleanupJobOutputFile(job));
+  }
+  if (tasks.length > 0) {
+    await Promise.all(tasks);
   }
 }
 
 /**
- * Removes temp .fm uploads and checkpoint files left behind by a crash or an
- * interrupted mobile upload. Only files older than ORPHAN_SWEEP_MIN_AGE_MS are
- * touched so a concurrent process's in-flight upload is never deleted.
+ * Removes temp .fm uploads, checkpoint files, and decoded output files left behind
+ * by a crash or an interrupted mobile upload. Only files older than
+ * ORPHAN_SWEEP_MIN_AGE_MS are touched so a concurrent process's in-flight upload
+ * is never deleted.
  */
 export async function sweepOrphanedTempUploads(
   maxAgeMs: number = ORPHAN_SWEEP_MIN_AGE_MS
@@ -135,6 +384,11 @@ export async function sweepOrphanedTempUploads(
   const activePaths = new Set<string>();
   for (const entry of pendingUploads.values()) {
     activePaths.add(path.resolve(entry.filePath));
+  }
+  for (const job of decodeJobs.values()) {
+    if (job.rawPayloadPath) {
+      activePaths.add(path.resolve(job.rawPayloadPath));
+    }
   }
 
   let names: string[];
@@ -148,7 +402,11 @@ export async function sweepOrphanedTempUploads(
   let removed = 0;
   await Promise.all(
     names.map(async (name) => {
-      if (!TMP_UPLOAD_FILE_RE.test(name) && !TMP_CHECKPOINT_FILE_RE.test(name)) {
+      if (
+        !TMP_UPLOAD_FILE_RE.test(name) &&
+        !TMP_CHECKPOINT_FILE_RE.test(name) &&
+        !TMP_OUTPUT_FILE_RE.test(name)
+      ) {
         return;
       }
       const fullPath = path.resolve(tmpDir, name);
@@ -306,10 +564,10 @@ function startAsyncNativeFmDecodeJob(
   };
   decodeJobs.set(jobId, job);
 
-  const tmpCheckpointPath = path.resolve(
-    os.tmpdir(),
-    `fm27-cp-${jobId}.json`
-  );
+  const tmpBaseDir = path.resolve(os.tmpdir());
+  const tmpCheckpointPath = path.resolve(tmpBaseDir, `fm27-cp-${jobId}.json`);
+  const tmpOutputPath = path.resolve(tmpBaseDir, `fm27-out-${jobId}.json`);
+
   const buildStageCheckpointPath = (stageName: string): string => {
     const safeStage =
       stageName.replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') ||
@@ -344,9 +602,10 @@ function startAsyncNativeFmDecodeJob(
   for (const p of jobTempPaths) {
     activeTempPaths.add(p);
   }
+  activeTempPaths.add(tmpOutputPath);
 
   let cleanedUp = false;
-  const cleanupTempFile = () => {
+  const cleanupTempInputs = () => {
     if (cleanedUp) return;
     cleanedUp = true;
     for (const p of jobTempPaths) {
@@ -357,6 +616,55 @@ function startAsyncNativeFmDecodeJob(
     }
     jobTempPaths.clear();
   };
+
+  let outStream: fs.WriteStream | null = null;
+  let outStreamClosed = false;
+  let outStreamError: Error | null = null;
+  let outStreamFinishPromise: Promise<void> = Promise.resolve();
+
+  const cleanupOutputFile = () => {
+    activeTempPaths.delete(tmpOutputPath);
+    if (outStream && !outStreamClosed) {
+      outStreamClosed = true;
+      try {
+        outStream.destroy();
+      } catch {
+        // ignore
+      }
+    }
+    void fs.promises.unlink(tmpOutputPath).catch(() => {
+      // ignore if already removed
+    });
+  };
+
+  try {
+    outStream = fs.createWriteStream(tmpOutputPath, { flags: 'w', mode: 0o600 });
+    outStreamFinishPromise = new Promise<void>((resolve) => {
+      outStream!.once('finish', () => {
+        outStreamClosed = true;
+        resolve();
+      });
+      outStream!.once('close', () => {
+        outStreamClosed = true;
+        resolve();
+      });
+      outStream!.once('error', (streamErr) => {
+        outStreamError = streamErr;
+        outStreamClosed = true;
+        resolve();
+      });
+    });
+  } catch (err: unknown) {
+    cleanupTempInputs();
+    cleanupOutputFile();
+    job.status = 'error';
+    job.error = mapNativeDecoderError(
+      err instanceof Error ? err.message : String(err)
+    );
+    job.finishedAt = Date.now();
+    job.updatedAt = job.finishedAt;
+    return;
+  }
 
   let child: ReturnType<typeof spawn>;
   try {
@@ -370,7 +678,8 @@ function startAsyncNativeFmDecodeJob(
       },
     });
   } catch (err: unknown) {
-    cleanupTempFile();
+    cleanupTempInputs();
+    cleanupOutputFile();
     job.status = 'error';
     job.error = mapNativeDecoderError(
       err instanceof Error ? err.message : String(err)
@@ -380,7 +689,8 @@ function startAsyncNativeFmDecodeJob(
     return;
   }
 
-  const stdoutChunks: Buffer[] = [];
+  activeDecodeChildren.add(child);
+
   const stderrHistory: string[] = [];
   let stderrLineBuf = '';
   let stdoutBytes = 0;
@@ -396,17 +706,18 @@ function startAsyncNativeFmDecodeJob(
   };
 
   const releaseJobBuffers = () => {
-    stdoutChunks.length = 0;
-    job.checkpointPayload = undefined;
+    job.checkpointPayloadJson = undefined;
     job.checkpointDelivered = true;
   };
 
   const finalizeError = (errMessage: string) => {
     if (settled) return;
     settled = true;
+    activeDecodeChildren.delete(child);
     clearTimeout(timer);
     releaseJobBuffers();
-    cleanupTempFile();
+    cleanupTempInputs();
+    cleanupOutputFile();
     job.status = 'error';
     job.error = mapNativeDecoderError(errMessage);
     job.finishedAt = Date.now();
@@ -428,7 +739,17 @@ function startAsyncNativeFmDecodeJob(
       finalizeError('Decoded JSON output exceeded maximum allowed size.');
       return;
     }
-    stdoutChunks.push(chunk);
+    if (outStream && !outStreamClosed && !outStreamError) {
+      const ok = outStream.write(chunk);
+      if (!ok) {
+        child.stdout?.pause();
+        outStream.once('drain', () => {
+          if (!settled) {
+            child.stdout?.resume();
+          }
+        });
+      }
+    }
   });
 
   child.stderr?.on('data', (chunk: Buffer) => {
@@ -472,10 +793,16 @@ function startAsyncNativeFmDecodeJob(
           .then((rawCp) => {
             if (settled || job.status !== 'running') return;
             if ((job.checkpointSeq ?? 0) > cpSeq) return;
-            const parsedCp = JSON.parse(rawCp) as unknown;
+            const trimmedCp = rawCp.trim();
+            if (!trimmedCp) return;
+            // Validate JSON integrity transiently without pinning a parsed V8 object tree in RAM
+            const validated = JSON.parse(trimmedCp) as unknown;
+            if (!validated || typeof validated !== 'object' || Array.isArray(validated)) {
+              return;
+            }
             job.checkpointSeq = cpSeq;
             job.checkpointStage = stageName;
-            job.checkpointPayload = parsedCp;
+            job.checkpointPayloadJson = trimmedCp;
             job.checkpointDelivered = false;
             job.updatedAt = Date.now();
           })
@@ -502,18 +829,20 @@ function startAsyncNativeFmDecodeJob(
   });
 
   child.on('close', (code, signal) => {
+    activeDecodeChildren.delete(child);
     if (stderrLineBuf.trim()) {
       stderrHistory.push(stderrLineBuf.trim());
     }
     if (settled) {
       releaseJobBuffers();
-      cleanupTempFile();
+      cleanupTempInputs();
+      cleanupOutputFile();
       return;
     }
     clearTimeout(timer);
-    cleanupTempFile();
+    cleanupTempInputs();
     settled = true;
-    job.checkpointPayload = undefined;
+    job.checkpointPayloadJson = undefined;
     job.checkpointDelivered = true;
 
     // Render free tier is capped at 512 MB. The kernel SIGKILLs the Python child
@@ -521,57 +850,85 @@ function startAsyncNativeFmDecodeJob(
     // back to Pyodide/Fast Sync immediately instead of polling to the timeout.
     const wasOomKilled = code === 137 || signal === 'SIGKILL';
     if (wasOomKilled) {
-      stdoutChunks.length = 0;
+      cleanupOutputFile();
       job.status = 'error';
       job.progress = 'Server memory limit reached';
       job.errorCode = 'SERVER_OOM';
       job.httpStatus = 507;
       job.error =
         'The server ran out of memory (512 MB Render free tier) while decoding this .fm save. Switching automatically to the local browser decoder — enable "Fast Sync" for very large saves.';
-    } else if (code === 0) {
-      let concatBuf: Buffer | null = Buffer.concat(stdoutChunks, stdoutBytes);
-      stdoutChunks.length = 0;
-      const rawJson = concatBuf.toString('utf8').trim();
-      concatBuf = null;
-      if (!rawJson) {
-        job.status = 'error';
-        job.error = 'Native Python decoder returned empty output.';
-      } else {
-        try {
-          // Validate JSON integrity transiently without pinning a duplicate V8 object tree in RAM
-          const validated = JSON.parse(rawJson) as unknown;
-          if (!validated || typeof validated !== 'object' || Array.isArray(validated)) {
-            throw new Error('Decoded payload must be a JSON object');
-          }
-          job.rawPayloadJson = rawJson;
-          job.status = 'done';
-          job.progress = 'Server Full Sync complete';
-        } catch (parseErr: unknown) {
-          job.status = 'error';
-          job.error = `Failed to parse decoded save JSON: ${
-            parseErr instanceof Error ? parseErr.message : String(parseErr)
-          }`;
-        }
-      }
-    } else {
-      stdoutChunks.length = 0;
+      job.finishedAt = Date.now();
+      job.updatedAt = job.finishedAt;
+      return;
+    }
+
+    if (code !== 0) {
+      cleanupOutputFile();
       const combinedStderr = stderrHistory.join('\n').trim();
       job.status = 'error';
       job.error = mapNativeDecoderError(
         combinedStderr || `Native fm-save-mapper exited with code ${code}`
       );
+      job.finishedAt = Date.now();
+      job.updatedAt = job.finishedAt;
+      return;
     }
 
-    job.finishedAt = Date.now();
-    job.updatedAt = job.finishedAt;
+    if (outStream && !outStreamClosed) {
+      outStream.end();
+    }
+
+    void outStreamFinishPromise
+      .then(async () => {
+        if (outStreamError) {
+          throw outStreamError;
+        }
+        if (stdoutBytes === 0) {
+          cleanupOutputFile();
+          job.status = 'error';
+          job.error = 'Native Python decoder returned empty output.';
+          return;
+        }
+        try {
+          await validateJsonObjectFileStreaming(tmpOutputPath);
+          // Guard against shutdown/eviction while validation was running
+          if (!decodeJobs.has(jobId)) {
+            cleanupOutputFile();
+            return;
+          }
+          job.rawPayloadPath = tmpOutputPath;
+          job.status = 'done';
+          job.progress = 'Server Full Sync complete';
+        } catch (parseErr: unknown) {
+          cleanupOutputFile();
+          job.status = 'error';
+          job.error = `Failed to parse decoded save JSON: ${
+            parseErr instanceof Error ? parseErr.message : String(parseErr)
+          }`;
+        }
+      })
+      .catch((streamErr: unknown) => {
+        cleanupOutputFile();
+        job.status = 'error';
+        job.error = `Failed to finalize decoded save output: ${
+          streamErr instanceof Error ? streamErr.message : String(streamErr)
+        }`;
+      })
+      .finally(() => {
+        job.finishedAt = Date.now();
+        job.updatedAt = job.finishedAt;
+      });
   });
 }
 
 export function createFmDecodeRouter(options?: {
   detectRuntime?: () => Promise<ServerPythonRuntime>;
+  mapperPath?: string;
 }): express.Router {
   const router = express.Router();
   const resolveRuntime = options?.detectRuntime ?? detectServerPythonFmsave;
+  const resolvedMapperPath =
+    options?.mapperPath ?? path.resolve(process.cwd(), 'public', 'fm-save-mapper.py');
 
   router.get('/fm27/decode-status', async (_req, res) => {
     const runtime = await resolveRuntime();
@@ -612,63 +969,71 @@ export function createFmDecodeRouter(options?: {
         });
       }
 
-    const rawTotalBytes = (req.body as { totalBytes?: unknown } | undefined)?.totalBytes;
-    let expectedTotalBytes: number | undefined;
-    if (rawTotalBytes !== undefined && rawTotalBytes !== null) {
-      const parsedTotal = Number(rawTotalBytes);
-      if (!Number.isSafeInteger(parsedTotal) || parsedTotal <= 0) {
-        return res.status(400).json({ error: 'Invalid totalBytes value.' });
+      const rawTotalBytes = (req.body as { totalBytes?: unknown } | undefined)?.totalBytes;
+      let expectedTotalBytes: number | undefined;
+      if (rawTotalBytes !== undefined && rawTotalBytes !== null) {
+        const parsedTotal = Number(rawTotalBytes);
+        if (!Number.isSafeInteger(parsedTotal) || parsedTotal <= 0) {
+          return res.status(400).json({ error: 'Invalid totalBytes value.' });
+        }
+        if (parsedTotal > MAX_TOTAL_UPLOAD_BYTES) {
+          const attemptedMb = (parsedTotal / (1024 * 1024)).toFixed(1);
+          return res.status(413).json({
+            error: `Total .fm save size (${attemptedMb} MB) exceeded the 1024 MB (1 GB) server upload limit.`,
+          });
+        }
+        expectedTotalBytes = parsedTotal;
       }
-      if (parsedTotal > MAX_TOTAL_UPLOAD_BYTES) {
-        const attemptedMb = (parsedTotal / (1024 * 1024)).toFixed(1);
-        return res.status(413).json({
-          error: `Total .fm save size (${attemptedMb} MB) exceeded the 1024 MB (1 GB) server upload limit.`,
+
+      const currentPendingBytes = getTotalPendingUploadBytes();
+      const projectedPendingBytes = currentPendingBytes + (expectedTotalBytes ?? 0);
+      if (projectedPendingBytes > MAX_TOTAL_PENDING_UPLOAD_BYTES) {
+        return res.status(429).json({
+          error:
+            'Temporary upload storage limit reached on the server. Please wait a moment and try again.',
         });
       }
-      expectedTotalBytes = parsedTotal;
-    }
 
-    const currentPendingBytes = getTotalPendingUploadBytes();
-    const projectedPendingBytes = currentPendingBytes + (expectedTotalBytes ?? 0);
-    if (projectedPendingBytes > MAX_TOTAL_PENDING_UPLOAD_BYTES) {
-      return res.status(429).json({
-        error:
-          'Temporary upload storage limit reached on the server. Please wait a moment and try again.',
-      });
-    }
+      const uploadId = crypto.randomUUID();
+      const tmpBaseDir = path.resolve(os.tmpdir());
+      const filePath = path.resolve(tmpBaseDir, `fm27-save-${uploadId}.fm`);
+      if (!filePath.startsWith(tmpBaseDir + path.sep)) {
+        return res.status(500).json({ error: 'Invalid server temporary storage path.' });
+      }
 
-    const uploadId = crypto.randomUUID();
-    const tmpBaseDir = path.resolve(os.tmpdir());
-    const filePath = path.resolve(tmpBaseDir, `fm27-save-${uploadId}.fm`);
-    if (!filePath.startsWith(tmpBaseDir + path.sep)) {
-      return res.status(500).json({ error: 'Invalid server temporary storage path.' });
+      try {
+        const fh = await fs.promises.open(filePath, 'w+', 0o600);
+        const now = Date.now();
+        const supportsParallelChunks = expectedTotalBytes !== undefined;
+        pendingUploads.set(uploadId, {
+          filePath,
+          fileHandle: fh,
+          fileHandleOpening: null,
+          inFlightWrites: 0,
+          closing: false,
+          closePromise: null,
+          writeDrainResolvers: [],
+          bytesReceived: 0,
+          expectedTotalBytes,
+          receivedChunks: supportsParallelChunks ? new Map<number, number>() : undefined,
+          coveredRanges: [],
+          createdAt: now,
+          lastActivityAt: now,
+        });
+        return res.json({
+          uploadId,
+          supportsParallelChunks,
+          holdTtlMs: PENDING_UPLOAD_TTL_MS,
+        });
+      } catch (err: unknown) {
+        return res.status(500).json({
+          error: `Failed to initialize save upload: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        });
+      }
     }
-
-    try {
-      await fs.promises.writeFile(filePath, Buffer.alloc(0), { mode: 0o600 });
-      const now = Date.now();
-      const supportsParallelChunks = expectedTotalBytes !== undefined;
-      pendingUploads.set(uploadId, {
-        filePath,
-        bytesReceived: 0,
-        expectedTotalBytes,
-        receivedChunks: supportsParallelChunks ? new Map<number, number>() : undefined,
-        createdAt: now,
-        lastActivityAt: now,
-      });
-      return res.json({
-        uploadId,
-        supportsParallelChunks,
-        holdTtlMs: PENDING_UPLOAD_TTL_MS,
-      });
-    } catch (err: unknown) {
-      return res.status(500).json({
-        error: `Failed to initialize save upload: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      });
-    }
-  });
+  );
 
   router.post(
     '/fm27/decode-save/chunk',
@@ -681,7 +1046,7 @@ export function createFmDecodeRouter(options?: {
       }
 
       const entry = pendingUploads.get(uploadId);
-      if (!entry) {
+      if (!entry || entry.closing) {
         return res.status(404).json({
           error: 'Upload session not found or expired. Please start the upload again.',
         });
@@ -692,6 +1057,24 @@ export function createFmDecodeRouter(options?: {
           error:
             'Empty chunk payload. Send binary bytes with Content-Type: application/octet-stream.',
         });
+      }
+
+      const rawLengthHeader = req.headers['x-fm-chunk-length'];
+      if (rawLengthHeader !== undefined) {
+        const lenStr = Array.isArray(rawLengthHeader)
+          ? rawLengthHeader[0]
+          : String(rawLengthHeader);
+        if (!/^\d+$/.test(lenStr.trim())) {
+          return res.status(400).json({
+            error: 'Invalid x-fm-chunk-length header. Must be a positive integer.',
+          });
+        }
+        const declaredLength = Number(lenStr.trim());
+        if (declaredLength !== req.body.length) {
+          return res.status(400).json({
+            error: `Chunk byte length mismatch (declared ${declaredLength}, received ${req.body.length}). Please retry chunk.`,
+          });
+        }
       }
 
       entry.lastActivityAt = Date.now();
@@ -733,8 +1116,7 @@ export function createFmDecodeRouter(options?: {
       const nextTotalBytes = Math.max(entry.bytesReceived, chunkEnd);
       if (nextTotalBytes > MAX_TOTAL_UPLOAD_BYTES) {
         const attemptedMb = (nextTotalBytes / (1024 * 1024)).toFixed(1);
-        pendingUploads.delete(uploadId);
-        await fs.promises.unlink(entry.filePath).catch(() => {});
+        await disposePendingUpload(uploadId, entry, true);
         return res.status(413).json({
           error: `Total .fm save size (${attemptedMb} MB) exceeded the 1024 MB (1 GB) server upload limit.`,
         });
@@ -742,8 +1124,7 @@ export function createFmDecodeRouter(options?: {
 
       const otherPendingBytes = getTotalPendingUploadBytes(uploadId);
       if (otherPendingBytes + nextTotalBytes > MAX_TOTAL_PENDING_UPLOAD_BYTES) {
-        pendingUploads.delete(uploadId);
-        await fs.promises.unlink(entry.filePath).catch(() => {});
+        await disposePendingUpload(uploadId, entry, true);
         return res.status(429).json({
           error:
             'Temporary upload storage limit reached on the server. Partial upload cleared — please try again in a moment.',
@@ -751,21 +1132,51 @@ export function createFmDecodeRouter(options?: {
       }
 
       try {
-        const fh = await fs.promises.open(entry.filePath, 'r+');
-        try {
-          await fh.write(req.body, 0, req.body.length, writeOffset);
-        } finally {
-          await fh.close();
+        const fh = await acquireUploadFileHandle(entry);
+        if (!fh || entry.closing) {
+          return res.status(404).json({
+            error: 'Upload session was closed or expired before chunk write completed.',
+          });
         }
-        if (isParallelSession && entry.receivedChunks) {
-          entry.receivedChunks.set(writeOffset, req.body.length);
-          let uniqueBytes = 0;
-          for (const len of entry.receivedChunks.values()) {
-            uniqueBytes += len;
+        entry.inFlightWrites += 1;
+        try {
+          let bytesWritten = 0;
+          while (bytesWritten < req.body.length) {
+            const { bytesWritten: n } = await fh.write(
+              req.body,
+              bytesWritten,
+              req.body.length - bytesWritten,
+              writeOffset + bytesWritten
+            );
+            if (n <= 0) {
+              throw new Error('Short write while persisting save chunk');
+            }
+            bytesWritten += n;
           }
-          entry.bytesReceived = uniqueBytes;
+        } finally {
+          entry.inFlightWrites -= 1;
+          if (entry.inFlightWrites === 0 && entry.writeDrainResolvers.length > 0) {
+            const resolvers = entry.writeDrainResolvers.splice(0);
+            for (const resolve of resolvers) resolve();
+          }
+        }
+
+        if (entry.closing) {
+          return res.status(404).json({
+            error: 'Upload session was closed while chunk was in flight.',
+          });
+        }
+
+        entry.coveredRanges = mergeByteRanges([
+          ...entry.coveredRanges,
+          { offset: writeOffset, length: req.body.length },
+        ]);
+        if (isParallelSession && entry.receivedChunks) {
+          const prevLen = entry.receivedChunks.get(writeOffset) ?? 0;
+          entry.receivedChunks.set(writeOffset, Math.max(prevLen, req.body.length));
+          entry.bytesReceived = computeCoveredBytes(entry.coveredRanges);
         } else {
-          entry.bytesReceived = nextTotalBytes;
+          entry.bytesReceived = computeCoveredBytes(entry.coveredRanges);
         }
         entry.lastActivityAt = Date.now();
         return res.json({ ok: true, bytesReceived: entry.bytesReceived });
@@ -787,7 +1198,7 @@ export function createFmDecodeRouter(options?: {
       return res.status(400).json({ error: 'Invalid uploadId.' });
     }
     const entry = pendingUploads.get(uploadId);
-    if (!entry) {
+    if (!entry || entry.closing) {
       return res.status(404).json({
         error: 'Upload session not found or expired.',
       });
@@ -800,13 +1211,12 @@ export function createFmDecodeRouter(options?: {
     const receivedOffsets = entry.receivedChunks
       ? Array.from(entry.receivedChunks.keys()).sort((a, b) => a - b)
       : [];
-    const receivedRanges = entry.receivedChunks
-      ? Array.from(entry.receivedChunks.entries())
-          .sort((a, b) => a[0] - b[0])
-          .map(([offset, length]) => ({ offset, length }))
-      : entry.bytesReceived > 0
-        ? [{ offset: 0, length: entry.bytesReceived }]
-        : [];
+    const receivedRanges =
+      entry.coveredRanges.length > 0
+        ? entry.coveredRanges.map((r) => ({ offset: r.offset, length: r.length }))
+        : entry.bytesReceived > 0
+          ? [{ offset: 0, length: entry.bytesReceived }]
+          : [];
     return res.json({
       uploadId,
       bytesReceived: entry.bytesReceived,
@@ -827,10 +1237,7 @@ export function createFmDecodeRouter(options?: {
     }
     const entry = pendingUploads.get(uploadId);
     if (entry) {
-      pendingUploads.delete(uploadId);
-      await fs.promises.unlink(entry.filePath).catch(() => {
-        // ignore if already deleted
-      });
+      await disposePendingUpload(uploadId, entry, true);
     }
     return res.json({ ok: true });
   });
@@ -863,13 +1270,14 @@ export function createFmDecodeRouter(options?: {
       }
 
       const entry = pendingUploads.get(uploadId);
-      if (!entry) {
+      if (!entry || entry.closing) {
         return res.status(404).json({
           error: 'Upload session not found, already finalized, or expired.',
         });
       }
-      // Atomically claim the upload so duplicate /finish calls cannot spawn duplicate jobs
+      // Atomically claim the upload and wait for any in-flight chunk writes to drain & close FD
       pendingUploads.delete(uploadId);
+      await closeUploadHandle(entry);
 
       if (entry.bytesReceived <= 0) {
         await fs.promises.unlink(entry.filePath).catch(() => {});
@@ -879,7 +1287,8 @@ export function createFmDecodeRouter(options?: {
       }
       if (
         entry.expectedTotalBytes !== undefined &&
-        entry.bytesReceived < entry.expectedTotalBytes
+        (entry.bytesReceived < entry.expectedTotalBytes ||
+          !isContiguousRangeCovered(entry.coveredRanges, entry.expectedTotalBytes))
       ) {
         await fs.promises.unlink(entry.filePath).catch(() => {});
         return res.status(400).json({
@@ -900,10 +1309,11 @@ export function createFmDecodeRouter(options?: {
       }
 
       if (decodeJobs.size >= MAX_TRACKED_JOBS) {
-        // Evict oldest completed job if at capacity
+        // Evict oldest completed job if at capacity and unlink its output file if still on disk
         for (const [oldId, oldJob] of decodeJobs.entries()) {
           if (oldJob.status !== 'running') {
             decodeJobs.delete(oldId);
+            await cleanupJobOutputFile(oldJob);
             break;
           }
         }
@@ -913,10 +1323,9 @@ export function createFmDecodeRouter(options?: {
       const scope = normalizeServerScope(body.scope);
       const fastSync = normalizeServerFastSync(body.fastSync);
       const clubHint = sanitizeClubHint(body.clubHint);
-      const mapperPath = path.resolve(process.cwd(), 'public', 'fm-save-mapper.py');
       const jobId = crypto.randomUUID();
 
-      startAsyncNativeFmDecodeJob(jobId, runtime.pythonBin, mapperPath, entry.filePath, {
+      startAsyncNativeFmDecodeJob(jobId, runtime.pythonBin, resolvedMapperPath, entry.filePath, {
         scope,
         fastSync,
         clubHint,
@@ -943,11 +1352,48 @@ export function createFmDecodeRouter(options?: {
     }
 
     if (job.status === 'done') {
+      const rawPayloadPath = job.rawPayloadPath;
       const rawPayloadJson = job.rawPayloadJson;
       const payload = job.payload;
       const progress = job.progress;
-      // Release potentially large decoded payload from server RAM immediately upon delivery
+      // Release job entry immediately upon delivery
       decodeJobs.delete(jobId);
+
+      if (typeof rawPayloadPath === 'string') {
+        let unlinked = false;
+        const unlinkOut = () => {
+          if (unlinked) return;
+          unlinked = true;
+          activeTempPaths.delete(rawPayloadPath);
+          void fs.promises.unlink(rawPayloadPath).catch(() => {});
+        };
+
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.write(`{"status":"done","progress":${JSON.stringify(progress)},"payload":`);
+
+        const readStream = fs.createReadStream(rawPayloadPath, {
+          highWaterMark: 64 * 1024,
+        });
+        res.on('close', () => {
+          readStream.destroy();
+          unlinkOut();
+        });
+        readStream.on('error', () => {
+          unlinkOut();
+          if (!res.writableEnded) {
+            res.destroy();
+          }
+        });
+        readStream.on('end', () => {
+          unlinkOut();
+          if (!res.writableEnded) {
+            res.end('}');
+          }
+        });
+        readStream.pipe(res, { end: false });
+        return;
+      }
+
       if (typeof rawPayloadJson === 'string') {
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
         return res.send(
@@ -973,17 +1419,15 @@ export function createFmDecodeRouter(options?: {
       });
     }
 
-    if (job.checkpointPayload && !job.checkpointDelivered) {
+    if (job.checkpointPayloadJson && !job.checkpointDelivered) {
       const cpStage = job.checkpointStage || 'stage_2_club_core';
-      const cpPayload = job.checkpointPayload;
+      const cpJson = job.checkpointPayloadJson;
       job.checkpointDelivered = true;
-      job.checkpointPayload = undefined;
-      return res.json({
-        status: 'running',
-        progress: job.progress,
-        checkpointStage: cpStage,
-        checkpointPayload: cpPayload,
-      });
+      job.checkpointPayloadJson = undefined;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      return res.send(
+        `{"status":"running","progress":${JSON.stringify(job.progress)},"checkpointStage":${JSON.stringify(cpStage)},"checkpointPayload":${cpJson}}`
+      );
     }
 
     return res.json({
