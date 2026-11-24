@@ -656,7 +656,11 @@ export function createFmDecodeRouter(options?: {
         createdAt: now,
         lastActivityAt: now,
       });
-      return res.json({ uploadId, supportsParallelChunks });
+      return res.json({
+        uploadId,
+        supportsParallelChunks,
+        holdTtlMs: PENDING_UPLOAD_TTL_MS,
+      });
     } catch (err: unknown) {
       return res.status(500).json({
         error: `Failed to initialize save upload: ${
@@ -774,6 +778,46 @@ export function createFmDecodeRouter(options?: {
       }
     }
   );
+
+  router.get('/fm27/decode-save/upload/:uploadId/status', async (req, res) => {
+    await pruneExpiredUploadsAndJobs();
+    const uploadId =
+      typeof req.params.uploadId === 'string' ? req.params.uploadId.trim() : '';
+    if (!isValidUuid(uploadId)) {
+      return res.status(400).json({ error: 'Invalid uploadId.' });
+    }
+    const entry = pendingUploads.get(uploadId);
+    if (!entry) {
+      return res.status(404).json({
+        error: 'Upload session not found or expired.',
+      });
+    }
+    const now = Date.now();
+    // Refresh inactivity TTL when client checks status to resume
+    entry.lastActivityAt = now;
+    const supportsParallelChunks =
+      entry.expectedTotalBytes !== undefined && entry.receivedChunks !== undefined;
+    const receivedOffsets = entry.receivedChunks
+      ? Array.from(entry.receivedChunks.keys()).sort((a, b) => a - b)
+      : [];
+    const receivedRanges = entry.receivedChunks
+      ? Array.from(entry.receivedChunks.entries())
+          .sort((a, b) => a[0] - b[0])
+          .map(([offset, length]) => ({ offset, length }))
+      : entry.bytesReceived > 0
+        ? [{ offset: 0, length: entry.bytesReceived }]
+        : [];
+    return res.json({
+      uploadId,
+      bytesReceived: entry.bytesReceived,
+      expectedTotalBytes: entry.expectedTotalBytes ?? null,
+      supportsParallelChunks,
+      receivedOffsets,
+      receivedRanges,
+      holdRemainingMs: Math.max(0, PENDING_UPLOAD_TTL_MS - (now - entry.lastActivityAt)),
+      holdTtlMs: PENDING_UPLOAD_TTL_MS,
+    });
+  });
 
   router.delete('/fm27/decode-save/upload/:uploadId', async (req, res) => {
     const uploadId =

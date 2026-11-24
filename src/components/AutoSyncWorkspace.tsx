@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   AlertCircle,
   AlertTriangle,
-  RefreshCw,
   ShieldCheck,
   Zap,
   ChevronDown,
@@ -47,9 +46,13 @@ import {
   decodeFmSaveFile,
   cancelFmSaveDecode,
   checkServerDecodeStatus,
+  createUploadController,
   FmSaveProgressStage,
   FmImportScope,
+  UploadController,
 } from '../services/fmSaveReader';
+import { useUploadWakeLock } from '../hooks/useUploadWakeLock';
+import { FmUploadProgressCard } from './FmUploadProgressCard';
 import {
   AnalystReasoningMode,
   buildConversationTranscript,
@@ -135,7 +138,12 @@ interface AutoSyncWorkspaceProps {
     options?: { isInterimCheckpoint?: boolean }
   ) => HydratedSaveState;
   onBackgroundSyncStatusChange?: (
-    status: { label: string; clubCoreReady: boolean } | null
+    status: {
+      label: string;
+      clubCoreReady: boolean;
+      progressPct?: number;
+      paused?: boolean;
+    } | null
   ) => void;
   pendingPrompt?: string | null;
   onClearPendingPrompt?: () => void;
@@ -220,6 +228,12 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   );
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const feedEndRef = useRef<HTMLDivElement | null>(null);
+  const uploadControlRef = useRef<UploadController | null>(null);
+
+  const { wakeLockActive } = useUploadWakeLock({
+    keepAwake: Boolean(fmDecodeStage) && !fmDecodeStage?.paused,
+    warnBeforeUnload: Boolean(fmDecodeStage),
+  });
 
   const hasLoadedSave = players.length > 0 || Boolean(hydratedFmSave);
 
@@ -312,11 +326,14 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       setDecodeElapsedSec(0);
       return;
     }
+    if (fmDecodeStage.paused) {
+      return;
+    }
     const timer = window.setInterval(() => {
       setDecodeElapsedSec((prev) => prev + 1);
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [Boolean(fmDecodeStage)]);
+  }, [Boolean(fmDecodeStage), Boolean(fmDecodeStage?.paused)]);
 
   const dispatchToAnalyst = async (params: {
     promptText: string;
@@ -846,14 +863,22 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           setLastStepTimingsMs({});
           setClubCoreReadyDuringDecode(false);
           let interimHydrated = false;
+          const uploadControl = createUploadController();
+          uploadControlRef.current = uploadControl;
           const initialLabel = `Reading ${file.name}${fastSync ? ' (Fast Sync)' : ''}...`;
           setFmDecodeStage({
             stage: 'read',
+            step: 'Preparing .fm Save',
+            progressPct: 0,
+            totalBytes: file.size || 0,
+            bytesUploaded: 0,
             label: initialLabel,
           });
           onBackgroundSyncStatusChange?.({
             label: initialLabel,
             clubCoreReady: false,
+            progressPct: 0,
+            paused: false,
           });
           const decoded = await decodeFmSaveFile(
             file,
@@ -862,11 +887,14 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               onBackgroundSyncStatusChange?.({
                 label: stage.label,
                 clubCoreReady: interimHydrated,
+                progressPct: stage.progressPct,
+                paused: stage.paused,
               });
             },
             {
               scope: importScope,
               fastSync,
+              uploadControl,
               onCheckpoint: (cp) => {
                 if (onApplyDecodedFmSave && cp.payload?.players?.length > 0) {
                   interimHydrated = true;
@@ -881,6 +909,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               },
             }
           );
+          uploadControlRef.current = null;
           setFmDecodeStage(null);
           setClubCoreReadyDuringDecode(false);
 
@@ -933,6 +962,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             setAttachedFmFiles((prev) => [...prev, decodedEntry]);
           }
         } catch (err: unknown) {
+          uploadControlRef.current = null;
           setFmDecodeStage(null);
           setClubCoreReadyDuringDecode(false);
           onBackgroundSyncStatusChange?.(null);
@@ -1835,40 +1865,26 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           </div>
         )}
 
-        {/* Decode Progress Bar */}
+        {/* Visual Upload & Decode Progress Card */}
         {fmDecodeStage && (
-          <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-between gap-3 text-xs text-emerald-300">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <RefreshCw className="w-4 h-4 shrink-0 animate-spin text-emerald-400" />
-              <div className="min-w-0">
-                {clubCoreReadyDuringDecode && (
-                  <div className="text-[11px] font-semibold text-emerald-200">
-                    Squad, Staff &amp; Tactics ready — browse tabs now while stats finish in background
-                  </div>
-                )}
-                <span className="leading-snug break-words">
-                  {fmDecodeStage.label}
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="font-mono text-[11px] text-emerald-400/90 tabular-nums">
-                {decodeElapsedSec}s
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  cancelFmSaveDecode();
-                  setFmDecodeStage(null);
-                  setClubCoreReadyDuringDecode(false);
-                  onBackgroundSyncStatusChange?.(null);
-                }}
-                className="px-2.5 py-1 text-[11px] font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-md cursor-pointer"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
+          <FmUploadProgressCard
+            stage={fmDecodeStage}
+            elapsedSec={decodeElapsedSec}
+            clubCoreReady={clubCoreReadyDuringDecode}
+            wakeLockActive={wakeLockActive}
+            onPause={() => uploadControlRef.current?.pause('manual')}
+            onResume={() => uploadControlRef.current?.resume()}
+            onDecodeOnPhone={() =>
+              uploadControlRef.current?.requestLocalFallback()
+            }
+            onCancel={() => {
+              uploadControlRef.current = null;
+              cancelFmSaveDecode();
+              setFmDecodeStage(null);
+              setClubCoreReadyDuringDecode(false);
+              onBackgroundSyncStatusChange?.(null);
+            }}
+          />
         )}
 
         {chatFallbackNotice && (

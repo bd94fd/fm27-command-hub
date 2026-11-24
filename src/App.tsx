@@ -247,13 +247,17 @@ export default function App() {
   const [backgroundSyncStatus, setBackgroundSyncStatus] = useState<{
     label: string;
     clubCoreReady: boolean;
+    progressPct?: number;
+    paused?: boolean;
   } | null>(null);
   const [workspaceBusy, setWorkspaceBusy] = useState<boolean>(false);
+  const [quickPickedFmFile, setQuickPickedFmFile] = useState<File | null>(null);
   const pwa = usePwaLifecycle({
     isBusy: workspaceBusy || Boolean(backgroundSyncStatus),
   });
   const [showMobileDetails, setShowMobileDetails] = useState<boolean>(false);
   const backupFileInputRef = useRef<HTMLInputElement | null>(null);
+  const quickFmFileInputRef = useRef<HTMLInputElement | null>(null);
   const preSyncBaselineRef = useRef<{
     saveDate: string;
     clubName: string;
@@ -733,7 +737,14 @@ export default function App() {
   };
 
   const handleBackgroundSyncStatusChange = useCallback(
-    (status: { label: string; clubCoreReady: boolean } | null) => {
+    (
+      status: {
+        label: string;
+        clubCoreReady: boolean;
+        progressPct?: number;
+        paused?: boolean;
+      } | null
+    ) => {
       setBackgroundSyncStatus(status);
       if (status === null) {
         preSyncBaselineRef.current = null;
@@ -741,6 +752,25 @@ export default function App() {
     },
     []
   );
+
+  const handleQuickFmFilePicked = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const picked = e.target.files?.[0] ?? null;
+      e.target.value = '';
+      if (!picked) return;
+      setActiveTab('sync');
+      setQuickPickedFmFile(picked);
+    },
+    []
+  );
+
+  const handleMobileQuickSyncClick = useCallback(() => {
+    if (backgroundSyncStatus) {
+      setActiveTab('sync');
+      return;
+    }
+    quickFmFileInputRef.current?.click();
+  }, [backgroundSyncStatus]);
 
   const handleApplyDecodedFmSave = (
     decoded: DecodedFmSavePayload,
@@ -1046,7 +1076,7 @@ export default function App() {
             e.preventDefault();
             handleSelectTab('sync');
           }}
-          className="text-base sm:text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100 truncate max-w-[175px] sm:max-w-none"
+          className="text-base sm:text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100 truncate min-w-0 flex-1 md:flex-initial"
         >
           {clubName}
         </a>
@@ -1082,8 +1112,15 @@ export default function App() {
           ))}
         </nav>
 
-        {/* Actions: Quick Search + FM27 Knowledge Base + Backup/Restore/Reset */}
+        {/* Actions: Mobile 1-Tap Sync .fm + Quick Search + FM27 Knowledge Base + Backup/Restore/Reset */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <input
+            ref={quickFmFileInputRef}
+            type="file"
+            accept=".fm"
+            onChange={handleQuickFmFilePicked}
+            className="hidden"
+          />
           <input
             ref={backupFileInputRef}
             type="file"
@@ -1092,24 +1129,63 @@ export default function App() {
             className="hidden"
           />
 
+          {/* Always-visible 1-tap mobile Sync .fm CTA */}
+          <button
+            type="button"
+            onClick={handleMobileQuickSyncClick}
+            title={
+              backgroundSyncStatus
+                ? 'View active .fm save upload progress'
+                : 'Pick a .fm save file to sync immediately'
+            }
+            className={`md:hidden inline-flex items-center justify-center gap-1.5 min-h-[38px] px-2.5 py-1.5 text-xs font-bold rounded-lg transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+              backgroundSyncStatus
+                ? backgroundSyncStatus.paused
+                  ? 'text-slate-950 bg-amber-400 hover:bg-amber-300'
+                  : 'text-slate-950 bg-emerald-400 hover:bg-emerald-300'
+                : 'text-slate-950 bg-emerald-400 hover:bg-emerald-300 shadow-sm shadow-emerald-500/20'
+            }`}
+          >
+            {backgroundSyncStatus ? (
+              <RefreshCw
+                className={`w-3.5 h-3.5 shrink-0 ${
+                  backgroundSyncStatus.paused ? '' : 'animate-spin'
+                }`}
+              />
+            ) : (
+              <Upload className="w-3.5 h-3.5 shrink-0" />
+            )}
+            <span>
+              {backgroundSyncStatus
+                ? backgroundSyncStatus.paused
+                  ? 'Paused'
+                  : typeof backgroundSyncStatus.progressPct === 'number'
+                    ? `${backgroundSyncStatus.progressPct}%`
+                    : 'Syncing'
+                : 'Sync .fm'}
+            </span>
+          </button>
+
           <button
             type="button"
             onClick={() => setShowCommandPalette(true)}
+            aria-label="Quick Search players, staff, and scout targets"
             title="Quick Search players, staff, and scout targets"
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+            className="inline-flex items-center justify-center gap-1.5 min-h-[38px] min-w-[38px] px-2 sm:px-2.5 py-1.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
           >
             <Search className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Search</span>
+            <span className="hidden sm:inline">Search</span>
           </button>
 
           <button
             type="button"
             onClick={() => setShowKnowledgeBase(true)}
+            aria-label="Open FM27 Patch 27.1.0 Knowledge Base"
             title="Open FM27 Patch 27.1.0 Knowledge Base"
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+            className="inline-flex items-center justify-center gap-1 min-h-[38px] min-w-[38px] px-2 sm:px-2.5 py-1.5 text-xs font-semibold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
           >
             <BookOpen className="w-3.5 h-3.5" />
-            <span>FM27 KB</span>
+            <span className="hidden sm:inline">FM27 KB</span>
           </button>
 
           {players.length > 0 || recruitmentCases.length > 0 ? (
@@ -1117,8 +1193,9 @@ export default function App() {
               <button
                 type="button"
                 onClick={handleExportBackup}
+                aria-label="Export campaign snapshot as JSON backup"
                 title="Export campaign snapshot as JSON backup"
-                className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer"
+                className="inline-flex items-center justify-center gap-1 min-h-[38px] min-w-[38px] px-2 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5 text-emerald-400" />
                 <span className="hidden lg:inline">Backup</span>
@@ -1127,12 +1204,17 @@ export default function App() {
               <button
                 type="button"
                 onClick={handleClearMemory}
+                aria-label={
+                  confirmResetPending
+                    ? 'Confirm reset saved memory'
+                    : 'Clear saved memory'
+                }
                 title={
                   confirmResetPending
                     ? 'Click again to wipe saved memory and return to Awaiting .fm Save'
                     : 'Clear saved memory and return to clean Awaiting Save state'
                 }
-                className={`inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium rounded-lg border transition-colors cursor-pointer ${
+                className={`inline-flex items-center justify-center gap-1 min-h-[38px] min-w-[38px] px-2 py-1.5 text-xs font-medium rounded-lg border transition-colors cursor-pointer ${
                   confirmResetPending
                     ? 'text-rose-200 bg-rose-950/80 border-rose-500/60 hover:bg-rose-900/80'
                     : 'text-slate-400 hover:text-red-400 bg-slate-800/80 hover:bg-red-950/40 border-slate-700/80 hover:border-red-800/50'
@@ -1155,8 +1237,9 @@ export default function App() {
             <button
               type="button"
               onClick={() => backupFileInputRef.current?.click()}
+              aria-label="Restore previous campaign from a JSON backup file"
               title="Restore previous campaign from a JSON backup file"
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer"
+              className="inline-flex items-center justify-center gap-1 min-h-[38px] min-w-[38px] px-2 sm:px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer"
             >
               <Upload className="w-3.5 h-3.5 text-blue-400" />
               <span className="hidden sm:inline">Restore</span>
@@ -1190,9 +1273,21 @@ export default function App() {
       <main className="flex-1 max-w-[1400px] w-full mx-auto px-3 sm:px-6 pt-3 sm:pt-5 pb-24 md:pb-8 space-y-4 sm:space-y-5">
         {/* Live Background Sync Pill when user is already exploring Squad/Tactics/Staff/Transfers */}
         {backgroundSyncStatus && activeTab !== 'sync' && (
-          <div className="rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-3.5 py-2 flex items-center justify-between gap-2 text-xs text-emerald-200">
+          <div
+            className={`rounded-xl border px-3.5 py-2 flex items-center justify-between gap-2 text-xs ${
+              backgroundSyncStatus.paused
+                ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+                : 'border-emerald-500/35 bg-emerald-500/10 text-emerald-200'
+            }`}
+          >
             <div className="flex items-center gap-2 min-w-0">
-              <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin shrink-0" />
+              <RefreshCw
+                className={`w-3.5 h-3.5 shrink-0 ${
+                  backgroundSyncStatus.paused
+                    ? 'text-amber-400'
+                    : 'text-emerald-400 animate-spin'
+                }`}
+              />
               <span className="truncate">
                 {backgroundSyncStatus.clubCoreReady
                   ? `Club core live — finishing in background: ${backgroundSyncStatus.label}`
@@ -1202,9 +1297,13 @@ export default function App() {
             <button
               type="button"
               onClick={() => handleSelectTab('sync')}
-              className="shrink-0 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-100 border border-emerald-500/40 cursor-pointer"
+              className={`shrink-0 px-2.5 py-1 rounded-md text-[11px] font-semibold border cursor-pointer ${
+                backgroundSyncStatus.paused
+                  ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-100 border-amber-500/40'
+                  : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-100 border-emerald-500/40'
+              }`}
             >
-              View Sync
+              {backgroundSyncStatus.paused ? 'Resume' : 'View Sync'}
             </button>
           </div>
         )}
@@ -1426,8 +1525,14 @@ export default function App() {
               onBackgroundSyncStatusChange={handleBackgroundSyncStatusChange}
               pendingPrompt={pendingAnalystPrompt}
               onClearPendingPrompt={handleClearPendingPrompt}
-              externalFmFile={pwa.launchedFmFile}
-              onClearExternalFmFile={pwa.clearLaunchedFmFile}
+              externalFmFile={quickPickedFmFile ?? pwa.launchedFmFile}
+              onClearExternalFmFile={() => {
+                if (quickPickedFmFile) {
+                  setQuickPickedFmFile(null);
+                } else {
+                  pwa.clearLaunchedFmFile();
+                }
+              }}
               onBusyStateChange={setWorkspaceBusy}
             />
           </AppErrorBoundary>

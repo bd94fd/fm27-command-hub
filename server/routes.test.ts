@@ -730,6 +730,110 @@ describe('server routes & JSON 404', () => {
       await chatSrv.close();
     }
   });
+
+  it('exposes GET /api/fm27/decode-save/upload/:uploadId/status for resumable chunk reconciliation and rejects invalid/missing IDs', async () => {
+    const decodeApp = express();
+    decodeApp.use(
+      '/api',
+      createFmDecodeRouter({
+        detectRuntime: async () => ({
+          available: true,
+          pythonBin: 'python3',
+          pythonVersion: '3.12',
+          fmsaveVersion: '0.14.3',
+          checkedAtMs: Date.now(),
+        }),
+      })
+    );
+    const decodeSrv = await startTestServer(decodeApp);
+    try {
+      // Invalid UUID -> 400 JSON
+      const badIdRes = await fetch(
+        `${decodeSrv.baseUrl}/api/fm27/decode-save/upload/not-a-uuid/status`
+      );
+      assert.equal(badIdRes.status, 400);
+      assert.match(badIdRes.headers.get('content-type') || '', /application\/json/);
+
+      // Unknown valid UUID -> 404 JSON
+      const missingRes = await fetch(
+        `${decodeSrv.baseUrl}/api/fm27/decode-save/upload/99999999-2222-4333-8444-555555555555/status`
+      );
+      assert.equal(missingRes.status, 404);
+
+      // Init -> upload chunks 0 and 8 -> status reports exact receivedOffsets & bytesReceived
+      const initRes = await fetch(`${decodeSrv.baseUrl}/api/fm27/decode-save/init`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ totalBytes: 12 }),
+      });
+      assert.equal(initRes.status, 200);
+      const initBody = (await initRes.json()) as {
+        uploadId: string;
+        supportsParallelChunks: boolean;
+        holdTtlMs: number;
+      };
+      assert.equal(initBody.supportsParallelChunks, true);
+      assert.equal(initBody.holdTtlMs, 15 * 60 * 1000);
+
+      await fetch(`${decodeSrv.baseUrl}/api/fm27/decode-save/chunk`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'x-fm-upload-id': initBody.uploadId,
+          'x-fm-chunk-offset': '8',
+        },
+        body: Buffer.from('IJKL'),
+      });
+      await fetch(`${decodeSrv.baseUrl}/api/fm27/decode-save/chunk`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'x-fm-upload-id': initBody.uploadId,
+          'x-fm-chunk-offset': '0',
+        },
+        body: Buffer.from('ABCD'),
+      });
+
+      const statusRes = await fetch(
+        `${decodeSrv.baseUrl}/api/fm27/decode-save/upload/${initBody.uploadId}/status`
+      );
+      assert.equal(statusRes.status, 200);
+      const statusBody = (await statusRes.json()) as {
+        uploadId: string;
+        bytesReceived: number;
+        expectedTotalBytes: number;
+        supportsParallelChunks: boolean;
+        receivedOffsets: number[];
+        receivedRanges: Array<{ offset: number; length: number }>;
+        holdRemainingMs: number;
+        holdTtlMs: number;
+      };
+      assert.equal(statusBody.uploadId, initBody.uploadId);
+      assert.equal(statusBody.bytesReceived, 8);
+      assert.equal(statusBody.expectedTotalBytes, 12);
+      assert.equal(statusBody.supportsParallelChunks, true);
+      assert.deepEqual(statusBody.receivedOffsets, [0, 8]);
+      assert.deepEqual(statusBody.receivedRanges, [
+        { offset: 0, length: 4 },
+        { offset: 8, length: 4 },
+      ]);
+      assert.equal(statusBody.holdTtlMs, 15 * 60 * 1000);
+      assert.ok(statusBody.holdRemainingMs > 0);
+
+      // Delete upload -> status returns 404 cleanly
+      await fetch(
+        `${decodeSrv.baseUrl}/api/fm27/decode-save/upload/${initBody.uploadId}`,
+        { method: 'DELETE' }
+      );
+      const afterDelRes = await fetch(
+        `${decodeSrv.baseUrl}/api/fm27/decode-save/upload/${initBody.uploadId}/status`
+      );
+      assert.equal(afterDelRes.status, 404);
+    } finally {
+      await decodeSrv.close();
+    }
+  });
 });
+
 
 
