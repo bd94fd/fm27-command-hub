@@ -678,7 +678,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
               key={mode.id}
               type="button"
               onClick={() => setPitchPhaseMode(mode.id)}
-              className={`min-h-[38px] sm:min-h-[28px] px-2 sm:px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer text-center ${
+              className={`min-h-[44px] sm:min-h-[28px] px-2 sm:px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer text-center whitespace-nowrap ${
                 pitchPhaseMode === mode.id
                   ? 'bg-emerald-600 text-white'
                   : 'text-slate-400 hover:text-slate-200'

@@ -417,7 +417,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                 key={m.id}
                 type="button"
                 onClick={() => setTimelineMetric(m.id)}
-                className={`min-h-[38px] sm:min-h-[28px] px-2.5 sm:px-2 rounded font-semibold transition-colors cursor-pointer ${
+                className={`min-h-[44px] sm:min-h-[28px] px-2.5 sm:px-2 rounded font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                   timelineMetric === m.id
                     ? 'bg-emerald-500/20 text-emerald-300'
                     : 'text-slate-400 hover:text-slate-200'
@@ -500,7 +500,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
         <button
           type="button"
           onClick={() => void handleClearAllSnapshots()}
-          className={`min-h-[36px] inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors shrink-0 ${
+          className={`min-h-[44px] sm:min-h-[36px] inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors shrink-0 whitespace-nowrap ${
             confirmClearAll
               ? 'border-rose-500/60 bg-rose-950/80 text-rose-200 hover:bg-rose-900/80'
               : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-rose-500/40 hover:text-rose-300'
@@ -525,7 +525,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
             type="button"
             title="Delete stored snapshot"
             onClick={() => void handleDeleteSnapshot(snapshots[0].cacheKey)}
-            className="min-h-[36px] inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-300 hover:border-rose-500/40 hover:text-rose-300 transition shrink-0"
+            className="min-h-[44px] sm:min-h-[36px] inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-300 hover:border-rose-500/40 hover:text-rose-300 transition shrink-0 whitespace-nowrap"
           >
             <Trash2 className="h-3.5 w-3.5" /> Remove Snapshot
           </button>
@@ -545,7 +545,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                   aria-label="Baseline snapshot"
                   value={fromKey}
                   onChange={(e) => setFromKey(e.target.value)}
-                  className="w-full min-h-[40px] rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100"
+                  className="w-full min-h-[44px] sm:min-h-[40px] rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-base sm:text-xs text-slate-100"
                 >
                   {snapshots.map((s) => {
                     const seasonTag = s.seasonLabel || deriveFootballSeasonLabel(s.inGameDate);
@@ -559,9 +559,10 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                 {fromSnapshot && (
                   <button
                     type="button"
+                    aria-label="Delete baseline snapshot"
                     title="Delete baseline snapshot"
                     onClick={() => void handleDeleteSnapshot(fromSnapshot.cacheKey)}
-                    className="min-h-[40px] min-w-[40px] inline-flex items-center justify-center rounded-lg border border-slate-700 bg-slate-950 text-slate-400 hover:text-rose-400 hover:border-rose-500/40 transition"
+                    className="min-h-[44px] min-w-[44px] sm:min-h-[40px] sm:min-w-[40px] inline-flex items-center justify-center rounded-lg border border-slate-700 bg-slate-950 text-slate-400 hover:text-rose-400 hover:border-rose-500/40 transition shrink-0"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -578,7 +579,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                   aria-label="Comparison snapshot"
                   value={toKey}
                   onChange={(e) => setToKey(e.target.value)}
-                  className="w-full min-h-[40px] rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100"
+                  className="w-full min-h-[44px] sm:min-h-[40px] rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-base sm:text-xs text-slate-100"
                 >
                   {snapshots.map((s) => {
                     const seasonTag = s.seasonLabel || deriveFootballSeasonLabel(s.inGameDate);
@@ -592,9 +593,10 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                 {toSnapshot && (
                   <button
                     type="button"
+                    aria-label="Delete comparison snapshot"
                     title="Delete comparison snapshot"
                     onClick={() => void handleDeleteSnapshot(toSnapshot.cacheKey)}
-                    className="min-h-[40px] min-w-[40px] inline-flex items-center justify-center rounded-lg border border-slate-700 bg-slate-950 text-slate-400 hover:text-rose-400 hover:border-rose-500/40 transition"
+                    className="min-h-[44px] min-w-[44px] sm:min-h-[40px] sm:min-w-[40px] inline-flex items-center justify-center rounded-lg border border-slate-700 bg-slate-950 text-slate-400 hover:text-rose-400 hover:border-rose-500/40 transition shrink-0"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -848,11 +850,11 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                       type="button"
                       disabled={aiLoading}
                       onClick={() => void handleGenerateAiBriefing(Boolean(aiBriefing), false)}
-                      className="min-h-[38px] inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 px-3 text-xs font-semibold text-white transition-colors"
+                      className="min-h-[44px] sm:min-h-[38px] inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 px-3 text-xs font-semibold text-white transition-colors whitespace-nowrap"
                     >
                       {aiLoading ? (
                         <>
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating...
+                          <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> Generating...
                         </>
                       ) : aiBriefing ? (
                         <>
@@ -872,7 +874,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                             `Review my Save-to-Save Career Journey (${journey.fromDate} -> ${journey.toDate}, ${journey.toSeason}). Separate League, Cup, and Friendlies clearly — what improved, what worsened, which players stepped up or dropped off, and what should we adjust next?`
                           )
                         }
-                        className="min-h-[38px] inline-flex items-center gap-1.5 rounded-lg border border-sky-500/40 bg-sky-500/15 hover:bg-sky-500/25 px-3 text-xs font-semibold text-sky-200 transition-colors"
+                        className="min-h-[44px] sm:min-h-[38px] inline-flex items-center gap-1.5 rounded-lg border border-sky-500/40 bg-sky-500/15 hover:bg-sky-500/25 px-3 text-xs font-semibold text-sky-200 transition-colors whitespace-nowrap"
                       >
                         <MessageSquare className="h-3.5 w-3.5" /> Discuss in Analyst
                       </button>
@@ -1014,13 +1016,13 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                       key={tab.id}
                       type="button"
                       onClick={() => setActiveTab(tab.id)}
-                      className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition cursor-pointer ${
+                      className={`min-h-[44px] sm:min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition cursor-pointer whitespace-nowrap ${
                         active
                           ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
                           : 'bg-slate-950/60 text-slate-400 border border-slate-800 hover:text-slate-200'
                       }`}
                     >
-                      <Icon className="h-3.5 w-3.5" />
+                      <Icon className="h-3.5 w-3.5 shrink-0" />
                       {tab.label}
                     </button>
                   );

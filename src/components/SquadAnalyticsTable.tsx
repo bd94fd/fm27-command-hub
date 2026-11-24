@@ -46,6 +46,7 @@ import {
 import { STATS_SORT_KEYS } from './squad/squadTableConfig';
 import type { ListDisplayMode, SquadViewMode } from './squad/squadTableConfig';
 import { SquadListView } from './squad/SquadListView';
+import { SquadSubViewSkeleton } from './WorkspaceSkeletons';
 
 const SquadAnalyticsView = lazy(() =>
   import('./squad/SquadAnalyticsView').then((m) => ({
@@ -395,14 +396,14 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
             key={id}
             type="button"
             onClick={() => setViewMode(id)}
-            className={`min-w-0 min-h-[42px] sm:min-h-[36px] inline-flex items-center justify-center gap-1 px-1.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+            className={`min-w-0 min-h-[44px] sm:min-h-[36px] inline-flex items-center justify-center gap-1 px-1.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-semibold rounded-md transition-colors cursor-pointer whitespace-nowrap ${
               viewMode === id
                 ? 'bg-emerald-600 text-white shadow-xs'
                 : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <Icon className="w-3.5 h-3.5 shrink-0 hidden sm:inline" />
-            <span className="truncate">{label}</span>
+            <span className="truncate whitespace-nowrap">{label}</span>
           </button>
         ))}
       </div>
@@ -422,13 +423,7 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
       </p>
     </div>
         ) : viewMode === 'analytics' ? (
-          <Suspense
-            fallback={
-              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-500 dark:text-slate-400">
-                Loading Squad Analytics...
-              </div>
-            }
-          >
+          <Suspense fallback={<SquadSubViewSkeleton variant="analytics" />}>
             <SquadAnalyticsView
               players={players}
               matches={matches}
@@ -445,13 +440,7 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
             />
           </Suspense>
         ) : viewMode === 'compare' ? (
-          <Suspense
-            fallback={
-              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-500 dark:text-slate-400">
-                Loading Player Compare...
-              </div>
-            }
-          >
+          <Suspense fallback={<SquadSubViewSkeleton variant="compare" />}>
             <SquadCompareView
               players={players}
               comparePlayerA={comparePlayerA}
@@ -461,13 +450,7 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
             />
           </Suspense>
         ) : viewMode === 'progression' ? (
-          <Suspense
-            fallback={
-              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-500 dark:text-slate-400">
-                Loading Squad Progression...
-              </div>
-            }
-          >
+          <Suspense fallback={<SquadSubViewSkeleton variant="progression" />}>
             <SquadProgressionView
               progressionArchive={progressionArchive}
               progressionDiff={progressionDiff}

@@ -91,7 +91,7 @@ export const RecruitmentHeader: React.FC<RecruitmentHeaderProps> = ({
               <button
                 type="button"
                 onClick={() => setIncludeYouthInAudit(false)}
-                className={`px-2 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+                className={`min-h-[44px] sm:min-h-[32px] px-2.5 sm:px-2 py-1 rounded-md text-xs sm:text-[11px] font-semibold transition cursor-pointer whitespace-nowrap ${
                   !includeYouthInAudit
                     ? 'bg-emerald-600 text-white'
                     : 'text-slate-400 hover:text-slate-200'
@@ -102,7 +102,7 @@ export const RecruitmentHeader: React.FC<RecruitmentHeaderProps> = ({
               <button
                 type="button"
                 onClick={() => setIncludeYouthInAudit(true)}
-                className={`px-2 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+                className={`min-h-[44px] sm:min-h-[32px] px-2.5 sm:px-2 py-1 rounded-md text-xs sm:text-[11px] font-semibold transition cursor-pointer whitespace-nowrap ${
                   includeYouthInAudit
                     ? 'bg-emerald-600 text-white'
                     : 'text-slate-400 hover:text-slate-200'
@@ -327,7 +327,7 @@ export const RecruitmentHeader: React.FC<RecruitmentHeaderProps> = ({
               key={t.id}
               type="button"
               onClick={() => setView(t.id)}
-              className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-2.5 min-h-[42px] text-xs font-semibold transition cursor-pointer ${
+              className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-2.5 min-h-[44px] text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
                 view === t.id
                   ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                   : 'bg-slate-950/70 text-slate-400 border border-slate-800 hover:text-slate-200'

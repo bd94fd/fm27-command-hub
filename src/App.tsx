@@ -44,6 +44,7 @@ import type {
 } from './utils/fmSaveHydrator';
 import type { PlayerAutoUpdate } from './components/AutoSyncWorkspace';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
+import { TabWorkspaceSkeleton } from './components/WorkspaceSkeletons';
 import {
   loadPersistedFmState,
   loadPersistedFmStateFromIndexedDb,
@@ -141,12 +142,6 @@ const Fm27BinaryCalibrationLab = lazy(() =>
   import('./components/Fm27BinaryCalibrationLab').then((m) => ({
     default: m.Fm27BinaryCalibrationLab,
   }))
-);
-
-const LazyTabFallback: React.FC<{ label: string }> = ({ label }) => (
-  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-500 dark:text-slate-400">
-    Loading {label}...
-  </div>
 );
 
 type ActiveTab =
@@ -1125,11 +1120,11 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col">
-      {/* Top Navigation Shell */}
+      {/* Top Navigation Shell (mobile header ~56.6px + BottomNav ~55.8px = ~112.4px <= 15% of 800px) */}
       <header
-        className="sticky top-0 z-30 flex items-center justify-between gap-x-2.5 sm:gap-x-4 px-3.5 sm:px-6 pb-2.5 sm:pb-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800"
+        className="sticky top-0 z-30 flex items-center justify-between gap-x-2.5 sm:gap-x-4 px-3.5 sm:px-6 pb-1.5 sm:pb-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800"
         style={{
-          paddingTop: 'calc(0.65rem + env(safe-area-inset-top, 0px))',
+          paddingTop: 'calc(0.35rem + env(safe-area-inset-top, 0px))',
         }}
       >
         <a
@@ -1211,7 +1206,7 @@ export default function App() {
             {backgroundSyncStatus ? (
               <RefreshCw
                 className={`w-3.5 h-3.5 shrink-0 ${
-                  backgroundSyncStatus.paused ? '' : 'animate-spin'
+                  backgroundSyncStatus.paused ? '' : 'animate-spin motion-reduce:animate-none'
                 }`}
               />
             ) : (
@@ -1233,9 +1228,9 @@ export default function App() {
             onClick={() => setShowCommandPalette(true)}
             aria-label="Quick Search players, staff, and scout targets"
             title="Quick Search players, staff, and scout targets"
-            className="inline-flex items-center justify-center gap-1.5 min-h-[44px] min-w-[44px] md:min-h-[38px] md:min-w-[38px] px-2.5 py-1.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl md:rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+            className="inline-flex items-center justify-center gap-1.5 min-h-[44px] min-w-[44px] md:min-h-[38px] md:min-w-[38px] px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 rounded-xl md:rounded-lg transition-colors cursor-pointer whitespace-nowrap"
           >
-            <Search className="w-4 h-4 md:w-3.5 md:h-3.5 text-emerald-400" />
+            <Search className="w-4 h-4 md:w-3.5 md:h-3.5 text-emerald-600 dark:text-emerald-400" />
             <span className="hidden md:inline">Search</span>
           </button>
 
@@ -1345,8 +1340,8 @@ export default function App() {
               <RefreshCw
                 className={`w-3.5 h-3.5 shrink-0 ${
                   backgroundSyncStatus.paused
-                    ? 'text-amber-400'
-                    : 'text-emerald-400 animate-spin'
+                    ? 'text-amber-500 dark:text-amber-400'
+                    : 'text-emerald-600 dark:text-emerald-400 animate-spin motion-reduce:animate-none'
                 }`}
               />
               <span className="truncate">
@@ -1358,10 +1353,10 @@ export default function App() {
             <button
               type="button"
               onClick={() => handleSelectTab('sync')}
-              className={`shrink-0 px-2.5 py-1 rounded-md text-[11px] font-semibold border cursor-pointer ${
+              className={`shrink-0 min-h-[44px] md:min-h-[32px] px-3 md:px-2.5 py-1 rounded-lg md:rounded-md text-xs md:text-[11px] font-semibold border cursor-pointer whitespace-nowrap ${
                 backgroundSyncStatus.paused
-                  ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-100 border-amber-500/40'
-                  : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-100 border-emerald-500/40'
+                  ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-900 dark:text-amber-100 border-amber-500/40'
+                  : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-900 dark:text-emerald-100 border-emerald-500/40'
               }`}
             >
               {backgroundSyncStatus.paused ? 'Resume' : 'View Sync'}
@@ -1371,10 +1366,9 @@ export default function App() {
 
         {/* Compact Status Bar (shown once a save is loaded so first-entry welcome hero stays clean) */}
         {(hydratedFmSave || players.length > 0) && (
-          <div className="md:hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3.5 py-2.5 flex items-center justify-between gap-2">
+          <div className="md:hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3.5 py-2 flex items-center justify-between gap-2">
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
-                <span className="w-2 h-2 rounded-full shrink-0 bg-emerald-400" />
                 <span className="truncate">
                   {saveDate} · {hydratedFmSave?.leagueRecordLabel || `${players.length} Players`}
                 </span>
@@ -1386,15 +1380,15 @@ export default function App() {
             <button
               type="button"
               onClick={() => setShowMobileDetails((v) => !v)}
-              className="inline-flex items-center gap-1 shrink-0 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-[11px] font-medium text-slate-200"
+              className="inline-flex items-center gap-1 shrink-0 min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 whitespace-nowrap cursor-pointer"
             >
               {showMobileDetails ? (
                 <>
-                  Hide <ChevronUp className="w-3.5 h-3.5" />
+                  Hide <ChevronUp className="w-3.5 h-3.5 shrink-0" />
                 </>
               ) : (
                 <>
-                  Club KPIs <ChevronDown className="w-3.5 h-3.5" />
+                  Club KPIs <ChevronDown className="w-3.5 h-3.5 shrink-0" />
                 </>
               )}
             </button>
@@ -1556,7 +1550,7 @@ export default function App() {
         {/* Active View Area (AutoSyncWorkspace stays mounted so chat history persists across tabs) */}
         <div className={activeTab === 'sync' ? '' : 'hidden'}>
           <AppErrorBoundary scopeLabel="Hub & AI Analyst">
-            <Suspense fallback={<LazyTabFallback label="Hub & AI Analyst" />}>
+            <Suspense fallback={<TabWorkspaceSkeleton variant="sync" label="Hub & AI Analyst" />}>
               <AutoSyncWorkspace
                 matches={matches}
                 players={players}
@@ -1609,7 +1603,7 @@ export default function App() {
 
         {activeTab === 'tactics' && (
           <AppErrorBoundary scopeLabel="Tactical War Room">
-            <Suspense fallback={<LazyTabFallback label="Tactical War Room" />}>
+            <Suspense fallback={<TabWorkspaceSkeleton variant="tactics" label="Tactical War Room" />}>
               <TacticalWarRoom
                 players={players}
                 saveDate={saveDate}
@@ -1635,7 +1629,7 @@ export default function App() {
 
         {activeTab === 'squad' && (
           <AppErrorBoundary scopeLabel="Squad Analytics">
-            <Suspense fallback={<LazyTabFallback label="Squad Analytics" />}>
+            <Suspense fallback={<TabWorkspaceSkeleton variant="squad" label="Squad Analytics" />}>
               <SquadAnalyticsTable
                 players={players}
                 matches={matches}
@@ -1683,7 +1677,7 @@ export default function App() {
 
         {activeTab === 'recruitment' && (
           <AppErrorBoundary scopeLabel="Transfers & Recruitment Audit">
-            <Suspense fallback={<LazyTabFallback label="Transfers & Audit" />}>
+            <Suspense fallback={<TabWorkspaceSkeleton variant="recruitment" label="Transfers & Audit" />}>
               <RecruitmentWorkspace
                 cases={recruitmentCases}
                 shortlists={shortlists}
@@ -1742,7 +1736,7 @@ export default function App() {
 
         {activeTab === 'staff' && (
           <AppErrorBoundary scopeLabel="Staff Directory">
-            <Suspense fallback={<LazyTabFallback label="Staff Directory" />}>
+            <Suspense fallback={<TabWorkspaceSkeleton variant="staff" label="Staff Directory" />}>
               <StaffDirectory
                 staff={staff}
                 clubName={hydratedFmSave?.decodedPayload?.meta?.clubName}
@@ -1756,7 +1750,7 @@ export default function App() {
 
         {activeTab === 'matches' && (
           <AppErrorBoundary scopeLabel="Match Log Archive">
-            <Suspense fallback={<LazyTabFallback label="Match Log Archive" />}>
+            <Suspense fallback={<TabWorkspaceSkeleton variant="matches" label="Match Log Archive" />}>
               <MatchLogArchive
                 matches={matches}
                 liveLeagueRecord={hydratedFmSave?.leagueRecordLabel || null}
