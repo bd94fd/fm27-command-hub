@@ -8,6 +8,7 @@ import {
 export const MODEL_DISCOVERY_TTL_MS = 5 * 60 * 1000; // 5 minutes
 export const FAST_MODEL_ID = 'gemini-3.5-flash-lite';
 export const DEEP_MODEL_ID = 'gemini-3.6-flash';
+export const EMERGENCY_OVERLOAD_MODEL_ID = 'gemini-3.8-flash';
 
 export type ReasoningMode = 'fast_lite' | 'deep_high' | 'max_xhigh';
 
@@ -424,10 +425,28 @@ export class GeminiService {
       }
     };
 
-    const resolveFailoverModel = (model: string): string => {
-      if (model === DEEP_MODEL_ID) return fastModel;
-      if (model === fastModel) return DEEP_MODEL_ID;
-      return model !== fallbackModel ? fallbackModel : DEEP_MODEL_ID;
+    const resolveOverloadFailoverChain = (model: string): string[] => {
+      const first =
+        model === DEEP_MODEL_ID
+          ? fastModel
+          : model === fastModel
+            ? DEEP_MODEL_ID
+            : model !== fallbackModel
+              ? fallbackModel
+              : DEEP_MODEL_ID;
+      const candidates = [first, EMERGENCY_OVERLOAD_MODEL_ID];
+      const unique: string[] = [];
+      for (const candidate of candidates) {
+        if (
+          candidate &&
+          candidate !== model &&
+          !isRetiredGeminiModel(candidate) &&
+          !unique.includes(candidate)
+        ) {
+          unique.push(candidate);
+        }
+      }
+      return unique;
     };
 
     const invokeWithOverloadRetry = async (
@@ -435,8 +454,11 @@ export class GeminiService {
       capDeadline = deadline,
       isFailover = false
     ) => {
+      const retryDelays = isFailover
+        ? OVERLOAD_RETRY_DELAYS_MS.slice(0, 1)
+        : OVERLOAD_RETRY_DELAYS_MS;
       let lastErr: unknown;
-      for (let attempt = 0; attempt <= OVERLOAD_RETRY_DELAYS_MS.length; attempt++) {
+      for (let attempt = 0; attempt <= retryDelays.length; attempt++) {
         try {
           return await invoke(model, capDeadline, isFailover);
         } catch (err: unknown) {
@@ -444,8 +466,8 @@ export class GeminiService {
           if (!isTransientOverloadError(err)) {
             throw err;
           }
-          if (attempt < OVERLOAD_RETRY_DELAYS_MS.length) {
-            const delayMs = OVERLOAD_RETRY_DELAYS_MS[attempt];
+          if (attempt < retryDelays.length) {
+            const delayMs = retryDelays[attempt];
             const remainingMs = Math.min(deadline, capDeadline) - this.now();
             if (remainingMs <= delayMs + 500) {
               break;
@@ -478,21 +500,55 @@ export class GeminiService {
         canTimeoutFailoverToFast &&
         deadline - this.now() > 2_000
       ) {
-        return await invokeWithOverloadRetry(fastModel, deadline, true);
+        try {
+          return await invokeWithOverloadRetry(fastModel, deadline, true);
+        } catch (fastErr: unknown) {
+          if (
+            isTransientOverloadError(fastErr) &&
+            EMERGENCY_OVERLOAD_MODEL_ID !== primaryModel &&
+            EMERGENCY_OVERLOAD_MODEL_ID !== fastModel &&
+            deadline - this.now() > 2_000
+          ) {
+            try {
+              return await invokeWithOverloadRetry(
+                EMERGENCY_OVERLOAD_MODEL_ID,
+                deadline,
+                true
+              );
+            } catch (emergencyErr: unknown) {
+              if (isTransientOverloadError(emergencyErr) || isNotFoundError(emergencyErr)) {
+                throw new AnalystOverloadError();
+              }
+              throw emergencyErr;
+            }
+          }
+          throw fastErr;
+        }
       }
       if (isTransientOverloadError(err)) {
-        const failoverModel = resolveFailoverModel(primaryModel);
-        if (failoverModel !== primaryModel && deadline - this.now() > 500) {
+        const failoverChain = resolveOverloadFailoverChain(primaryModel);
+        let lastFailoverErr: unknown = err;
+        for (const failoverModel of failoverChain) {
+          if (deadline - this.now() <= 500) {
+            break;
+          }
           try {
             return await invokeWithOverloadRetry(failoverModel, deadline, true);
           } catch (failoverErr: unknown) {
-            if (isTransientOverloadError(failoverErr)) {
-              throw new AnalystOverloadError();
+            lastFailoverErr = failoverErr;
+            if (isTransientOverloadError(failoverErr) || isNotFoundError(failoverErr)) {
+              continue;
             }
             throw failoverErr;
           }
         }
-        throw new AnalystOverloadError();
+        if (
+          isTransientOverloadError(lastFailoverErr) ||
+          isNotFoundError(lastFailoverErr)
+        ) {
+          throw new AnalystOverloadError();
+        }
+        throw lastFailoverErr;
       }
       throw err;
     }

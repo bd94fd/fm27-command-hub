@@ -345,5 +345,58 @@ describe('server/geminiService', () => {
       { model: 'gemini-3.5-flash-lite', thinkingLevel: ThinkingLevel.MINIMAL },
     ]);
   });
+
+  it('cascades to gemini-3.8-flash when both gemini-3.6-flash and gemini-3.5-flash-lite return 503 overload', async () => {
+    const { ThinkingLevel } = await import('@google/genai');
+    const seenCalls: Array<{ model: string; thinkingLevel?: string }> = [];
+
+    const service = new GeminiService({
+      config: loadServerConfig({ GEMINI_API_KEY: 'test-key' } as NodeJS.ProcessEnv),
+      sleep: async () => {},
+      clientFactory: () => ({
+        models: {
+          generateContent: (async (params: {
+            model: string;
+            config?: { thinkingConfig?: { thinkingLevel?: string } };
+          }) => {
+            seenCalls.push({
+              model: params.model,
+              thinkingLevel: params.config?.thinkingConfig?.thinkingLevel,
+            });
+            if (
+              params.model === 'gemini-3.6-flash' ||
+              params.model === 'gemini-3.5-flash-lite'
+            ) {
+              const err = new Error('503 UNAVAILABLE: high demand') as Error & {
+                status?: number;
+              };
+              err.status = 503;
+              throw err;
+            }
+            return { text: '{"ok":true,"emergencyFailover":true}' };
+          }) as never,
+        },
+      }),
+    });
+
+    const res = await service.generateContent(
+      { contents: 'Squad & Wage Audit' },
+      { reasoningMode: 'deep_high' }
+    );
+    assert.equal(res.text, '{"ok":true,"emergencyFailover":true}');
+    assert.deepEqual(
+      seenCalls.map((c) => c.model),
+      [
+        'gemini-3.6-flash',
+        'gemini-3.6-flash',
+        'gemini-3.6-flash',
+        'gemini-3.5-flash-lite',
+        'gemini-3.5-flash-lite',
+        'gemini-3.8-flash',
+      ]
+    );
+    assert.equal(seenCalls[seenCalls.length - 1].thinkingLevel, ThinkingLevel.LOW);
+  });
 });
+
 
