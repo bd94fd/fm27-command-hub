@@ -37,6 +37,13 @@ import {
   getRestDefenseRoleExplanation,
   PitchPhaseMode,
 } from '../utils/restDefenseEngine';
+import {
+  buildBenchRailPlayers,
+  formatMobileSurname,
+  resolveMobilePitchCoordinates,
+} from '../utils/mobilePitchLayout';
+import { PitchInspectStrip } from './PitchInspectStrip';
+import { PitchBenchRail } from './PitchBenchRail';
 
 export interface PlaybookGuardrailAlert {
   id: string;
@@ -401,6 +408,52 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
     [restDefenseMatrix]
   );
 
+  const slotEditorRef = useRef<HTMLDivElement | null>(null);
+  const [isCompactPitch, setIsCompactPitch] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 640 : false
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(max-width: 639px)');
+    const onChange = () => setIsCompactPitch(mq.matches);
+    onChange();
+    mq.addEventListener?.('change', onChange);
+    return () => mq.removeEventListener?.('change', onChange);
+  }, []);
+
+  const mobilePitchCoords = useMemo(() => {
+    const rawCoords = activeSlots.map((slot) => {
+      const restNode = restNodeMap.get(slot.slotId);
+      const x =
+        pitchPhaseMode === 'ip'
+          ? restNode?.ipX ?? slot.x
+          : pitchPhaseMode === 'oop'
+            ? restNode?.oopX ?? slot.x
+            : restNode?.restX ?? slot.x;
+      const y =
+        pitchPhaseMode === 'ip'
+          ? restNode?.ipY ?? slot.y
+          : pitchPhaseMode === 'oop'
+            ? restNode?.oopY ?? slot.y
+            : restNode?.restY ?? slot.y;
+      return { slotId: slot.slotId, x, y };
+    });
+    return resolveMobilePitchCoordinates(rawCoords);
+  }, [activeSlots, restNodeMap, pitchPhaseMode]);
+
+  const benchEntries = useMemo(
+    () =>
+      buildBenchRailPlayers(
+        players,
+        activeSlots,
+        activeSuspensions,
+        nextCompetitionName,
+        9
+      ),
+    [players, activeSlots, activeSuspensions, nextCompetitionName]
+  );
+
   const selectedSlot =
     activeSlots.find((s) => s.slotId === selectedSlotId) || activeSlots[0];
 
@@ -613,25 +666,26 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
           </button>
         </div>
 
-        <div className="flex items-center gap-1 p-0.5 rounded-lg bg-slate-900 border border-slate-800">
+        <div className="grid grid-cols-3 sm:flex items-center gap-1 p-0.5 rounded-lg bg-slate-900 border border-slate-800 w-full sm:w-auto">
           {(
             [
-              { id: 'ip', label: 'IP Attack Shape' },
-              { id: 'oop', label: 'OOP Def Block' },
-              { id: 'rest-defense', label: 'Rest Defence' },
+              { id: 'ip', label: 'IP Attack Shape', shortLabel: 'IP Attack' },
+              { id: 'oop', label: 'OOP Def Block', shortLabel: 'OOP Block' },
+              { id: 'rest-defense', label: 'Rest Defence', shortLabel: 'Rest Def' },
             ] as const
           ).map((mode) => (
             <button
               key={mode.id}
               type="button"
               onClick={() => setPitchPhaseMode(mode.id)}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+              className={`min-h-[38px] sm:min-h-[28px] px-2 sm:px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer text-center ${
                 pitchPhaseMode === mode.id
                   ? 'bg-emerald-600 text-white'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              {mode.label}
+              <span className="sm:hidden">{mode.shortLabel}</span>
+              <span className="hidden sm:inline">{mode.label}</span>
             </button>
           ))}
         </div>
@@ -754,18 +808,23 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
               const hasWarning =
                 slot.warnings.length > 0 || !slot.isNaturalPosition;
               const restNode = restNodeMap.get(slot.slotId);
-              const displayX =
+              const rawX =
                 pitchPhaseMode === 'ip'
                   ? restNode?.ipX ?? slot.x
                   : pitchPhaseMode === 'oop'
                     ? restNode?.oopX ?? slot.x
                     : restNode?.restX ?? slot.x;
-              const displayY =
+              const rawY =
                 pitchPhaseMode === 'ip'
                   ? restNode?.ipY ?? slot.y
                   : pitchPhaseMode === 'oop'
                     ? restNode?.oopY ?? slot.y
                     : restNode?.restY ?? slot.y;
+              const compactCoord = isCompactPitch
+                ? mobilePitchCoords.get(slot.slotId)
+                : undefined;
+              const displayX = compactCoord?.x ?? rawX;
+              const displayY = compactCoord?.y ?? rawY;
 
               const categoryRing =
                 pitchPhaseMode === 'rest-defense' && restNode
@@ -796,7 +855,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                   }
                   onClick={() => setSelectedSlotId(slot.slotId)}
                   style={{ left: `${displayX}%`, top: `${displayY}%` }}
-                  className={`absolute -translate-x-1/2 -translate-y-1/2 px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-lg text-center transition-all duration-300 min-w-[76px] max-w-[104px] sm:w-auto sm:max-w-[126px] border ${categoryRing} ${
+                  className={`absolute -translate-x-1/2 -translate-y-1/2 px-1 sm:px-2 py-1 sm:py-1.5 rounded-lg text-center transition-all duration-300 w-[62px] min-h-[44px] sm:w-auto sm:min-h-0 sm:min-w-[82px] sm:max-w-[126px] flex flex-col justify-center border cursor-pointer ${categoryRing} ${
                     isSelected
                       ? 'bg-emerald-500 text-slate-950 border-white shadow-lg scale-105 z-20'
                       : hasWarning
@@ -804,22 +863,45 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                         : 'bg-slate-950/85 text-slate-100 border-emerald-400/40 hover:border-emerald-300 z-10'
                   }`}
                 >
-                  <div className="text-[9px] sm:text-[10px] font-mono font-bold leading-tight whitespace-nowrap">
-                    {slot.label}{' '}
-                    {slot.player ? `· ${slot.combinedFitPct}%` : '· --'}
+                  <div className="text-[8.5px] sm:text-[10px] font-mono font-bold leading-tight whitespace-nowrap truncate">
+                    {slot.label}
+                    {slot.player ? ` ${slot.combinedFitPct}%` : ' --'}
                   </div>
                   <div className="text-[10px] sm:text-[11px] font-semibold leading-tight truncate">
                     {slot.player
-                      ? slot.player.name.split(' ').slice(-1)[0]
+                      ? formatMobileSurname(slot.player.name)
                       : 'Empty'}
                   </div>
-                  <div className="text-[8px] sm:text-[9px] leading-tight opacity-85 truncate">
+                  <div className="hidden sm:block text-[9px] leading-tight opacity-85 truncate">
                     {formatCompactPitchRole(rawNodeRole)}
                   </div>
                 </button>
               );
             })}
           </div>
+
+          {/* Docked Tap-to-Inspect IP/OOP Strip */}
+          <PitchInspectStrip
+            slot={selectedSlot}
+            restNode={selectedSlot ? restNodeMap.get(selectedSlot.slotId) : undefined}
+            onJumpToEditor={() =>
+              slotEditorRef.current?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start',
+              })
+            }
+          />
+
+          {/* Swipeable 2-Row Matchday Bench Rail */}
+          <PitchBenchRail
+            benchEntries={benchEntries}
+            selectedSlot={selectedSlot}
+            readOnly={effectiveLineupMode === 'bteam'}
+            onAssignToSelectedSlot={(playerId) => {
+              if (!selectedSlot || effectiveLineupMode === 'bteam') return;
+              handleUpdateSlot(selectedSlot.slotId, { playerId });
+            }}
+          />
 
           {/* 5-Lane Rest-Defence Corridor Status Bar (tappable on mobile) */}
           <div className="space-y-2">
@@ -950,7 +1032,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
         </div>
 
         {/* Slot Role & Player Editor */}
-        <div className="lg:col-span-5 space-y-4">
+        <div ref={slotEditorRef} className="lg:col-span-5 space-y-4 scroll-mt-20">
           {selectedSlot && (
             <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-3">
               <div className="flex items-start justify-between gap-2">

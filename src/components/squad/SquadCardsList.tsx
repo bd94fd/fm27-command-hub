@@ -7,10 +7,13 @@ import type {
 } from '../../types/fmSave';
 import type { TransferActionVerdict } from '../../utils/transferAudit';
 import { evaluateSquadPlayerCard } from '../../utils/cardIntelligenceEngine';
+import { resolveCompleteCardColumns } from '../../utils/mobilePitchLayout';
 import {
   EnrichedSquadRow,
+  formatCompactCurrency,
   SQUAD_COLUMNS,
   SquadColumnId,
+  SquadViewPresetId,
 } from '../../utils/squadViewHelpers';
 import { renderColumnValue } from './squadBadges';
 
@@ -23,6 +26,7 @@ interface SquadCardsListProps {
   governance: ClubGovernanceState | null;
   transferVerdictById: Map<string, TransferActionVerdict>;
   cardMetricColumns: SquadColumnId[];
+  activePresetId?: SquadViewPresetId;
 }
 
 export const SquadCardsList: React.FC<SquadCardsListProps> = ({
@@ -34,17 +38,35 @@ export const SquadCardsList: React.FC<SquadCardsListProps> = ({
   governance,
   transferVerdictById,
   cardMetricColumns,
+  activePresetId = 'overview',
 }) => {
+  const completeColumns = resolveCompleteCardColumns(
+    cardMetricColumns,
+    activePresetId
+  );
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
       {visibleRows.map((row) => {
         const p = row.player;
+        const isSurplus =
+          p.status === 'Surplus' ||
+          /surplus/i.test(p.contractDetails?.promisedPlayingTime || '');
+        const marketValueText =
+          p.marketValueCapped || p.marketValueState === 'capped'
+            ? 'Not for sale'
+            : formatCompactCurrency(p.marketValue);
+        const showAppsFooter = !completeColumns.includes('apps');
+        const showGoalsFooter = !completeColumns.includes('goalsXg');
+        const showValueFooter = !completeColumns.includes('value');
+        const showExpiryFooter = !completeColumns.includes('expiry');
+
         return (
           <button
             key={p.id}
             type="button"
             onClick={() => onSelectPlayer?.(p)}
-            className="w-full text-left rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/60 hover:border-emerald-500/50 dark:hover:bg-slate-800/40 p-3 transition cursor-pointer"
+            className="w-full min-h-[44px] text-left rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/60 hover:border-emerald-500/50 dark:hover:bg-slate-800/40 p-3.5 transition cursor-pointer"
           >
             {/* Top line: Shirt #, Name, Pos, Age, Stars */}
             <div className="flex items-start justify-between gap-2">
@@ -83,13 +105,29 @@ export const SquadCardsList: React.FC<SquadCardsListProps> = ({
                 </span>
               )}
               {row.isBanned && (
-                <span className="rounded bg-rose-500/20 border border-rose-500/45 px-1.5 py-0.5 text-[10px] font-bold text-rose-300">
+                <span
+                  title={row.activeBanTooltip || 'Suspended'}
+                  className="rounded bg-rose-500/20 border border-rose-500/45 px-1.5 py-0.5 text-[10px] font-bold text-rose-300"
+                >
                   BANNED ({row.activeBanMatches}m)
+                </span>
+              )}
+              {!row.isBanned && row.hasOtherCompBan && (
+                <span
+                  title={row.activeBanTooltip || 'Other-competition ban only — eligible next match'}
+                  className="rounded bg-amber-500/15 border border-amber-500/45 px-1.5 py-0.5 text-[10px] font-bold text-amber-300"
+                >
+                  CUP BAN ({row.activeBanMatches}m)
                 </span>
               )}
               {row.isInjured && (
                 <span className="rounded bg-amber-500/20 border border-amber-500/45 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">
                   INJURED
+                </span>
+              )}
+              {isSurplus && (
+                <span className="rounded bg-rose-500/15 border border-rose-500/40 px-1.5 py-0.5 text-[10px] font-bold text-rose-300">
+                  SURPLUS
                 </span>
               )}
               {p.onLoan && (
@@ -110,7 +148,7 @@ export const SquadCardsList: React.FC<SquadCardsListProps> = ({
               </div>
             )}
 
-            {/* Inline FM27 Card Analysis Strip */}
+            {/* Inline FM27 Card Analysis Strip (2-line readable on mobile) */}
             {(() => {
               const cardEval = evaluateSquadPlayerCard(p, players, {
                 divisionBenchmarks,
@@ -129,11 +167,13 @@ export const SquadCardsList: React.FC<SquadCardsListProps> = ({
                         ? 'text-rose-400'
                         : 'text-slate-300';
               return (
-                <div className="mt-2 flex items-center justify-between gap-2 text-[11px] pt-1.5 border-t border-slate-800/70">
-                  <span className="truncate text-slate-300">
+                <div className="mt-2 flex items-start justify-between gap-2 text-[11px] pt-1.5 border-t border-slate-200/70 dark:border-slate-800/70">
+                  <span className="line-clamp-2 sm:truncate text-slate-600 dark:text-slate-300 leading-snug">
                     <strong className={toneText}>{cardEval.verdictLabel}</strong>
                     <span className="text-slate-500"> · </span>
-                    <span className="text-slate-400">{cardEval.inlineRationale}</span>
+                    <span className="text-slate-500 dark:text-slate-400">
+                      {cardEval.inlineRationale}
+                    </span>
                   </span>
                   {cardEval.promiseTag && (
                     <span className="font-mono text-[10px] text-amber-300 shrink-0">
@@ -144,18 +184,15 @@ export const SquadCardsList: React.FC<SquadCardsListProps> = ({
               );
             })()}
 
-            {/* Preset Metric Chips */}
-            <div
-              className={`mt-2.5 pt-2 border-t border-slate-200/70 dark:border-slate-800/80 grid gap-2 ${
-                cardMetricColumns.length >= 4
-                  ? 'grid-cols-2 sm:grid-cols-4'
-                  : 'grid-cols-3'
-              }`}
-            >
-              {cardMetricColumns.map((colId) => {
+            {/* Complete 4-KPI Preset Metric Grid (2×2 on phones, 4-across on sm+) */}
+            <div className="mt-2.5 pt-2 border-t border-slate-200/70 dark:border-slate-800/80 grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+              {completeColumns.map((colId) => {
                 const meta = SQUAD_COLUMNS[colId];
                 return (
-                  <div key={colId} className="min-w-0">
+                  <div
+                    key={colId}
+                    className="rounded-lg border border-slate-200/80 dark:border-slate-800/90 bg-white/75 dark:bg-slate-900/70 px-2 py-1.5 min-w-0"
+                  >
                     <div className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">
                       {meta.shortLabel}
                     </div>
@@ -166,6 +203,45 @@ export const SquadCardsList: React.FC<SquadCardsListProps> = ({
                 );
               })}
             </div>
+
+            {/* Compact Season & Contract Context Strip */}
+            {(showAppsFooter || showGoalsFooter || showValueFooter || showExpiryFooter) && (
+              <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                {showAppsFooter && (
+                  <span>
+                    Apps{' '}
+                    <strong className="text-slate-700 dark:text-slate-200">
+                      {p.apps || 0}
+                    </strong>{' '}
+                    ({p.minutes || 0}m)
+                  </span>
+                )}
+                {showGoalsFooter && (p.goals > 0 || p.assists > 0) && (
+                  <span>
+                    G/A{' '}
+                    <strong className="text-slate-700 dark:text-slate-200">
+                      {p.goals}/{p.assists}
+                    </strong>
+                  </span>
+                )}
+                {showValueFooter && (
+                  <span>
+                    Val{' '}
+                    <strong className="text-slate-700 dark:text-slate-200">
+                      {marketValueText}
+                    </strong>
+                  </span>
+                )}
+                {showExpiryFooter && row.expiryYear && (
+                  <span>
+                    Exp{' '}
+                    <strong className="text-slate-700 dark:text-slate-200">
+                      {row.expiryYear}
+                    </strong>
+                  </span>
+                )}
+              </div>
+            )}
           </button>
         );
       })}

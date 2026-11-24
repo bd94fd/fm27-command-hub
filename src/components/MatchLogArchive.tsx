@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Calendar, Filter, Sparkles, Trophy } from 'lucide-react';
+import { Calendar, Filter, Trophy } from 'lucide-react';
 import { MatchLogEntry } from '../types/fm27';
 import {
   buildMatchMomentumSummary,
@@ -15,6 +15,7 @@ import {
   summarizeMatchesByScope,
 } from '../utils/matchScopeHelpers';
 import { MatchXgMomentumChart } from './FootballAnalyticsCharts';
+import { MatchLogCard } from './MatchLogCard';
 
 export interface PostMatchDebriefData {
   headlineVerdict: string;
@@ -701,7 +702,7 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                   key={s}
                   type="button"
                   onClick={() => setSelectedSeason(s)}
-                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold border transition ${
+                  className={`min-h-[38px] sm:min-h-[30px] rounded-lg px-2.5 py-1 text-xs font-semibold border transition cursor-pointer ${
                     activeSeason === s
                       ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                       : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
@@ -715,7 +716,7 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                 <button
                   type="button"
                   onClick={() => setSelectedSeason('ALL')}
-                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold border transition ${
+                  className={`min-h-[38px] sm:min-h-[30px] rounded-lg px-2.5 py-1 text-xs font-semibold border transition cursor-pointer ${
                     activeSeason === 'ALL'
                       ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                       : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
@@ -743,7 +744,7 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                   key={c.id}
                   type="button"
                   onClick={() => setCompFilter(c.id)}
-                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold border transition ${
+                  className={`min-h-[38px] sm:min-h-[30px] rounded-lg px-2.5 py-1 text-xs font-semibold border transition cursor-pointer ${
                     activeCompFilter === c.id
                       ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
                       : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
@@ -773,209 +774,31 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
             No matches found for <strong>{activeSeason}</strong> ({formatCompetitionFilterLabel(activeCompFilter)}). Try switching the competition or season filter above.
           </div>
         ) : (
-          <div className="divide-y divide-slate-200 dark:divide-slate-800">
+          <div className="space-y-2.5">
             {filteredMatches.map((m) => {
               const seasonLabel = getFootballSeasonLabel(m.date);
               const compBucket = classifyMatchEntryBucket(m, seasonScopedMatches);
-              const hasXg =
-                typeof m.xGFor === 'number' && typeof m.xGAgainst === 'number';
-              const resultBadge =
-                m.result === 'W'
-                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
-                  : m.result === 'D'
-                    ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
-                    : 'bg-rose-500/15 text-rose-300 border-rose-500/40';
-
-              const hasShots =
-                Boolean(m.shotsFor && m.shotsFor !== '—' && m.shotsFor !== '-');
-              const hasMetrics =
-                hasXg ||
-                m.possession !== null ||
-                hasShots ||
-                m.passCompletion !== null;
+              const isDebriefOpen = openDebriefMatchId === m.id;
+              const debrief = isDebriefOpen
+                ? aiDebriefByMatchId[m.id] || buildDeterministicPostMatchDebrief(m)
+                : null;
 
               return (
-                <React.Fragment key={m.id}>
-                <div
-                  className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
-                >
-                  <div className="space-y-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                      <span className="font-mono text-slate-400">{m.date}</span>
-                      <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-mono text-slate-300">
-                        {seasonLabel}
-                      </span>
-                      <span
-                        className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                          compBucket === 'league'
-                            ? 'bg-emerald-500/15 text-emerald-300'
-                            : compBucket === 'cup'
-                              ? 'bg-sky-500/15 text-sky-300'
-                              : 'bg-amber-500/15 text-amber-300'
-                        }`}
-                      >
-                        {m.competition}
-                      </span>
-                    </div>
-                    <div className="text-sm font-bold text-slate-900 dark:text-white">
-                      vs {m.opponent}{' '}
-                      <span className="text-xs font-normal text-slate-400">
-                        ({m.venue === 'H' ? 'Home' : 'Away'})
-                      </span>
-                    </div>
-                    {hasMetrics && (
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-mono text-slate-400">
-                        {hasXg && (
-                          <span>
-                            xG{' '}
-                            <strong className="text-slate-200">
-                              {m.xGFor?.toFixed(2)}
-                            </strong>{' '}
-                            -{' '}
-                            <strong className="text-slate-200">
-                              {m.xGAgainst?.toFixed(2)}
-                            </strong>
-                          </span>
-                        )}
-                        {hasShots && (
-                          <span>
-                            Shots{' '}
-                            <strong className="text-slate-200">
-                              {m.shotsFor}
-                            </strong>
-                            {m.shotsAgainst && m.shotsAgainst !== '—'
-                              ? ` vs ${m.shotsAgainst}`
-                              : ''}
-                          </span>
-                        )}
-                        {m.possession !== null && (
-                          <span>
-                            Poss{' '}
-                            <strong className="text-slate-200">
-                              {Number(m.possession).toFixed(
-                                Number.isInteger(m.possession) ? 0 : 1
-                              )}
-                              %
-                            </strong>
-                          </span>
-                        )}
-                        {m.passCompletion !== null && (
-                          <span>
-                            Pass{' '}
-                            <strong className="text-slate-200">
-                              {m.passCompletion}%
-                            </strong>
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setOpenDebriefMatchId((curr) =>
-                          curr === m.id ? null : m.id
-                        )
-                      }
-                      className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold transition cursor-pointer ${
-                        openDebriefMatchId === m.id
-                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                          : 'bg-slate-950/70 text-slate-300 border-slate-700 hover:border-emerald-500/40'
-                      }`}
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                      {openDebriefMatchId === m.id ? 'Hide Debrief' : 'Post-Match Debrief'}
-                    </button>
-                    <span
-                      className={`rounded-lg border px-2.5 py-1 text-xs font-mono font-bold ${resultBadge}`}
-                    >
-                      {m.result} {m.score}
-                    </span>
-                  </div>
-                </div>
-                {openDebriefMatchId === m.id &&
-                  (() => {
-                    const debrief =
-                      aiDebriefByMatchId[m.id] ||
-                      buildDeterministicPostMatchDebrief(m);
-                    return (
-                      <div className="mb-3 rounded-xl border border-emerald-500/30 bg-slate-950/90 p-3.5 space-y-2.5 text-xs">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <div className="font-bold text-emerald-300">
-                              {debrief.headlineVerdict}
-                            </div>
-                            <div className="text-[11px] font-mono text-slate-400 mt-0.5">
-                              {debrief.xgAndExecutionAudit}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="rounded bg-slate-900 border border-slate-700 px-2 py-0.5 text-[10px] font-mono text-slate-300">
-                              {debrief.source}
-                            </span>
-                            {!aiDebriefByMatchId[m.id] && (
-                              <button
-                                type="button"
-                                disabled={loadingAiMatchId === m.id}
-                                onClick={() => handleRequestAiDebrief(m)}
-                                className="rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 px-2.5 py-1 text-[11px] font-semibold text-white transition cursor-pointer"
-                              >
-                                {loadingAiMatchId === m.id
-                                  ? 'Analyzing...'
-                                  : 'Deep AI Debrief'}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        {aiDebriefErrorByMatchId[m.id] && (
-                          <div className="rounded-lg border border-amber-500/30 bg-amber-950/30 px-2.5 py-1.5 text-[11px] text-amber-200">
-                            {aiDebriefErrorByMatchId[m.id]}
-                          </div>
-                        )}
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1">
-                          <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5 space-y-1">
-                            <div className="text-[10px] font-bold uppercase tracking-wider text-rose-300">
-                              Primary Tactical Flaws
-                            </div>
-                            <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-300">
-                              {debrief.primaryTacticalFlaws.map((f, idx) => (
-                                <li key={idx}>{f}</li>
-                              ))}
-                            </ul>
-                          </div>
-
-                          <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5 space-y-1">
-                            <div className="text-[10px] font-bold uppercase tracking-wider text-sky-300">
-                              Dual-Phase Role Audit
-                            </div>
-                            <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-300">
-                              {debrief.subOptimalRoleCombinations.map((r, idx) => (
-                                <li key={idx}>{r}</li>
-                              ))}
-                            </ul>
-                          </div>
-
-                          <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5 space-y-1">
-                            <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-300">
-                              In-Game Adjustments
-                            </div>
-                            <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-300">
-                              {debrief.inGameAdjustmentRecommendations.map(
-                                (adj, idx) => (
-                                  <li key={idx}>{adj}</li>
-                                )
-                              )}
-                            </ul>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </React.Fragment>
+                <MatchLogCard
+                  key={m.id}
+                  match={m}
+                  seasonLabel={seasonLabel}
+                  compBucket={compBucket}
+                  isDebriefOpen={isDebriefOpen}
+                  onToggleDebrief={() =>
+                    setOpenDebriefMatchId((curr) => (curr === m.id ? null : m.id))
+                  }
+                  debrief={debrief}
+                  hasAiDebrief={Boolean(aiDebriefByMatchId[m.id])}
+                  isLoadingAi={loadingAiMatchId === m.id}
+                  aiError={aiDebriefErrorByMatchId[m.id]}
+                  onRequestAiDebrief={() => handleRequestAiDebrief(m)}
+                />
               );
             })}
           </div>

@@ -127,22 +127,30 @@ export const ContractHorizonView: React.FC<ContractHorizonViewProps> = ({
           return (
             <div
               key={p.id}
-              className="rounded-xl border border-slate-800 bg-slate-900/70 p-3.5 space-y-1.5"
+              className="rounded-xl border border-slate-800 bg-slate-900/70 p-3.5 space-y-2.5"
             >
-              <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-start justify-between gap-2">
                 <button
                   type="button"
                   onClick={() => onSelectPlayer(p)}
-                  className="text-left"
+                  className="text-left min-h-[44px] flex-1 min-w-0 cursor-pointer"
                 >
-                  <span className="text-sm font-bold text-white hover:text-emerald-300">
-                    {p.name}
-                  </span>{' '}
-                  <span className="text-[11px] font-mono text-slate-400">
-                    ({p.position} · Age {p.age} · {p.ability.toFixed(1)}★/{p.potential.toFixed(1)}★)
-                  </span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-sm font-bold text-white hover:text-emerald-300">
+                      {p.name}
+                    </span>
+                    <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-mono text-slate-300">
+                      {p.position}
+                    </span>
+                    <span className="text-[11px] font-mono text-slate-400">
+                      {p.age}y
+                    </span>
+                    <span className="text-[11px] font-mono font-bold text-amber-300 tabular-nums">
+                      {p.ability.toFixed(1)}★/{p.potential.toFixed(1)}★
+                    </span>
+                  </div>
                 </button>
-                <div className="flex items-center gap-1.5">
+                <div className="flex flex-wrap items-center gap-1.5 shrink-0">
                   <span
                     className={`rounded-md border px-2 py-0.5 text-[10px] font-mono font-bold ${horizonBadge}`}
                   >
@@ -159,10 +167,43 @@ export const ContractHorizonView: React.FC<ContractHorizonViewProps> = ({
                   </span>
                 </div>
               </div>
-              <div className="text-xs text-amber-300 font-mono">
-                Expires {p.expires} ({item.monthsLeft ?? '--'}m left) · £{p.wagePw}/wk · {p.minutes}m · {p.personality}
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/75 px-2.5 py-1.5 min-w-0">
+                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                    Expires
+                  </div>
+                  <div className="mt-0.5 font-mono text-xs font-bold text-amber-300 tabular-nums truncate">
+                    {p.expires} ({item.monthsLeft ?? '--'}m)
+                  </div>
+                </div>
+                <div className="rounded-lg border border-slate-800 bg-slate-950/75 px-2.5 py-1.5 min-w-0">
+                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                    Wage
+                  </div>
+                  <div className="mt-0.5 font-mono text-xs font-bold text-slate-100 tabular-nums truncate">
+                    £{p.wagePw.toLocaleString()}/wk
+                  </div>
+                </div>
+                <div className="rounded-lg border border-slate-800 bg-slate-950/75 px-2.5 py-1.5 min-w-0">
+                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                    Season Mins
+                  </div>
+                  <div className="mt-0.5 font-mono text-xs font-bold text-slate-100 tabular-nums truncate">
+                    {p.minutes}m ({p.apps || 0} apps)
+                  </div>
+                </div>
+                <div className="rounded-lg border border-slate-800 bg-slate-950/75 px-2.5 py-1.5 min-w-0">
+                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                    Personality
+                  </div>
+                  <div className="mt-0.5 text-xs font-semibold text-slate-200 truncate">
+                    {p.personality || '—'}
+                  </div>
+                </div>
               </div>
-              <div className="text-xs text-slate-300">
+
+              <div className="text-xs text-slate-300 leading-relaxed">
                 {item.recommendedMove}
               </div>
             </div>

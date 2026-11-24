@@ -218,6 +218,7 @@ export const SquadListView: React.FC<SquadListViewProps> = ({
           governance={governance}
           transferVerdictById={transferVerdictById}
           cardMetricColumns={cardMetricColumns}
+          activePresetId={activePresetId}
         />
       ) : (
         <SquadDataTable

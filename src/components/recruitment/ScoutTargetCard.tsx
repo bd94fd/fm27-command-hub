@@ -55,6 +55,26 @@ export const ScoutTargetCard: React.FC<ScoutTargetCardProps> = ({
   const { target, bestRole, archetype, dna, relevantAttributes, depth, contractDisplay } =
     item;
 
+  const intel = evaluateScoutTargetCard(target, players, {
+    divisionBenchmarks,
+    activeTactic: lastMatchTactic,
+    governance,
+    clubDnaWeights,
+  });
+
+  const toneCls =
+    intel.tone === 'emerald'
+      ? 'text-emerald-300'
+      : intel.tone === 'sky'
+        ? 'text-sky-300'
+        : intel.tone === 'amber'
+          ? 'text-amber-300'
+          : intel.tone === 'rose'
+            ? 'text-rose-300'
+            : 'text-slate-300';
+
+  const inCompareTray = compareTrayTargets.some((t) => t.uid === target.uid);
+
   return (
     <div
       key={target.uid || target.name}
@@ -67,20 +87,21 @@ export const ScoutTargetCard: React.FC<ScoutTargetCardProps> = ({
           handleOpenTargetCard(target);
         }
       }}
-      className={`rounded-xl border p-4 space-y-2.5 text-left transition cursor-pointer hover:border-emerald-500/50 ${
+      className={`rounded-xl border p-3.5 sm:p-4 space-y-2.5 text-left transition cursor-pointer hover:border-emerald-500/50 ${
         depth.isGenuineGap
           ? 'border-amber-500/40 bg-amber-950/15'
           : 'border-slate-800 bg-slate-900/70'
       }`}
     >
+      {/* Header: Name, Age/Nation/Pos, Contract Badge */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <h3 className="text-sm font-bold text-white truncate">
             {target.name}
           </h3>
-          <p className="text-[11px] text-slate-400">
+          <p className="text-[11px] text-slate-400 truncate">
             {target.age} yrs · {target.nationality} ·{' '}
-            <span className="font-mono text-emerald-300">
+            <span className="font-mono font-semibold text-emerald-300">
               {target.primaryPosition}
             </span>
           </p>
@@ -96,15 +117,50 @@ export const ScoutTargetCard: React.FC<ScoutTargetCardProps> = ({
         </span>
       </div>
 
-      {/* Club DNA v3.0 Archetype + Playbook v2.0 + Free Trial Badge + Best Role & Wage */}
+      {/* Complete 4-KPI Summary Grid (2×2 on phones, 4-across on sm+) */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+        <div className="rounded-lg border border-slate-800 bg-slate-950/80 px-2 py-1.5 min-w-0">
+          <div className="text-[10px] uppercase tracking-wider text-slate-400 truncate">
+            Club DNA
+          </div>
+          <div className="mt-0.5 text-xs font-mono font-bold text-emerald-300 tabular-nums truncate">
+            {dna.overallDnaScore}/100{' '}
+            <span className="font-sans font-normal text-[10px] text-slate-400">
+              {dna.bestArchetypeShortLabel}
+            </span>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-slate-800 bg-slate-950/80 px-2 py-1.5 min-w-0">
+          <div className="text-[10px] uppercase tracking-wider text-slate-400 truncate">
+            Best Role Fit
+          </div>
+          <div className="mt-0.5 text-xs font-semibold text-sky-300 truncate">
+            {bestRole.fitPct}% · {bestRole.roleName}
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-slate-800 bg-slate-950/80 px-2 py-1.5 min-w-0">
+          <div className="text-[10px] uppercase tracking-wider text-slate-400 truncate">
+            Wage / Deal
+          </div>
+          <div className="mt-0.5 text-xs font-mono font-semibold text-slate-200 tabular-nums truncate">
+            {contractDisplay.wageLabel || contractDisplay.primaryLabel}
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-slate-800 bg-slate-950/80 px-2 py-1.5 min-w-0">
+          <div className="text-[10px] uppercase tracking-wider text-slate-400 truncate">
+            3-Yr Cost
+          </div>
+          <div className="mt-0.5 text-xs font-mono font-semibold text-amber-300 tabular-nums truncate">
+            {intel.cost3YrLabel}
+          </div>
+        </div>
+      </div>
+
+      {/* Archetype + Trial + Scout Badges */}
       <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-        <span
-          className={`rounded border px-2 py-0.5 font-bold ${archetypeBadgeClass(
-            dna.badgeTone
-          )}`}
-        >
-          DNA: {dna.bestArchetypeShortLabel} · {dna.overallDnaScore}/100
-        </span>
         <span
           className={`rounded border px-2 py-0.5 font-semibold ${archetypeBadgeClass(
             archetype.badgeTone
@@ -117,44 +173,8 @@ export const ScoutTargetCard: React.FC<ScoutTargetCardProps> = ({
             {contractDisplay.trialBadge}
           </span>
         )}
-        <span className="rounded bg-emerald-500/15 border border-emerald-500/35 px-2 py-0.5 font-semibold text-emerald-300">
-          {bestRole.roleName} · {bestRole.fitPct}% Fit
-        </span>
-        {contractDisplay.wageLabel && (
-          <span className="rounded bg-slate-950/80 border border-slate-800 px-2 py-0.5 font-mono text-slate-300">
-            Wage {contractDisplay.wageLabel}
-          </span>
-        )}
-      </div>
-
-      {/* 4 Position-Relevant Attributes */}
-      <div className="grid grid-cols-4 gap-1.5 text-[11px] font-mono text-slate-200">
-        {relevantAttributes.map((attrChip) => (
-          <div
-            key={attrChip.label}
-            className="rounded bg-slate-950/80 border border-slate-800 px-2 py-1 text-center"
-          >
-            <span className="text-slate-400 mr-1">
-              {attrChip.label}
-            </span>
-            <span
-              className={
-                attrChip.value >= 14
-                  ? 'text-emerald-300 font-bold'
-                  : attrChip.value >= 11
-                    ? 'text-slate-100 font-semibold'
-                    : 'text-slate-400'
-              }
-            >
-              {attrChip.value}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      {target.scoutBadges && target.scoutBadges.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {target.scoutBadges.map((badge) => (
+        {target.scoutBadges &&
+          target.scoutBadges.map((badge) => (
             <span
               key={badge}
               className="rounded bg-indigo-500/15 border border-indigo-500/30 px-1.5 py-0.5 text-[10px] text-indigo-300"
@@ -162,95 +182,94 @@ export const ScoutTargetCard: React.FC<ScoutTargetCardProps> = ({
               {badge}
             </span>
           ))}
-        </div>
-      )}
+      </div>
 
-      {/* Inline FM27 Scout Card Verdict Strip */}
-      {(() => {
-        const intel = evaluateScoutTargetCard(target, players, {
-          divisionBenchmarks,
-          activeTactic: lastMatchTactic,
-          governance,
-          clubDnaWeights,
-        });
-        const toneCls =
-          intel.tone === 'emerald'
-            ? 'text-emerald-300'
-            : intel.tone === 'sky'
-              ? 'text-sky-300'
-              : intel.tone === 'amber'
-                ? 'text-amber-300'
-                : intel.tone === 'rose'
-                  ? 'text-rose-300'
-                  : 'text-slate-300';
-        return (
-          <div className="rounded-lg border border-slate-800/90 bg-slate-950/75 px-2.5 py-1.5 text-[11px] flex flex-wrap items-center justify-between gap-2">
-            <span className="truncate text-slate-300">
-              <strong className={toneCls}>{intel.verdictLabel}</strong>
-              <span className="text-slate-500"> · </span>
-              <span>{intel.inlineRationale}</span>
-            </span>
-            <span className="font-mono text-[10px] text-slate-400 shrink-0">
-              {intel.cost3YrLabel} · Tap for Deep Dossier
-            </span>
+      {/* 4 Position-Relevant Attributes (Stacked Label/Value — zero wrap at 360px) */}
+      <div className="grid grid-cols-4 gap-1.5 text-center font-mono">
+        {relevantAttributes.map((attrChip) => (
+          <div
+            key={attrChip.label}
+            className="rounded-lg bg-slate-950/80 border border-slate-800 px-1.5 py-1.5 min-w-0"
+          >
+            <div className="text-[9px] uppercase tracking-wider text-slate-400 truncate">
+              {attrChip.label}
+            </div>
+            <div
+              className={`text-xs tabular-nums ${
+                attrChip.value >= 14
+                  ? 'text-emerald-300 font-bold'
+                  : attrChip.value >= 11
+                    ? 'text-slate-100 font-semibold'
+                    : 'text-slate-400'
+              }`}
+            >
+              {attrChip.value}
+            </div>
           </div>
-        );
-      })()}
+        ))}
+      </div>
 
-      <div className="flex flex-wrap items-center justify-between pt-1.5 border-t border-slate-800/80 text-[11px] gap-2">
-        {depth.isGenuineGap ? (
-          <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40">
-            {depth.label}
-          </span>
-        ) : (
-          <span className="inline-flex items-center rounded px-2 py-0.5 text-[10px] font-medium bg-slate-800/80 text-slate-400 border border-slate-700/80">
-            {depth.label}
-          </span>
-        )}
-        <div className="flex items-center gap-1.5 shrink-0">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleToggleCompareTray(target);
-            }}
-            className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-semibold transition cursor-pointer ${
-              compareTrayTargets.some((t) => t.uid === target.uid)
-                ? 'bg-amber-500/25 border-amber-400/60 text-amber-200'
-                : 'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700 text-slate-300'
-            }`}
-            title="Add to 3-player comparison tray"
-          >
-            {compareTrayTargets.some((t) => t.uid === target.uid)
-              ? 'In Tray'
-              : '+ Tray'}
-          </button>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setCompareTarget(target);
-            }}
-            className="inline-flex items-center gap-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/35 px-2 py-1 text-[11px] font-semibold text-sky-300 transition cursor-pointer"
-          >
-            <GitCompare className="h-3 w-3" />
-            Compare
-          </button>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleToggleTrack(target);
-            }}
-            className={`rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition cursor-pointer ${
-              isTracked
-                ? 'bg-emerald-500/25 hover:bg-emerald-500/35 border-emerald-400/60 text-emerald-200'
-                : 'bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/30 text-emerald-300'
-            }`}
-          >
-            {isTracked ? '✓ Tracked' : '+ Track'}
-          </button>
+      {/* Inline FM27 Scout Card Verdict Strip (readable 2 lines on mobile) */}
+      <div className="rounded-lg border border-slate-800/90 bg-slate-950/75 px-2.5 py-2 text-[11px] space-y-1">
+        <div className="line-clamp-2 text-slate-300 leading-snug">
+          <strong className={toneCls}>{intel.verdictLabel}</strong>
+          <span className="text-slate-500"> · </span>
+          <span>{intel.inlineRationale}</span>
         </div>
+        <div className="flex items-center justify-between gap-2 text-[10px] font-mono text-slate-400">
+          {depth.isGenuineGap ? (
+            <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-sans font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+              {depth.label}
+            </span>
+          ) : (
+            <span className="truncate">{depth.label}</span>
+          )}
+          <span className="shrink-0 text-emerald-400/90">Tap for Dossier →</span>
+        </div>
+      </div>
+
+      {/* Touch-Friendly 44px Mobile Action Row */}
+      <div className="grid grid-cols-3 sm:flex sm:items-center sm:justify-end gap-1.5 pt-1 border-t border-slate-800/80">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleToggleCompareTray(target);
+          }}
+          className={`min-h-[44px] sm:min-h-[32px] inline-flex items-center justify-center gap-1 rounded-lg border px-2 py-1.5 sm:py-1 text-[11px] font-semibold transition cursor-pointer ${
+            inCompareTray
+              ? 'bg-amber-500/25 border-amber-400/60 text-amber-200'
+              : 'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700 text-slate-300'
+          }`}
+          title="Add to 3-player comparison tray"
+        >
+          {inCompareTray ? 'In Tray' : '+ Tray'}
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setCompareTarget(target);
+          }}
+          className="min-h-[44px] sm:min-h-[32px] inline-flex items-center justify-center gap-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/35 px-2 py-1.5 sm:py-1 text-[11px] font-semibold text-sky-300 transition cursor-pointer"
+        >
+          <GitCompare className="h-3.5 w-3.5 sm:h-3 sm:w-3 shrink-0" />
+          <span>Compare</span>
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleToggleTrack(target);
+          }}
+          className={`min-h-[44px] sm:min-h-[32px] inline-flex items-center justify-center rounded-lg border px-2.5 py-1.5 sm:py-1 text-[11px] font-semibold transition cursor-pointer ${
+            isTracked
+              ? 'bg-emerald-500/25 hover:bg-emerald-500/35 border-emerald-400/60 text-emerald-200'
+              : 'bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/30 text-emerald-300'
+          }`}
+        >
+          {isTracked ? '✓ Tracked' : '+ Track'}
+        </button>
       </div>
     </div>
   );

@@ -2,6 +2,7 @@ import React from 'react';
 import { CheckCircle2, Search } from 'lucide-react';
 import type { PlayerRecord } from '../../types/fm27';
 import type { TransferActionVerdict } from '../../utils/transferAudit';
+import { formatCompactCurrency } from '../../utils/squadViewHelpers';
 import { verdictBadgeClass } from './recruitmentBadges';
 import type { PlayerAdviceItem } from './recruitmentTypes';
 
@@ -68,7 +69,7 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
               key={pill.id}
               type="button"
               onClick={() => setVerdictFilter(pill.id)}
-              className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition ${
+              className={`min-h-[36px] sm:min-h-[30px] rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition cursor-pointer ${
                 verdictFilter === pill.id
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                   : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
@@ -86,7 +87,7 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Filter player, pos, tag..."
-            className="w-full rounded-xl border border-slate-800 bg-slate-950 py-1.5 pl-8 pr-3 text-xs text-slate-100 placeholder:text-slate-500"
+            className="w-full rounded-xl border border-slate-800 bg-slate-950 py-2 sm:py-1.5 pl-8 pr-3 text-xs text-slate-100 placeholder:text-slate-500"
           />
         </div>
       </div>
@@ -95,16 +96,26 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
       <div className="space-y-2.5">
         {filteredAdvice.map((item) => {
           const p = item.player;
+          const marketValueText =
+            p.marketValueCapped || p.marketValueState === 'capped'
+              ? 'Not for sale'
+              : formatCompactCurrency(p.marketValue);
+          const contractUrgencyCls =
+            item.monthsLeft !== null && item.monthsLeft <= 6
+              ? 'text-rose-300'
+              : item.monthsLeft !== null && item.monthsLeft <= 12
+                ? 'text-amber-300'
+                : 'text-slate-200';
           return (
             <div
               key={p.id}
-              className="rounded-xl border border-slate-800 bg-slate-900/70 p-3.5 sm:p-4 space-y-2 hover:border-slate-700 transition"
+              className="rounded-xl border border-slate-800 bg-slate-900/70 p-3.5 sm:p-4 space-y-2.5 hover:border-slate-700 transition"
             >
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <button
                   type="button"
                   onClick={() => onSelectPlayer(p)}
-                  className="text-left group"
+                  className="text-left group min-h-[44px] flex-1 min-w-0 cursor-pointer"
                 >
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-sm font-bold text-white group-hover:text-emerald-300 transition">
@@ -113,18 +124,15 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
                     <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-mono text-slate-300">
                       {p.position}
                     </span>
-                    <span className="text-[11px] font-mono text-amber-300">
+                    <span className="text-[11px] font-mono text-slate-400">
+                      {p.age}y
+                    </span>
+                    <span className="text-[11px] font-mono font-bold text-amber-300 tabular-nums">
                       {p.ability.toFixed(1)}★/{p.potential.toFixed(1)}★
                     </span>
                   </div>
-                  <div className="text-[11px] text-slate-400 mt-0.5">
-                    Age {p.age} · £{p.wagePw.toLocaleString()}/wk (£
-                    {item.annualWage.toLocaleString()}/yr) · Exp{' '}
-                    <span className="font-mono text-slate-200">
-                      {p.expires}
-                    </span>
-                    {item.monthsLeft !== null ? ` (${Math.max(0, item.monthsLeft)} mos)` : ''}{' '}
-                    · {p.minutes} mins played
+                  <div className="text-[11px] text-emerald-400/80 mt-0.5">
+                    Tap for full Player Card →
                   </div>
                 </button>
 
@@ -154,6 +162,46 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
                       ? 'App Advice: Sell'
                       : item.verdict}
                   </span>
+                </div>
+              </div>
+
+              {/* Complete 4-KPI Block (2×2 on phones, 4-across on sm+) */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/75 px-2.5 py-1.5 min-w-0">
+                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                    Wage
+                  </div>
+                  <div className="mt-0.5 font-mono text-xs font-bold text-slate-100 tabular-nums truncate">
+                    £{p.wagePw.toLocaleString()}/wk
+                  </div>
+                </div>
+                <div className="rounded-lg border border-slate-800 bg-slate-950/75 px-2.5 py-1.5 min-w-0">
+                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                    Contract
+                  </div>
+                  <div className={`mt-0.5 font-mono text-xs font-bold tabular-nums truncate ${contractUrgencyCls}`}>
+                    {p.expires}
+                    {item.monthsLeft !== null ? ` (${Math.max(0, item.monthsLeft)}m)` : ''}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-slate-800 bg-slate-950/75 px-2.5 py-1.5 min-w-0">
+                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                    Season Mins
+                  </div>
+                  <div className="mt-0.5 font-mono text-xs font-bold text-slate-100 tabular-nums truncate">
+                    {p.apps || 0} apps · {p.minutes}m
+                    {typeof p.rating === 'number' && p.rating > 0
+                      ? ` · ${p.rating.toFixed(2)}`
+                      : ''}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-slate-800 bg-slate-950/75 px-2.5 py-1.5 min-w-0">
+                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                    Market Value
+                  </div>
+                  <div className="mt-0.5 font-mono text-xs font-bold text-emerald-300 tabular-nums truncate">
+                    {marketValueText}
+                  </div>
                 </div>
               </div>
 
