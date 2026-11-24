@@ -14,6 +14,7 @@ import {
   rankSquadForFm27Role,
   scorePlayerForFm27Role,
 } from '../utils/fm27RoleMatcher';
+import { FM27_TOUCHLINE_ROLES } from '../utils/dualPhaseRoleEngine';
 import { PlayerRecord } from '../types/fm27';
 
 test('FM27 Knowledge Base contains verified Patch 27.1.0 entries across core categories', () => {
@@ -45,14 +46,14 @@ test('verifyFm27Accuracy flags retired FM24 roles, legacy duties, and raw CA/PA 
   assert.equal(good.warnings.length, 0);
 });
 
-test('Pass 1: FM27_ROLE_CATALOG exposes all 68 pure FM27 IP/OOP roles with zero legacy duties or retired FM24 roles', () => {
-  assert.equal(FM27_ROLE_CATALOG.length, 68);
+test('Pass 1: FM27_ROLE_CATALOG exposes all 79 pure FM27 IP/OOP roles with zero legacy duties or retired FM24 roles', () => {
+  assert.equal(FM27_ROLE_CATALOG.length, 79);
   assert.equal(FM27_ROLE_CATALOG.length, FM27_ROLES.length);
 
   const ipCount = FM27_ROLE_CATALOG.filter((r) => r.phase === 'IP').length;
   const oopCount = FM27_ROLE_CATALOG.filter((r) => r.phase === 'OOP').length;
   assert.ok(ipCount > 0 && oopCount > 0);
-  assert.equal(ipCount + oopCount, 68);
+  assert.equal(ipCount + oopCount, 79);
 
   for (const role of FM27_ROLE_CATALOG) {
     assert.ok(role.phase === 'IP' || role.phase === 'OOP');
@@ -70,6 +71,32 @@ test('Pass 1: FM27_ROLE_CATALOG exposes all 68 pure FM27 IP/OOP roles with zero 
         `Found legacy FM24 duty syntax in FM27_ROLE_CATALOG: ${role.name}`
       );
     }
+  }
+});
+
+test('Unified role catalog shares canonical spellings across FM27_ROLES and FM27_TOUCHLINE_ROLES', () => {
+  assert.equal(FM27_TOUCHLINE_ROLES.length, FM27_ROLES.length);
+  const touchlineNames = new Set(FM27_TOUCHLINE_ROLES.map((r) => r.name));
+  const canonicalNames = new Set(FM27_ROLES.map((r) => r.name));
+
+  for (const name of [
+    'Box-to-Box Midfielder',
+    'Box-to-Box Playmaker',
+    'Half-Back',
+    'Line-Holding Keeper',
+  ]) {
+    assert.ok(canonicalNames.has(name), `Missing canonical role: ${name}`);
+    assert.ok(touchlineNames.has(name), `Missing Touchline role: ${name}`);
+  }
+
+  for (const badName of [
+    'Box-To-Box Midfielder',
+    'Box-To-Box Playmaker',
+    'Half Back',
+    'Line-Holding Goalkeeper',
+  ]) {
+    assert.equal(canonicalNames.has(badName), false, `Unexpected variant in FM27_ROLES: ${badName}`);
+    assert.equal(touchlineNames.has(badName), false, `Unexpected variant in FM27_TOUCHLINE_ROLES: ${badName}`);
   }
 });
 

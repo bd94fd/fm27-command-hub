@@ -1,6 +1,9 @@
 [
   {
     "positionGroup": "Goalkeeper",
+    "positionGroups": [
+      "Goalkeeper"
+    ],
     "name": "Goalkeeper",
     "phase": "In Possession",
     "priorities": {
@@ -17,10 +20,24 @@
       "throwing": "secondary",
       "anticipation": "secondary",
       "decisions": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Decisions",
+      "Kicking",
+      "Throwing",
+      "First Touch"
+    ],
+    "touchlineSupporting": [
+      "Passing",
+      "Composure",
+      "Technique"
+    ]
   },
   {
     "positionGroup": "Goalkeeper",
+    "positionGroups": [
+      "Goalkeeper"
+    ],
     "name": "Ball-Playing Goalkeeper",
     "phase": "In Possession",
     "priorities": {
@@ -40,10 +57,24 @@
       "composure": "secondary",
       "decisions": "secondary",
       "passing": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Passing",
+      "First Touch",
+      "Decisions",
+      "Composure"
+    ],
+    "touchlineSupporting": [
+      "Kicking",
+      "Vision",
+      "Technique"
+    ]
   },
   {
     "positionGroup": "Goalkeeper",
+    "positionGroups": [
+      "Goalkeeper"
+    ],
     "name": "No-Nonsense Goalkeeper",
     "phase": "In Possession",
     "priorities": {
@@ -58,29 +89,71 @@
       "one_on_ones": "secondary",
       "anticipation": "secondary",
       "decisions": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Kicking",
+      "Decisions",
+      "Concentration"
+    ],
+    "touchlineSupporting": [
+      "Throwing",
+      "Handling",
+      "Composure"
+    ]
   },
   {
     "positionGroup": "Goalkeeper",
+    "positionGroups": [
+      "Goalkeeper"
+    ],
     "name": "Line-Holding Keeper",
     "phase": "Out of Possession",
     "priorities": {
       "positioning": "primary",
       "concentration": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Reflexes",
+      "Positioning",
+      "Handling",
+      "Concentration"
+    ],
+    "touchlineSupporting": [
+      "One on Ones",
+      "Aerial Reach",
+      "Communication"
+    ]
   },
   {
     "positionGroup": "Goalkeeper",
+    "positionGroups": [
+      "Goalkeeper"
+    ],
     "name": "Sweeper Keeper",
     "phase": "Out of Possession",
     "priorities": {
       "rushing_out": "primary",
       "anticipation": "primary",
       "decisions": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Rushing Out",
+      "Anticipation",
+      "Decisions",
+      "Acceleration"
+    ],
+    "touchlineSupporting": [
+      "One on Ones",
+      "Composure",
+      "Concentration"
+    ]
   },
   {
     "positionGroup": "Centre-Back",
+    "positionGroups": [
+      "Centre-back",
+      "Wide centre-back"
+    ],
     "name": "Centre-Back",
     "phase": "In Possession",
     "priorities": {
@@ -97,10 +170,24 @@
       "concentration": "secondary",
       "decisions": "secondary",
       "pace": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Passing",
+      "First Touch",
+      "Decisions"
+    ],
+    "touchlineSupporting": [
+      "Composure",
+      "Technique",
+      "Teamwork"
+    ]
   },
   {
     "positionGroup": "Centre-Back",
+    "positionGroups": [
+      "Centre-back",
+      "Wide centre-back"
+    ],
     "name": "Ball-Playing Centre-Back",
     "phase": "In Possession",
     "priorities": {
@@ -121,10 +208,25 @@
       "decisions": "secondary",
       "vision": "secondary",
       "pace": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Passing",
+      "Vision",
+      "Decisions",
+      "Composure"
+    ],
+    "touchlineSupporting": [
+      "First Touch",
+      "Technique",
+      "Anticipation"
+    ]
   },
   {
     "positionGroup": "Centre-Back",
+    "positionGroups": [
+      "Centre-back",
+      "Wide centre-back"
+    ],
     "name": "No-Nonsense Centre-Back",
     "phase": "In Possession",
     "priorities": {
@@ -139,10 +241,24 @@
       "bravery": "secondary",
       "concentration": "secondary",
       "pace": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Decisions",
+      "Heading",
+      "Strength",
+      "Concentration"
+    ],
+    "touchlineSupporting": [
+      "Positioning",
+      "Teamwork",
+      "Passing"
+    ]
   },
   {
     "positionGroup": "Centre-Back",
+    "positionGroups": [
+      "Wide centre-back"
+    ],
     "name": "Wide Centre-Back",
     "phase": "In Possession",
     "priorities": {
@@ -164,10 +280,25 @@
       "agility": "secondary",
       "pace": "secondary",
       "stamina": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Passing",
+      "First Touch",
+      "Decisions",
+      "Teamwork"
+    ],
+    "touchlineSupporting": [
+      "Composure",
+      "Dribbling",
+      "Stamina"
+    ]
   },
   {
     "positionGroup": "Centre-Back",
+    "positionGroups": [
+      "Centre-back",
+      "Wide centre-back"
+    ],
     "name": "Advanced Centre-Back",
     "phase": "In Possession",
     "priorities": {
@@ -191,10 +322,24 @@
       "vision": "secondary",
       "pace": "secondary",
       "stamina": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Dribbling",
+      "Passing",
+      "Decisions",
+      "First Touch"
+    ],
+    "touchlineSupporting": [
+      "Composure",
+      "Off the Ball",
+      "Anticipation"
+    ]
   },
   {
     "positionGroup": "Centre-Back",
+    "positionGroups": [
+      "Wide centre-back"
+    ],
     "name": "Overlapping Centre-Back",
     "phase": "In Possession",
     "priorities": {
@@ -219,50 +364,120 @@
       "positioning": "secondary",
       "acceleration": "secondary",
       "agility": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Off the Ball",
+      "Stamina",
+      "Passing",
+      "Decisions"
+    ],
+    "touchlineSupporting": [
+      "Crossing",
+      "Dribbling",
+      "Work Rate"
+    ]
   },
   {
     "positionGroup": "Centre-Back",
+    "positionGroups": [
+      "Centre-back"
+    ],
     "name": "Covering Centre-Back",
     "phase": "Out of Possession",
     "priorities": {
       "anticipation": "primary",
       "pace": "primary",
       "marking": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Anticipation",
+      "Positioning",
+      "Pace",
+      "Concentration"
+    ],
+    "touchlineSupporting": [
+      "Marking",
+      "Decisions",
+      "Tackling"
+    ]
   },
   {
     "positionGroup": "Centre-Back",
+    "positionGroups": [
+      "Centre-back"
+    ],
     "name": "Stopping Centre-Back",
     "phase": "Out of Possession",
     "priorities": {
       "aggression": "primary",
       "tackling": "primary",
       "strength": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Anticipation",
+      "Tackling",
+      "Decisions",
+      "Strength"
+    ],
+    "touchlineSupporting": [
+      "Marking",
+      "Aggression",
+      "Heading"
+    ]
   },
   {
     "positionGroup": "Centre-Back",
+    "positionGroups": [
+      "Wide centre-back"
+    ],
     "name": "Covering Wide Centre-Back",
     "phase": "Out of Possession",
     "priorities": {
       "anticipation": "primary",
       "pace": "primary",
       "marking": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Anticipation",
+      "Positioning",
+      "Pace",
+      "Decisions"
+    ],
+    "touchlineSupporting": [
+      "Marking",
+      "Concentration",
+      "Tackling"
+    ]
   },
   {
     "positionGroup": "Centre-Back",
+    "positionGroups": [
+      "Wide centre-back"
+    ],
     "name": "Stopping Wide Centre-Back",
     "phase": "Out of Possession",
     "priorities": {
       "aggression": "primary",
       "tackling": "primary",
       "strength": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Anticipation",
+      "Tackling",
+      "Decisions",
+      "Acceleration"
+    ],
+    "touchlineSupporting": [
+      "Strength",
+      "Marking",
+      "Work Rate"
+    ]
   },
   {
     "positionGroup": "Full-Back / Wing-Back",
+    "positionGroups": [
+      "Full-back"
+    ],
     "name": "Full-Back",
     "phase": "In Possession",
     "priorities": {
@@ -282,10 +497,24 @@
       "agility": "secondary",
       "pace": "secondary",
       "stamina": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Passing",
+      "Decisions",
+      "Off the Ball",
+      "Crossing"
+    ],
+    "touchlineSupporting": [
+      "Stamina",
+      "First Touch",
+      "Teamwork"
+    ]
   },
   {
     "positionGroup": "Full-Back / Wing-Back",
+    "positionGroups": [
+      "Full-back"
+    ],
     "name": "Inside Full-Back",
     "phase": "In Possession",
     "priorities": {
@@ -307,30 +536,73 @@
       "jumping": "secondary",
       "pace": "secondary",
       "stamina": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Decisions",
+      "Passing",
+      "First Touch",
+      "Teamwork"
+    ],
+    "touchlineSupporting": [
+      "Composure",
+      "Anticipation",
+      "Technique"
+    ]
   },
   {
     "positionGroup": "Full-Back / Wing-Back",
+    "positionGroups": [
+      "Full-back"
+    ],
     "name": "Holding Full-Back",
     "phase": "Out of Possession",
     "priorities": {
       "positioning": "primary",
       "concentration": "primary",
       "marking": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Positioning",
+      "Marking",
+      "Concentration",
+      "Tackling"
+    ],
+    "touchlineSupporting": [
+      "Anticipation",
+      "Decisions",
+      "Pace"
+    ]
   },
   {
     "positionGroup": "Full-Back / Wing-Back",
+    "positionGroups": [
+      "Full-back"
+    ],
     "name": "Pressing Full-Back",
     "phase": "Out of Possession",
     "priorities": {
       "aggression": "primary",
       "work_rate": "primary",
       "anticipation": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Work Rate",
+      "Anticipation",
+      "Acceleration",
+      "Decisions"
+    ],
+    "touchlineSupporting": [
+      "Stamina",
+      "Tackling",
+      "Teamwork"
+    ]
   },
   {
     "positionGroup": "Full-Back / Wing-Back",
+    "positionGroups": [
+      "Full-back",
+      "Wing-back"
+    ],
     "name": "Inside Wing-Back",
     "phase": "In Possession",
     "priorities": {
@@ -350,10 +622,25 @@
       "agility": "secondary",
       "pace": "secondary",
       "stamina": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "First Touch",
+      "Passing",
+      "Decisions",
+      "Off the Ball"
+    ],
+    "touchlineSupporting": [
+      "Composure",
+      "Technique",
+      "Teamwork"
+    ]
   },
   {
     "positionGroup": "Full-Back / Wing-Back",
+    "positionGroups": [
+      "Full-back",
+      "Wing-back"
+    ],
     "name": "Playmaking Wing-Back",
     "phase": "In Possession",
     "priorities": {
@@ -377,10 +664,25 @@
       "agility": "secondary",
       "pace": "secondary",
       "stamina": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Passing",
+      "Vision",
+      "Technique",
+      "Decisions"
+    ],
+    "touchlineSupporting": [
+      "First Touch",
+      "Composure",
+      "Crossing"
+    ]
   },
   {
     "positionGroup": "Full-Back / Wing-Back",
+    "positionGroups": [
+      "Full-back",
+      "Wing-back"
+    ],
     "name": "Wing-Back",
     "phase": "In Possession",
     "priorities": {
@@ -403,10 +705,24 @@
       "positioning": "secondary",
       "agility": "secondary",
       "balance": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Stamina",
+      "Crossing",
+      "Off the Ball",
+      "Work Rate"
+    ],
+    "touchlineSupporting": [
+      "Acceleration",
+      "Dribbling",
+      "Decisions"
+    ]
   },
   {
     "positionGroup": "Full-Back / Wing-Back",
+    "positionGroups": [
+      "Wing-back"
+    ],
     "name": "Advanced Wing-Back",
     "phase": "In Possession",
     "priorities": {
@@ -429,30 +745,72 @@
       "flair": "secondary",
       "positioning": "secondary",
       "balance": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Stamina",
+      "Off the Ball",
+      "Crossing",
+      "Acceleration"
+    ],
+    "touchlineSupporting": [
+      "Dribbling",
+      "Work Rate",
+      "Decisions"
+    ]
   },
   {
     "positionGroup": "Full-Back / Wing-Back",
+    "positionGroups": [
+      "Wing-back"
+    ],
     "name": "Holding Wing-Back",
     "phase": "Out of Possession",
     "priorities": {
       "positioning": "primary",
       "concentration": "primary",
       "marking": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Positioning",
+      "Anticipation",
+      "Marking",
+      "Concentration"
+    ],
+    "touchlineSupporting": [
+      "Tackling",
+      "Decisions",
+      "Pace"
+    ]
   },
   {
     "positionGroup": "Full-Back / Wing-Back",
+    "positionGroups": [
+      "Wing-back"
+    ],
     "name": "Pressing Wing-Back",
     "phase": "Out of Possession",
     "priorities": {
       "aggression": "primary",
       "work_rate": "primary",
       "anticipation": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Work Rate",
+      "Acceleration",
+      "Anticipation",
+      "Stamina"
+    ],
+    "touchlineSupporting": [
+      "Tackling",
+      "Decisions",
+      "Teamwork"
+    ]
   },
   {
     "positionGroup": "Defensive Midfielder",
+    "positionGroups": [
+      "Defensive midfield"
+    ],
     "name": "Defensive Midfielder",
     "phase": "In Possession",
     "priorities": {
@@ -470,10 +828,25 @@
       "work_rate": "secondary",
       "stamina": "secondary",
       "strength": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Passing",
+      "First Touch",
+      "Decisions",
+      "Teamwork"
+    ],
+    "touchlineSupporting": [
+      "Composure",
+      "Technique",
+      "Vision"
+    ]
   },
   {
     "positionGroup": "Central Midfielder",
+    "positionGroups": [
+      "Central midfield",
+      "Defensive midfield"
+    ],
     "name": "Box-to-Box Midfielder",
     "phase": "In Possession",
     "priorities": {
@@ -497,10 +870,25 @@
       "balance": "secondary",
       "pace": "secondary",
       "strength": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Stamina",
+      "Off the Ball",
+      "Work Rate",
+      "First Touch"
+    ],
+    "touchlineSupporting": [
+      "Passing",
+      "Anticipation",
+      "Finishing"
+    ]
   },
   {
     "positionGroup": "Central Midfielder",
+    "positionGroups": [
+      "Central midfield",
+      "Defensive midfield"
+    ],
     "name": "Box-to-Box Playmaker",
     "phase": "In Possession",
     "priorities": {
@@ -523,10 +911,24 @@
       "agility": "secondary",
       "balance": "secondary",
       "pace": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Passing",
+      "Vision",
+      "Stamina",
+      "Decisions"
+    ],
+    "touchlineSupporting": [
+      "First Touch",
+      "Technique",
+      "Off the Ball"
+    ]
   },
   {
     "positionGroup": "Defensive Midfielder",
+    "positionGroups": [
+      "Defensive midfield"
+    ],
     "name": "Deep-Lying Playmaker",
     "phase": "In Possession",
     "priorities": {
@@ -546,10 +948,24 @@
       "work_rate": "secondary",
       "balance": "secondary",
       "stamina": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Passing",
+      "Vision",
+      "First Touch",
+      "Decisions"
+    ],
+    "touchlineSupporting": [
+      "Technique",
+      "Composure",
+      "Teamwork"
+    ]
   },
   {
     "positionGroup": "Defensive Midfielder",
+    "positionGroups": [
+      "Defensive midfield"
+    ],
     "name": "Half-Back",
     "phase": "In Possession",
     "priorities": {
@@ -570,50 +986,120 @@
       "decisions": "secondary",
       "work_rate": "secondary",
       "stamina": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Decisions",
+      "Passing",
+      "First Touch",
+      "Teamwork"
+    ],
+    "touchlineSupporting": [
+      "Composure",
+      "Anticipation",
+      "Technique"
+    ]
   },
   {
     "positionGroup": "Defensive Midfielder",
+    "positionGroups": [
+      "Defensive midfield"
+    ],
     "name": "Dropping Defensive Midfielder",
     "phase": "Out of Possession",
     "priorities": {
       "positioning": "primary",
       "decisions": "primary",
       "anticipation": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Positioning",
+      "Anticipation",
+      "Marking",
+      "Concentration"
+    ],
+    "touchlineSupporting": [
+      "Heading",
+      "Tackling",
+      "Teamwork"
+    ]
   },
   {
     "positionGroup": "Defensive Midfielder",
+    "positionGroups": [
+      "Defensive midfield"
+    ],
     "name": "Pressing Defensive Midfielder",
     "phase": "Out of Possession",
     "priorities": {
       "aggression": "primary",
       "work_rate": "primary",
       "anticipation": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Work Rate",
+      "Anticipation",
+      "Stamina",
+      "Decisions"
+    ],
+    "touchlineSupporting": [
+      "Tackling",
+      "Aggression",
+      "Teamwork"
+    ]
   },
   {
     "positionGroup": "Defensive Midfielder",
+    "positionGroups": [
+      "Defensive midfield"
+    ],
     "name": "Screening Defensive Midfielder",
     "phase": "Out of Possession",
     "priorities": {
       "positioning": "primary",
       "concentration": "primary",
       "marking": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Positioning",
+      "Anticipation",
+      "Concentration",
+      "Teamwork"
+    ],
+    "touchlineSupporting": [
+      "Marking",
+      "Decisions",
+      "Tackling"
+    ]
   },
   {
     "positionGroup": "Defensive Midfielder",
+    "positionGroups": [
+      "Defensive midfield"
+    ],
     "name": "Wide Covering Defensive Midfielder",
     "phase": "Out of Possession",
     "priorities": {
       "anticipation": "primary",
       "pace": "primary",
       "work_rate": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Positioning",
+      "Anticipation",
+      "Stamina",
+      "Teamwork"
+    ],
+    "touchlineSupporting": [
+      "Work Rate",
+      "Tackling",
+      "Acceleration"
+    ]
   },
   {
     "positionGroup": "Central Midfielder",
+    "positionGroups": [
+      "Central midfield"
+    ],
     "name": "Central Midfielder",
     "phase": "In Possession",
     "priorities": {
@@ -631,10 +1117,25 @@
       "vision": "secondary",
       "work_rate": "secondary",
       "stamina": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Passing",
+      "First Touch",
+      "Decisions",
+      "Off the Ball"
+    ],
+    "touchlineSupporting": [
+      "Teamwork",
+      "Technique",
+      "Composure"
+    ]
   },
   {
     "positionGroup": "Central Midfielder",
+    "positionGroups": [
+      "Attacking midfield",
+      "Central midfield"
+    ],
     "name": "Advanced Playmaker",
     "phase": "In Possession",
     "priorities": {
@@ -652,10 +1153,24 @@
       "flair": "secondary",
       "acceleration": "secondary",
       "agility": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Vision",
+      "Passing",
+      "First Touch",
+      "Off the Ball"
+    ],
+    "touchlineSupporting": [
+      "Technique",
+      "Composure",
+      "Decisions"
+    ]
   },
   {
     "positionGroup": "Central Midfielder",
+    "positionGroups": [
+      "Central midfield"
+    ],
     "name": "Midfield Playmaker",
     "phase": "In Possession",
     "priorities": {
@@ -675,10 +1190,24 @@
       "work_rate": "secondary",
       "agility": "secondary",
       "stamina": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Passing",
+      "Vision",
+      "First Touch",
+      "Decisions"
+    ],
+    "touchlineSupporting": [
+      "Technique",
+      "Composure",
+      "Teamwork"
+    ]
   },
   {
     "positionGroup": "Central Midfielder",
+    "positionGroups": [
+      "Central midfield"
+    ],
     "name": "Wide Central Midfielder",
     "phase": "In Possession",
     "priorities": {
@@ -699,40 +1228,96 @@
       "work_rate": "secondary",
       "agility": "secondary",
       "stamina": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Off the Ball",
+      "Passing",
+      "Decisions",
+      "Stamina"
+    ],
+    "touchlineSupporting": [
+      "First Touch",
+      "Technique",
+      "Work Rate"
+    ]
   },
   {
     "positionGroup": "Central Midfielder",
+    "positionGroups": [
+      "Central midfield"
+    ],
     "name": "Pressing Central Midfielder",
     "phase": "Out of Possession",
     "priorities": {
       "aggression": "primary",
       "work_rate": "primary",
       "anticipation": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Work Rate",
+      "Anticipation",
+      "Acceleration",
+      "Stamina"
+    ],
+    "touchlineSupporting": [
+      "Tackling",
+      "Decisions",
+      "Teamwork"
+    ]
   },
   {
     "positionGroup": "Central Midfielder",
+    "positionGroups": [
+      "Central midfield"
+    ],
     "name": "Screening Central Midfielder",
     "phase": "Out of Possession",
     "priorities": {
       "positioning": "primary",
       "concentration": "primary",
       "marking": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Positioning",
+      "Anticipation",
+      "Concentration",
+      "Teamwork"
+    ],
+    "touchlineSupporting": [
+      "Marking",
+      "Decisions",
+      "Tackling"
+    ]
   },
   {
     "positionGroup": "Central Midfielder",
+    "positionGroups": [
+      "Central midfield"
+    ],
     "name": "Wide Covering Central Midfielder",
     "phase": "Out of Possession",
     "priorities": {
       "anticipation": "primary",
       "pace": "primary",
       "work_rate": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Positioning",
+      "Teamwork",
+      "Stamina",
+      "Anticipation"
+    ],
+    "touchlineSupporting": [
+      "Work Rate",
+      "Marking",
+      "Tackling"
+    ]
   },
   {
     "positionGroup": "Wide Midfielder / Winger",
+    "positionGroups": [
+      "Wide midfield"
+    ],
     "name": "Wide Midfielder",
     "phase": "In Possession",
     "priorities": {
@@ -751,30 +1336,73 @@
       "vision": "secondary",
       "acceleration": "secondary",
       "agility": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Crossing",
+      "Passing",
+      "Decisions",
+      "First Touch"
+    ],
+    "touchlineSupporting": [
+      "Teamwork",
+      "Off the Ball",
+      "Technique"
+    ]
   },
   {
     "positionGroup": "Wide Midfielder / Winger",
+    "positionGroups": [
+      "Wide midfield"
+    ],
     "name": "Tracking Wide Midfielder",
     "phase": "Out of Possession",
     "priorities": {
       "marking": "primary",
       "work_rate": "primary",
       "stamina": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Work Rate",
+      "Stamina",
+      "Marking",
+      "Positioning"
+    ],
+    "touchlineSupporting": [
+      "Teamwork",
+      "Anticipation",
+      "Acceleration"
+    ]
   },
   {
     "positionGroup": "Wide Midfielder / Winger",
+    "positionGroups": [
+      "Wide midfield"
+    ],
     "name": "Wide Outlet Wide Midfielder",
     "phase": "Out of Possession",
     "priorities": {
       "off_the_ball": "primary",
       "pace": "primary",
       "anticipation": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Off the Ball",
+      "First Touch",
+      "Acceleration",
+      "Decisions"
+    ],
+    "touchlineSupporting": [
+      "Pace",
+      "Passing",
+      "Composure"
+    ]
   },
   {
     "positionGroup": "Wide Midfielder / Winger",
+    "positionGroups": [
+      "Wide attack",
+      "Wide midfield"
+    ],
     "name": "Inside Winger",
     "phase": "In Possession",
     "priorities": {
@@ -796,10 +1424,25 @@
       "balance": "secondary",
       "pace": "secondary",
       "stamina": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Dribbling",
+      "Passing",
+      "First Touch",
+      "Decisions"
+    ],
+    "touchlineSupporting": [
+      "Technique",
+      "Vision",
+      "Off the Ball"
+    ]
   },
   {
     "positionGroup": "Wide Midfielder / Winger",
+    "positionGroups": [
+      "Wide attack",
+      "Wide midfield"
+    ],
     "name": "Playmaking Winger",
     "phase": "In Possession",
     "priorities": {
@@ -820,10 +1463,25 @@
       "agility": "secondary",
       "pace": "secondary",
       "stamina": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Passing",
+      "Vision",
+      "First Touch",
+      "Decisions"
+    ],
+    "touchlineSupporting": [
+      "Technique",
+      "Composure",
+      "Off the Ball"
+    ]
   },
   {
     "positionGroup": "Wide Midfielder / Winger",
+    "positionGroups": [
+      "Wide attack",
+      "Wide midfield"
+    ],
     "name": "Winger",
     "phase": "In Possession",
     "priorities": {
@@ -842,10 +1500,25 @@
       "work_rate": "secondary",
       "balance": "secondary",
       "stamina": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Dribbling",
+      "Acceleration",
+      "Crossing",
+      "Off the Ball"
+    ],
+    "touchlineSupporting": [
+      "Technique",
+      "Pace",
+      "Decisions"
+    ]
   },
   {
     "positionGroup": "Attacking Midfielder",
+    "positionGroups": [
+      "Attacking midfield",
+      "Central midfield"
+    ],
     "name": "Attacking Midfielder",
     "phase": "In Possession",
     "priorities": {
@@ -864,10 +1537,25 @@
       "vision": "secondary",
       "acceleration": "secondary",
       "agility": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Off the Ball",
+      "First Touch",
+      "Decisions",
+      "Passing"
+    ],
+    "touchlineSupporting": [
+      "Technique",
+      "Anticipation",
+      "Finishing"
+    ]
   },
   {
     "positionGroup": "Central Midfielder",
+    "positionGroups": [
+      "Central midfield",
+      "Attacking midfield"
+    ],
     "name": "Channel Midfielder",
     "phase": "In Possession",
     "priorities": {
@@ -888,10 +1576,24 @@
       "agility": "secondary",
       "pace": "secondary",
       "stamina": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Off the Ball",
+      "Stamina",
+      "Acceleration",
+      "Passing"
+    ],
+    "touchlineSupporting": [
+      "First Touch",
+      "Anticipation",
+      "Crossing"
+    ]
   },
   {
     "positionGroup": "Attacking Midfielder",
+    "positionGroups": [
+      "Attacking midfield"
+    ],
     "name": "Free Role",
     "phase": "In Possession",
     "priorities": {
@@ -910,10 +1612,24 @@
       "decisions": "secondary",
       "acceleration": "secondary",
       "agility": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Off the Ball",
+      "Vision",
+      "Decisions",
+      "Technique"
+    ],
+    "touchlineSupporting": [
+      "Dribbling",
+      "Passing",
+      "Flair"
+    ]
   },
   {
     "positionGroup": "Attacking Midfielder",
+    "positionGroups": [
+      "Attacking midfield"
+    ],
     "name": "Second Striker",
     "phase": "In Possession",
     "priorities": {
@@ -933,40 +1649,96 @@
       "agility": "secondary",
       "pace": "secondary",
       "stamina": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Off the Ball",
+      "Anticipation",
+      "Finishing",
+      "Composure"
+    ],
+    "touchlineSupporting": [
+      "Acceleration",
+      "First Touch",
+      "Decisions"
+    ]
   },
   {
     "positionGroup": "Attacking Midfielder",
+    "positionGroups": [
+      "Attacking midfield"
+    ],
     "name": "Central Outlet Attacking Midfielder",
     "phase": "Out of Possession",
     "priorities": {
       "off_the_ball": "primary",
       "decisions": "primary",
       "anticipation": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Off the Ball",
+      "First Touch",
+      "Composure",
+      "Passing"
+    ],
+    "touchlineSupporting": [
+      "Vision",
+      "Balance",
+      "Decisions"
+    ]
   },
   {
     "positionGroup": "Attacking Midfielder",
+    "positionGroups": [
+      "Attacking midfield"
+    ],
     "name": "Splitting Outlet Attacking Midfielder",
     "phase": "Out of Possession",
     "priorities": {
       "off_the_ball": "primary",
       "pace": "primary",
       "anticipation": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Off the Ball",
+      "Anticipation",
+      "Acceleration",
+      "First Touch"
+    ],
+    "touchlineSupporting": [
+      "Pace",
+      "Composure",
+      "Finishing"
+    ]
   },
   {
     "positionGroup": "Attacking Midfielder",
+    "positionGroups": [
+      "Attacking midfield"
+    ],
     "name": "Tracking Attacking Midfielder",
     "phase": "Out of Possession",
     "priorities": {
       "marking": "primary",
       "work_rate": "primary",
       "stamina": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Work Rate",
+      "Stamina",
+      "Teamwork",
+      "Positioning"
+    ],
+    "touchlineSupporting": [
+      "Marking",
+      "Anticipation",
+      "Decisions"
+    ]
   },
   {
     "positionGroup": "Wide Midfielder / Winger",
+    "positionGroups": [
+      "Wide attack"
+    ],
     "name": "Wide Forward",
     "phase": "In Possession",
     "priorities": {
@@ -986,10 +1758,24 @@
       "work_rate": "secondary",
       "balance": "secondary",
       "stamina": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Off the Ball",
+      "Acceleration",
+      "Finishing",
+      "Anticipation"
+    ],
+    "touchlineSupporting": [
+      "Pace",
+      "Dribbling",
+      "Composure"
+    ]
   },
   {
     "positionGroup": "Wide Midfielder / Winger",
+    "positionGroups": [
+      "Wide attack"
+    ],
     "name": "Inside Forward",
     "phase": "In Possession",
     "priorities": {
@@ -1011,40 +1797,96 @@
       "balance": "secondary",
       "pace": "secondary",
       "stamina": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Off the Ball",
+      "Finishing",
+      "Dribbling",
+      "Composure"
+    ],
+    "touchlineSupporting": [
+      "Acceleration",
+      "Anticipation",
+      "Technique"
+    ]
   },
   {
     "positionGroup": "Wide Midfielder / Winger",
+    "positionGroups": [
+      "Wide attack"
+    ],
     "name": "Inside Outlet Winger",
     "phase": "Out of Possession",
     "priorities": {
       "off_the_ball": "primary",
       "decisions": "primary",
       "anticipation": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Off the Ball",
+      "Anticipation",
+      "Acceleration",
+      "Finishing"
+    ],
+    "touchlineSupporting": [
+      "First Touch",
+      "Pace",
+      "Composure"
+    ]
   },
   {
     "positionGroup": "Wide Midfielder / Winger",
+    "positionGroups": [
+      "Wide attack"
+    ],
     "name": "Tracking Winger",
     "phase": "Out of Possession",
     "priorities": {
       "marking": "primary",
       "work_rate": "primary",
       "stamina": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Work Rate",
+      "Stamina",
+      "Marking",
+      "Teamwork"
+    ],
+    "touchlineSupporting": [
+      "Acceleration",
+      "Positioning",
+      "Anticipation"
+    ]
   },
   {
     "positionGroup": "Wide Midfielder / Winger",
+    "positionGroups": [
+      "Wide attack"
+    ],
     "name": "Wide Outlet Winger",
     "phase": "Out of Possession",
     "priorities": {
       "off_the_ball": "primary",
       "pace": "primary",
       "anticipation": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Off the Ball",
+      "Acceleration",
+      "First Touch",
+      "Pace"
+    ],
+    "touchlineSupporting": [
+      "Dribbling",
+      "Decisions",
+      "Composure"
+    ]
   },
   {
     "positionGroup": "Striker",
+    "positionGroups": [
+      "Striker"
+    ],
     "name": "Centre Forward",
     "phase": "In Possession",
     "priorities": {
@@ -1064,10 +1906,24 @@
       "balance": "secondary",
       "jumping": "secondary",
       "pace": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Off the Ball",
+      "First Touch",
+      "Finishing",
+      "Decisions"
+    ],
+    "touchlineSupporting": [
+      "Composure",
+      "Strength",
+      "Anticipation"
+    ]
   },
   {
     "positionGroup": "Striker",
+    "positionGroups": [
+      "Striker"
+    ],
     "name": "Channel Forward",
     "phase": "In Possession",
     "priorities": {
@@ -1088,10 +1944,24 @@
       "balance": "secondary",
       "pace": "secondary",
       "stamina": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Off the Ball",
+      "Anticipation",
+      "Acceleration",
+      "Finishing"
+    ],
+    "touchlineSupporting": [
+      "Pace",
+      "Composure",
+      "First Touch"
+    ]
   },
   {
     "positionGroup": "Striker",
+    "positionGroups": [
+      "Striker"
+    ],
     "name": "Deep-Lying Forward",
     "phase": "In Possession",
     "priorities": {
@@ -1108,10 +1978,24 @@
       "team_work": "secondary",
       "vision": "secondary",
       "balance": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "First Touch",
+      "Passing",
+      "Strength",
+      "Decisions"
+    ],
+    "touchlineSupporting": [
+      "Teamwork",
+      "Vision",
+      "Composure"
+    ]
   },
   {
     "positionGroup": "Striker",
+    "positionGroups": [
+      "Striker"
+    ],
     "name": "False Nine",
     "phase": "In Possession",
     "priorities": {
@@ -1130,10 +2014,24 @@
       "flair": "secondary",
       "agility": "secondary",
       "balance": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Off the Ball",
+      "First Touch",
+      "Passing",
+      "Vision"
+    ],
+    "touchlineSupporting": [
+      "Dribbling",
+      "Decisions",
+      "Technique"
+    ]
   },
   {
     "positionGroup": "Striker",
+    "positionGroups": [
+      "Striker"
+    ],
     "name": "Poacher",
     "phase": "In Possession",
     "priorities": {
@@ -1148,10 +2046,24 @@
       "technique": "secondary",
       "decisions": "secondary",
       "balance": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Off the Ball",
+      "Anticipation",
+      "Finishing",
+      "Composure"
+    ],
+    "touchlineSupporting": [
+      "Acceleration",
+      "First Touch",
+      "Pace"
+    ]
   },
   {
     "positionGroup": "Striker",
+    "positionGroups": [
+      "Striker"
+    ],
     "name": "Target Forward",
     "phase": "In Possession",
     "priorities": {
@@ -1168,36 +2080,397 @@
       "anticipation": "secondary",
       "decisions": "secondary",
       "team_work": "secondary"
-    }
+    },
+    "touchlinePriority": [
+      "Jumping Reach",
+      "Heading",
+      "Strength",
+      "First Touch"
+    ],
+    "touchlineSupporting": [
+      "Balance",
+      "Teamwork",
+      "Bravery"
+    ]
   },
   {
     "positionGroup": "Striker",
+    "positionGroups": [
+      "Striker"
+    ],
     "name": "Central Outlet Centre Forward",
     "phase": "Out of Possession",
     "priorities": {
       "off_the_ball": "primary",
       "decisions": "primary",
       "anticipation": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "First Touch",
+      "Strength",
+      "Off the Ball",
+      "Balance"
+    ],
+    "touchlineSupporting": [
+      "Heading",
+      "Composure",
+      "Teamwork"
+    ]
   },
   {
     "positionGroup": "Striker",
+    "positionGroups": [
+      "Striker"
+    ],
     "name": "Splitting Outlet Centre Forward",
     "phase": "Out of Possession",
     "priorities": {
       "off_the_ball": "primary",
       "pace": "primary",
       "anticipation": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Off the Ball",
+      "Acceleration",
+      "Anticipation",
+      "Pace"
+    ],
+    "touchlineSupporting": [
+      "Finishing",
+      "First Touch",
+      "Composure"
+    ]
   },
   {
     "positionGroup": "Striker",
+    "positionGroups": [
+      "Striker"
+    ],
     "name": "Tracking Centre Forward",
     "phase": "Out of Possession",
     "priorities": {
       "marking": "primary",
       "work_rate": "primary",
       "stamina": "primary"
-    }
+    },
+    "touchlinePriority": [
+      "Work Rate",
+      "Stamina",
+      "Teamwork",
+      "Marking"
+    ],
+    "touchlineSupporting": [
+      "Positioning",
+      "Anticipation",
+      "Decisions"
+    ]
+  },
+  {
+    "positionGroup": "Goalkeeper",
+    "positionGroups": [
+      "Goalkeeper"
+    ],
+    "name": "Goalkeeper",
+    "phase": "Out of Possession",
+    "priorities": {
+      "reflexes": "primary",
+      "positioning": "primary",
+      "handling": "primary",
+      "decisions": "primary",
+      "aerial_ability": "secondary",
+      "one_on_ones": "secondary",
+      "communication": "secondary"
+    },
+    "touchlinePriority": [
+      "Reflexes",
+      "Positioning",
+      "Handling",
+      "Decisions"
+    ],
+    "touchlineSupporting": [
+      "Aerial Reach",
+      "One on Ones",
+      "Communication"
+    ]
+  },
+  {
+    "positionGroup": "Centre-Back",
+    "positionGroups": [
+      "Centre-back"
+    ],
+    "name": "Centre-Back",
+    "phase": "Out of Possession",
+    "priorities": {
+      "positioning": "primary",
+      "marking": "primary",
+      "tackling": "primary",
+      "heading": "primary",
+      "anticipation": "secondary",
+      "concentration": "secondary",
+      "strength": "secondary"
+    },
+    "touchlinePriority": [
+      "Positioning",
+      "Marking",
+      "Tackling",
+      "Heading"
+    ],
+    "touchlineSupporting": [
+      "Anticipation",
+      "Concentration",
+      "Strength"
+    ]
+  },
+  {
+    "positionGroup": "Centre-Back",
+    "positionGroups": [
+      "Wide centre-back"
+    ],
+    "name": "Wide Centre-Back",
+    "phase": "Out of Possession",
+    "priorities": {
+      "positioning": "primary",
+      "anticipation": "primary",
+      "marking": "primary",
+      "pace": "primary",
+      "tackling": "secondary",
+      "concentration": "secondary",
+      "strength": "secondary"
+    },
+    "touchlinePriority": [
+      "Positioning",
+      "Anticipation",
+      "Marking",
+      "Pace"
+    ],
+    "touchlineSupporting": [
+      "Tackling",
+      "Concentration",
+      "Strength"
+    ]
+  },
+  {
+    "positionGroup": "Full-Back / Wing-Back",
+    "positionGroups": [
+      "Full-back"
+    ],
+    "name": "Full-Back",
+    "phase": "Out of Possession",
+    "priorities": {
+      "positioning": "primary",
+      "marking": "primary",
+      "tackling": "primary",
+      "anticipation": "primary",
+      "pace": "secondary",
+      "concentration": "secondary",
+      "team_work": "secondary"
+    },
+    "touchlinePriority": [
+      "Positioning",
+      "Marking",
+      "Tackling",
+      "Anticipation"
+    ],
+    "touchlineSupporting": [
+      "Pace",
+      "Concentration",
+      "Teamwork"
+    ]
+  },
+  {
+    "positionGroup": "Full-Back / Wing-Back",
+    "positionGroups": [
+      "Wing-back"
+    ],
+    "name": "Wing-Back",
+    "phase": "Out of Possession",
+    "priorities": {
+      "positioning": "primary",
+      "stamina": "primary",
+      "marking": "primary",
+      "tackling": "primary",
+      "work_rate": "secondary",
+      "anticipation": "secondary",
+      "pace": "secondary"
+    },
+    "touchlinePriority": [
+      "Positioning",
+      "Stamina",
+      "Marking",
+      "Tackling"
+    ],
+    "touchlineSupporting": [
+      "Work Rate",
+      "Anticipation",
+      "Pace"
+    ]
+  },
+  {
+    "positionGroup": "Defensive Midfielder",
+    "positionGroups": [
+      "Defensive midfield"
+    ],
+    "name": "Defensive Midfielder",
+    "phase": "Out of Possession",
+    "priorities": {
+      "positioning": "primary",
+      "anticipation": "primary",
+      "tackling": "primary",
+      "decisions": "primary",
+      "marking": "secondary",
+      "concentration": "secondary",
+      "team_work": "secondary"
+    },
+    "touchlinePriority": [
+      "Positioning",
+      "Anticipation",
+      "Tackling",
+      "Decisions"
+    ],
+    "touchlineSupporting": [
+      "Marking",
+      "Concentration",
+      "Teamwork"
+    ]
+  },
+  {
+    "positionGroup": "Central Midfielder",
+    "positionGroups": [
+      "Central midfield"
+    ],
+    "name": "Central Midfielder",
+    "phase": "Out of Possession",
+    "priorities": {
+      "positioning": "primary",
+      "anticipation": "primary",
+      "team_work": "primary",
+      "tackling": "primary",
+      "work_rate": "secondary",
+      "concentration": "secondary",
+      "marking": "secondary"
+    },
+    "touchlinePriority": [
+      "Positioning",
+      "Anticipation",
+      "Teamwork",
+      "Tackling"
+    ],
+    "touchlineSupporting": [
+      "Work Rate",
+      "Concentration",
+      "Marking"
+    ]
+  },
+  {
+    "positionGroup": "Wide Midfielder / Winger",
+    "positionGroups": [
+      "Wide midfield"
+    ],
+    "name": "Wide Midfielder",
+    "phase": "Out of Possession",
+    "priorities": {
+      "positioning": "primary",
+      "marking": "primary",
+      "work_rate": "primary",
+      "team_work": "primary",
+      "stamina": "secondary",
+      "anticipation": "secondary",
+      "tackling": "secondary"
+    },
+    "touchlinePriority": [
+      "Positioning",
+      "Marking",
+      "Work Rate",
+      "Teamwork"
+    ],
+    "touchlineSupporting": [
+      "Stamina",
+      "Anticipation",
+      "Tackling"
+    ]
+  },
+  {
+    "positionGroup": "Attacking Midfielder",
+    "positionGroups": [
+      "Attacking midfield"
+    ],
+    "name": "Attacking Midfielder",
+    "phase": "Out of Possession",
+    "priorities": {
+      "positioning": "primary",
+      "anticipation": "primary",
+      "team_work": "primary",
+      "work_rate": "primary",
+      "marking": "secondary",
+      "decisions": "secondary",
+      "stamina": "secondary"
+    },
+    "touchlinePriority": [
+      "Positioning",
+      "Anticipation",
+      "Teamwork",
+      "Work Rate"
+    ],
+    "touchlineSupporting": [
+      "Marking",
+      "Decisions",
+      "Stamina"
+    ]
+  },
+  {
+    "positionGroup": "Wide Midfielder / Winger",
+    "positionGroups": [
+      "Wide attack"
+    ],
+    "name": "Winger",
+    "phase": "Out of Possession",
+    "priorities": {
+      "work_rate": "primary",
+      "positioning": "primary",
+      "team_work": "primary",
+      "anticipation": "primary",
+      "stamina": "secondary",
+      "marking": "secondary",
+      "acceleration": "secondary"
+    },
+    "touchlinePriority": [
+      "Work Rate",
+      "Positioning",
+      "Teamwork",
+      "Anticipation"
+    ],
+    "touchlineSupporting": [
+      "Stamina",
+      "Marking",
+      "Acceleration"
+    ]
+  },
+  {
+    "positionGroup": "Striker",
+    "positionGroups": [
+      "Striker"
+    ],
+    "name": "Centre Forward",
+    "phase": "Out of Possession",
+    "priorities": {
+      "work_rate": "primary",
+      "anticipation": "primary",
+      "stamina": "primary",
+      "team_work": "primary",
+      "acceleration": "secondary",
+      "decisions": "secondary",
+      "aggression": "secondary"
+    },
+    "touchlinePriority": [
+      "Work Rate",
+      "Anticipation",
+      "Stamina",
+      "Teamwork"
+    ],
+    "touchlineSupporting": [
+      "Acceleration",
+      "Decisions",
+      "Aggression"
+    ]
   }
 ]

@@ -216,16 +216,20 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
   const highlightedKeys = useMemo(() => {
     const keySet = new Set<string>();
     const prefSet = new Set<string>();
-    const matchRole = (name: string) =>
+    const matchRole = (name: string, phase: 'In Possession' | 'Out of Possession') =>
       FM27_ROLES.find(
         (r) =>
-          r.name.toLowerCase() === name.toLowerCase() ||
-          name.toLowerCase().includes(r.name.toLowerCase())
+          r.phase === phase &&
+          (r.name.toLowerCase() === name.toLowerCase() ||
+            name.toLowerCase().includes(r.name.toLowerCase()))
       );
 
-    for (const roleName of [effectiveIpRole, effectiveOopRole]) {
+    for (const [roleName, phase] of [
+      [effectiveIpRole, 'In Possession'],
+      [effectiveOopRole, 'Out of Possession'],
+    ] as const) {
       if (!roleName) continue;
-      const found = matchRole(roleName);
+      const found = matchRole(roleName, phase);
       if (found?.priorities) {
         for (const [snakeKey, tier] of Object.entries(found.priorities)) {
           const camelKey = FM27_ROLE_ATTR_MAP[snakeKey] || snakeKey;
@@ -439,8 +443,12 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
       144
     );
 
-    const ipRoleObj = FM27_ROLES.find((r) => r.name === effectiveIpRole);
-    const oopRoleObj = FM27_ROLES.find((r) => r.name === effectiveOopRole);
+    const ipRoleObj = FM27_ROLES.find(
+      (r) => r.phase === 'In Possession' && r.name === effectiveIpRole
+    );
+    const oopRoleObj = FM27_ROLES.find(
+      (r) => r.phase === 'Out of Possession' && r.name === effectiveOopRole
+    );
     const ipFitScore = ipRoleObj ? scorePlayerForFm27Role(player, ipRoleObj) : 75;
     const oopFitScore = oopRoleObj ? scorePlayerForFm27Role(player, oopRoleObj) : 75;
 

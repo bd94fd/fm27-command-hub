@@ -208,17 +208,26 @@ const BUCKET_ROLE_FILTER: Partial<
       'Playmaking Wing-Back',
       'Advanced Wing-Back',
     ]),
-    oop: new Set(['Holding Full-Back', 'Pressing Full-Back', 'Holding Wing-Back', 'Pressing Wing-Back']),
+    oop: new Set([
+      'Full-Back',
+      'Holding Full-Back',
+      'Pressing Full-Back',
+      'Wing-Back',
+      'Holding Wing-Back',
+      'Pressing Wing-Back',
+    ]),
   },
   WB: {
     ip: new Set(['Wing-Back', 'Inside Wing-Back', 'Playmaking Wing-Back', 'Advanced Wing-Back']),
-    oop: new Set(['Holding Wing-Back', 'Pressing Wing-Back']),
+    oop: new Set(['Wing-Back', 'Holding Wing-Back', 'Pressing Wing-Back']),
   },
   WM: {
     ip: new Set(['Wide Midfielder', 'Winger', 'Inside Winger', 'Playmaking Winger']),
     oop: new Set([
+      'Wide Midfielder',
       'Tracking Wide Midfielder',
       'Wide Outlet Wide Midfielder',
+      'Winger',
       'Tracking Winger',
       'Wide Outlet Winger',
       'Inside Outlet Winger',
@@ -226,7 +235,7 @@ const BUCKET_ROLE_FILTER: Partial<
   },
   W: {
     ip: new Set(['Winger', 'Inside Forward', 'Inside Winger', 'Playmaking Winger', 'Wide Forward']),
-    oop: new Set(['Tracking Winger', 'Wide Outlet Winger', 'Inside Outlet Winger']),
+    oop: new Set(['Winger', 'Tracking Winger', 'Wide Outlet Winger', 'Inside Outlet Winger']),
   },
 };
 

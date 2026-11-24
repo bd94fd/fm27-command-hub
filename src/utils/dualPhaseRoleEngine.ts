@@ -9,7 +9,7 @@
  * Tactical Effectiveness 4-area / 17-factor model inspired by SemHiel2003/fm27-trainer (MIT License).
  */
 
-import rolesCatalogJson from '../data/fm27RolesTouchline.json';
+import fm27RolesJson from '../data/fm27Roles.json';
 import { PlayerRecord } from '../types/fm27';
 
 export type PossessionPhase = 'in' | 'out';
@@ -110,9 +110,23 @@ const ATTR_DISPLAY_TO_KEY: Record<string, keyof PlayerRecord['attributes']> = {
   Strength: 'strength',
 };
 
+interface UnifiedRoleJsonEntry {
+  name: string;
+  phase: 'In Possession' | 'Out of Possession';
+  positionGroups: string[];
+  touchlinePriority: string[];
+  touchlineSupporting: string[];
+}
+
 export const FM27_TOUCHLINE_ROLES: TouchlineRoleDefinition[] = (
-  rolesCatalogJson as { roles: TouchlineRoleDefinition[] }
-).roles;
+  fm27RolesJson as unknown as UnifiedRoleJsonEntry[]
+).map((role) => ({
+  name: role.name,
+  phase: role.phase === 'Out of Possession' ? 'out' : 'in',
+  position_groups: role.positionGroups,
+  priority: role.touchlinePriority,
+  supporting: role.touchlineSupporting,
+}));
 
 /**
  * Computes 0-100 attribute fit for a Touchline role (priority weight 3, supporting weight 1).

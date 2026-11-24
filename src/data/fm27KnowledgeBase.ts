@@ -118,7 +118,7 @@ export const FM27_KNOWLEDGE_BASE: Fm27KnowledgeEntry[] = [
     summary:
       'FM27 replaces legacy FM24 role duties (Defend/Support/Attack) with separate In-Possession (IP) and Out-of-Possession (OOP) roles for every position slot.',
     keyFacts: [
-      'Every outfield slot requires an authentic IP role and an authentic OOP role from the 68-role FM27 dual-phase catalog.',
+      'Every outfield slot requires an authentic IP role and an authentic OOP role from the 79-role FM27 dual-phase catalog.',
       'Retired FM24 roles (Mezzala, Enganche, Trequartista, Carrilero, Raumdeuter, Segundo Volante) and legacy Defend/Support/Attack duties do not exist in FM27.',
       'Tracking Winger (TW) OOP on both flanks prevents 2v1 full-back overlaps against attacking wing-backs, whereas Wide Outlet Winger OOP leaves flanks exposed in defensive transition.',
       'Outlet Centre Forward (OCF) OOP stays high as a counter-attacking reference while Pressing Forward OOP triggers high-line harassment.',

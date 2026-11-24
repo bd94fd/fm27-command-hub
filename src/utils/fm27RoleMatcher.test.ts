@@ -10,7 +10,7 @@ import {
 
 test('inferFm27Roles returns authentic FM27 dual-phase roles from the canonical catalog', () => {
   assert.equal(IN_POSSESSION_ROLES.length, 40, 'Must have authentic FM27 IP roles');
-  assert.equal(OUT_OF_POSSESSION_ROLES.length, 28, 'Must have authentic FM27 OOP roles');
+  assert.equal(OUT_OF_POSSESSION_ROLES.length, 39, 'Must have authentic FM27 OOP roles');
 
   const positionsToTest = [
     'GK',
