@@ -330,6 +330,98 @@ def _clamp_pct(val: Any) -> int | None:
     return max(0, min(100, parsed))
 
 
+def _pct_from_raw(val: Any) -> int | None:
+    """Convert a raw 0-10,000 condition/sharpness store to a 0-100 percentage.
+
+    The save keeps these as `u16` fractions of a percent, so a raw 100 means 1%
+    and a raw 10,000 means 100%. `_clamp_pct` cannot tell a raw 100 from a scaled
+    100, which made a fully-fit player at raw 10,000 and a rusty one at raw 100
+    both render as "100%".
+    """
+    parsed = _int(val, None)
+    if parsed is None:
+        return None
+    if parsed < 0:
+        return None
+    return max(0, min(100, int(round(parsed / 100))))
+
+
+def _enum_token(value: Any) -> str:
+    """Lowercase token for an enum-or-string field, ignoring any module prefix.
+
+    `InjuryRecordKind` is a StrEnum, so `str()` already yields "typed"; plain
+    Enums would yield "Module.Kind.MEMBER". Taking the last dotted segment makes
+    both shapes comparable without importing the enum type.
+    """
+    if value is None:
+        return ""
+    raw = getattr(value, "value", value)
+    return str(raw or "").strip().lower().split(".")[-1]
+
+
+def _clamp_pct_auto(val: Any, *, raw_scale_max: int = 100) -> int | None:
+    """Scale-aware percentage: treat values above `raw_scale_max` as 0-10,000 raw stores."""
+    parsed = _int(val, None)
+    if parsed is None or parsed < 0:
+        return None
+    if parsed > raw_scale_max:
+        return max(0, min(100, int(round(parsed / 100))))
+    return max(0, min(100, parsed))
+
+
+def _injury_row_state(inj: Any, game_date: Any) -> tuple[bool, str, bool]:
+    """Classify one injury row as currently active.
+
+    Returns `(is_active, kind_token, date_is_expected_return)`.
+
+    The save has two injury stores. `history` rows are what happened; `typed`
+    rows carry the **expected return date** in the same `date` field. Matching on
+    substring "current"/"active" therefore dropped every typed row, because the
+    StrEnum value is literally "typed" — which is the only store that says who is
+    actually unavailable and for how long.
+    """
+    kind = _enum_token(getattr(inj, "kind", None))
+    if kind in {"history", "past", "previous"}:
+        return False, kind, False
+
+    inj_date = getattr(inj, "date", None)
+    if kind in {"typed", "current", "active"}:
+        is_expected_return = kind == "typed"
+        if inj_date is None or game_date is None:
+            return True, kind, is_expected_return
+        try:
+            return inj_date >= game_date, kind, is_expected_return
+        except TypeError:
+            return True, kind, is_expected_return
+
+    if bool(getattr(inj, "is_active", False)):
+        return True, kind or "current", False
+    days_rem = _int(_first_attr(inj, ("days_remaining", "days_left", "duration_days")), None)
+    if days_rem is not None:
+        return days_rem > 0, kind or "current", False
+    if not kind:
+        if inj_date is not None and game_date is not None:
+            try:
+                return (game_date - inj_date).days <= 30, "current", False
+            except TypeError:
+                pass
+        return True, "current", False
+    return False, kind, False
+
+
+def _injury_dedup_key(item: dict[str, Any]) -> tuple[Any, str, str]:
+    """Dedupe key for one injury row: player, type, and the date shown.
+
+    Keying on (player, type) alone collapsed two separate injuries of the same
+    type; the date distinguishes a fresh knock from an older one.
+    """
+    return (
+        item.get("playerUid"),
+        str(item.get("typeName") or "").lower(),
+        str(item.get("expectedReturn") or item.get("date") or ""),
+    )
+
+
 def _get_attr(obj: Any, attr_name: str, default: Any = None) -> Any:
     if obj is None:
         return default
@@ -1911,6 +2003,8 @@ def _extract_typed_competition_rules(
         "maxForeignPlayers": None,
         "u21Exempt": None,
         "matchdaySubsLimit": None,
+        "prizeMoney": None,
+        "rounds": None,
     }
     fn = getattr(save, "competition_rules", None)
     if not callable(fn):
@@ -1992,6 +2086,13 @@ def _extract_typed_competition_rules(
         _first_attr(target, ("relegation_places", "automatic_relegation_places")),
         None,
     )
+    # Prize money is decoded by fmsave inside the same CompetitionRules row we
+    # already have in hand, so it costs nothing to surface.
+    out["prizeMoney"] = _int(
+        _first_attr(target, ("prize_money", "prize_money_total", "prize")),
+        None,
+    )
+    out["rounds"] = _int(_first_attr(target, ("rounds",)), None)
     return out
 
 
@@ -2422,10 +2523,15 @@ def step_players() -> str:
         )
         secondary_pos = [pos for pos in acc_pos if pos not in nat_pos]
 
-        cond_pct = _clamp_pct(getattr(p, "raw_condition", None) or getattr(p, "condition", None))
-        sharp_pct = _clamp_pct(
-            getattr(p, "raw_match_sharpness", None) or getattr(p, "match_sharpness", None)
-        )
+        # Prefer the raw 0-10,000 stores and never fall through on a falsy 0:
+        # `raw_condition or condition` turned a genuine 0% into the scaled field,
+        # and a raw 10,000 into "100" only by luck of the magnitude guess.
+        cond_pct = _pct_from_raw(getattr(p, "raw_condition", None))
+        if cond_pct is None:
+            cond_pct = _clamp_pct(getattr(p, "condition", None))
+        sharp_pct = _pct_from_raw(getattr(p, "raw_match_sharpness", None))
+        if sharp_pct is None:
+            sharp_pct = _clamp_pct(getattr(p, "match_sharpness", None))
 
         pos_ratings = None
         raw_pos_map = getattr(p, "positions", None) or getattr(p, "position_ratings", None)
@@ -2437,6 +2543,7 @@ def step_players() -> str:
                     pos_ratings = {}
                     for code, attr_candidates in (
                         ("GK", ("gk", "GK")),
+                        ("SW", ("sw", "SW")),
                         ("DL", ("dl", "DL")),
                         ("DC", ("dc", "DC")),
                         ("DR", ("dr", "DR")),
@@ -2480,6 +2587,16 @@ def step_players() -> str:
         # Internal-only conversion to relative stars + qualitative personality label (ZERO raw CA/PA emitted)
         ca_internal = _int(getattr(ability, "current", None), 0) or 0
         pa_internal = _int(getattr(ability, "potential", None), 0) or 0
+        # Potential is an `i16`: a negative value is a stored range code and the
+        # reader reports `potential=None` alongside it. Youth players are the ones
+        # usually ranged, so silently treating that as PA 0 flattened their ceiling
+        # to their current ability. There is no published code-to-band map, so we
+        # flag the uncertainty and keep stars at the current level rather than
+        # inventing a midpoint.
+        pa_range_code = _int(getattr(ability, "potential_range_code", None), None)
+        potential_uncertain = bool(pa_range_code is not None and pa_internal <= 0)
+        if potential_uncertain and getattr(ability, "potential", None) is not None:
+            potential_uncertain = False
         ability_stars = _compute_relative_star(ca_internal, squad_median)
         potential_stars = max(
             ability_stars, _compute_relative_star(pa_internal, squad_median)
@@ -2498,13 +2615,33 @@ def step_players() -> str:
 
         raw_tv = getattr(p, "transfer_value", None)
         raw_tv_state = getattr(p, "transfer_value_state", None)
-        tv_state_str = str(getattr(raw_tv_state, "value", raw_tv_state) or "").lower().strip()
+        tv_state_str = _enum_token(raw_tv_state)
         if isinstance(raw_tv, (int, float)) and raw_tv > 0:
             market_value: int | None = int(round(raw_tv))
         elif tv_state_str == "zero":
             market_value = 0
         else:
             market_value = None
+
+        # `u32` value is capped at 300,000,000 in the save, and that same number is
+        # shared by genuine superstars and ~1,000 ordinary players, so it reads as
+        # "not for sale" rather than a valuation. Flag it instead of ranking on it.
+        tv_capped = bool(
+            market_value is not None
+            and market_value > 0
+            and (
+                tv_state_str in {"placeholder", "capped", "max"}
+                or market_value >= 300_000_000
+            )
+        )
+        if market_value is None:
+            market_value_state = "unset"
+        elif tv_capped:
+            market_value_state = "capped"
+        elif tv_state_str == "zero" or market_value == 0:
+            market_value_state = "zero"
+        else:
+            market_value_state = "ok"
 
         players_out.append({
             "uid": uid,
@@ -2525,6 +2662,9 @@ def step_players() -> str:
             "positionRatings": pos_ratings,
             "wagePw": _int(getattr(contract, "wage", None), 0) if contract else 0,
             "marketValue": market_value,
+            "marketValueState": market_value_state,
+            "marketValueCapped": tv_capped,
+            "potentialUncertain": potential_uncertain,
             "expires": (_dmy(contract_end) or "N/A") if contract else "N/A",
             "contractExpiryMonths": contract_months,
             "contractDetails": contract_details,
@@ -2564,7 +2704,7 @@ def step_players() -> str:
         _STATE.get("comp_name_by_id", {}),
     )
     direct_injuries: list[dict[str, Any]] = []
-    seen_direct_inj_keys: set[tuple[int, str]] = set()
+    seen_direct_inj_keys: set[tuple[int, str, str]] = set()
     for p in raw_players:
         p_uid = _int(getattr(p, "uid", None), None)
         if p_uid is None or p_uid not in squad_uids:
@@ -2581,25 +2721,14 @@ def step_players() -> str:
         for inj in candidates_inj:
             if inj is None:
                 continue
-            kind_str = str(getattr(inj, "kind", "") or "").lower()
-            if "history" in kind_str or "past" in kind_str:
-                continue
-            inj_date = getattr(inj, "date", None)
-            days_rem = _int(_first_attr(inj, ("days_remaining", "days_left", "duration_days")), None)
-            is_active = (
-                bool(getattr(inj, "is_active", False))
-                or "current" in kind_str
-                or "active" in kind_str
-                or (days_rem is not None and days_rem > 0)
-                or (not kind_str and game_date and inj_date and (game_date - inj_date).days <= 30)
-                or (not kind_str and inj_date is None)
-            )
+            is_active, kind_str, is_expected_return = _injury_row_state(inj, game_date)
             if not is_active:
                 continue
+            inj_date = getattr(inj, "date", None)
             type_name = str(
                 _first_attr(inj, ("type_name", "injury_type", "name", "description")) or "Injury"
             )
-            dedup_key = (p_uid, type_name.lower())
+            dedup_key = (p_uid, type_name.lower(), _dmy(inj_date) or "")
             if dedup_key in seen_direct_inj_keys:
                 continue
             seen_direct_inj_keys.add(dedup_key)
@@ -2608,6 +2737,7 @@ def step_players() -> str:
                 "playerName": getattr(inj, "player_name", None) or player_name_by_uid.get(p_uid),
                 "typeName": type_name,
                 "date": _dmy(inj_date),
+                "expectedReturn": _dmy(inj_date) if is_expected_return else None,
                 "severity": _label(getattr(inj, "severity", None)),
                 "cause": _label(getattr(inj, "cause", None)),
                 "kind": kind_str or "current",
@@ -5297,9 +5427,8 @@ def step_3_3_injuries(fast_sync: bool | None = None) -> str:
     squad_uids = _STATE["squad_uids"]
     game_date = _STATE["game_date"]
     active_injuries: list[dict[str, Any]] = list(direct_injuries)
-    seen_keys: set[tuple[Any, str]] = {
-        (item.get("playerUid"), str(item.get("typeName") or "").lower())
-        for item in active_injuries
+    seen_keys: set[tuple[Any, str, str]] = {
+        _injury_dedup_key(item) for item in active_injuries
     }
     inj_timed_out = False
 
@@ -5314,33 +5443,40 @@ def step_3_3_injuries(fast_sync: bool | None = None) -> str:
             p_uid = getattr(inj, "player_uid", None)
             if p_uid not in squad_uids and (club_uid is None or getattr(inj, "club_uid", None) != club_uid):
                 continue
-            kind_str = str(getattr(inj, "kind", "") or "").lower()
-            if "history" in kind_str or "past" in kind_str:
+            is_active, kind_str, is_expected_return = _injury_row_state(inj, game_date)
+            if not is_active:
                 continue
-            if "current" in kind_str or "active" in kind_str or (not kind_str and game_date and getattr(inj, "date", None) and (game_date - inj.date).days <= 30):
-                type_name = getattr(inj, "type_name", None) or getattr(inj, "injury_type", None) or "Injury"
-                k = (p_uid, str(type_name).lower())
-                if k in seen_keys:
-                    continue
-                seen_keys.add(k)
-                active_injuries.append({
-                    "playerUid": p_uid,
-                    "playerName": getattr(inj, "player_name", None),
-                    "typeName": type_name,
-                    "date": _dmy(getattr(inj, "date", None)),
-                    "severity": _label(getattr(inj, "severity", None)),
-                    "cause": _label(getattr(inj, "cause", None)),
-                    "kind": kind_str or "current",
-                })
-                if len(active_injuries) >= 25:
-                    break
+            type_name = getattr(inj, "type_name", None) or getattr(inj, "injury_type", None) or "Injury"
+            # Two injuries of the same type at different dates are two rows; keying
+            # on (player, type) alone silently dropped the second one.
+            k = _injury_dedup_key({
+                "playerUid": p_uid,
+                "typeName": type_name,
+                "date": _dmy(getattr(inj, "date", None)),
+                "expectedReturn": _dmy(getattr(inj, "date", None)) if is_expected_return else None,
+            })
+            if k in seen_keys:
+                continue
+            seen_keys.add(k)
+            active_injuries.append({
+                "playerUid": p_uid,
+                "playerName": getattr(inj, "player_name", None),
+                "typeName": type_name,
+                "date": _dmy(getattr(inj, "date", None)),
+                "expectedReturn": _dmy(getattr(inj, "date", None)) if is_expected_return else None,
+                "severity": _label(getattr(inj, "severity", None)),
+                "cause": _label(getattr(inj, "cause", None)),
+                "kind": kind_str or "current",
+            })
+            if len(active_injuries) >= 25:
+                break
 
     if save is not None:
         try:
             fast_inj = _extract_club_injuries_fast(save, club_uid, squad_uids, game_date)
             if fast_inj is not None:
                 for item in fast_inj:
-                    k = (item.get("playerUid"), str(item.get("typeName") or "").lower())
+                    k = _injury_dedup_key(item)
                     if k not in seen_keys:
                         seen_keys.add(k)
                         active_injuries.append(item)
@@ -5447,6 +5583,8 @@ def step_3_3_competition_rules(fast_sync: bool | None = None) -> str:
         "maxForeignPlayers": None,
         "u21Exempt": None,
         "matchdaySubsLimit": None,
+        "prizeMoney": None,
+        "rounds": None,
     }
     if use_fast:
         _STATE["competition_rules"] = empty_rules
@@ -8133,6 +8271,10 @@ def _extract_club_league_table_and_rules_fast(
                 "promotionPlaces": matched_block.promotion_places if matched_block is not None else None,
                 "playoffPlaces": matched_block.playoff_places if matched_block is not None else None,
                 "relegationPlaces": matched_block.relegation_places if matched_block is not None else None,
+                # The raw span block may not carry prize money under this name yet;
+                # getattr keeps the shape stable for the typed path's keys.
+                "prizeMoney": _int(getattr(matched_block, "prize_money", None), None) if matched_block is not None else None,
+                "rounds": (len(matched_block.rounds) or None) if matched_block is not None else None,
             }
             _STATE["defer_competition_rules"] = False
 
