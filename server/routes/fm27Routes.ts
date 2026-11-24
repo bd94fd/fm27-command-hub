@@ -23,6 +23,10 @@ import {
   TACTICAL_CHAT_SCHEMA,
 } from '../schemas.ts';
 import { createSecurityGuard } from '../middleware/securityGuard.ts';
+import {
+  extractStructuredJsonObject,
+  normalizeTacticalChatHistory,
+} from '../jsonExtractor.ts';
 
 export interface Fm27RoutesOptions {
   geminiService?: GeminiService;
@@ -114,16 +118,13 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
         }
       );
 
-      const rawText = (response.text ?? '{}').trim();
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(rawText);
-      } catch {
+      const extracted = extractStructuredJsonObject(response.text ?? '');
+      if (!extracted.ok) {
         return res.status(502).json({
           error: 'The Tactical Analyst returned malformed JSON. Please retry.',
         });
       }
-      return res.json(parsed);
+      return res.json(extracted.value);
     } catch (error: unknown) {
       if (error instanceof AnalystTimeoutError) {
         return res.status(504).json({ error: error.message });
@@ -194,35 +195,9 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
         >;
       }> = [];
 
-      if (Array.isArray(history) && history.length > 0) {
-        const sanitizedHistory: Array<{ role: 'user' | 'model'; text: string }> = [];
-        for (const h of history.slice(-6)) {
-          const text = typeof h?.text === 'string' ? h.text.trim() : '';
-          if (!text) continue;
-          const role: 'user' | 'model' = h.role === 'user' ? 'user' : 'model';
-          // Gemini multi-turn contents must begin with a user turn
-          if (sanitizedHistory.length === 0 && role !== 'user') continue;
-          const prev = sanitizedHistory[sanitizedHistory.length - 1];
-          if (prev && prev.role === role) {
-            // Merge consecutive same-role turns rather than failing with HTTP 400
-            prev.text = `${prev.text}\n\n${text}`;
-          } else {
-            sanitizedHistory.push({ role, text });
-          }
-        }
-        // Drop any trailing unanswered user turn before appending the new user turn
-        while (
-          sanitizedHistory.length > 0 &&
-          sanitizedHistory[sanitizedHistory.length - 1].role === 'user'
-        ) {
-          sanitizedHistory.pop();
-        }
-        for (const item of sanitizedHistory) {
-          contents.push({
-            role: item.role,
-            parts: [{ text: item.text }],
-          });
-        }
+      const normalizedHistory = normalizeTacticalChatHistory(history, 6);
+      for (const item of normalizedHistory) {
+        contents.push(item);
       }
 
       const currentTurnParts: Array<
@@ -275,16 +250,13 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
         }
       );
 
-      const rawText = (response.text ?? '{}').trim();
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(rawText);
-      } catch {
+      const extracted = extractStructuredJsonObject(response.text ?? '');
+      if (!extracted.ok) {
         return res.status(502).json({
           error: 'The Tactical Analyst returned malformed JSON. Please retry.',
         });
       }
-      return res.json(parsed);
+      return res.json(extracted.value);
     } catch (error: unknown) {
       if (error instanceof AnalystTimeoutError) {
         return res.status(504).json({ error: error.message });
@@ -349,16 +321,13 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
         }
       );
 
-      const rawText = (response.text ?? '{}').trim();
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(rawText);
-      } catch {
+      const extracted = extractStructuredJsonObject(response.text ?? '');
+      if (!extracted.ok) {
         return res.status(502).json({
           error: 'The Tactical Analyst returned malformed debrief JSON.',
         });
       }
-      return res.json(parsed);
+      return res.json(extracted.value);
     } catch (error: unknown) {
       if (error instanceof AnalystTimeoutError) {
         return res.status(504).json({ error: error.message });
@@ -425,18 +394,15 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
         }
       );
 
-      const rawText = (response.text ?? '{}').trim();
-      let parsed: Record<string, unknown>;
-      try {
-        parsed = JSON.parse(rawText) as Record<string, unknown>;
-      } catch {
+      const extracted = extractStructuredJsonObject(response.text ?? '');
+      if (!extracted.ok) {
         return res.status(502).json({
           error: 'The Tactical Analyst returned malformed Journey Briefing JSON.',
         });
       }
       return res.json({
-        ...parsed,
-        briefing: parsed,
+        ...extracted.value,
+        briefing: extracted.value,
       });
     } catch (error: unknown) {
       if (error instanceof AnalystTimeoutError) {

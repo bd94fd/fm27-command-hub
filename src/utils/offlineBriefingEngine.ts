@@ -6,7 +6,7 @@ import {
   solveBestXi,
 } from './bestXiSolver';
 import { buildSquadTransferAudit } from './transferAudit';
-import { computeCompetitiveSummary } from './fmSyncEngine';
+import { buildDynamicSetPieceRoutines, computeCompetitiveSummary } from './fmSyncEngine';
 import type { HydratedSaveState } from './fmSaveHydrator';
 import {
   deriveFootballSeasonLabel,
@@ -106,6 +106,21 @@ export function buildOfflineTacticalBriefing(
     nextCompetitionName,
   });
 
+  // Match War Room & live Analyst: apply manual Pitch Builder playerId swaps on top of solved XI
+  const effectiveStartingXi = bestXi.startingXI.map((slot) => {
+    const override = input.customSlots?.find((c) => c.slotId === slot.slotId);
+    if (!override?.playerId) return slot;
+    const manualPlayer = input.players.find((p) => p.id === override.playerId);
+    if (!manualPlayer) return slot;
+    return {
+      ...slot,
+      player: manualPlayer,
+      ipRole: override.ipRole || slot.ipRole,
+      oopRole: override.oopRole || slot.oopRole,
+    };
+  });
+  const setPiecePlan = buildDynamicSetPieceRoutines(input.players);
+
   const auditFinances =
     decoded?.finances || hydrated?.canonicalBalanceNum !== undefined
       ? {
@@ -146,7 +161,19 @@ export function buildOfflineTacticalBriefing(
     ? buildClubGovernanceState(decoded, input.players, liveDict)
     : hydrated?.governance ?? null;
 
-  const injuredPlayers = input.players.filter((p) => p.status === 'Injured');
+  const injuredLabels: string[] =
+    decoded?.activeInjuries && decoded.activeInjuries.length > 0
+      ? decoded.activeInjuries
+          .slice(0, 5)
+          .map((i) => `${i.playerName || 'Player'} (${i.typeName})`)
+      : input.players
+          .filter((p) => p.status === 'Injured')
+          .slice(0, 5)
+          .map((p) => `${p.name} (${p.position})`);
+  const injuredCount =
+    decoded?.activeInjuries && decoded.activeInjuries.length > 0
+      ? decoded.activeInjuries.length
+      : input.players.filter((p) => p.status === 'Injured').length;
   const nextMatchBanned = input.players.filter((p) => {
     const pBans = activeSuspensions.filter(
       (b) =>
@@ -175,12 +202,15 @@ export function buildOfflineTacticalBriefing(
     )
     .sort((a, b) => (a.contractExpiryMonths ?? 99) - (b.contractExpiryMonths ?? 99));
 
-  const weakSlots = bestXi.startingXI
+  const weakSlots = effectiveStartingXi
     .filter((s) => !s.player || s.combinedFitPct < 60)
     .slice(0, 4);
 
   const sellCandidates = audit.playerAdvice.filter(
     (a) => a.verdict === 'Sell / Transfer List' || a.verdict === 'Let Expire'
+  );
+  const promoteYouth = audit.playerAdvice.filter((a) =>
+    a.tags.some((t) => t.startsWith('Promote to Backup'))
   );
   const keepCount =
     (audit.countsByVerdict['Hold'] ?? 0) +
@@ -246,8 +276,15 @@ export function buildOfflineTacticalBriefing(
   // 2. FM27 Dual-Phase IP/OOP Best XI & Weak Spots
   lines.push(`#### 2. FM27 Dual-Phase IP/OOP Best XI (${shape})`);
   lines.push(
-    `- **Projected XI Role Fit:** ${Math.round(bestXi.averageFitPct)}/100 across ${bestXi.startingXI.filter((s) => s.player).length}/11 filled slots (First-Team fit & available)`
+    `- **Projected XI Role Fit:** ${Math.round(bestXi.averageFitPct)}/100 across ${effectiveStartingXi.filter((s) => s.player).length}/11 filled slots (First-Team fit & available)`
   );
+  const xiLine = effectiveStartingXi
+    .filter((s) => s.player)
+    .map((s) => `${s.label}: ${s.player!.name} (${s.ipRole} / ${s.oopRole})`)
+    .join(' · ');
+  if (xiLine) {
+    lines.push(`- **Starting XI:** ${xiLine}`);
+  }
   if (weakSlots.length > 0) {
     lines.push('- **Positional Weak Spots:**');
     for (const slot of weakSlots) {
@@ -286,16 +323,22 @@ export function buildOfflineTacticalBriefing(
       .join('; ');
     lines.push(`- **Wage / Surplus Review:** ${topSell}`);
   }
+  if (promoteYouth.length > 0) {
+    lines.push(
+      `- **Promote to Backup (Do Not Loan Out):** ${promoteYouth
+        .slice(0, 4)
+        .map((c) => `${c.player.name} (${c.player.position}, ${c.player.ability.toFixed(1)}★)`)
+        .join(', ')}`
+    );
+  }
   lines.push('');
 
-  // 4. Availability & Next Match Prep
+  // 4. Availability, Set Pieces & Next Match Prep
   lines.push('#### 4. Availability & Next Match Prep');
   lines.push(`- **Next Fixture:** ${input.nextFixture || '--'}${nextCompetitionName ? ` (${nextCompetitionName})` : ''}`);
   lines.push(
-    `- **Injuries (${injuredPlayers.length}):** ${
-      injuredPlayers.length > 0
-        ? injuredPlayers.slice(0, 5).map((p) => `${p.name} (${p.position})`).join(', ')
-        : 'None reported'
+    `- **Injuries (${injuredCount}):** ${
+      injuredLabels.length > 0 ? injuredLabels.join(', ') : 'None reported'
     }`
   );
   lines.push(
@@ -309,6 +352,23 @@ export function buildOfflineTacticalBriefing(
         : ''
     }`
   );
+  if (setPiecePlan.aerialThreats.length > 0) {
+    const aerialStr = setPiecePlan.aerialThreats
+      .slice(0, 2)
+      .map((a) => `${a.name} (JR ${a.jumpingReach})`)
+      .join(', ');
+    const ltStr = setPiecePlan.leftFootTakers
+      .slice(0, 2)
+      .map((t) => `${t.name} (Cor ${t.corners})`)
+      .join(', ');
+    const rtStr = setPiecePlan.rightFootTakers
+      .slice(0, 2)
+      .map((t) => `${t.name} (Cor ${t.corners})`)
+      .join(', ');
+    lines.push(
+      `- **Set-Piece Specialists:** Aerial: ${aerialStr} | L-Foot: ${ltStr || '--'} | R-Foot: ${rtStr || '--'}`
+    );
+  }
   lines.push('');
 
   // 5. FM27 Tactical Effectiveness Training Focus
