@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildClubFinancesPanel,
+  buildSponsorshipPanelRows,
   classifyWageCompliance,
   computeSquadWageSubtotal,
+  filterUsableSponsorshipDeals,
   formatClubMoney,
   formatWageComplianceSummary,
   parseSignedMoneyValue,
@@ -206,6 +208,65 @@ test('buildClubFinancesPanel assembles cash, payroll, and sponsorship rows', () 
   assert.equal(panel.sponsorships[0].annualValueLabel, '£1.50M');
   assert.equal(panel.sponsorships[1].datesReordered, true);
   assert.equal(panel.sponsorships[1].annualValueLabel, '--');
+});
+
+test('buildClubFinancesPanel reads fmsave snake_case sponsorship fields', () => {
+  const panel = buildClubFinancesPanel({
+    sponsorships: [
+      {
+        club_uid: 18104898,
+        club_name: 'KVV Zelzate',
+        kind: { label: 1, raw: 1 },
+        start: '2027-05-23',
+        end: '2030-05-23',
+        total_value: 681435,
+        annual_value: 227145,
+        dates_reordered: false,
+      },
+    ] as never,
+  });
+
+  assert.equal(panel.sponsorships.length, 1);
+  assert.equal(panel.sponsorships[0].name, 'Sponsorship 1');
+  assert.equal(panel.sponsorships[0].annualValueLabel, '£227K');
+  assert.equal(panel.sponsorships[0].expires, '2030-05-23');
+  assert.equal(panel.sponsorships[0].datesReordered, false);
+});
+
+test('buildSponsorshipPanelRows is the shared UI/Analyst row formatter', () => {
+  const rows = buildSponsorshipPanelRows(
+    filterUsableSponsorshipDeals([
+      {
+        club_name: 'KVV Zelzate',
+        annual_value: 227145,
+        end: '2030-05-23',
+        dates_reordered: false,
+      },
+      {
+        club_name: 'KVV Zelzate',
+        annual_value: 2248,
+        end: '2032-08-31',
+        dates_reordered: true,
+      },
+    ]) ?? []
+  );
+
+  assert.deepEqual(rows, [
+    {
+      name: 'Sponsorship 1',
+      type: 'Sponsorship',
+      annualValueLabel: '£227K',
+      expires: '2030-05-23',
+      datesReordered: false,
+    },
+    {
+      name: 'Sponsorship 2',
+      type: 'Sponsorship',
+      annualValueLabel: '£2K',
+      expires: '2032-08-31',
+      datesReordered: true,
+    },
+  ]);
 });
 
 test('buildClubFinancesPanel degrades to explicit gaps when the save has no finances', () => {

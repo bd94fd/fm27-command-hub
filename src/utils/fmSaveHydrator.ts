@@ -1,7 +1,10 @@
 import { MatchLogEntry, PlayerRecord, StaffJobRatings, StaffRecord } from '../types/fm27';
 import {
+  buildSponsorshipPanelRows,
+  filterUsableSponsorshipDeals,
   formatClubMoney,
   formatWageComplianceSummary,
+  normalizeSponsorshipDeal,
   resolveCanonicalBalanceNum,
 } from './clubFinances';
 import {
@@ -36,6 +39,7 @@ import {
   clampAttributeValue,
   clampConditionSharpness,
 } from '../types/fmSave';
+import { normalizeJobVacancy } from './jobVacancies';
 import { normalizePlayerName } from './fmFileImporter';
 import { inferFm27Roles } from './fm27RoleMatcher';
 import { isSuspensionActiveForCompetition } from './bestXiSolver';
@@ -237,13 +241,21 @@ export function hydratePass0Payload(rawJson: string): Pass0ExtractionPayload {
     staff: Array.isArray(parsed.staff) ? parsed.staff : [],
     monthlyFinances: Array.isArray(parsed.monthlyFinances) ? parsed.monthlyFinances : [],
     facilities: parsed.facilities || {},
-    sponsorships: Array.isArray(parsed.sponsorships) ? parsed.sponsorships : [],
+    sponsorships: Array.isArray(parsed.sponsorships)
+      ? parsed.sponsorships.map((deal: SponsorshipDeal, index: number) =>
+          normalizeSponsorshipDeal(deal, index)
+        )
+      : [],
     transferWindows: parsed.transferWindows || { isOpen: false },
     competitionRules: parsed.competitionRules || {},
     selections: parsed.selections || {},
     setPieces: parsed.setPieces || {},
     training: parsed.training || {},
-    jobVacancies: Array.isArray(parsed.jobVacancies) ? parsed.jobVacancies : [],
+    jobVacancies: Array.isArray(parsed.jobVacancies)
+      ? parsed.jobVacancies.map((vacancy: JobVacancyEntry, index: number) =>
+          normalizeJobVacancy(vacancy, index)
+        )
+      : [],
     recruitmentTargets: Array.isArray(parsed.recruitmentTargets)
       ? parsed.recruitmentTargets
       : [],
@@ -1683,14 +1695,29 @@ export function hydrateAppFromDecodedFmSave(
     : '';
 
   const facilitiesLine = decoded.facilities
-    ? `Club Facilities: Training=${String(decoded.facilities.training ?? 'Unknown')}, Youth=${String(decoded.facilities.youth ?? 'Unknown')}`
+    ? `Club Facilities: Training=${String(decoded.facilities.training ?? 'Unknown')}, Youth=${String(decoded.facilities.youth ?? 'Unknown')}, Corporate=${String(decoded.facilities.corporate ?? 'Unknown')}`
     : '';
 
   const vacanciesLine =
     decoded.jobVacancies && decoded.jobVacancies.length > 0
-      ? `Active Job Vacancies (${decoded.jobVacancies.length}): ${decoded.jobVacancies
+      ? `Job Centre Vacancies (${decoded.jobVacancies.length}; feed may include filled roles): ${decoded.jobVacancies
           .slice(0, 8)
+          .map((v, index) => normalizeJobVacancy(v, index))
           .map((v) => `${v.role || 'Staff'} at ${v.club || 'Club'}`)
+          .join(', ')}`
+      : '';
+
+  const sponsorshipRows = buildSponsorshipPanelRows(
+    filterUsableSponsorshipDeals(decoded.sponsorships) ?? []
+  );
+  const sponsorshipLine =
+    sponsorshipRows.length > 0
+      ? `Sponsorship Deals (${sponsorshipRows.length}): ${sponsorshipRows
+          .slice(0, 8)
+          .map(
+            (row) =>
+              `${row.name} ${row.annualValueLabel === '--' ? '--' : `${row.annualValueLabel}/yr`}`
+          )
           .join(', ')}`
       : '';
 
@@ -1792,6 +1819,7 @@ ${decoded.leagueStanding?.nextOpponentStanding ? `Next Opponent Table Standing: 
 ${wageComplianceLabel ? `Live Finances: Balance ${balanceLabel} | Wages ${wageComplianceLabel}` : balanceLabel ? `Live Balance: ${balanceLabel}` : ''}
 ${runwayLine}
 ${facilitiesLine}
+${sponsorshipLine}
 ${rulesLine}
 ${vacanciesLine}
 
@@ -1869,6 +1897,14 @@ ANALYST MISSION FOR THIS .FM SAVE DROP:
         ? { ...decoded.stepTimingsMs }
         : {},
     analystPromptContext,
-    decodedPayload: decoded,
+    decodedPayload: {
+      ...decoded,
+      sponsorships: (decoded.sponsorships ?? []).map((deal, index) =>
+        normalizeSponsorshipDeal(deal, index)
+      ),
+      jobVacancies: (decoded.jobVacancies ?? []).map((vacancy, index) =>
+        normalizeJobVacancy(vacancy, index)
+      ),
+    },
   };
 }

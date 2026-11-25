@@ -43,6 +43,11 @@ import {
   buildLastMatchTacticBlueprint,
 } from './clubGovernanceAndTactics';
 import { loadFm27BinaryDictionary } from './fm27BinaryDictionary';
+import { normalizeJobVacancy } from './jobVacancies';
+import {
+  buildSponsorshipPanelRows,
+  filterUsableSponsorshipDeals,
+} from './clubFinances';
 import {
   buildUnifiedStaffMatrix,
   classifyStaffDepartment,
@@ -112,8 +117,24 @@ export function buildTacticalAnalystContext(data: Pass0ExtractionPayload): strin
 
   const vacanciesList =
     (data.jobVacancies || [])
+      .map((v, index) => normalizeJobVacancy(v, index))
       .map((v) => `${v.role || 'Staff'} at ${v.club || 'Unknown'}`)
       .join(', ') || 'None';
+
+  const sponsorshipRows = buildSponsorshipPanelRows(
+    filterUsableSponsorshipDeals(data.sponsorships) ?? []
+  );
+  const sponsorshipLine =
+    sponsorshipRows.length > 0
+      ? `\nSponsorship Deals: ${sponsorshipRows
+          .map(
+            (row) =>
+              `${row.name} (${row.type}) ${
+                row.annualValueLabel === '--' ? 'amount --' : `${row.annualValueLabel}/yr`
+              }${row.datesReordered ? ' [dates reordered]' : ''}`
+          )
+          .join(' | ')}`
+      : '';
 
   const suspensionBlock =
     data.activeSuspensions && data.activeSuspensions.length > 0
@@ -143,8 +164,8 @@ export function buildTacticalAnalystContext(data: Pass0ExtractionPayload): strin
 === TACTICAL ANALYST SYSTEM CONTEXT ===
 Club UID: ${data.clubUid}
 Financial Runway Status: ${runway.status} (${runway.runwayMonths} months remaining, Burn Rate: £${Math.round(runway.monthlyBurnRate).toLocaleString()}/mo)
-Facilities: Training=${String(data.facilities?.training || 'Unknown')}, Youth=${String(data.facilities?.youth || 'Unknown')}
-Active Job Vacancies: ${vacanciesList}${suspensionBlock}
+Facilities: Training=${String(data.facilities?.training || 'Unknown')}, Youth=${String(data.facilities?.youth || 'Unknown')}, Corporate=${String(data.facilities?.corporate || 'Unknown')}
+Job Centre Vacancies (feed may include filled roles): ${vacanciesList}${sponsorshipLine}${suspensionBlock}
 
 SQUAD LIST & QUALITATIVE PROFILES:
 ${squadOverview}
@@ -483,6 +504,34 @@ export function buildLiveTacticalAnalystContext(
   const decoded = hydratedFmSave?.decodedPayload;
   const summary = computeCompetitiveSummary(matches, saveDate);
   const setPiecePlan = buildDynamicSetPieceRoutines(players);
+  const sponsorshipRows = buildSponsorshipPanelRows(
+    filterUsableSponsorshipDeals(decoded?.sponsorships) ?? []
+  );
+  const sponsorshipSummary =
+    sponsorshipRows.length > 0
+      ? ` | Sponsors: ${sponsorshipRows
+          .slice(0, 4)
+          .map(
+            (row) =>
+              row.annualValueLabel === '--'
+                ? '--'
+                : `${row.annualValueLabel}/yr${
+                    row.expires !== '--' ? ` (to ${row.expires})` : ''
+                  }${row.datesReordered ? ' (dates reordered)' : ''}`
+          )
+          .join(', ')}`
+      : '';
+  const jobCentreRoles = (decoded?.jobVacancies ?? [])
+    .slice(0, 2)
+    .map((vacancy, index) => normalizeJobVacancy(vacancy, index))
+    .map((vacancy) => `${vacancy.role} @ ${vacancy.club}`)
+    .join(', ');
+  const jobCentreSummary =
+    decoded?.jobVacancies && decoded.jobVacancies.length > 0
+      ? ` | Job Centre: ${decoded.jobVacancies.length} roles${
+          jobCentreRoles ? ` (${jobCentreRoles}; may include filled)` : ''
+        }`
+      : '';
 
   const nextFixtureObj = decoded?.upcomingFixtures?.[0] || null;
   const nextCompetitionName = nextFixtureObj?.competition || null;
@@ -510,10 +559,10 @@ export function buildLiveTacticalAnalystContext(
     `Squad Pool: ${describeSquadPool(squadPool)}`,
     `Standing: ${hydratedFmSave?.leagueRecordLabel || `${summary.played}GP (${summary.wins}W-${summary.draws}D-${summary.losses}L, ${summary.points}Pts)`} · ${leagueStandingSub}`,
     `Next: ${nextFixture}${nextCompetitionName ? ` [${nextCompetitionName}]` : ''}`,
-    `Finances: Bal ${balance} | Player Wage Bill ${wageSpend}${runwayLabel}`,
+    `Finances: Bal ${balance} | Player Wage Bill ${wageSpend}${runwayLabel}${sponsorshipSummary}${jobCentreSummary}`,
     payrollIsCanonical
-      ? 'Payroll Scope: "Player Wage Bill" is FM27\'s finance-table player wage spend only. Staff wages are separate and can exceed it; never add staff wages to the player wage bill or present the player wage bill as total club payroll. Per-player wages quoted below are individual contracts, NOT a club total.'
-      : 'Payroll Scope: no player wage bill is decoded from this save. Per-player wages quoted below are individual contracts only — do NOT sum them and present the result as the club payroll or as staff wages.',
+      ? 'Payroll Scope: "Player Wage Bill" is finance-table player wages only; Staff wages are separate and can exceed it. Never present it as total club payroll; per-player wages are individual contracts.'
+      : 'Payroll Scope: no player wage bill decoded; per-player wages are individual contracts only — do not sum them as club payroll or staff wages.',
   ];
 
   if (decoded?.upcomingFixtures && decoded.upcomingFixtures.length > 0) {
@@ -1315,9 +1364,21 @@ export function buildLiveTacticalAnalystContext(
             return `${row.label}: ${row.leadStaffName} (${formatStars(row.stars)}${overload})`;
           })
         : [];
+    // Staff payroll/ratings are UI-parity data, not an optional appendix: keep this P0 so
+    // a dense squad cannot silently drop the Analyst's staff block. The compact form
+    // retains payroll, unit leads, and the Preferred Job Affinity guardrail.
+    const staffCompactText = `=== BACKROOM STAFF (${effectiveStaff.length}) ===\nWeekly Staff Payroll: ${staffPayrollLabel}${
+      departmentLeads.length > 0
+        ? `\nDepartment Leads: ${departmentLeads.join(' | ')}`
+        : ''
+    }${
+      preferredJobs.length > 0
+        ? `\n${PREFERRED_JOB_AFFINITY_CAPTION}: ${preferredJobs.slice(0, 4).join(' | ')}`
+        : ''
+    }`;
     blocks.push({
       id: 'backroom_staff',
-      tier: 'P2',
+      tier: 'P0',
       fullText: `=== BACKROOM STAFF (${effectiveStaff.length}) ===\nRoles: ${effectiveStaff
         .slice(0, 8)
         .map((st) => `${st.role}:${st.name}`)
@@ -1336,10 +1397,7 @@ export function buildLiveTacticalAnalystContext(
           ? `\n${PREFERRED_JOB_AFFINITY_CAPTION}: ${preferredJobs.join(' | ')}`
           : ''
       }`,
-      compactText:
-        expiringStaff.length > 0
-          ? `=== BACKROOM STAFF (${effectiveStaff.length}) ===\nExpiring Soon: ${expiringStaff.join(' | ')}`
-          : undefined,
+      compactText: staffCompactText,
     });
   }
 

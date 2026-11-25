@@ -12,6 +12,7 @@ import {
 import { StaffRecord } from '../types/fm27';
 import { formatContractExpiry, formatWeeklyWage } from '../utils/squadViewHelpers';
 import { JobVacancyEntry } from '../types/fmSave';
+import { normalizeJobVacancy } from '../utils/jobVacancies';
 import {
   buildUnifiedStaffMatrix,
   classifyStaffDepartment,
@@ -154,15 +155,20 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
   // rather than repeating the same meaningless pill for every club.
   const realVacancies = useMemo(
     () =>
-      (jobVacancies ?? []).filter((v) => {
-        const role = (v.role || '').trim();
-        const club = (v.club || '').trim();
-        const genericRole =
-          !role || role === '--' || role.toLowerCase() === 'staff';
-        const genericClub =
-          !club || club === '--' || club.toLowerCase() === 'club';
-        return !(genericRole && genericClub);
-      }),
+      (jobVacancies ?? [])
+        .map((v, index) => normalizeJobVacancy(v, index))
+        .filter((v) => {
+          const role = (v.role || '').trim();
+          const club = (v.club || '').trim();
+          const genericRole =
+            !role || role === '--' || role.toLowerCase() === 'staff';
+          const genericClub =
+            !club ||
+            club === '--' ||
+            club.toLowerCase() === 'club' ||
+            club.toLowerCase() === 'unknown';
+          return !(genericRole && genericClub);
+        }),
     [jobVacancies]
   );
 

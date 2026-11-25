@@ -83,7 +83,6 @@ import type { PersistedCustomSlot } from '../services/fmStorage';
 import type {
   ClubGovernanceState,
   LastMatchTacticBlueprint,
-  SponsorshipDeal,
 } from '../types/fmSave';
 import {
   ApiResponseError,
@@ -95,7 +94,12 @@ import {
 } from '../utils/apiResponse';
 import { countSquadPool, describeSquadPool } from '../utils/squadViewHelpers';
 import { recordFm27BuildRun } from '../utils/fm27BuildMemory';
-import { buildClubFinancesPanel } from '../utils/clubFinances';
+import {
+  buildClubFinancesPanel,
+  filterUsableSponsorshipDeals,
+} from '../utils/clubFinances';
+
+export { isUsableSponsorshipDeal, filterUsableSponsorshipDeals } from '../utils/clubFinances';
 
 const SaveSnapshotDiffPanel = lazy(() =>
   import('./SaveSnapshotDiffPanel').then((m) => ({
@@ -108,28 +112,6 @@ const FmUploadProgressCard = lazy(() =>
     default: m.FmUploadProgressCard,
   }))
 );
-
-const UNREADABLE_SPONSOR_DATE = new Set(['', '--', 'unknown', 'n/a', 'none']);
-
-/**
- * Keeps a sponsorship row only when it carries a real annual value or a real expiry.
- * Decoded saves often contain placeholder rows with neither, which used to render as
- * empty "Sponsorship 1 — exp --" cards.
- */
-export function isUsableSponsorshipDeal(deal: SponsorshipDeal): boolean {
-  const amount = deal.annualValue;
-  const hasAmount =
-    typeof amount === 'number' && Number.isFinite(amount) && amount > 0;
-  const expires = (deal.expires ?? '').trim().toLowerCase();
-  return hasAmount || !UNREADABLE_SPONSOR_DATE.has(expires);
-}
-
-export function filterUsableSponsorshipDeals(
-  deals: readonly SponsorshipDeal[] | null | undefined
-): SponsorshipDeal[] | null {
-  if (!deals) return null;
-  return deals.filter(isUsableSponsorshipDeal);
-}
 
 const FinancesStat: React.FC<{
   label: string;

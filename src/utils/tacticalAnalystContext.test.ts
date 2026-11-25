@@ -162,6 +162,73 @@ test('buildLiveTacticalAnalystContext includes FM27 Patch 27.1.0 physics, Playbo
   assert.ok(ctx.includes('AWAITING .FM SAVE OR EXPORT IMPORT'));
 });
 
+test('buildLiveTacticalAnalystContext includes decoded job vacancies with real roles', () => {
+  const ctx = buildLiveTacticalAnalystContext({
+    clubName: 'KVV Zelzate',
+    managerName: 'Bobby Dean',
+    saveDate: '15/09/2027',
+    nextFixture: '--',
+    leagueStandingSub: '--',
+    wageSpend: '--',
+    balance: '--',
+    players: [],
+    matches: [],
+    hydratedFmSave: {
+      decodedPayload: {
+        jobVacancies: [
+          {
+            club_name: 'Leicester City',
+            unknown: "{'role': 20, 'advertised_slot': 13}",
+          },
+        ],
+      },
+    } as never,
+  });
+
+  assert.ok(
+    ctx.includes('Job Centre: 1 roles (Assistant Manager @ Leicester City; may include filled)')
+  );
+  assert.ok(!ctx.includes('Staff at Unknown'));
+});
+
+test('buildLiveTacticalAnalystContext quotes the same sponsorship rows as the Hub panel', () => {
+  const ctx = buildLiveTacticalAnalystContext({
+    clubName: 'KVV Zelzate',
+    managerName: 'Bobby Dean',
+    saveDate: '15/09/2027',
+    nextFixture: '--',
+    leagueStandingSub: '--',
+    wageSpend: '--',
+    balance: '--',
+    players: [],
+    matches: [],
+    hydratedFmSave: {
+      decodedPayload: {
+        sponsorships: [
+          {
+            club_name: 'KVV Zelzate',
+            annual_value: 227145,
+            end: '2030-05-23',
+            dates_reordered: false,
+          },
+          {
+            club_name: 'KVV Zelzate',
+            annual_value: 2248,
+            end: '2032-08-31',
+            dates_reordered: true,
+          },
+        ],
+      },
+    } as never,
+  });
+
+  assert.ok(
+    ctx.includes(
+      'Sponsors: £227K/yr (to 2030-05-23), £2K/yr (to 2032-08-31) (dates reordered)'
+    )
+  );
+});
+
 test('buildLiveTacticalAnalystContext compiles full squad, War Room XI, set-piece rankings, and match log when populated', () => {
   const ctx = buildLiveTacticalAnalystContext({
     clubName: 'KVV Zelzate',
@@ -1077,6 +1144,81 @@ test('staff Preferred Jobs carry the specialist-only guardrail so a 1/20 scout i
     'staff block must use the shared Preferred Job Affinity caption'
   );
   assert.ok(ctx.includes('Bram Scout(Fit 1/GK 2/Set 1/Loan 3/Phy 1/Sci 2)'), 'job ratings missing');
+});
+
+test('dense live contexts keep the staff payroll, department leads, and Preferred Job guardrail', () => {
+  const manyPlayers: PlayerRecord[] = Array.from({ length: 32 }, (_, index) => ({
+    ...samplePlayers[0],
+    id: `dense-${index}`,
+    number: index + 1,
+    name: `Dense Player ${index}`,
+  }));
+
+  const ctx = buildLiveTacticalAnalystContext({
+    clubName: 'KVV Zelzate',
+    managerName: 'Bobby Dean',
+    saveDate: '15/09/2027',
+    nextFixture: '18/09/2027 vs Jong Cercle (Away)',
+    leagueStandingSub: '#3 of 16 (6 Pts)',
+    wageSpend: '£10,257 / £10,203 p/w',
+    balance: '-£749K',
+    players: manyPlayers,
+    matches: sampleMatches,
+    hydratedFmSave: null,
+    staff: [
+      {
+        id: 'st-manager',
+        name: 'Bobby Dean',
+        role: 'Manager',
+        age: 45,
+        nation: 'BEL',
+        club: 'KVV Zelzate',
+        wagePw: 313,
+        expires: '30/06/2028',
+        attributes: {
+          attacking: 17,
+          defending: 11,
+          fitness: 9,
+          goalkeeping: 4,
+          mental: 14,
+          possession: 15,
+          set_pieces: 12,
+          tactical: 16,
+          technical: 16,
+          working_with_youngsters: 15,
+          adaptability: 12,
+          authority: 15,
+          determination: 16,
+          judging_player_ability: 14,
+          judging_player_potential: 14,
+          judging_staff_ability: 12,
+          man_management: 15,
+          motivating: 16,
+          negotiating: 10,
+          physiotherapy: 3,
+          sports_science: 5,
+          tactical_knowledge: 16,
+          analysing_data: 14,
+        },
+        jobRatings: {
+          fitness_coach: 1,
+          goalkeeping_coach: 2,
+          set_piece_coach: 1,
+          loan_manager: 3,
+          physio: 1,
+          sports_scientist: 2,
+        },
+      },
+    ],
+  });
+
+  assert.ok(ctx.includes('BACKROOM STAFF'), 'staff block was dropped under budget');
+  assert.ok(ctx.includes('Weekly Staff Payroll: £313/wk'), 'staff payroll missing');
+  assert.ok(ctx.includes('Department Leads:'), 'department leads missing');
+  assert.ok(
+    ctx.includes(PREFERRED_JOB_AFFINITY_CAPTION),
+    'Preferred Job Affinity guardrail missing'
+  );
 });
 
 test('Analyst staff ratings match the Staff tab department-first headline', () => {

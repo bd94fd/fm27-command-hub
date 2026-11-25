@@ -344,6 +344,14 @@ export interface ClubFinancesPanelInput extends CanonicalClubFinancesInput {
   sponsorships?: SponsorshipDeal[] | null;
 }
 
+export interface SponsorshipPanelRow {
+  name: string;
+  type: string;
+  annualValueLabel: string;
+  expires: string;
+  datesReordered: boolean;
+}
+
 export interface ClubFinancesPanelData {
   cash: {
     balanceLabel: string;
@@ -366,18 +374,112 @@ export interface ClubFinancesPanelData {
     squadWageSubtotalLabel: string;
     squadWageMissingCount: number;
   };
-  sponsorships: Array<{
-    name: string;
-    type: string;
-    annualValueLabel: string;
-    expires: string;
-    datesReordered: boolean;
-  }>;
+  sponsorships: SponsorshipPanelRow[];
 }
 
 function formatWeeklyMoney(amount: number | null, currencySymbol: string): string {
   if (amount === null || !Number.isFinite(amount)) return '--';
   return `${currencySymbol}${Math.round(amount).toLocaleString()}/wk`;
+}
+
+const SPONSOR_PLACEHOLDERS = new Set(['', '--', 'unknown', 'n/a', 'none']);
+
+function isSponsorPlaceholder(value: unknown): boolean {
+  return typeof value !== 'string' || SPONSOR_PLACEHOLDERS.has(value.trim().toLowerCase());
+}
+
+/**
+ * fmsave emits sponsorship rows with snake_case dataclass fields (`annual_value`, `end`,
+ * `dates_reordered`), while the app reads camelCase. Normalize once at this boundary so
+ * the Hub panel and its usability filter see the same decoded deal.
+ */
+export function normalizeSponsorshipDeal(
+  deal: SponsorshipDeal,
+  index = 0
+): SponsorshipDeal {
+  const raw = deal as Record<string, unknown>;
+  const annualValue =
+    typeof deal.annualValue === 'number'
+      ? deal.annualValue
+      : typeof raw.annual_value === 'number'
+        ? raw.annual_value
+        : null;
+  const expires =
+    !isSponsorPlaceholder(deal.expires)
+      ? deal.expires
+      : typeof raw.end === 'string' && raw.end.trim()
+        ? raw.end
+        : null;
+  const start =
+    typeof deal.start === 'string'
+      ? deal.start
+      : typeof raw.start === 'string'
+        ? raw.start
+        : null;
+  const sponsor = typeof raw.sponsor === 'string' ? raw.sponsor.trim() : '';
+  const kindLabel =
+    raw.kind && typeof raw.kind === 'object'
+      ? (raw.kind as { label?: unknown }).label
+      : null;
+  const type =
+    deal.type ||
+    (typeof kindLabel === 'string' && kindLabel.trim() ? kindLabel : 'Sponsorship');
+
+  return {
+    ...deal,
+    name: deal.name || sponsor || `Sponsorship ${index + 1}`,
+    type,
+    annualValue,
+    expires,
+    start,
+    dates_reordered:
+      deal.dates_reordered === true || raw.dates_reordered === true,
+  };
+}
+
+const UNREADABLE_SPONSOR_DATE = new Set(['', '--', 'unknown', 'n/a', 'none']);
+
+/**
+ * Keeps a sponsorship row only when it carries a real annual value or a real expiry.
+ * Decoded saves often contain placeholder rows with neither, which used to render as
+ * empty "Sponsorship 1 — exp --" cards.
+ */
+export function isUsableSponsorshipDeal(deal: SponsorshipDeal): boolean {
+  const normalized = normalizeSponsorshipDeal(deal);
+  const amount = normalized.annualValue;
+  const hasAmount =
+    typeof amount === 'number' && Number.isFinite(amount) && amount > 0;
+  const expires = (normalized.expires ?? '').trim().toLowerCase();
+  return hasAmount || !UNREADABLE_SPONSOR_DATE.has(expires);
+}
+
+export function filterUsableSponsorshipDeals(
+  deals: readonly SponsorshipDeal[] | null | undefined
+): SponsorshipDeal[] | null {
+  if (!deals) return null;
+  return deals
+    .map((deal, index) => normalizeSponsorshipDeal(deal, index))
+    .filter(isUsableSponsorshipDeal);
+}
+
+/**
+ * One row shape for the Hub Finances panel and the Analyst context, so a sponsorship
+ * question gets the same names, amounts, expiry dates, and date-order warning.
+ */
+export function buildSponsorshipPanelRows(
+  deals: readonly SponsorshipDeal[] | null | undefined,
+  currencySymbol = '£'
+): SponsorshipPanelRow[] {
+  return (deals ?? []).map((deal, index) => {
+    const normalized = normalizeSponsorshipDeal(deal, index);
+    return {
+      name: normalized.name || `Sponsorship ${index + 1}`,
+      type: normalized.type || 'Sponsorship',
+      annualValueLabel: formatClubMoney(normalized.annualValue ?? null, currencySymbol),
+      expires: normalized.expires || '--',
+      datesReordered: Boolean(normalized.dates_reordered),
+    };
+  });
 }
 
 /**
@@ -428,13 +530,7 @@ export function buildClubFinancesPanel(
         ? `${currencySymbol}${canonical.wageHeadroomWeekly.toLocaleString()}/wk under cap`
         : `${currencySymbol}${Math.abs(canonical.wageHeadroomWeekly).toLocaleString()}/wk over cap`;
 
-  const sponsorships = (input.sponsorships ?? []).map((deal, index) => ({
-    name: deal.name || `Sponsorship ${index + 1}`,
-    type: deal.type || 'Sponsorship',
-    annualValueLabel: formatClubMoney(deal.annualValue ?? null, currencySymbol),
-    expires: deal.expires || '--',
-    datesReordered: Boolean(deal.dates_reordered),
-  }));
+  const sponsorships = buildSponsorshipPanelRows(input.sponsorships, currencySymbol);
 
   return {
     cash: {
