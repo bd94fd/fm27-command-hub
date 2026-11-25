@@ -16,11 +16,18 @@
 
 - Before changing code, run a skill check: name the skills that apply and invoke them. Do not silently skip a matching skill.
 - Save data, Analyst, staff, finances, or decoder work: use `fm27-data-parity`.
+- Backup, restore, fixture or re-sync work: use `fm27-save-safety`.
+- Save-load speed, memory, bundle or performance-budget work: use `fm27-performance-audit`.
 - Any screen, layout, or mobile change: use `fm27-ui-ux-review` and `web-design-guidelines`.
+- Measured UI audit for contrast, tap targets, spacing or alignment: use `ui-ux-audit`.
+- Accessibility or WCAG work: use `accessibility`.
+- Lighthouse, Core Web Vitals or page quality work: use `web-quality-audit`, `performance` and `core-web-vitals`.
+- Browser automation, screenshots or end-to-end checks: use `playwright-skill`.
 - GitHub repository, PR, issue or workflow work: use `github` and `github-actions`.
-- Security, privacy, secrets or data handling: use `security`.
+- Security, privacy, secrets or data handling: use `security` and `best-practices`.
 - Feature planning before code: use `prd`.
 - Release notes or changelogs: use `release-notes`.
+- Before pushing or merging a code change: use `fm27-release-check`.
 - User-visible behavior changes: use `qa-changes` to exercise the real app, not just the test suite.
 - Multi-file cleanup or refactor: use `code-simplifier`.
 - Explaining a technical topic to the user: use `show-me` for a small visual, and `plain-english-content` for the prose.
