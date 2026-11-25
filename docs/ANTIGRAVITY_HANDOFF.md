@@ -15,7 +15,7 @@ You are porting a verified 5-phase optimisation cycle from my AI Studio sandbox 
 
 Non-negotiable guardrails:
 1. Respect every rule in .agent/rules/ (core.md, fm-save-parser.md, mobile-overhaul.md, tactics-and-roles.md, server-and-deploy.md). Plain UK English, zero fake/seeded data, zero raw numeric CA/PA exposed anywhere, authentic FM27 dual-phase IP/OOP roles only.
-2. Preserve pinned Gemini model IDs (gemini-3.6-flash Deep / gemini-3.5-flash-lite Fast & Fallback), Dockerfile, render.yaml, the Render 512 MB RAM ceiling, Express 5 named splats, and ?v=22 cache-buster alignment.
+2. Preserve pinned Gemini model IDs (gemini-3.6-flash Deep / gemini-3.5-flash-lite Fast & Fallback), Dockerfile, render.yaml, the Render 512 MB RAM ceiling, Express 5 named splats, and ?v=23 cache-buster alignment.
 3. Exclude any sandbox-only environment artefacts (.env, .aistudio/, DISABLE_HMR overrides, local public/__pycache__/*.pyc). All Phases 1–5 source/test files in the manifest are clean and portable.
 
 Execution plan:
@@ -53,7 +53,7 @@ Comparison of the untouched Pre-Phase 1 baseline against the code-frozen Post-Ph
 | **Node / TypeScript Unit Tests (`npm test`)** | `250` pass / `0` fail (`11` suites) | **`327` pass / `0` fail (`16` suites)** | **`+77` tests (`+30.8%`)** |
 | **Python Tests (`unittest`)** | `35` ran (`24` pass, `11` skipped) | **`35` ran (`24` pass, `11` skipped)** | PASS (`0.054s`); 11 local `.fm` tests un-skip in Antigravity |
 | **TypeScript Strict Lint (`npm run lint`)** | `0` errors | **`0` errors** | PASS (`strict: true`) |
-| **Live Server Endpoints & Pinned Models** | HTTP `200` (`gemini-3.6-flash` / `gemini-3.5-flash-lite`) | **HTTP `200` on `/`, `/manifest.json`, `/api/health`, `/api/fm27/decode-status`** | Pinned models & `?v=22` cache-buster 100% intact |
+| **Live Server Endpoints & Pinned Models** | HTTP `200` (`gemini-3.6-flash` / `gemini-3.5-flash-lite`) | **HTTP `200` on `/`, `/manifest.json`, `/api/health`, `/api/fm27/decode-status`** | Pinned models & `?v=23` cache-buster 100% intact |
 
 ---
 
@@ -70,7 +70,7 @@ Every change in this blueprint was audited in Phase 6 against the following prod
 - **CORS & Custom Upload Header (`x-fm-chunk-length`) Audit (Phase 6 Verified):**
   - Inspected `server.ts` and `server/middleware/securityGuard.ts`: **FM27 Command Hub runs as a same-origin Express 5 SPA with no `cors` middleware** (`helmet` only). Same-origin browser `fetch()` sends `x-fm-chunk-length`, `x-fm-chunk-offset`, `x-fm-upload-id`, and `x-hub-access-token` natively with zero CORS preflight block — no `server.ts` edit is required.
   - **Future-proofing note:** If a reverse proxy or future `cors(...)` middleware with an explicit `allowedHeaders` list is ever placed in front of `/api/fm27/decode-save/*`, ensure `x-fm-chunk-length` is included alongside `x-fm-chunk-offset`, `x-fm-upload-id`, and `x-hub-access-token`.
-- **Cache-Buster Sync (`?v=22`):**
+- **Cache-Buster Sync (`?v=23`):**
   - Verified 100% aligned across `public/fm-save-worker.js`, `public/fm-save-mapper.py`, and `src/utils/fmSaveHydrator.ts` (`public/*.py` and `public/fm-save-worker.js` were not modified in Phases 1–6).
 - **Project Rules (`.agent/rules/`):**
   - `core.md`: Plain UK English, zero fake/seeded clubs or players, zero raw numeric CA/PA exposed in UI/JSON/AI prompts, strict TypeScript (`"strict": true`), **zero new runtime dependencies added**.
@@ -211,7 +211,7 @@ Pay special attention to these dependency edges when cherry-picking batch by bat
 
 ### Batch 4 — `.fm` Save Parser, Upload & Android Storage Hardening (2 Added, 7 Modified)
 
-- **Risk:** Low–Medium (server I/O streaming + client upload/storage resilience; `public/*.py` & `public/fm-save-worker.js` untouched so `?v=22` stays synced).
+- **Risk:** Low–Medium (server I/O streaming + client upload/storage resilience; `public/*.py` & `public/fm-save-worker.js` untouched so `?v=23` stays synced).
 - **Dependencies:** Batch 1–3 (`App.tsx` builds on Batch 3). Port `fmDecodeRoutes.ts` + `fmSaveReader.ts` together and `fmStorage.ts` + `persistedStateRecency.ts` together.
 - **Verification after Batch 4:** `npm test` → `320` pass (`+8` stress/hardening tests including RSS/heap logs); `npm run build` → `0` warnings.
 
@@ -298,7 +298,7 @@ Pay special attention to these dependency edges when cherry-picking batch by bat
 - **Dist, Tree & Live Endpoint Hygiene Re-Verified:**
   - `PYC_IN_DIST = 0`, `DEV_RUNTIME_HITS = 0`, `STRAY_FILES = 0`.
   - Live HTTP `200` on `/`, `/manifest.json`, `/api/health` (`gemini-3.6-flash` / `gemini-3.5-flash-lite`), and `/api/fm27/decode-status`.
-  - `?v=22` cache-buster 100% aligned across `public/fm-save-worker.js`, `public/fm-save-mapper.py`, and `src/utils/fmSaveHydrator.ts`.
+  - `?v=23` cache-buster 100% aligned across `public/fm-save-worker.js`, `public/fm-save-mapper.py`, and `src/utils/fmSaveHydrator.ts`.
   - Zero raw CA/PA fields in UI components, context builder, offline briefing, or AI routes.
   - All `74/74` manifest + guardrail files verified present on disk.
 
@@ -353,5 +353,5 @@ Run against a live `GEMINI_API_KEY` on a real hydrated 50+ player `.fm` save:
   - Verify zero raw numeric CA/PA fields appear anywhere in hydrated JSON, UI, or Analyst prompts.
 - [ ] **Physical Android Chrome Installed PWA — Signal-Drop Pause/Resume:** Start uploading a real `50–150 MB` `.fm` save in the installed Android PWA; toggle Airplane Mode mid-upload → confirm clean auto-pause; restore signal → confirm `GET /upload/:id/status` reconciles `receivedRanges` and resumes without re-uploading completed chunks.
 - [ ] **Physical Android Chrome — Screen Wake Lock:** Lock/switch away from Chrome mid-upload (and during a Matchday Companion session), then return → confirm Screen Wake Lock re-acquires cleanly on `visibilitychange`.
-- [ ] **Physical Android Chrome — 1-Tap Pyodide `WORKERFS` Fallback:** Tap *"Decode on phone instead"* mid-upload (and test when server decode is disabled) → confirm partial server upload is `DELETE`d cleanly, `?v=22` worker & mapper load fresh without stale SW cache, and local Pyodide `WORKERFS` completes decode cleanly with Fast Sync enabled on mobile.
+- [ ] **Physical Android Chrome — 1-Tap Pyodide `WORKERFS` Fallback:** Tap *"Decode on phone instead"* mid-upload (and test when server decode is disabled) → confirm partial server upload is `DELETE`d cleanly, `?v=23` worker & mapper load fresh without stale SW cache, and local Pyodide `WORKERFS` completes decode cleanly with Fast Sync enabled on mobile.
 - [ ] **Physical Android Chrome — Google Drive Picker & Reload Persistence:** Pick a `.fm` save directly from Google Drive (`content://`) → verify the 5s stall tip appears if Drive download stalls; once hydrated, close and reopen the installed PWA to confirm instant cold-start shell restoration + full IndexedDB hydration (all 500 scout targets & full squad intact, zero `QuotaExceededError` crashes).

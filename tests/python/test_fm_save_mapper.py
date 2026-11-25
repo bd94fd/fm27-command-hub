@@ -24,7 +24,7 @@ def _install_stub_fmsave() -> types.ModuleType:
     if "fmsave" in sys.modules:
         return sys.modules["fmsave"]
     mod = types.ModuleType("fmsave")
-    mod.__version__ = "0.14.3"
+    mod.__version__ = "0.14.4"
     mod.open = lambda *_a, **_kw: None  # type: ignore[attr-defined]
     sys.modules["fmsave"] = mod
     return mod
@@ -484,6 +484,223 @@ class TestFmSaveMapperHardening(unittest.TestCase):
         self.assertIn("Consistent Performer", first["scoutBadges"])
         self.assertNotIn("ca", first)
         self.assertNotIn("pa", first)
+
+
+class TestFmsave0144Integration(unittest.TestCase):
+    """fmsave 0.14.4 moved the private staff surface and added new export fields."""
+
+    def test_to_json_safe_serializes_slotted_dataclass_fields(self) -> None:
+        import dataclasses
+
+        @dataclasses.dataclass(frozen=True, slots=True)
+        class _Sponsorship:
+            club_uid: int
+            kind: object
+            start: str
+            dates_reordered: bool = False
+
+        @dataclasses.dataclass(frozen=True, slots=True)
+        class _Kind:
+            label: str
+            raw: int
+
+        out = mapper._to_json_safe(_Sponsorship(1, _Kind("MAIN_KIT", 1), "2026-07-01", True))
+        self.assertEqual(
+            out,
+            {
+                "club_uid": 1,
+                "kind": "Main Kit",
+                "start": "2026-07-01",
+                "dates_reordered": True,
+            },
+        )
+
+    def test_staff_secondary_fields_reads_labels_and_ratings(self) -> None:
+        import dataclasses
+
+        @dataclasses.dataclass(frozen=True, slots=True)
+        class _JobRatings:
+            fitness_coach: int | None
+            goalkeeping_coach: int | None
+            set_piece_coach: int | None
+            loan_manager: int | None
+            physio: int | None
+            sports_scientist: int | None
+
+        class _Job:
+            label = "SET_PIECE_COACH"
+
+        class _Row:
+            secondary_job = _Job()
+            job_ratings = _JobRatings(15, None, 19, 8, None, 12)
+
+        secondary, ratings = mapper._staff_secondary_fields(_Row())
+        self.assertEqual(secondary, "Set Piece Coach")
+        self.assertEqual(
+            ratings,
+            {"fitness_coach": 15, "set_piece_coach": 19, "loan_manager": 8, "sports_scientist": 12},
+        )
+
+        class _OlderRow:
+            pass
+
+        self.assertEqual(mapper._staff_secondary_fields(_OlderRow()), (None, None))
+
+    def test_staff_payload_carries_secondary_role_and_job_ratings(self) -> None:
+        import dataclasses
+
+        @dataclasses.dataclass(frozen=True, slots=True)
+        class _JobRatings:
+            fitness_coach: int | None = 17
+            goalkeeping_coach: int | None = None
+            set_piece_coach: int | None = None
+            loan_manager: int | None = None
+            physio: int | None = None
+            sports_scientist: int | None = None
+
+        class _Job:
+            label = "LOAN_MANAGER"
+
+        class _StaffRow:
+            uid = 502
+            name = "Loan Manager"
+            role = "Coach"
+            secondary_job = _Job()
+            job_ratings = _JobRatings()
+            club_uid = 77
+            age = 39
+            nationality = "BEL"
+            attributes = None
+
+        class _StaffSave:
+            def staff(self) -> list[object]:
+                return [_StaffRow()]
+
+            def clubs(self) -> list[object]:
+                return []
+
+        mapper._STATE["save"] = _StaffSave()
+        mapper._STATE["club_uid"] = 77
+        mapper._STATE["club_name"] = "KVV Zelzate"
+        mapper._STATE["game_date"] = date(2027, 2, 15)
+
+        mapper.step_3_2_staff()
+        row = mapper._STATE["staff_out"][0]
+        self.assertEqual(row["secondaryRole"], "Loan Manager")
+        self.assertEqual(row["jobRatings"], {"fitness_coach": 17})
+
+    def test_person_object_kwargs_follow_the_installed_dataclass(self) -> None:
+        import dataclasses
+
+        @dataclasses.dataclass
+        class _Older:
+            header: int
+            uid: int
+            unique_id: int | None
+            is_human_manager: bool
+            person: object
+            block: object
+
+        @dataclasses.dataclass
+        class _Newer(_Older):
+            end: int = 0
+            job_ratings: object = None
+
+        values = dict(
+            header=1,
+            uid=2,
+            unique_id=3,
+            is_human_manager=False,
+            person="p",
+            block="b",
+            end=99,
+            job_ratings="ratings",
+        )
+        self.assertEqual(
+            set(mapper._staff_person_object_kwargs(_Older, **values)),
+            {"header", "uid", "unique_id", "is_human_manager", "person", "block"},
+        )
+        self.assertEqual(
+            set(mapper._staff_person_object_kwargs(_Newer, **values)),
+            {"header", "uid", "unique_id", "is_human_manager", "person", "block", "end", "job_ratings"},
+        )
+
+    def test_build_rows_tail_is_passed_only_when_accepted(self) -> None:
+        calls: list[tuple[object, ...]] = []
+
+        def _older(rows, objects, club_index, roles):  # noqa: ANN001
+            calls.append((rows, objects, club_index, roles))
+            return ("old",)
+
+        def _newer(rows, objects, club_index, roles, game_db, contract_decoder, staff_layout):  # noqa: ANN001
+            calls.append((rows, objects, club_index, roles, game_db, contract_decoder, staff_layout))
+            return ("new",)
+
+        args = ("rows", "objects", "ci", "roles")
+        tail = ("db", "decoder", "layout")
+        self.assertEqual(mapper._call_staff_build_rows(_older, *args, *tail), ["old"])
+        self.assertEqual(mapper._call_staff_build_rows(_newer, *args, *tail), ["new"])
+        self.assertEqual(len(calls[0]), 4)
+        self.assertEqual(calls[1][4:], tail)
+
+    def test_staff_job_ratings_delegates_to_upstream_reader(self) -> None:
+        import types
+
+        class _Contracts:
+            wage_offset = 10
+            selector_offset = 30
+            tag = b"\x01\x02"
+
+        class _Layouts:
+            contracts = _Contracts()
+
+        class _StaffLayout:
+            offer_marker_offset = 2
+
+        captured: dict[str, object] = {}
+
+        def _fake_reader(game_db, prefix_start, person_start, layouts):  # noqa: ANN001
+            captured.update(
+                game_db=game_db,
+                prefix_start=prefix_start,
+                person_start=person_start,
+                layouts=layouts,
+            )
+            return "ratings"
+
+        fake_staff = types.ModuleType("fmsave.readers.staff")
+        fake_staff._read_job_ratings = _fake_reader  # type: ignore[attr-defined]
+        fake_readers = types.ModuleType("fmsave.readers")
+        saved = {
+            name: sys.modules.get(name)
+            for name in ("fmsave.readers", "fmsave.readers.staff")
+        }
+        sys.modules["fmsave.readers"] = fake_readers
+        sys.modules["fmsave.readers.staff"] = fake_staff
+        try:
+            class _Decoder:
+                last_block_start = 400
+
+            layouts = _Layouts()
+            result = mapper._staff_job_ratings(
+                b"game_db", 100, 500, _Decoder(), layouts, _StaffLayout(), False
+            )
+            self.assertEqual(result, "ratings")
+            self.assertEqual(captured["prefix_start"], 500 + 34)
+            self.assertEqual(captured["person_start"], 400)
+            self.assertIs(captured["layouts"], layouts)
+
+            self.assertIsNone(
+                mapper._staff_job_ratings(
+                    b"game_db", 100, 500, _Decoder(), layouts, _StaffLayout(), True
+                )
+            )
+        finally:
+            for name, module in saved.items():
+                if module is None:
+                    sys.modules.pop(name, None)
+                else:
+                    sys.modules[name] = module
 
 
 if __name__ == "__main__":

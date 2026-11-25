@@ -20,6 +20,7 @@ import {
 } from './fmSaveHydrator';
 import { buildSquadTransferAudit } from './transferAudit';
 import { evaluateInGameShortlist } from './shortlistAdviceEngine';
+import { getPreferredJobRatings } from './staffRatings';
 import {
   CustomSlotOverride,
   FormationPresetKey,
@@ -1212,6 +1213,8 @@ export function buildLiveTacticalAnalystContext(
           id: String(s.uid),
           name: s.name,
           role: s.role,
+          secondaryRole: s.secondaryRole ?? null,
+          jobRatings: s.jobRatings ?? null,
           age: s.age ?? 40,
           nation: s.nation ?? '',
           wagePw: s.wagePw ?? 0,
@@ -1245,7 +1248,14 @@ export function buildLiveTacticalAnalystContext(
       tier: 'P2',
       fullText: `=== BACKROOM STAFF (${effectiveStaff.length}) ===\nRoles: ${effectiveStaff
         .slice(0, 8)
-        .map((st) => `${st.role}:${st.name}`)
+        .map((st) => {
+          const secondary = st.secondaryRole ? `+${st.secondaryRole}` : '';
+          const preferred = getPreferredJobRatings(st.jobRatings)
+            .slice(0, 2)
+            .map((job) => `${job.label} ${job.value}/20`)
+            .join(', ');
+          return `${st.role}${secondary}:${st.name}${preferred ? ` [Preferred: ${preferred}]` : ''}`;
+        })
         .join(' | ')}${expiringStaff.length > 0 ? `\nExpiring Soon: ${expiringStaff.join(' | ')}` : ''}`,
       compactText:
         expiringStaff.length > 0

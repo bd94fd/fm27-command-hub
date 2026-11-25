@@ -165,5 +165,31 @@ class TestFmsavePrivateSurface(unittest.TestCase):
         self.assertIn("range code", doc)
 
 
+    def test_staff_fast_path_tolerates_patch_level_signature_moves(self) -> None:
+        """`_PersonObject` and `_build_rows` gained fields/args in 0.14.4; the mapper must
+        build both from the installed signature instead of a fixed call shape."""
+        self.assertIn("_staff_person_object_kwargs", self.source)
+        self.assertIn("_call_staff_build_rows", self.source)
+        self.assertNotIn(
+            "list(_build_rows(rows_by_club_and_person, objects, ci, roles))",
+            self.source,
+        )
+
+    def test_private_staff_signatures_match_the_mapper_contract(self) -> None:
+        import dataclasses
+        import inspect
+
+        from fmsave.readers.staff import _PersonObject, _build_rows
+
+        names = {f.name for f in dataclasses.fields(_PersonObject)}
+        self.assertLessEqual(
+            {"header", "uid", "unique_id", "is_human_manager", "person", "block"}, names
+        )
+        params = list(inspect.signature(_build_rows).parameters)
+        self.assertEqual(
+            params[:4], ["rows_by_club_and_person", "objects", "club_index", "roles"]
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

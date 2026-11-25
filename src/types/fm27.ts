@@ -147,11 +147,22 @@ export interface StaffAttributes {
   analysing_data: number;
 }
 
+export interface StaffPreferredJobRatings {
+  fitness_coach?: number | null;
+  goalkeeping_coach?: number | null;
+  set_piece_coach?: number | null;
+  loan_manager?: number | null;
+  physio?: number | null;
+  sports_scientist?: number | null;
+}
+
 export interface StaffRecord {
   id: string;
   uid?: number;
   name: string;
   role: string;
+  secondaryRole?: string | null;
+  jobRatings?: StaffPreferredJobRatings | null;
   age: number;
   nation: string;
   club: string;

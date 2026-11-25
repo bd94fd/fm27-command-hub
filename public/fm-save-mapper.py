@@ -1,6 +1,6 @@
 """FM27 Command Hub — Pass 0 Deep .fm Save Extractor (Groups 1–4).
 
-Runs inside Pyodide 3.14 (with native Python 3.14 zstd support) + fmsave==0.14.3
+Runs inside Pyodide 3.14 (with native Python 3.14 zstd support) + fmsave==0.14.4
 inside a browser Web Worker or via CLI.
 - Mounts save directly with zero-copy WORKERFS (no memory copying).
 - Holds ONE shared game_db section borrow across Steps 2-3 (including Group 4
@@ -21,6 +21,7 @@ inside a browser Web Worker or via CLI.
 
 from __future__ import annotations
 
+import dataclasses
 import gc
 import inspect
 import json
@@ -47,7 +48,7 @@ try:
 except Exception:
     _layout_patcher = None  # type: ignore[assignment]
 
-MAPPER_CACHE_BUSTER = "?v=22"
+MAPPER_CACHE_BUSTER = "?v=23"
 
 # Detect native server Python vs browser Pyodide (emscripten) for realistic budgets
 _IS_PYODIDE = sys.platform == "emscripten"
@@ -667,6 +668,16 @@ def _to_json_safe(obj: Any, depth: int = 0) -> Any:
         return out
     if isinstance(obj, (list, tuple, set)):
         return [_to_json_safe(v, depth + 1) for v in list(obj)[:40]]
+    # fmsave records are slotted dataclasses with no `__dict__`; without this branch they
+    # stringify to their repr and every nested field (e.g. Sponsorship.dates_reordered) is lost.
+    if (
+        dataclasses.is_dataclass(obj)
+        and not isinstance(obj, type)
+        and not hasattr(obj, "label")
+    ):
+        return _to_json_safe(
+            {f.name: getattr(obj, f.name) for f in dataclasses.fields(obj)}, depth + 1
+        )
     if hasattr(obj, "__dict__") and not hasattr(obj, "value"):
         return _to_json_safe(
             {k: v for k, v in vars(obj).items() if not k.startswith("_")},
@@ -3882,6 +3893,98 @@ def _extract_club_finances_fast(save: Any, club_uid: int | None) -> list[Any] | 
         return None
 
 
+def _staff_secondary_fields(s: Any) -> tuple[str | None, dict[str, int] | None]:
+    """Secondary job label and FM27 Preferred Jobs ratings (fmsave 0.14.4+ only)."""
+    secondary = _label(getattr(s, "secondary_job", None))
+    ratings: dict[str, int] = {}
+    raw = getattr(s, "job_ratings", None)
+    if raw is not None:
+        try:
+            for field in dataclasses.fields(raw):
+                value = getattr(raw, field.name, None)
+                if isinstance(value, int):
+                    ratings[field.name] = value
+        except TypeError:
+            ratings = {}
+    return secondary, ratings or None
+
+
+def _staff_person_object_kwargs(cls: Any, **values: Any) -> dict[str, Any]:
+    """Keyword args accepted by fmsave's private `_PersonObject`.
+
+    fmsave 0.14.4 added `end` and `job_ratings` to that dataclass, so build the call from
+    its own field list instead of a fixed literal that breaks on either side of the change.
+    """
+    try:
+        names = {f.name for f in dataclasses.fields(cls)}
+    except TypeError:
+        return {
+            k: v
+            for k, v in values.items()
+            if k in ("header", "uid", "unique_id", "is_human_manager", "person", "block")
+        }
+    return {k: v for k, v in values.items() if k in names}
+
+
+def _staff_job_ratings(
+    game_db: bytes,
+    header: int,
+    tag_offset: int | None,
+    person_decoder: Any,
+    layouts: Any,
+    staff_layout: Any,
+    is_human_manager: bool,
+) -> Any:
+    """FM27 Preferred Jobs ratings through fmsave 0.14.4's framed-prefix reader (None before)."""
+    if is_human_manager:
+        return None
+    try:
+        from fmsave.readers.staff import _read_job_ratings
+    except Exception:
+        return None
+    contracts = layouts.contracts
+    contract_fields_end = max(
+        contracts.wage_offset + 4,
+        contracts.selector_offset
+        + (staff_layout.offer_marker_offset or 0)
+        + len(contracts.tag),
+    )
+    prefix_start = header if tag_offset is None else tag_offset + contract_fields_end
+    try:
+        return _read_job_ratings(
+            game_db, prefix_start, getattr(person_decoder, "last_block_start", None), layouts
+        )
+    except Exception:
+        return None
+
+
+def _call_staff_build_rows(
+    build_rows: Any,
+    rows: Any,
+    objects: Any,
+    club_index: Any,
+    roles: Any,
+    game_db: bytes,
+    contract_decoder: Any,
+    staff_layout: Any,
+) -> list[Any]:
+    """Call `_build_rows` with whatever tail fmsave's signature takes.
+
+    0.14.4 added `game_db`, `contract_decoder` and `staff_layout` so it can resolve the
+    optional secondary job; older releases take only the first four arguments.
+    """
+    try:
+        params = set(inspect.signature(build_rows).parameters)
+    except (TypeError, ValueError):
+        params = set()
+    tail = (
+        (game_db, contract_decoder, staff_layout)
+        if {"game_db", "contract_decoder", "staff_layout"} <= params
+        else ()
+    )
+    return list(build_rows(rows, objects, club_index, roles, *tail))
+
+
 def _extract_club_staff_fast(save: Any, club_uid: int | None) -> list[Any] | None:
     """Club-scoped direct staff reader: reads ONLY our club's staff_lists + team_id-targeted
     contracts & no-contract roles + human manager, decoding ~40 staff instead of 80,000+."""
@@ -4157,19 +4260,44 @@ def _extract_club_staff_fast(save: Any, club_uid: int | None) -> list[Any] | Non
                 if person is None and is_human_manager and human_floor is not None:
                     person = person_decoder.decode(game_db, window_start, window_end, human_floor)
                 objects[person_id] = _PersonObject(
-                    header=header,
-                    uid=uid,
-                    unique_id=unique_id,
-                    is_human_manager=is_human_manager,
-                    person=person,
-                    block=block,
+                    **_staff_person_object_kwargs(
+                        _PersonObject,
+                        header=header,
+                        uid=uid,
+                        unique_id=unique_id,
+                        is_human_manager=is_human_manager,
+                        person=person,
+                        block=block,
+                        end=min(
+                            closing_offset if closing_offset is not None else len(game_db),
+                            next_header if next_header is not None else len(game_db),
+                        ),
+                        job_ratings=_staff_job_ratings(
+                            game_db,
+                            header,
+                            tag_offset,
+                            person_decoder,
+                            layouts,
+                            staff_layout,
+                            is_human_manager,
+                        ),
+                    )
                 )
 
             rows_by_club_and_person = {
                 k: v for k, v in rows_by_club_and_person.items() if k[1] in objects
             }
             roles = _row_roles(game_db, rows_by_club_and_person, no_contract_roles, layouts)
-            return list(_build_rows(rows_by_club_and_person, objects, ci, roles))
+            return _call_staff_build_rows(
+                _build_rows,
+                rows_by_club_and_person,
+                objects,
+                ci,
+                roles,
+                game_db,
+                contract_decoder,
+                staff_layout,
+            )
     except Exception as exc:
         _record_fast_fallback("staff", exc)
         return None
@@ -4359,10 +4487,13 @@ def step_3_2_staff() -> str:
                 s_tac = _clamp_attr(_first_attr(s_attrs, ("tactical", "coaching_tactical")) if s_attrs else _first_attr(s, ("coaching_tactical", "tactical")), 10)
                 s_jpa = _clamp_attr(_first_attr(s_attrs, ("judging_player_ability", "judging_ability")) if s_attrs else _first_attr(s, ("judging_player_ability", "judging_ability")), 10)
                 s_jpp = _clamp_attr(_first_attr(s_attrs, ("judging_player_potential", "judging_potential")) if s_attrs else _first_attr(s, ("judging_player_potential", "judging_potential")), 10)
+                s_secondary, s_job_ratings = _staff_secondary_fields(s)
                 staff_out.append({
                     "uid": s_uid,
                     "name": str(s_name).strip(),
                     "role": _resolve_staff_role_label(s, is_human_mgr),
+                    "secondaryRole": s_secondary,
+                    "jobRatings": s_job_ratings,
                     "age": _int(getattr(s, "age", None), 35),
                     "nation": _resolve_player_nationality(s, staff_nation_lookup, default="N/A"),
                     "club": club_name,
@@ -9144,10 +9275,13 @@ def extract_pass_0_data(save_instance: Any, target_club_uid: int | None = None) 
                             s_attrs = scaled
                     except Exception:
                         pass
+                s_secondary, s_job_ratings = _staff_secondary_fields(s)
                 club_staff.append({
                     "uid": _int(_get_attr(s, "uid", 0), 0) or 0,
                     "name": _get_attr(s, "name", "Staff Member"),
                     "role": _label(_get_attr(s, "role", "Coach")) or "Coach",
+                    "secondaryRole": s_secondary,
+                    "jobRatings": s_job_ratings,
                     "coachingDefending": _clamp_attr(_first_attr(s_attrs, ("defending", "coaching_defending")) if s_attrs else _get_attr(s, "coaching_defending", 10), 10),
                     "coachingAttacking": _clamp_attr(_first_attr(s_attrs, ("attacking", "coaching_attacking")) if s_attrs else _get_attr(s, "coaching_attacking", 10), 10),
                     "coachingTactical": _clamp_attr(_first_attr(s_attrs, ("tactical", "coaching_tactical")) if s_attrs else _get_attr(s, "coaching_tactical", 10), 10),

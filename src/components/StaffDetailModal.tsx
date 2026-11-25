@@ -5,6 +5,7 @@ import {
   calculateAllStaffRoleRatings,
   formatStars,
   getBestStaffRoleRating,
+  getPreferredJobRatings,
   STAFF_ATTRIBUTE_LABELS,
 } from '../utils/staffRatings';
 import { MobileSheetFrame } from './MobileSheetFrame';
@@ -58,6 +59,7 @@ export const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
 
   const allRatings = calculateAllStaffRoleRatings(staff.attributes);
   const best = getBestStaffRoleRating(staff);
+  const preferredJobs = getPreferredJobRatings(staff.jobRatings);
 
   return (
     <MobileSheetFrame
@@ -80,6 +82,11 @@ export const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
               <span className="rounded-md bg-slate-800 px-2 py-0.5 text-xs font-medium text-sky-300">
                 {staff.role}
               </span>
+              {staff.secondaryRole && (
+                <span className="rounded-md bg-slate-800/70 px-2 py-0.5 text-xs font-medium text-slate-300">
+                  + {staff.secondaryRole}
+                </span>
+              )}
               <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-xs font-semibold text-amber-300">
                 <Star className="h-3 w-3" />
                 Best: {best.label} ({formatStars(best.stars)})
@@ -154,6 +161,25 @@ export const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
               </div>
             </div>
           ))}
+
+          {preferredJobs.length > 0 && (
+            <div className="space-y-1.5 pt-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                FM27 Preferred Jobs
+              </h4>
+              {preferredJobs.map((job) => (
+                <div
+                  key={job.key}
+                  className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950/60 px-2.5 py-1.5 text-xs"
+                >
+                  <span className="text-slate-300">{job.label}</span>
+                  <span className={`font-mono ${attrColor(job.value)}`}>
+                    {job.value}/20
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </MobileSheetFrame>

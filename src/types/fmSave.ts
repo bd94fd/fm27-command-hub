@@ -559,6 +559,8 @@ export interface SponsorshipDeal {
   type?: string;
   annualValue?: number | null;
   expires?: string | null;
+  /** fmsave 0.14.4: the reader swapped an ended FM27 contract's stored dates. */
+  dates_reordered?: boolean;
   [key: string]: unknown;
 }
 

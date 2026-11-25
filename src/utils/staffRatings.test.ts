@@ -6,6 +6,7 @@ import {
   evaluateBackroomDepartmentEfficiency,
   formatStars,
   getBestStaffRoleRating,
+  getPreferredJobRatings,
   isStaffContractExpiringSoon,
 } from './staffRatings';
 
@@ -92,6 +93,29 @@ test('isStaffContractExpiringSoon parses UK DD/MM/YYYY and ISO YYYY-MM-DD dates 
   assert.equal(isStaffContractExpiringSoon('30/06/2029', '15/02/2028'), false);
   assert.equal(isStaffContractExpiringSoon('2028-06-30', '2028-02-15'), true);
   assert.equal(isStaffContractExpiringSoon('2029-06-30', '2028-02-15'), false);
+});
+
+test('getPreferredJobRatings returns known FM27 Preferred Jobs highest-first and skips unknowns', () => {
+  const ratings = getPreferredJobRatings({
+    fitness_coach: 14,
+    goalkeeping_coach: null,
+    set_piece_coach: 19,
+    loan_manager: 8,
+    physio: undefined,
+    sports_scientist: 11,
+  });
+
+  assert.deepEqual(
+    ratings.map((entry) => [entry.key, entry.label, entry.value]),
+    [
+      ['set_piece_coach', 'Set Piece Coach', 19],
+      ['fitness_coach', 'Fitness Coach', 14],
+      ['sports_scientist', 'Sports Scientist', 11],
+      ['loan_manager', 'Loan Manager', 8],
+    ]
+  );
+  assert.deepEqual(getPreferredJobRatings(null), []);
+  assert.deepEqual(getPreferredJobRatings(undefined), []);
 });
 
 

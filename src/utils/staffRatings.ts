@@ -1,4 +1,4 @@
-import { StaffAttributes, StaffRecord } from '../types/fm27';
+import { StaffAttributes, StaffPreferredJobRatings, StaffRecord } from '../types/fm27';
 
 export interface StaffRoleRating {
   key: string;
@@ -33,6 +33,32 @@ export const STAFF_ATTRIBUTE_LABELS: Record<keyof StaffAttributes, string> = {
   tactical_knowledge: 'Tactical Knowledge',
   analysing_data: 'Analysing Data',
 };
+
+export const PREFERRED_JOB_LABELS: Record<keyof StaffPreferredJobRatings, string> = {
+  fitness_coach: 'Fitness Coach',
+  goalkeeping_coach: 'Goalkeeping Coach',
+  set_piece_coach: 'Set Piece Coach',
+  loan_manager: 'Loan Manager',
+  physio: 'Physio',
+  sports_scientist: 'Sports Scientist',
+};
+
+export interface PreferredJobRating {
+  key: keyof StaffPreferredJobRatings;
+  label: string;
+  value: number;
+}
+
+/** FM27 Preferred Jobs ratings (0–20), highest first; empty when the save did not carry them. */
+export function getPreferredJobRatings(
+  jobRatings: StaffPreferredJobRatings | null | undefined
+): PreferredJobRating[] {
+  if (!jobRatings) return [];
+  return (Object.keys(PREFERRED_JOB_LABELS) as Array<keyof StaffPreferredJobRatings>)
+    .map((key) => ({ key, label: PREFERRED_JOB_LABELS[key], value: jobRatings[key] }))
+    .filter((entry): entry is PreferredJobRating => typeof entry.value === 'number')
+    .sort((a, b) => b.value - a.value);
+}
 
 /**
  * FM27 coaching star weighting (Determination + Level of Discipline + Motivating weighted 2x each).

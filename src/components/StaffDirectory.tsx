@@ -70,7 +70,8 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
         if (!q) return true;
         return (
           s.name.toLowerCase().includes(q) ||
-          s.role.toLowerCase().includes(q)
+          s.role.toLowerCase().includes(q) ||
+          (s.secondaryRole ?? '').toLowerCase().includes(q)
         );
       })
       .sort(
@@ -378,7 +379,8 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                           {s.name}
                         </div>
                         <div className="text-xs text-sky-300 truncate">
-                          {s.role}{' '}
+                          {s.role}
+                          {s.secondaryRole ? ` + ${s.secondaryRole}` : ''}{' '}
                           <span className="text-[10px] uppercase text-slate-500">
                             · {dept}
                           </span>
@@ -458,6 +460,11 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           <div className="text-sky-300">{s.role}</div>
+                          {s.secondaryRole && (
+                            <div className="text-[11px] text-slate-400">
+                              + {s.secondaryRole}
+                            </div>
+                          )}
                           <div className="text-[10px] uppercase tracking-wider text-slate-500">
                             {dept}
                           </div>

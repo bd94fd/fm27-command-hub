@@ -48,7 +48,7 @@ import {
   deriveFootballSeasonLabel,
 } from './matchScopeHelpers';
 
-export const WORKER_CACHE_BUSTER = '?v=22';
+export const WORKER_CACHE_BUSTER = '?v=23';
 
 export function resolveSquadUnit(
   teamSlot?: number | null
@@ -405,6 +405,8 @@ export interface DecodedFmSaveStaff {
   uid: number;
   name: string;
   role: string;
+  secondaryRole?: string | null;
+  jobRatings?: StaffRecord['jobRatings'] | null;
   age?: number;
   nation?: string;
   club?: string;
@@ -1523,6 +1525,8 @@ export function hydrateAppFromDecodedFmSave(
     uid: s.uid,
     name: s.name || 'Club Staff',
     role: s.role || 'Coach',
+    secondaryRole: s.secondaryRole ?? null,
+    jobRatings: s.jobRatings ?? null,
     age: Number(s.age) || 35,
     nation: s.nation || 'FM',
     club: s.club || decoded.meta.clubName || '',

@@ -4,6 +4,7 @@ import {
   applyAnalystPlayerUpdates,
   buildConversationTranscript,
   buildLiveTacticalAnalystContext,
+  LiveAnalystStateInput,
 } from './tacticalAnalystContext';
 import { PlayerRecord, MatchLogEntry } from '../types/fm27';
 
@@ -949,3 +950,47 @@ test('validatePreFlightAnalystPayload flags missing or null required fields and 
 
 
 
+test('live analyst context lists FM27 secondary jobs and Preferred Jobs ratings for backroom staff', () => {
+  const ctx = buildLiveTacticalAnalystContext({
+    clubName: 'KVV Zelzate',
+    managerName: 'Bobby Dean',
+    saveDate: '05/10/2027',
+    nextFixture: 'KSC Lokeren (H)',
+    leagueStandingSub: '3rd',
+    wageSpend: '£12k/wk',
+    balance: '£240k',
+    players: [samplePlayers[0]],
+    matches: [],
+    staff: [
+      {
+        id: 'staff-1',
+        name: 'Bram Peeters',
+        role: 'Coach',
+        secondaryRole: 'Set Piece Coach',
+        jobRatings: { fitness_coach: 14, set_piece_coach: 19 },
+        age: 44,
+        nation: 'BEL',
+        club: 'KVV Zelzate',
+        wagePw: 300,
+        expires: '30/06/2028',
+      },
+      {
+        id: 'staff-2',
+        name: 'Legacy Coach',
+        role: 'Scout',
+        age: 38,
+        nation: 'BEL',
+        club: 'KVV Zelzate',
+        wagePw: 220,
+        expires: '30/06/2029',
+      },
+    ],
+  } as unknown as LiveAnalystStateInput);
+
+  assert.match(
+    ctx,
+    /Coach\+Set Piece Coach:Bram Peeters \[Preferred: Set Piece Coach 19\/20, Fitness Coach 14\/20\]/
+  );
+  assert.match(ctx, /Scout:Legacy Coach/);
+  assert.doesNotMatch(ctx, /Scout\+/);
+});
