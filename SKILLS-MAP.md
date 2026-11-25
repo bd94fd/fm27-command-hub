@@ -30,6 +30,7 @@ This map links each roadmap item to the skills that should be used. Every skill 
 | `best-practices` | Covers security, modern APIs and code quality patterns. | R38, R39, R44 |
 | `seo` | Covers crawlability, metadata and structured data. | R37, R43 |
 | `ui-ux-audit` | Optional measured rubric for contrast, tap targets, spacing, alignment, motion and focus. It is not the primary audit engine. | R25, R26, R27, R30 |
+| `impeccable` | Design critique, audit, polish, layout, adapt, onboarding and anti-slop detection. Use with a pinned engine and no live mode. | R21, R22, R23, R24, R26, R27, R35, R37 |
 
 ### Custom project skills
 
@@ -74,13 +75,13 @@ Existing skills that also support the roadmap:
 | 18 | R18 Bundle and startup audit | `fm27-performance-audit` | `code-simplifier`, `playwright-skill` | None. |
 | 19 | R19 Large-list and chart rendering | `fm27-ui-ux-review` | `web-design-guidelines`, `code-simplifier` | None. |
 | 20 | R20 PWA cache freshness and offline update | `fm27-performance-audit` | `qa-changes`, `fm27-data-parity` | None. |
-| 21 | R21 Navigation and information architecture review | `fm27-ui-ux-review` | `web-design-guidelines`, `show-me` | None. |
-| 22 | R22 First-run onboarding | `fm27-ui-ux-review` | `web-design-guidelines`, `plain-english-content` | None. |
-| 23 | R23 Loading, empty and error states | `fm27-ui-ux-review` | `qa-changes` | None. |
-| 24 | R24 Search, filters and saved views | `fm27-ui-ux-review` | `code-simplifier` | None. |
+| 21 | R21 Navigation and information architecture review | `fm27-ui-ux-review` | `impeccable`, `web-design-guidelines`, `show-me` | None. |
+| 22 | R22 First-run onboarding | `fm27-ui-ux-review` | `impeccable`, `web-design-guidelines`, `plain-english-content` | None. |
+| 23 | R23 Loading, empty and error states | `fm27-ui-ux-review` | `impeccable`, `qa-changes` | None. |
+| 24 | R24 Search, filters and saved views | `fm27-ui-ux-review` | `impeccable`, `code-simplifier` | None. |
 | 25 | R25 Mobile touch, contrast and focus audit | `fm27-ui-ux-review` | `accessibility`, `ui-ux-audit` | None. |
-| 26 | R26 Design system and visual consistency | `fm27-ui-ux-review` | `web-design-guidelines`, `ui-ux-audit` | None. |
-| 27 | R27 Motion, feedback and undo | `fm27-ui-ux-review` | `ui-ux-audit`, `web-design-guidelines` | None. |
+| 26 | R26 Design system and visual consistency | `fm27-ui-ux-review` | `impeccable`, `web-design-guidelines`, `ui-ux-audit` | None. |
+| 27 | R27 Motion, feedback and undo | `fm27-ui-ux-review` | `impeccable`, `ui-ux-audit`, `web-design-guidelines` | None. |
 | 28 | R28 Browser and device matrix | `playwright-skill` | `qa-changes`, `fm27-ui-ux-review` | None. |
 | 29 | R29 End-to-end smoke tests | `playwright-skill` | `qa-changes`, `github-actions` | None. |
 | 30 | R30 Accessibility audit | `accessibility` | `web-quality-audit`, `ui-ux-audit`, `qa-changes` | None. |
@@ -88,9 +89,9 @@ Existing skills that also support the roadmap:
 | 32 | R32 Security and privacy review | `security` | `github`, `qa-changes` | None. |
 | 33 | R33 Finance forecasting and what-if | `fm27-data-parity` | `prd`, `show-me` | None. |
 | 34 | R34 Contract expiry alert centre | `fm27-data-parity` | `prd`, `fm27-ui-ux-review` | None. |
-| 35 | R35 Staff organisation chart | `fm27-ui-ux-review` | `fm27-data-parity`, `show-me` | None. |
+| 35 | R35 Staff organisation chart | `fm27-ui-ux-review` | `fm27-data-parity`, `impeccable`, `show-me` | None. |
 | 36 | R36 Save comparison and what-if scenarios | `fm27-data-parity` | `prd`, `fm27-ui-ux-review` | None. |
-| 37 | R37 Share and export reports | `fm27-data-parity` | `security`, `fm27-ui-ux-review` | None. |
+| 37 | R37 Share and export reports | `fm27-data-parity` | `security`, `fm27-ui-ux-review`, `impeccable` | None. |
 | 38 | R38 Dead code and duplicate utility audit | `code-simplifier` | `security`, `best-practices` | None. |
 | 39 | R39 Type safety and runtime validation | `security` | `code-simplifier`, `best-practices` | None. |
 | 40 | R40 Large component split | `code-simplifier` | `fm27-ui-ux-review` | None. |
@@ -113,6 +114,7 @@ Existing skills that also support the roadmap:
 | `best-practices` | https://github.com/addyosmani/web-quality-skills | MIT |
 | `seo` | https://github.com/addyosmani/web-quality-skills | MIT |
 | `ui-ux-audit` | https://github.com/imYChaudhary22/ui-ux-audit | MIT |
+| `impeccable` | https://github.com/pbakaus/impeccable | Apache-2.0 |
 
 The `ui-ux-audit` text was edited to use Playwright or the available browser tools. The measurement script is unchanged.
 
@@ -121,11 +123,14 @@ The `ui-ux-audit` text was edited to use Playwright or the available browser too
 Use them in this order:
 
 1. `fm27-ui-ux-review` for the project's mobile layout, touch, overlay and flow rules.
-2. `accessibility` for WCAG 2.2, keyboard, screen reader and focus checks.
-3. `web-quality-audit` for Lighthouse evidence and page quality.
-4. `ui-ux-audit` as an optional measured rubric for contrast, spacing and alignment.
+2. `impeccable` for design critique, audit, polish, layout, adapt and anti-slop checks. Read `.agents/skills/impeccable/FM27-SETUP.md` first.
+3. `accessibility` for WCAG 2.2, keyboard, screen reader and focus checks.
+4. `web-quality-audit` for Lighthouse evidence and page quality.
+5. `ui-ux-audit` as an optional measured rubric for contrast, spacing and alignment.
 
 `ui-ux-audit` is useful, but its source repository is small. Keep it as a supporting rubric, not the only audit. For automated checks, use Playwright with axe-core or Pa11y when those tools are added.
+
+Impeccable is pinned to skill v4.11.0 and engine 0.1.30. The launcher verifies the engine SHA-256 against `scripts/engine-checksums.txt`. Do not run its live mode or installer hooks without explicit approval.
 
 ## Skills deliberately not added
 
@@ -133,7 +138,6 @@ Use them in this order:
 - `iterate` — it requires draft pull requests, which conflicts with the project ready-PR and auto-merge rules.
 - `frontend-design` — it would compete with the FM27 design language and existing UI rules.
 - `datadog`, `vercel` and `docker` — the project does not use these as primary workflows today. Add them only when that changes.
-- `pbakaus/impeccable` — very capable and popular, but it downloads a binary on first use and is much heavier than this project needs.
 - `plugin87/ux-ui-agent-skills` — strong design QA and accessibility gates, but they need its full kit installed; the copied skill alone runs in guidance-only mode.
 - `nextlevelbuilder/ui-ux-pro-max-skill` — a design-generation skill, not an audit skill.
 - `Nutlope/hallmark` — an anti-AI-slop design skill, not a measured audit.
