@@ -2355,7 +2355,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
               <label
                 htmlFor="fm-fast-sync-composer-toggle"
-                className="inline-flex items-center gap-1.5 cursor-pointer select-none hover:text-slate-300"
+                className="inline-flex min-h-[36px] items-center gap-1.5 cursor-pointer select-none hover:text-slate-300"
               >
                 <input
                   id="fm-fast-sync-composer-toggle"
