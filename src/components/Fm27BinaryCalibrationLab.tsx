@@ -59,10 +59,14 @@ import {
 import { listSaveHistoryPoints, SaveHistoryPoint } from '../services/saveCache';
 import { decodeFmSaveFile } from '../services/fmSaveReader';
 import {
+  buildFm27AgentHandoff,
   buildPatchDiagnosticReport,
+  describeFm27HandoffVerdict,
   describePatchLayout,
+  formatFm27AgentHandoff,
   isNewFm27BuildDetected,
 } from '../utils/fm27PatchDiagnostics';
+import { getFm27BuildProfile } from '../utils/fm27BuildMemory';
 
 export type CalibrationLabTab = 'roles' | 'instructions' | 'diff' | 'governance';
 
@@ -188,7 +192,20 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
   const forensics = decodedPayload?.binaryForensics || null;
   const mappingCounts = useMemo(() => countDictionaryMappings(dict), [dict]);
   const patchCompat = decodedPayload?.meta?.patchCompatibility ?? null;
-  const newBuildDetected = isNewFm27BuildDetected(patchCompat);
+  const buildProfile = useMemo(() => {
+    if (!decodedPayload) return null;
+    return getFm27BuildProfile(
+      decodedPayload.meta.build,
+      decodedPayload.meta.fmsaveVersion
+    );
+  }, [decodedPayload]);
+  const priorBuildRuns = Math.max(0, (buildProfile?.seenCount ?? 0) - 1);
+  const newBuildDetected =
+    isNewFm27BuildDetected(patchCompat) && priorBuildRuns === 0;
+  const handoffVerdict = useMemo(
+    () => describeFm27HandoffVerdict(patchCompat, buildProfile),
+    [patchCompat, buildProfile]
+  );
 
   const notifySaved = (nextDict: Fm27BinaryDictionary, msg: string) => {
     setDict(nextDict);
@@ -200,6 +217,14 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
     copyTextToClipboard(buildPatchDiagnosticReport(decodedPayload))
       .then(() => setStatusNotice('Patch diagnostic report copied to clipboard.'))
       .catch(() => setStatusNotice('Could not copy the patch diagnostic report automatically.'));
+  };
+
+  const handleCopyAgentHandoff = () => {
+    copyTextToClipboard(
+      formatFm27AgentHandoff(buildFm27AgentHandoff(decodedPayload, buildProfile))
+    )
+      .then(() => setStatusNotice('Agent handoff packet copied to clipboard.'))
+      .catch(() => setStatusNotice('Could not copy the agent handoff packet automatically.'));
   };
 
   // Current active save as a CompactBinaryDiffSnapshot
@@ -1426,20 +1451,46 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                       through a runtime fallback.
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleCopyPatchDiagnosticReport}
-                    disabled={!decodedPayload}
-                    className="min-h-[32px] inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-2.5 text-[11px] font-medium text-slate-200 hover:border-sky-500/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <Copy className="h-3.5 w-3.5 text-sky-400" /> Copy Patch Diagnostic Report
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCopyPatchDiagnosticReport}
+                      disabled={!decodedPayload}
+                      className="min-h-[32px] inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-2.5 text-[11px] font-medium text-slate-200 hover:border-sky-500/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <Copy className="h-3.5 w-3.5 text-sky-400" /> Copy Patch Diagnostic Report
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCopyAgentHandoff}
+                      disabled={!decodedPayload}
+                      title="Copy a Markdown packet to paste into an agent that can investigate the decode failure"
+                      className="min-h-[36px] inline-flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 text-[11px] font-medium text-amber-100 hover:border-amber-400/60 hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <Copy className="h-3.5 w-3.5 text-amber-300" /> Copy Agent Handoff
+                    </button>
+                  </div>
                 </div>
                 {patchCompat ? (
                   <>
-                    <p className="text-xs font-mono tabular-nums text-slate-300">
+                    <p className="text-xs text-slate-300">
+                      <span className="font-semibold text-slate-100">
+                        {handoffVerdict.headline}.
+                      </span>{' '}
+                      {handoffVerdict.detail}
+                    </p>
+                    <p className="text-xs font-mono tabular-nums text-slate-400">
                       {patchCompat.summary}
                     </p>
+                    {buildProfile && (
+                      <p className="text-[11px] text-slate-400">
+                        {priorBuildRuns > 0
+                          ? `Seen ${buildProfile.seenCount} times`
+                          : 'First run for this build'}
+                        {' · '}first {buildProfile.firstSeenIso.slice(0, 10)}
+                        {' · '}last {buildProfile.lastSeenIso.slice(0, 10)}
+                      </p>
+                    )}
                     <div className="flex flex-wrap gap-1.5">
                       {patchCompat.sections.map((section) => (
                         <span

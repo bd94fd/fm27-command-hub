@@ -31,6 +31,7 @@ import {
   usePwaLifecycle,
 } from './hooks/usePwaLifecycle';
 import { useMobileKeyboard } from './hooks/useMobileKeyboard';
+import { useSheetHistory, useTabHistory } from './hooks/useHistoryNavigation';
 import { clearAllChatHistory } from './services/chatStorage';
 import { PwaStatusBanners } from './components/PwaStatusBanners';
 import { MobileBottomNav } from './components/MobileBottomNav';
@@ -157,7 +158,10 @@ type ActiveTab =
 const DEFAULT_ACTIVE_SHAPE: FormationPresetKey = '4-3-3 DM Wide';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('sync');
+  const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
+    if (typeof window === 'undefined') return 'sync';
+    return (parsePwaLaunchParams(window.location.search).initialTab as ActiveTab | null) ?? 'sync';
+  });
   const [matches, setMatches] = useState<MatchLogEntry[]>(
     COMPETITIVE_MATCH_LOGS
   );
@@ -310,24 +314,13 @@ export default function App() {
     }, 3200);
   }, []);
 
-  // Handle Android home-screen shortcut URLs (?tab=tactics, ?tab=squad, ?action=sync)
+  // Handle Android home-screen shortcut URLs (?tab=tactics, ?tab=squad, ?action=sync).
+  // The active tab is seeded from the launch URL above, so this only handles the toast.
   useEffect(() => {
     if (typeof window === 'undefined' || !window.location.search) return;
     const launch = parsePwaLaunchParams(window.location.search);
-    if (!launch.initialTab && !launch.shouldPromptSync && !launch.isFileOpenAction) {
-      return;
-    }
-    if (launch.initialTab) {
-      setActiveTab(launch.initialTab);
-    }
     if (launch.shouldPromptSync) {
       showGlobalToast('Ready to sync — tap Import .fm to pick your save file.');
-    }
-    try {
-      const cleanUrl = `${window.location.pathname}${window.location.hash}`;
-      window.history.replaceState(null, '', cleanUrl);
-    } catch {
-      // ignore history errors in restricted frames
     }
   }, [showGlobalToast]);
 
@@ -372,17 +365,42 @@ export default function App() {
     }
   }, []);
 
+  const { pushTab: pushTabHistory, replaceTab: replaceTabHistory } =
+    useTabHistory<ActiveTab>(activeTab, (tab) => {
+      setActiveTab(tab);
+      handleScrollToTop();
+    });
+
   const handleSelectTab = (tab: ActiveTab) => {
+    const nextTab: ActiveTab = tab === 'setpieces' ? 'tactics' : tab;
+    const hadOpenOverlay =
+      showMoreSheet ||
+      showCommandPalette ||
+      showKnowledgeBase ||
+      calibrationLabOpen ||
+      Boolean(selectedPlayer) ||
+      Boolean(selectedStaff);
     setShowMoreSheet(false);
     if (tab === 'setpieces') {
       setTacticsSubTab('setpieces');
-      setActiveTab('tactics');
-    } else {
-      if (tab === 'tactics') setTacticsSubTab('pitch');
-      setActiveTab(tab);
+    } else if (tab === 'tactics') {
+      setTacticsSubTab('pitch');
     }
+    // A tab chosen while an overlay is open replaces that overlay's history entry
+    // instead of stacking a stale entry behind the new tab.
+    if (hadOpenOverlay) {
+      replaceTabHistory(nextTab);
+    } else {
+      pushTabHistory(nextTab);
+    }
+    setActiveTab(nextTab);
     handleScrollToTop();
   };
+
+  // These three overlays do not use MobileSheetFrame, so App owns their Back entries.
+  useSheetHistory(showMoreSheet, () => setShowMoreSheet(false));
+  useSheetHistory(showKnowledgeBase, () => setShowKnowledgeBase(false));
+  useSheetHistory(calibrationLabOpen, () => setCalibrationLabOpen(false));
 
   const handleToggleTrackTarget = (target: RecruitmentTarget): boolean => {
     const { targets: next, tracked } = toggleTrackedScoutTarget(

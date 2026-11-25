@@ -93,6 +93,7 @@ import {
   toApiResponseError,
 } from '../utils/apiResponse';
 import { countSquadPool, describeSquadPool } from '../utils/squadViewHelpers';
+import { recordFm27BuildRun } from '../utils/fm27BuildMemory';
 import {
   buildClubFinancesPanel,
   filterUsableSponsorshipDeals,
@@ -1251,6 +1252,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           const hydrated = onApplyDecodedFmSave
             ? await onApplyDecodedFmSave(decoded, { isInterimCheckpoint: false })
             : undefined;
+          recordFm27BuildRun(decoded);
           onBackgroundSyncStatusChange?.(null);
 
           // Wait for snapshot persistence & Save-to-Save Journey diff BEFORE dispatching to Analyst

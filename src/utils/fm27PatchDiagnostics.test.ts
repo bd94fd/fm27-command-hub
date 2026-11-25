@@ -3,8 +3,11 @@ import test from 'node:test';
 import { execFileSync } from 'node:child_process';
 import type { PatchCompatibilitySummary } from '../types/fmSave';
 import {
+  buildFm27AgentHandoff,
   buildPatchDiagnosticReport,
+  describeFm27HandoffVerdict,
   describePatchLayout,
+  formatFm27AgentHandoff,
   isNewFm27BuildDetected,
 } from './fm27PatchDiagnostics';
 
@@ -162,4 +165,152 @@ print(json.dumps({
   assert.equal(players?.status, 'clean');
   assert.equal(fixtures?.status, 'unavailable');
   assert.match(parsed.new.summary, /27\.2\.0\+2506012/);
+});
+
+
+test('describeFm27HandoffVerdict turns raw section statuses into a plain verdict', () => {
+  assert.match(
+    describeFm27HandoffVerdict(
+      makeCompat({
+        isUntestedBuild: false,
+        layoutStatus: 'known',
+        sections: [
+          { id: 'players', label: 'Squad', status: 'clean', fallbacks: 0 },
+          { id: 'staff', label: 'Staff', status: 'patched', fallbacks: 0 },
+        ],
+        advisory: null,
+      })
+    ).headline,
+    /Decoded normally/
+  );
+
+  assert.match(
+    describeFm27HandoffVerdict(
+      makeCompat({
+        sections: [
+          { id: 'tactics_set_piece', label: 'Tactics', status: 'fallback', fallbacks: 2 },
+          { id: 'players', label: 'Squad', status: 'clean', fallbacks: 0 },
+        ],
+      })
+    ).headline,
+    /Decoded with fallbacks/
+  );
+
+  assert.match(
+    describeFm27HandoffVerdict(
+      makeCompat({
+        sections: [
+          { id: 'tactics_set_piece', label: 'Tactics', status: 'fallback', fallbacks: 1 },
+          { id: 'selections', label: 'Selections', status: 'unavailable', fallbacks: 0 },
+        ],
+      })
+    ).headline,
+    /Decoded with gaps/
+  );
+
+  assert.equal(
+    describeFm27HandoffVerdict(
+      makeCompat({ sections: [], isUntestedBuild: true, layoutStatus: 'dynamic' })
+    ).needsAttention,
+    false
+  );
+  assert.equal(describeFm27HandoffVerdict(null).needsAttention, true);
+});
+
+test('buildFm27AgentHandoff produces a compact packet an agent can act on', () => {
+  const handoff = buildFm27AgentHandoff({
+    meta: {
+      build: '27.2.0+2506012',
+      game: 'FM27',
+      saveName: 'Bobby Dean - Zelzate.fm',
+      gameDateDmy: '14/03/2027',
+      clubName: 'KVV Zelzate',
+      managerName: 'Bobby Dean',
+      fmsaveVersion: '0.14.4',
+      importScope: 'managed_club_only',
+      fastSync: false,
+      patchCompatibility: makeCompat(),
+    },
+    extractionManifest: {
+      totalPlayers: 24,
+      staff: 6,
+      playedMatches: 8,
+      upcomingFixtures: 5,
+      tactics: 2,
+      playerMatchStats: 24,
+      playerSeasonHistory: 18,
+      warningsCount: 2,
+    },
+    warnings: ['tactics: fallback'],
+    extractionWarnings: ['tactics: fallback', 'selections: ReaderError'],
+  });
+
+  assert.equal(handoff.schema, 'fm27-build-handoff/v1');
+  assert.equal(handoff.build, '27.2.0+2506012');
+  assert.equal(handoff.counts.fallback, 1);
+  assert.equal(handoff.counts.unavailable, 1);
+  assert.equal(handoff.needsAttention.length, 2);
+  assert.equal(handoff.extraction.totalPlayers, 24);
+  assert.deepEqual(handoff.readerNotes, ['tactics: fallback', 'selections: ReaderError']);
+  assert.ok(handoff.nextProbes.some((probe) => /taker-marker/.test(probe)));
+  assert.ok(handoff.nextProbes.some((probe) => /selection block/.test(probe)));
+
+  const markdown = formatFm27AgentHandoff(handoff);
+  assert.match(markdown, /# FM27 build handoff — 27\.2\.0\+2506012/);
+  assert.match(markdown, /## Sections needing attention/);
+  assert.match(markdown, /Tactics & set-piece takers: fallback/);
+  assert.match(markdown, /Selections: unavailable/);
+  assert.match(markdown, /totalPlayers: 24/);
+  assert.match(markdown, /selections: ReaderError/);
+  assert.match(markdown, /## Agent instruction/);
+  assert.match(markdown, /Do not guess decoded values/);
+  assert.ok(markdown.split('\n').length <= 60, 'handoff should stay compact');
+});
+
+test('buildFm27AgentHandoff degrades without crashing when diagnostics are missing', () => {
+  const handoff = buildFm27AgentHandoff(null);
+  assert.equal(handoff.build, 'unknown');
+  assert.equal(handoff.layout, null);
+  assert.equal(handoff.verdict.headline, 'No build diagnostics available');
+  assert.match(formatFm27AgentHandoff(handoff), /No build diagnostics available/);
+});
+
+
+test('handoff includes build history and says when a build was seen before', () => {
+  const memory = {
+    seenCount: 3,
+    firstSeenIso: '2027-01-02T10:00:00.000Z',
+    lastSeenIso: '2027-02-03T11:00:00.000Z',
+    layoutBase: '27.1',
+    fallbackCount: 1,
+    unavailableCount: 0,
+  };
+
+  const verdict = describeFm27HandoffVerdict(
+    makeCompat({
+      sections: [
+        { id: 'tactics_set_piece', label: 'Tactics', status: 'fallback', fallbacks: 2 },
+      ],
+    }),
+    memory
+  );
+  assert.match(verdict.headline, /Seen before — still has fallbacks/);
+  assert.match(verdict.detail, /2 previous imports/);
+
+  const markdown = formatFm27AgentHandoff(
+    buildFm27AgentHandoff(
+      {
+        meta: {
+          build: '27.2.0+2506012',
+          fmsaveVersion: '0.14.4',
+          patchCompatibility: makeCompat(),
+        },
+      },
+      memory
+    )
+  );
+  assert.match(markdown, /## Build history/);
+  assert.match(markdown, /Seen 3 times/);
+  assert.match(markdown, /Last layout base: 27\.1/);
+  assert.match(markdown, /This build was seen on 2 previous imports/);
 });

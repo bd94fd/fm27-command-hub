@@ -5,6 +5,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
+import { useSheetHistory } from '../hooks/useHistoryNavigation';
 
 /**
  * Focusable descendants used by the sheet's focus trap. Disabled controls and
@@ -122,6 +123,7 @@ export const MobileSheetFrame: React.FC<MobileSheetFrameProps> = ({
   children,
 }) => {
   const surfaceRef = useRef<HTMLDivElement | null>(null);
+  useSheetHistory(isOpen, onClose);
   // Latest callbacks in refs so a parent re-render cannot re-run the focus/scroll effect
   // and steal focus back to the first control mid-interaction.
   const onCloseRef = useRef(onClose);
