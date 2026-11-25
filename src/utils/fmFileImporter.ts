@@ -1,5 +1,6 @@
 import { PlayerRecord } from '../types/fm27';
 import { inferFm27Roles } from './fm27RoleMatcher';
+import { MISSING_VALUE } from './squadViewHelpers';
 
 export interface FmBinaryInspectionResult {
   fileName: string;
@@ -669,12 +670,13 @@ export function mergeParsedPlayersIntoSquad(
         intPer90: p.intPer90 || 0,
         tckPct: p.tckPct || 0,
         personality: p.personality || 'Balanced',
-        age: p.age || 22,
+        age: typeof p.age === 'number' && Number.isFinite(p.age) && p.age > 0 ? p.age : NaN,
         ability: p.ability || 3.0,
         potential: p.potential || 3.5,
-        expires: p.expires || 'N/A',
-        nation: p.nation || 'FM',
-        wagePw: p.wagePw || 0,
+        expires: p.expires || MISSING_VALUE,
+        nation: p.nation || MISSING_VALUE,
+        wagePw:
+          typeof p.wagePw === 'number' && Number.isFinite(p.wagePw) ? p.wagePw : NaN,
         status: assignedStatus,
         attributes: finalAttrs,
         ipRole,

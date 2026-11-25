@@ -312,7 +312,7 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
 
   const handleLoadComparisonFmSave = async (file: File) => {
     setDiffError(null);
-    setDiffLoadingMsg(`Reading ${file.name} locally (fast binary scan — active career untouched)...`);
+    setDiffLoadingMsg(`Reading ${file.name} locally (fast binary scan — active career untouched)…`);
     try {
       const parsed = await decodeFmSaveFile(
         file,

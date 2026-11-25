@@ -221,7 +221,7 @@ export const MatchLogCard: React.FC<MatchLogCardProps> = ({
                   onClick={onRequestAiDebrief}
                   className="min-h-[44px] sm:min-h-[36px] rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 px-3 py-1.5 text-xs sm:text-[11px] font-semibold text-white transition cursor-pointer whitespace-nowrap"
                 >
-                  {isLoadingAi ? 'Analyzing...' : 'Deep AI Debrief'}
+                  {isLoadingAi ? 'Analyzing…' : 'Deep AI Debrief'}
                 </button>
               )}
             </div>

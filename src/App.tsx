@@ -36,6 +36,7 @@ import { clearAllChatHistory } from './services/chatStorage';
 import { PwaStatusBanners } from './components/PwaStatusBanners';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { computeCompetitiveSummary } from './utils/fmSyncEngine';
+import { formatNation } from './utils/squadViewHelpers';
 import type {
   ParsedPlayerDelta,
   SquadMergeResult,
@@ -430,7 +431,7 @@ export default function App() {
       uid: player.uid || 0,
       name: player.name,
       age: player.age,
-      nationality: player.nation || 'Unknown',
+      nationality: formatNation(player.nation),
       primaryPosition: player.position,
       isFreeAgent:
         player.wagePw === 0 ||
@@ -1036,7 +1037,7 @@ export default function App() {
     }
     if (isInterim) {
       showGlobalToast(
-        `${decoded.meta.clubName || 'Club'} squad, staff & tactics ready — finishing fixtures & stats in background...`
+        `${decoded.meta.clubName || 'Club'} squad, staff & tactics ready — finishing fixtures & stats in background…`
       );
     } else {
       setBackgroundSyncStatus(null);

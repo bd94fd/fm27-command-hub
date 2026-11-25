@@ -10,6 +10,7 @@ import { evaluateSquadPlayerCard } from '../../utils/cardIntelligenceEngine';
 import { resolveCompleteCardColumns } from '../../utils/mobilePitchLayout';
 import {
   EnrichedSquadRow,
+  formatAge,
   formatCompactCurrency,
   SQUAD_COLUMNS,
   SquadColumnId,
@@ -88,7 +89,7 @@ export const SquadCardsList: React.FC<SquadCardsListProps> = ({
                   </span>
                   {p.age > 0 && (
                     <span className="text-[11px] font-mono text-slate-400">
-                      {p.age}y
+                      {formatAge(p.age)}y
                     </span>
                   )}
                 </div>

@@ -11,6 +11,7 @@ import { evaluateScoutTargetCard } from '../../utils/cardIntelligenceEngine';
 import type { ClubDnaPillarWeights } from '../../utils/clubDnaEngine';
 import { archetypeBadgeClass } from './recruitmentBadges';
 import type { EnrichedScoutTargetWithDna } from './recruitmentTypes';
+import { formatAge, formatNation } from '../../utils/squadViewHelpers';
 
 type ScoutTargetCardItem = Pick<
   EnrichedScoutTargetWithDna,
@@ -100,7 +101,7 @@ export const ScoutTargetCard: React.FC<ScoutTargetCardProps> = ({
             {target.name}
           </h3>
           <p className="text-[11px] text-slate-400 truncate">
-            {target.age} yrs · {target.nationality} ·{' '}
+            {formatAge(target.age)} yrs · {formatNation(target.nationality)} ·{' '}
             <span className="font-mono font-semibold text-emerald-300">
               {target.primaryPosition}
             </span>

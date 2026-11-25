@@ -5,6 +5,7 @@
  * Plan 1: IndexedDB Save Cache & Multi-Snapshot Diffing (CA Growth + Youth Intake Radar).
  * Inspired by aitester2025tgl-collab/fm27-explorer (MIT) and mavarobli/FMSuperScout (MIT).
  */
+import { formatAge } from '../utils/squadViewHelpers';
 
 import { MatchLogEntry, PlayerRecord } from '../types/fm27';
 import type { CompactBinaryDiffSnapshot } from '../utils/fm27BinaryDictionary';
@@ -426,7 +427,10 @@ export function diffSaveHistoryPoints(
 
     const prevExpires = (prev.expires || '--').trim();
     const currExpires = (curr.expires || '--').trim();
-    const wageDeltaPw = curr.wagePw - prev.wagePw;
+    const wageDeltaPw =
+      Number.isFinite(curr.wagePw) && Number.isFinite(prev.wagePw)
+        ? curr.wagePw - prev.wagePw
+        : 0;
     if (prevExpires !== currExpires || wageDeltaPw !== 0) {
       contractChanges.push({
         uid: curr.uid,
@@ -1112,8 +1116,8 @@ export function buildDeepJourneyReport(
       starDelta: f.abilityDelta,
     })),
     topProductionDeltas: playerStatDeltas.slice(0, 8),
-    arrivals: baseDiff.newgens.slice(0, 6).map((n) => `${n.name} (${n.position}, ${n.age}y)`),
-    departures: baseDiff.departed.slice(0, 6).map((d) => `${d.name} (${d.position}, ${d.age}y)`),
+    arrivals: baseDiff.newgens.slice(0, 6).map((n) => `${n.name} (${n.position}, ${formatAge(n.age)}y)`),
+    departures: baseDiff.departed.slice(0, 6).map((d) => `${d.name} (${d.position}, ${formatAge(d.age)}y)`),
     contractChanges: baseDiff.contractChanges.slice(0, 6),
   };
 

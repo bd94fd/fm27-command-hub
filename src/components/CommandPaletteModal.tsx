@@ -25,6 +25,7 @@ import {
   FormationPresetKey,
 } from '../utils/bestXiSolver';
 import { MobileSheetFrame } from './MobileSheetFrame';
+import { formatAge } from '../utils/squadViewHelpers';
 
 export type CommandTabId =
   | 'sync'
@@ -207,7 +208,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
         id: `player-${p.id}`,
         category: 'Squad Player',
         title: p.name,
-        subtitle: `${p.position} · Age ${p.age} · IP: ${p.ipRole} / OOP: ${p.oopRole}`,
+        subtitle: `${p.position} · Age ${formatAge(p.age)} · IP: ${p.ipRole} / OOP: ${p.oopRole}`,
         badge: `${p.ability.toFixed(1)}★`,
         onSelect: () => {
           onSelectPlayer(p);
@@ -221,7 +222,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
         id: `staff-${s.id}`,
         category: 'Staff',
         title: s.name,
-        subtitle: `${s.role} · ${s.club} · Age ${s.age}`,
+        subtitle: `${s.role} · ${s.club} · Age ${formatAge(s.age)}`,
         badge: s.nation,
         onSelect: () => {
           onSelectStaff(s);
@@ -341,7 +342,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Jump to player, staff, tab, formation, or scout target..."
+            placeholder="Jump to player, staff, tab, formation, or scout target…"
             className="w-full min-h-[44px] sm:min-h-[38px] bg-transparent text-base sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
           />
           <button

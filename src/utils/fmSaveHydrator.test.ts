@@ -13,6 +13,7 @@ import {
   formatStepTimingLabel,
 } from './fmSaveHydrator';
 import { computeWeeklyStaffPayroll, formatWeeklyStaffPayroll } from './staffRatings';
+import { MISSING_VALUE } from './squadViewHelpers';
 import {
   FmImportScope,
   HydratedSquadPlayer,
@@ -405,8 +406,8 @@ test('hydrateAppFromDecodedFmSave handles non-contract players with null expires
     (p) => p.name === 'Lucas Youth Trialist'
   );
   assert.ok(trialist);
-  assert.equal(trialist.expires, 'N/A');
-  assert.equal(trialist.expires.slice(-4), 'N/A');
+  assert.equal(trialist.expires, MISSING_VALUE);
+  assert.equal(trialist.expires.slice(-2), MISSING_VALUE);
 });
 
 test('fmsave 0.14.4 staff jobs thread through while 0.14.3 payloads stay valid', () => {
@@ -3384,3 +3385,91 @@ test('hydrateAppFromDecodedFmSave preserves marketValueState, marketValueCapped,
 });
 
 
+
+
+test('missing player/staff age, wage, nation and name stay explicit gaps (no 20/35/0/FM/N-A)', () => {
+  const payload: DecodedFmSavePayload = {
+    meta: {
+      game: 'FM27',
+      build: '27.1.0',
+      knownBuild: true,
+      saveName: 'gaps.fm',
+      gameDateIso: '2027-09-19',
+      gameDateDmy: '19/09/2027',
+      clubUid: 1,
+      clubName: 'Gap FC',
+      managerName: 'Manager',
+      balance: null,
+      fmsaveVersion: '0.14.4',
+    },
+    players: [
+      {
+        uid: 9001,
+        name: '',
+        position: 'MC',
+        age: null,
+        condition: null,
+        sharpness: null,
+        wagePw: null,
+        expires: null,
+        onLoan: false,
+        teamSlot: 0,
+        apps: '0',
+        minutes: 0,
+        rating: null,
+        goals: 0,
+        xG: 0,
+        xGPer90: 0,
+        assists: 0,
+        xA: 0,
+        xAPer90: 0,
+        drbPer90: 0,
+        prPassesPer90: 0,
+        hdrPct: 0,
+        intPer90: 0,
+        tckPct: 0,
+        distanceKm: 0,
+        yellowCards: 0,
+        redCards: 0,
+        attributes: null,
+        hiddenPersonality: null,
+        suspensionsCount: 0,
+      },
+    ],
+    staff: [
+      {
+        uid: 9101,
+        name: '',
+        role: '',
+        age: null,
+        nation: null,
+        wagePw: null,
+        expires: null,
+      },
+    ],
+    playedMatches: [],
+    upcomingFixtures: [],
+    leagueStanding: null,
+    finances: null,
+    activeInjuries: [],
+    tactics: [],
+    mentoring: [],
+  };
+
+  const hydrated = hydrateAppFromDecodedFmSave(payload, SQUAD_PLAYERS, COMPETITIVE_MATCH_LOGS);
+  const player = hydrated.updatedSquad.find((p) => p.uid === 9001);
+  assert.ok(player);
+  assert.equal(player.name, MISSING_VALUE);
+  assert.equal(Number.isFinite(player.age), false);
+  assert.equal(player.nation, MISSING_VALUE);
+  assert.equal(Number.isFinite(player.wagePw), false);
+  assert.equal(player.expires, MISSING_VALUE);
+
+  const staff = hydrated.updatedStaff.find((s) => s.uid === 9101);
+  assert.ok(staff);
+  assert.equal(staff.name, MISSING_VALUE);
+  assert.equal(staff.role, MISSING_VALUE);
+  assert.equal(Number.isFinite(staff.age), false);
+  assert.equal(staff.nation, MISSING_VALUE);
+  assert.equal(staff.expires, MISSING_VALUE);
+});

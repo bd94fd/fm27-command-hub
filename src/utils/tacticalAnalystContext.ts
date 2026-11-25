@@ -71,6 +71,7 @@ import {
 import {
   countSquadPool,
   describeSquadPool,
+  formatAge,
   formatContractExpiry,
   formatShortContractExpiry,
   formatWeeklyWage,
@@ -156,7 +157,7 @@ export function buildTacticalAnalystContext(data: Pass0ExtractionPayload): strin
         p.activeSuspensions && p.activeSuspensions.length > 0
           ? `, BANNED(${p.activeSuspensions[0].matchesRemaining}m ${p.activeSuspensions[0].scope})`
           : '';
-      return `- ${p.name} (${p.primaryPosition}, ${p.age}y${extStr}${banStr}): Badges=[${p.scoutBadges.join(', ')}], Traits=[${p.traits.join(', ')}]`;
+      return `- ${p.name} (${p.primaryPosition}, ${formatAge(p.age)}y${extStr}${banStr}): Badges=[${p.scoutBadges.join(', ')}], Traits=[${p.traits.join(', ')}]`;
     })
     .join('\n');
 
@@ -1041,13 +1042,13 @@ export function buildLiveTacticalAnalystContext(
       .map((n) => {
         const ranked = n.seniorPrimaryPlayers
           .slice(0, 3)
-          .map((p, idx) => `#${idx + 1} ${p.name}(${p.ability.toFixed(1)}★,${p.age}y)`)
+          .map((p, idx) => `#${idx + 1} ${p.name}(${p.ability.toFixed(1)}★,${formatAge(p.age)}y)`)
           .join(', ');
         const readyU21Note =
           n.firstTeamReadyYouthPlayers.length > 0
             ? ` +${n.firstTeamReadyYouthPlayers.length} ReadyU21[${n.firstTeamReadyYouthPlayers
                 .slice(0, 2)
-                .map((p) => `${p.name} ${p.ability.toFixed(1)}★/${p.age}y`)
+                .map((p) => `${p.name} ${p.ability.toFixed(1)}★/${formatAge(p.age)}y`)
                 .join(', ')}]`
             : '';
         const academyNote =
@@ -1211,7 +1212,7 @@ export function buildLiveTacticalAnalystContext(
   if (loanList.length > 0) {
     actionPlanLines.push(
       `Loan Out (Dev Loans — Lock Regular Starter + Recall Clause): ${loanList
-        .map((a) => `${a.player.name}(${a.player.age}y,${a.player.ability.toFixed(1)}★/${a.player.potential.toFixed(1)}★,${a.primaryBucketCode})`)
+        .map((a) => `${a.player.name}(${formatAge(a.player.age)}y,${a.player.ability.toFixed(1)}★/${a.player.potential.toFixed(1)}★,${a.primaryBucketCode})`)
         .join(' | ')}`
     );
   }
@@ -1316,12 +1317,12 @@ export function buildLiveTacticalAnalystContext(
       ? staff
       : (decoded?.staff || []).map((s) => ({
           id: String(s.uid),
-          name: s.name,
-          role: s.role,
-          age: s.age ?? 40,
-          nation: s.nation ?? '',
+          name: s.name || MISSING_VALUE,
+          role: s.role || MISSING_VALUE,
+          age: s.age ?? NaN,
+          nation: s.nation ?? MISSING_VALUE,
           wagePw: s.wagePw ?? null,
-          expires: s.expires ?? 'N/A',
+          expires: s.expires ?? MISSING_VALUE,
           secondaryJob: s.secondaryJob ?? null,
           jobRatings: s.jobRatings ?? null,
           notes: '',
@@ -1420,7 +1421,7 @@ export function buildLiveTacticalAnalystContext(
           .slice(0, 5)
           .map(
             (u) =>
-              `${u.target.name}(${u.target.primaryPosition},${u.target.age}y,${u.target.currentClub || 'Free'},${u.budget.feeLabel},£${u.budget.expectedWagePw}/wk,${u.character.personalityLabel},upgrades ${u.targetIncumbent?.name || u.bucketCode} +${(u.footballDelta ?? 0).toFixed(1)},${u.bestIpRole}/${u.bestOopRole})`
+              `${u.target.name}(${u.target.primaryPosition},${formatAge(u.target.age)}y,${u.target.currentClub || 'Free'},${u.budget.feeLabel},£${u.budget.expectedWagePw}/wk,${u.character.personalityLabel},upgrades ${u.targetIncumbent?.name || u.bucketCode} +${(u.footballDelta ?? 0).toFixed(1)},${u.bestIpRole}/${u.bestOopRole})`
           )
           .join(' | ')}`
       );
@@ -1431,7 +1432,7 @@ export function buildLiveTacticalAnalystContext(
           .slice(0, 5)
           .map(
             (g) =>
-              `${g.target.name}(${g.target.primaryPosition},${g.target.age}y,${g.budget.feeLabel},£${g.budget.expectedWagePw}/wk,${g.character.personalityLabel},${g.bestIpRole} ${g.ipRoleFitPct}%)`
+              `${g.target.name}(${g.target.primaryPosition},${formatAge(g.target.age)}y,${g.budget.feeLabel},£${g.budget.expectedWagePw}/wk,${g.character.personalityLabel},${g.bestIpRole} ${g.ipRoleFitPct}%)`
           )
           .join(' | ')}`
       );
@@ -1442,7 +1443,7 @@ export function buildLiveTacticalAnalystContext(
         `Cheaper Backups & Future U23 Successors: ${secondary
           .map(
             (s) =>
-              `${s.target.name}(${s.target.primaryPosition},${s.target.age}y,${s.tierLabel},${s.budget.feeLabel},£${s.budget.expectedWagePw}/wk,${s.character.personalityLabel})`
+              `${s.target.name}(${s.target.primaryPosition},${formatAge(s.target.age)}y,${s.tierLabel},${s.budget.feeLabel},£${s.budget.expectedWagePw}/wk,${s.character.personalityLabel})`
           )
           .join(' | ')}`
       );
@@ -1451,7 +1452,7 @@ export function buildLiveTacticalAnalystContext(
       recLines.push(
         `Shortlist Watch (Fee/Wage Blocked Today): ${shortlistAudit.budgetBlocked
           .slice(0, 3)
-          .map((b) => `${b.target.name}(${b.target.primaryPosition},${b.target.age}y,${b.budget.budgetSummary})`)
+          .map((b) => `${b.target.name}(${b.target.primaryPosition},${formatAge(b.target.age)}y,${b.budget.budgetSummary})`)
           .join(' | ')}`
       );
     }
@@ -1759,7 +1760,7 @@ export function buildLiveTacticalAnalystContext(
     const formStr = p.last5Form
       ? `|L5 ${p.last5Form.averageRating}(${p.last5Form.trend})`
       : '';
-    return `${p.name}${unitTag}|${p.position}|${p.age}y|${p.ability.toFixed(1)}★/${p.potential.toFixed(1)}★|${standing}|${formatWeeklyWage(p.wagePw)}|${formatShortContractExpiry(p.expires)}|C${p.condition ?? '?'}%|${bestFitStr}|${posFamStr ? `${posFamStr}|` : ''}${statsStr}|P${a.pace}S${a.stamina}J${a.jumpingReach}Pa${a.passing}F${a.finishing}T${a.tackling}D${a.decisions}W${a.workRate}${badgeStr}${traitStr}${formStr}${shortVerdict}${banTag}${injTag}`;
+    return `${p.name}${unitTag}|${p.position}|${formatAge(p.age)}y|${p.ability.toFixed(1)}★/${p.potential.toFixed(1)}★|${standing}|${formatWeeklyWage(p.wagePw)}|${formatShortContractExpiry(p.expires)}|C${p.condition ?? '?'}%|${bestFitStr}|${posFamStr ? `${posFamStr}|` : ''}${statsStr}|P${a.pace}S${a.stamina}J${a.jumpingReach}Pa${a.passing}F${a.finishing}T${a.tackling}D${a.decisions}W${a.workRate}${badgeStr}${traitStr}${formStr}${shortVerdict}${banTag}${injTag}`;
   });
 
   const squadProfileHeader = `=== SQUAD PROFILES & SEASON STATS (${profiledSquad.length} OF ${squadPool.fullPool} FULL POOL · ${squadPool.firstTeam} FIRST TEAM) — BF=Best Fit % ===`;
@@ -1843,7 +1844,7 @@ export function buildConversationTranscript(
       const raw = `${attachmentNote}${t.userText || ''}`.trim();
       return {
         role: 'user',
-        text: raw.length > 4500 ? `${raw.slice(0, 4500)}...` : raw,
+        text: raw.length > 4500 ? `${raw.slice(0, 4500)}…` : raw,
       };
     }
 
@@ -1871,7 +1872,7 @@ export function buildConversationTranscript(
     return {
       role: 'assistant',
       text:
-        combined.length > 5500 ? `${combined.slice(0, 5500)}...` : combined,
+        combined.length > 5500 ? `${combined.slice(0, 5500)}…` : combined,
     };
   });
 }

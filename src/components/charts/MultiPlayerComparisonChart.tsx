@@ -252,7 +252,7 @@ export const MultiPlayerComparisonChart: React.FC<MultiPlayerComparisonChartProp
                         </div>
                         <div className="h-1.5 w-full rounded-full bg-slate-800 overflow-hidden">
                           <div
-                            className="h-full rounded-full transition-all"
+                            className="h-full rounded-full transition-[width]"
                             style={{
                               width: `${pct}%`,
                               backgroundColor: colors[idx],

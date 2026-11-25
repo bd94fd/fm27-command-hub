@@ -80,7 +80,7 @@ export const SquadAgeValueScatterPlot: React.FC<SquadAgeValueScatterPlotProps> =
   const { width, height, padL: padLeft, padR: padRight, padT: padTop, plotW, plotH } = box;
 
   const getXVal = (p: PlayerRecord): number => {
-    if (xMetric === 'age') return p.age || 22;
+    if (xMetric === 'age') return Number.isFinite(p.age) ? p.age : 0;
     return Number(p.attributes?.[xMetric] ?? 10);
   };
 
@@ -104,7 +104,9 @@ export const SquadAgeValueScatterPlot: React.FC<SquadAgeValueScatterPlotProps> =
           ? 'Avg Rating'
           : 'xG / 90';
 
-  const ages = filteredPlayers.map((p) => p.age || 22);
+  const ages = filteredPlayers
+    .map((p) => p.age)
+    .filter((age): age is number => Number.isFinite(age) && age > 0);
   const minX = xMetric === 'age' ? Math.min(17, ...(ages.length > 0 ? ages : [18])) : 1;
   const maxX = xMetric === 'age' ? Math.max(35, ...(ages.length > 0 ? ages : [34])) : 20;
   const xSpan = Math.max(1, maxX - minX);
@@ -337,6 +339,7 @@ export const SquadAgeValueScatterPlot: React.FC<SquadAgeValueScatterPlotProps> =
 
             {/* Player scatter dots with touch hit targets */}
             {filteredPlayers.map((p) => {
+              if (xMetric === 'age' && !(Number.isFinite(p.age) && p.age > 0)) return null;
               const x = mapX(getXVal(p));
               const y = mapY(getYVal(p));
               const isBanned =
@@ -515,7 +518,7 @@ export const InteractiveScatterExplorer: React.FC<InteractiveScatterExplorerProp
   const activePreset = SCATTER_PRESETS.find((p) => p.key === preset) ?? SCATTER_PRESETS[0];
 
   const getX = (p: PlayerRecord): number => {
-    if (preset === 'ageValue') return p.age || 22;
+    if (preset === 'ageValue') return Number.isFinite(p.age) ? p.age : 0;
     if (preset === 'attackOutput') return p.xGPer90 || 0;
     if (preset === 'transitionEngine') return p.attributes?.pace ?? 10;
     return p.wagePw || 0;
@@ -771,6 +774,7 @@ export const InteractiveScatterExplorer: React.FC<InteractiveScatterExplorerProp
 
             {/* Dots with touch hit targets */}
             {filtered.map((p) => {
+              if (preset === 'ageValue' && !(Number.isFinite(p.age) && p.age > 0)) return null;
               const x = mapX(getX(p));
               const y = mapY(getY(p));
               const isSel = p.id === selectedPlayerId || activePlayer?.id === p.id;

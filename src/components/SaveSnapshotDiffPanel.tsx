@@ -27,7 +27,7 @@ import {
   SaveHistoryPoint,
 } from '../services/saveCache';
 import { clearProgressionArchive } from '../utils/progressionDiff';
-import { formatWeeklyWage } from '../utils/squadViewHelpers';
+import { formatAge, formatWeeklyWage } from '../utils/squadViewHelpers';
 import {
   deriveFootballSeasonLabel,
   formatSignedCurrency,
@@ -1183,7 +1183,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                           <div className="min-w-0">
                             <span className="font-semibold text-white">{p.name}</span>
                             <span className="ml-2 text-slate-400">
-                              {p.position} · Age {p.age}
+                              {p.position} · Age {formatAge(p.age)}
                             </span>
                           </div>
                           <div className="font-mono text-emerald-400 shrink-0 tabular-nums">
@@ -1213,7 +1213,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                           <div className="min-w-0">
                             <span className="font-semibold text-white">{p.name}</span>
                             <span className="ml-2 text-slate-400">
-                              {p.position} · Age {p.age}
+                              {p.position} · Age {formatAge(p.age)}
                             </span>
                           </div>
                           <div className="font-mono text-rose-400 shrink-0 tabular-nums">
@@ -1273,7 +1273,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                           <div>
                             <span className="font-semibold text-white">{p.name}</span>
                             <span className="ml-2 text-slate-400">
-                              {p.position} · Age {p.age}
+                              {p.position} · Age {formatAge(p.age)}
                             </span>
                           </div>
                           <span className="font-mono text-[11px] text-emerald-300">
@@ -1295,7 +1295,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                           <div>
                             <span className="font-semibold text-white">{p.name}</span>
                             <span className="ml-2 text-slate-400">
-                              {p.position} · Age {p.age}
+                              {p.position} · Age {formatAge(p.age)}
                             </span>
                           </div>
                           <span className="font-mono text-slate-400 tabular-nums">

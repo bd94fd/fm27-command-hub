@@ -5,7 +5,7 @@ import type { ShortlistTargetAdvice } from '../../utils/shortlistAdviceEngine';
 import { isScoutTargetTracked } from '../../services/fmStorage';
 import type { ActiveComparison } from './recruitmentTypes';
 import { MobileSheetFrame } from '../MobileSheetFrame';
-import { formatWeeklyWage } from '../../utils/squadViewHelpers';
+import { formatAge, formatWeeklyWage } from '../../utils/squadViewHelpers';
 
 interface CompareTargetModalProps {
   activeComparison: ActiveComparison | null;
@@ -187,7 +187,7 @@ export const CompareTargetModal: React.FC<CompareTargetModalProps> = ({
                   <div className="rounded-lg border border-slate-800 bg-slate-900/80 p-2.5">
                     <div className="text-[10px] text-slate-400">Age Comparison</div>
                     <div className="font-mono font-bold text-white mt-0.5">
-                      {activeComparison.target.age} vs {activeComparison.starter.age}
+                      {formatAge(activeComparison.target.age)} vs {formatAge(activeComparison.starter.age)}
                     </div>
                     <div
                       className={`text-[10px] font-mono font-semibold ${

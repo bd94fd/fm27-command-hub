@@ -9,7 +9,12 @@ import {
   STAFF_ATTRIBUTE_LABELS,
 } from '../utils/staffRatings';
 import { MobileSheetFrame } from './MobileSheetFrame';
-import { formatContractExpiry, formatWeeklyWage } from '../utils/squadViewHelpers';
+import {
+  formatAge,
+  formatContractExpiry,
+  formatNation,
+  formatWeeklyWage,
+} from '../utils/squadViewHelpers';
 
 interface StaffDetailModalProps {
   staff: StaffRecord | null;
@@ -108,7 +113,7 @@ export const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
               )}
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Age {staff.age} · {staff.nation} · {formatWeeklyWage(staff.wagePw)} (exp{' '}
+              Age {formatAge(staff.age)} · {formatNation(staff.nation)} · {formatWeeklyWage(staff.wagePw)} (exp{' '}
               {formatContractExpiry(staff.expires)})
             </p>
           </div>

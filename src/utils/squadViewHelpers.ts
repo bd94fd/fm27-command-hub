@@ -294,6 +294,7 @@ const PLACEHOLDER_STRINGS = new Set([
   'null',
   'undefined',
   'unknown',
+  'fm',
   'none',
   'tbd',
 ]);
@@ -302,6 +303,18 @@ const PLACEHOLDER_STRINGS = new Set([
 export function isPlaceholderValue(raw?: string | null): boolean {
   if (raw === null || raw === undefined) return true;
   return PLACEHOLDER_STRINGS.has(String(raw).trim().toLowerCase());
+}
+
+/** Age as a display string, or MISSING_VALUE — never a plausible invented age. */
+export function formatAge(age?: number | null): string {
+  return typeof age === 'number' && Number.isFinite(age) && age > 0
+    ? String(Math.round(age))
+    : MISSING_VALUE;
+}
+
+/** Nationality as a display string, or MISSING_VALUE — never "FM"/"Unknown"/"N/A". */
+export function formatNation(nation?: string | null): string {
+  return isPlaceholderValue(nation) ? MISSING_VALUE : String(nation).trim();
 }
 
 /** Raw contract expiry string, or MISSING_VALUE — never `undefined`/`N/A` leaking through. */

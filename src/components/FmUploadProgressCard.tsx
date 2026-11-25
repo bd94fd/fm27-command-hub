@@ -129,7 +129,7 @@ export const FmUploadProgressCard: React.FC<FmUploadProgressCardProps> = ({
         >
           {clampedPct !== null ? (
             <div
-              className={`h-full rounded-full transition-all duration-300 ${barFillTone}`}
+              className={`h-full rounded-full transition-[width] duration-300 ${barFillTone}`}
               style={{ width: `${Math.max(clampedPct, clampedPct > 0 ? 3 : 0)}%` }}
             />
           ) : (

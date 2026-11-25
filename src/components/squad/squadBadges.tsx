@@ -2,6 +2,7 @@ import React from 'react';
 import type { EnrichedSquadRow, SquadColumnId } from '../../utils/squadViewHelpers';
 import {
   formatCompactCurrency,
+  formatAge,
   formatWeeklyWage,
   MISSING_VALUE,
 } from '../../utils/squadViewHelpers';
@@ -57,7 +58,7 @@ export function renderColumnValue(row: EnrichedSquadRow, colId: SquadColumnId): 
     case 'age':
       return (
         <span className="font-mono tabular-nums text-slate-700 dark:text-slate-200">
-          {p.age > 0 ? p.age : MISSING_VALUE}
+          {formatAge(p.age)}
         </span>
       );
     case 'stars':

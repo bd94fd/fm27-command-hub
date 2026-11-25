@@ -51,6 +51,7 @@ import {
   classifyMatchCompetitionBucket,
   deriveFootballSeasonLabel,
 } from './matchScopeHelpers';
+import { formatWeeklyWage, MISSING_VALUE } from './squadViewHelpers';
 
 export const WORKER_CACHE_BUSTER = '?v=24';
 
@@ -353,7 +354,7 @@ export interface DecodedFmSavePlayer {
   position: string;
   primaryPosition?: string;
   secondaryPositions?: string[];
-  age: number;
+  age: number | null;
   heightCm?: number;
   marketValue?: number | null;
   marketValueState?: 'ok' | 'capped' | 'unset' | 'zero';
@@ -372,7 +373,7 @@ export interface DecodedFmSavePlayer {
   leftFoot?: number;
   rightFoot?: number;
   preferredFoot?: 'Left' | 'Right' | 'Either';
-  wagePw: number;
+  wagePw: number | null;
   expires: string | null;
   contractExpiryMonths?: number;
   contractDetails?: ContractDetails | null;
@@ -417,10 +418,10 @@ export interface DecodedFmSaveStaff {
   uid: number;
   name: string;
   role: string;
-  age?: number;
-  nation?: string;
+  age?: number | null;
+  nation?: string | null;
   club?: string;
-  wagePw?: number;
+  wagePw?: number | null;
   expires?: string | null;
   secondaryJob?: string | null;
   jobRatings?: StaffJobRatings | null;
@@ -956,9 +957,11 @@ export function hydrateAppFromDecodedFmSave(
     if (typeof dp.hdrPct === 'number' && (dp.hdrPct > 0 || squadHasSeasonStats)) next.hdrPct = dp.hdrPct;
     if (typeof dp.intPer90 === 'number' && (dp.intPer90 > 0 || squadHasSeasonStats)) next.intPer90 = dp.intPer90;
     if (typeof dp.tckPct === 'number' && (dp.tckPct > 0 || squadHasSeasonStats)) next.tckPct = dp.tckPct;
-    if (dp.age) next.age = dp.age;
-    if (dp.wagePw > 0 && dp.wagePw !== existing.wagePw) {
-      changes.push(`Wage £${existing.wagePw}→£${dp.wagePw}/wk`);
+    if (typeof dp.age === 'number' && Number.isFinite(dp.age) && dp.age > 0) {
+      next.age = dp.age;
+    }
+    if (typeof dp.wagePw === 'number' && dp.wagePw > 0 && dp.wagePw !== existing.wagePw) {
+      changes.push(`Wage ${formatWeeklyWage(existing.wagePw)} → ${formatWeeklyWage(dp.wagePw)}`);
       next.wagePw = dp.wagePw;
     }
     if (dp.marketValue !== undefined) {
@@ -1163,7 +1166,7 @@ export function hydrateAppFromDecodedFmSave(
       id: `fm-uid-${dp.uid}`,
       uid: dp.uid,
       number: realShirtNum,
-      name: dp.name || 'Unknown Player',
+      name: dp.name?.trim() || MISSING_VALUE,
       position: dp.position || dp.primaryPosition || 'UTL',
       secondaryPositions: dp.secondaryPositions || [],
       apps: recentAgg ? recentAgg.apps : dp.apps || '0',
@@ -1186,7 +1189,13 @@ export function hydrateAppFromDecodedFmSave(
       intPer90: Number(dp.intPer90) || 0,
       tckPct: Number(dp.tckPct) || 0,
       personality: inferPersonalityLabel(dp),
-      age: Number(dp.age) || 20,
+      age:
+        dp.age !== null &&
+        dp.age !== undefined &&
+        Number.isFinite(Number(dp.age)) &&
+        Number(dp.age) > 0
+          ? Number(dp.age)
+          : NaN,
       ability: abilityStars,
       potential: potentialStars,
       condition:
@@ -1202,12 +1211,18 @@ export function hydrateAppFromDecodedFmSave(
       preferredFoot: inferPreferredFoot(dp.leftFoot, dp.rightFoot, dp.preferredFoot),
       heightCm: dp.heightCm,
       positionRatings: dp.positionRatings ?? null,
-      expires: typeof dp.expires === 'string' && dp.expires.trim() ? dp.expires : 'N/A',
+      expires:
+        typeof dp.expires === 'string' && dp.expires.trim()
+          ? dp.expires
+          : MISSING_VALUE,
       contractExpiryMonths: dp.contractExpiryMonths,
       contractDetails: dp.contractDetails ?? undefined,
       activeSuspensions: bansByUid.get(dp.uid) || [],
-      nation: (dp.nation && dp.nation.trim()) || 'FM',
-      wagePw: Number(dp.wagePw) || 0,
+      nation: dp.nation?.trim() || MISSING_VALUE,
+      wagePw:
+        typeof dp.wagePw === 'number' && Number.isFinite(dp.wagePw)
+          ? dp.wagePw
+          : NaN,
       marketValue: dp.marketValue ?? null,
       marketValueState: dp.marketValueState,
       marketValueCapped:
@@ -1535,14 +1550,20 @@ export function hydrateAppFromDecodedFmSave(
   const updatedStaff: StaffRecord[] = (decoded.staff || []).map((s, idx) => ({
     id: `fm-staff-${s.uid || idx}`,
     uid: s.uid,
-    name: s.name || 'Club Staff',
-    role: s.role || 'Coach',
-    age: Number(s.age) || 35,
-    nation: s.nation || 'FM',
+    name: s.name?.trim() || MISSING_VALUE,
+    role: s.role?.trim() || MISSING_VALUE,
+    age:
+      s.age !== null &&
+      s.age !== undefined &&
+      Number.isFinite(Number(s.age)) &&
+      Number(s.age) > 0
+        ? Number(s.age)
+        : NaN,
+    nation: s.nation?.trim() || MISSING_VALUE,
     club: s.club || decoded.meta.clubName || '',
     wagePw:
       typeof s.wagePw === 'number' && Number.isFinite(s.wagePw) ? s.wagePw : null,
-    expires: s.expires || 'N/A',
+    expires: s.expires?.trim() || MISSING_VALUE,
     secondaryJob: s.secondaryJob ?? null,
     jobRatings: s.jobRatings ?? null,
     attributes: s.attributes || {
