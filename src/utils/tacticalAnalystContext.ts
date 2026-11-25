@@ -19,6 +19,7 @@ import {
   HydratedSaveState,
 } from './fmSaveHydrator';
 import { buildSquadTransferAudit } from './transferAudit';
+import { evaluateInGameShortlist } from './shortlistAdviceEngine';
 import {
   CustomSlotOverride,
   FormationPresetKey,
@@ -1253,39 +1254,57 @@ export function buildLiveTacticalAnalystContext(
     });
   }
 
-  const scoutPool: RecruitmentTarget[] = [
-    ...trackedTargets,
-    ...(decoded?.recruitmentTargets || []).filter(
-      (t) => !trackedTargets.some((tr) => tr.uid === t.uid)
-    ),
-  ];
-  if (scoutPool.length > 0 || recruitmentCases.length > 0) {
-    const recLines: string[] = ['=== RECRUITMENT SHORTLIST & TOP SCOUTED TARGETS ==='];
-    if (trackedTargets.length > 0) {
+  const inGameShortlist: RecruitmentTarget[] = decoded?.recruitmentTargets || [];
+  if (inGameShortlist.length > 0 || trackedTargets.length > 0 || recruitmentCases.length > 0) {
+    const shortlistAudit = evaluateInGameShortlist({
+      shortlistTargets: inGameShortlist.length > 0 ? inGameShortlist : trackedTargets,
+      squadPlayers: players,
+      audit: transferAudit,
+      divisionBenchmarks: hydratedFmSave?.divisionBenchmarks ?? null,
+      lastMatchTactic: lastTactic ?? null,
+      transferBudgetRemaining: decoded?.finances?.transferBudgetRemaining ?? null,
+    });
+    const recLines: string[] = [
+      `=== MANAGER'S IN-GAME FM27 SHORTLIST (${shortlistAudit.items.length} PLAYERS · ${shortlistAudit.actionableCount} BUDGET-READY) ===`,
+    ];
+    if (shortlistAudit.directUpgrades.length > 0) {
       recLines.push(
-        `Tracked Shortlist (${trackedTargets.length}): ${trackedTargets
-          .slice(0, 6)
-          .map((t) => {
-            const evalCard = evaluateScoutTargetCard(t, players, {
-              divisionBenchmarks: hydratedFmSave?.divisionBenchmarks ?? null,
-              activeTactic: lastTactic ?? null,
-              governance: gov ?? null,
-            });
-            return `${t.name}(${t.primaryPosition},${t.age}y,${t.currentClub || 'Free'},${evalCard.verdictLabel},DNA${evalCard.dnaFitPct}%,${evalCard.bestIpRole}/${evalCard.bestOopRole},${evalCard.cost3YrLabel})`;
-          })
+        `Direct First-Team Upgrades (Budget-Approved): ${shortlistAudit.directUpgrades
+          .slice(0, 5)
+          .map(
+            (u) =>
+              `${u.target.name}(${u.target.primaryPosition},${u.target.age}y,${u.target.currentClub || 'Free'},${u.budget.feeLabel},£${u.budget.expectedWagePw}/wk,${u.character.personalityLabel},upgrades ${u.targetIncumbent?.name || u.bucketCode} +${(u.footballDelta ?? 0).toFixed(1)},${u.bestIpRole}/${u.bestOopRole})`
+          )
           .join(' | ')}`
       );
     }
-    const topUntracked = scoutPool
-      .filter((t) => !trackedTargets.some((tr) => tr.uid === t.uid))
-      .slice(0, 5);
-    if (topUntracked.length > 0) {
+    if (shortlistAudit.gapFillersNow.length > 0) {
       recLines.push(
-        `Top Market Scanner Targets: ${topUntracked
+        `Immediate Gap Fillers (Budget-Approved): ${shortlistAudit.gapFillersNow
+          .slice(0, 5)
           .map(
-            (t) =>
-              `${t.name}(${t.primaryPosition},${t.age}y,${t.currentClub || 'Free'},£${Math.round(t.demandedWageEur || 0)}/wk)`
+            (g) =>
+              `${g.target.name}(${g.target.primaryPosition},${g.target.age}y,${g.budget.feeLabel},£${g.budget.expectedWagePw}/wk,${g.character.personalityLabel},${g.bestIpRole} ${g.ipRoleFitPct}%)`
           )
+          .join(' | ')}`
+      );
+    }
+    if (shortlistAudit.cheaperBackups.length > 0 || shortlistAudit.futureSuccessors.length > 0) {
+      const secondary = [...shortlistAudit.cheaperBackups, ...shortlistAudit.futureSuccessors].slice(0, 4);
+      recLines.push(
+        `Cheaper Backups & Future U23 Successors: ${secondary
+          .map(
+            (s) =>
+              `${s.target.name}(${s.target.primaryPosition},${s.target.age}y,${s.tierLabel},${s.budget.feeLabel},£${s.budget.expectedWagePw}/wk,${s.character.personalityLabel})`
+          )
+          .join(' | ')}`
+      );
+    }
+    if (shortlistAudit.budgetBlocked.length > 0) {
+      recLines.push(
+        `Shortlist Watch (Fee/Wage Blocked Today): ${shortlistAudit.budgetBlocked
+          .slice(0, 3)
+          .map((b) => `${b.target.name}(${b.target.primaryPosition},${b.target.age}y,${b.budget.budgetSummary})`)
           .join(' | ')}`
       );
     }

@@ -1,6 +1,8 @@
 import React from 'react';
-import { CheckCircle2, Search } from 'lucide-react';
+import { CheckCircle2, GitCompare, Search, Sparkles } from 'lucide-react';
 import type { PlayerRecord } from '../../types/fm27';
+import type { RecruitmentTarget } from '../../types/fmSave';
+import type { ShortlistTargetAdvice } from '../../utils/shortlistAdviceEngine';
 import type { TransferActionVerdict } from '../../utils/transferAudit';
 import { formatCompactCurrency } from '../../utils/squadViewHelpers';
 import { verdictBadgeClass } from './recruitmentBadges';
@@ -14,7 +16,10 @@ interface SquadAdviceViewProps {
   search: string;
   setSearch: (value: string) => void;
   filteredAdvice: PlayerAdviceItem[];
+  shortlistBySquadPlayerId?: Record<string, ShortlistTargetAdvice[]>;
   onSelectPlayer: (player: PlayerRecord) => void;
+  onOpenShortlistTarget?: (target: RecruitmentTarget) => void;
+  onCompareShortlistTarget?: (target: RecruitmentTarget) => void;
 }
 
 export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
@@ -25,7 +30,10 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
   search,
   setSearch,
   filteredAdvice,
+  shortlistBySquadPlayerId = {},
   onSelectPlayer,
+  onOpenShortlistTarget,
+  onCompareShortlistTarget,
 }) => {
   return (
     <div className="space-y-3">
@@ -264,6 +272,56 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
                   {item.recommendedMove}
                 </span>
               </div>
+
+              {/* Inline In-Game Shortlist Upgrade / Replacement Callout */}
+              {(() => {
+                const shortlistMatches = shortlistBySquadPlayerId[p.id] || [];
+                if (shortlistMatches.length === 0) return null;
+                const best = shortlistMatches[0];
+                return (
+                  <div className="rounded-lg border border-amber-500/35 bg-amber-950/20 px-3 py-2.5 text-xs space-y-1.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 font-bold text-amber-200">
+                        <Sparkles className="h-3.5 w-3.5 text-amber-300 shrink-0" />
+                        <span>
+                          In-Game Shortlist {best.tier === 'direct_xi_upgrade' ? 'Direct Upgrade' : 'Replacement'}:{' '}
+                          <span className="text-white">{best.target.name}</span>{' '}
+                          <span className="font-mono text-[11px] text-emerald-300">
+                            ({best.target.primaryPosition}, {best.target.age}y)
+                          </span>
+                        </span>
+                      </div>
+                      <span className="rounded bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-200">
+                        {best.budget.feeLabel}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-snug">
+                      {best.whyUpgradeOrHold}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                      {onOpenShortlistTarget && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenShortlistTarget(best.target)}
+                          className="min-h-[32px] rounded-lg border border-emerald-500/40 bg-emerald-500/15 hover:bg-emerald-500/25 px-2.5 py-1 text-[11px] font-semibold text-emerald-200 transition cursor-pointer"
+                        >
+                          Open Shortlist Profile →
+                        </button>
+                      )}
+                      {onCompareShortlistTarget && (
+                        <button
+                          type="button"
+                          onClick={() => onCompareShortlistTarget(best.target)}
+                          className="min-h-[32px] inline-flex items-center gap-1 rounded-lg border border-sky-500/35 bg-sky-500/15 hover:bg-sky-500/25 px-2.5 py-1 text-[11px] font-semibold text-sky-200 transition cursor-pointer"
+                        >
+                          <GitCompare className="h-3 w-3" />
+                          Compare vs {p.name.split(' ').slice(-1)[0]}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           );
         })}

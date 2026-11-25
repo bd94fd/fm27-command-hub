@@ -372,6 +372,120 @@ class TestFmSaveMapperHardening(unittest.TestCase):
         )
         self.assertNotEqual(club_table_sec["status"], "fallback")
 
+    def test_scan_shortlist_entries_from_humans_bytes_anchored_and_empty(self) -> None:
+        import struct
+
+        # Pack FM 4-byte date: day 102 of 2027 -> 2027-04-12
+        dt_bytes = struct.pack("<HH", (0x6A00 | 102), 2027)
+        focus_prefix = b"\x00" * 128 + b"\xfe\x03\xff\xff\xff\xff" + struct.pack("<I", 28000) + (b"\x00" * 14)
+
+        # 1. Populated shortlist: 2 valid players (with duplicate) + 1 staff entry (kind=2, ignored)
+        entries_buf = (
+            struct.pack("<I", 4)
+            + struct.pack("<HI", 1, 101) + dt_bytes
+            + struct.pack("<HI", 2, 555) + dt_bytes
+            + struct.pack("<HI", 1, 202) + dt_bytes
+            + struct.pack("<HI", 1, 101) + dt_bytes
+        )
+        hb = focus_prefix + entries_buf + (b"\x00" * 64)
+        parsed = mapper._scan_shortlist_entries_from_humans_bytes(hb, valid_pindices={100, 201})
+        self.assertEqual([sel for sel, _ in parsed], [101, 202])
+        self.assertEqual(str(parsed[0][1]), "2027-04-12")
+
+        # 2. Explicitly empty shortlist (count=0): returns []
+        hb_empty = focus_prefix + struct.pack("<I", 0) + (b"\x00" * 64)
+        self.assertEqual(mapper._scan_shortlist_entries_from_humans_bytes(hb_empty, valid_pindices={100}), [])
+
+    def test_extract_manager_shortlist_rich_fields_and_zero_ca_pa(self) -> None:
+        from datetime import date
+
+        mapper.step_close()
+        mapper._STATE["players_out"] = [{"uid": 9001, "name": "Already Ours"}]
+
+        class _Clause:
+            def __init__(self, kind: str, value: int) -> None:
+                self.kind = kind
+                self.value = value
+                self.parameter = None
+
+        class _Contract:
+            def __init__(self, wage: int, end_dt: date) -> None:
+                self.wage = wage
+                self.end = end_dt
+                self.squad_status = "REGULAR_STARTER"
+                self.clauses = [_Clause("MINIMUM_FEE_RELEASE", 45000)]
+
+        class _Attrs:
+            def __init__(self) -> None:
+                for k in (
+                    "corners", "crossing", "dribbling", "finishing", "first_touch",
+                    "free_kick_taking", "heading", "long_shots", "long_throws", "marking",
+                    "passing", "penalty_taking", "tackling", "technique", "aggression",
+                    "anticipation", "bravery", "composure", "concentration", "decisions",
+                    "determination", "flair", "leadership", "off_the_ball", "positioning",
+                    "teamwork", "vision", "work_rate", "acceleration", "agility", "balance",
+                    "jumping_reach", "natural_fitness", "pace", "stamina", "strength",
+                    "aerial_reach", "command_of_area", "communication", "eccentricity",
+                    "handling", "kicking", "one_on_ones", "punching", "reflexes",
+                    "rushing_out", "throwing",
+                ):
+                    setattr(self, k, 14)
+                self.determination = 17
+                self.left_foot = 18
+                self.right_foot = 8
+
+        class _ShortlistPlayer:
+            def __init__(self, uid: int, name: str, club_uid: int | None, club_name: str | None, wage: int, tv: int | None) -> None:
+                self.uid = uid
+                self.name = name
+                self.age = 21
+                self.nation_id = 0
+                self.club_uid = club_uid
+                self.club_name = club_name
+                self.natural_positions = ("DR",)
+                self.accomplished_positions = ("WBR", "DL")
+                self.positions = {"dr": 20, "wbr": 17, "dl": 15}
+                self.attributes = _Attrs()
+                self.personality = types.SimpleNamespace(professionalism=17, ambition=15, consistency=16, important_matches=15, injury_proneness=5, versatility=16)
+                self.traits = ("Gets Forward Whenever Possible",)
+                self.height = 182
+                self.transfer_value = tv
+                self.transfer_value_state = "ok" if tv else "zero"
+                self.contract = _Contract(wage, date(2028, 6, 30)) if club_uid else None
+                self.ability = types.SimpleNamespace(current=115, potential=142)
+
+        class _MockSave:
+            def nations(self) -> list[object]:
+                return [types.SimpleNamespace(nation_id=0, database_id=757)]
+
+            def shortlist(self) -> list[object]:
+                return [
+                    _ShortlistPlayer(501, "Arne De Schepper", 777, "SK Roeselare", 260, 12000),
+                    _ShortlistPlayer(502, "Benoit Olivier", None, None, 0, None),
+                    _ShortlistPlayer(999, "Own Club Player", 18104898, "KVV Zelzate", 300, 15000),
+                    _ShortlistPlayer(9001, "Already Ours", 888, "Other FC", 200, 5000),
+                ]
+
+        out = mapper.deep_scrub_ca_pa(
+            mapper._extract_manager_shortlist(_MockSave(), club_uid=18104898, game_date=date(2027, 9, 15))
+        )
+        self.assertEqual([t["name"] for t in out], ["Arne De Schepper", "Benoit Olivier"])
+        first = out[0]
+        self.assertEqual(first["shortlistOrigin"], "in_game_shortlist")
+        self.assertEqual(first["nationality"], "Belgium")
+        self.assertEqual(first["preferredFoot"], "Left")
+        self.assertEqual(first["heightCm"], 182)
+        self.assertEqual(first["currentWagePw"], 260)
+        self.assertEqual(first["transferValue"], 12000)
+        self.assertEqual(first["transferValueState"], "ok")
+        self.assertEqual(first["secondaryPositions"], ["WBR", "DL"])
+        self.assertEqual(first["contractDetails"]["releaseClauses"][0]["amount"], 45000)
+        self.assertTrue(bool(first["personality"]))
+        self.assertIn("Consistent Performer", first["scoutBadges"])
+        self.assertNotIn("ca", first)
+        self.assertNotIn("pa", first)
+
 
 if __name__ == "__main__":
     unittest.main()
+

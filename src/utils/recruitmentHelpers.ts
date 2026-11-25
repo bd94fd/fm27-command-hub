@@ -261,8 +261,13 @@ export function buildScoutTargetPlayerRecord(target: RecruitmentTarget): PlayerR
   };
   const exactSlot = classifyExactPositionSlot(target.primaryPosition);
   const slotKey = exactSlot === 'STC' ? 'ST' : exactSlot;
-  const positionRatings: Record<string, number> = { [slotKey]: 20 };
-  if (exactSlot === 'STC') {
+  const positionRatings: Record<string, number> = {
+    ...(target.positionRatings || {}),
+  };
+  if (typeof positionRatings[slotKey] !== 'number') {
+    positionRatings[slotKey] = 20;
+  }
+  if (exactSlot === 'STC' && typeof positionRatings.STC !== 'number') {
     positionRatings.STC = 20;
   }
 
@@ -272,6 +277,9 @@ export function buildScoutTargetPlayerRecord(target: RecruitmentTarget): PlayerR
     number: 0,
     name: target.name,
     position: target.primaryPosition || 'MC',
+    secondaryPositions: Array.isArray(target.secondaryPositions)
+      ? [...target.secondaryPositions]
+      : undefined,
     apps: '0',
     minutes: 0,
     rating: null,
@@ -286,21 +294,26 @@ export function buildScoutTargetPlayerRecord(target: RecruitmentTarget): PlayerR
     hdrPct: 0,
     intPer90: 0,
     tckPct: 0,
-    personality: 'Scouted Target',
+    personality: target.personality || 'Balanced',
     age: target.age,
     ability: 2.5,
     potential: 3.0,
     condition: 100,
     sharpness: 100,
-    preferredFoot: 'Right',
+    preferredFoot: target.preferredFoot || 'Right',
+    heightCm: target.heightCm ?? undefined,
     expires:
       target.expires ||
       (target.isFreeAgent
         ? 'Unattached (Free Agent)'
         : `<= ${target.contractExpiryMonths || 6}m`),
     contractExpiryMonths: target.isFreeAgent ? 0 : target.contractExpiryMonths,
+    contractDetails: target.contractDetails ?? undefined,
     nation: target.nationality || 'Unknown',
-    wagePw: target.demandedWageEur || 0,
+    wagePw: target.currentWagePw ?? target.demandedWageEur ?? 0,
+    marketValue: target.transferValue ?? null,
+    marketValueState: target.transferValueState,
+    marketValueCapped: target.transferValueState === 'capped',
     status: 'Rotation',
     positionRatings,
     traits: Array.isArray(target.traits) ? [...target.traits] : [],

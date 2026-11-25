@@ -2947,6 +2947,443 @@ _EUROPEAN_NATIONS = frozenset({
 })
 
 
+def _decode_shortlist_date_4b(buf: bytes, offset: int) -> Any:
+    """Decode a 4-byte FM packed date (<HH: packed_doy, year) cleanly without requiring fmsave."""
+    if offset < 0 or offset + 4 > len(buf):
+        return None
+    try:
+        from fmsave._scan import decode_date as _fm_dec_dt
+
+        return _fm_dec_dt(buf, offset)
+    except Exception:
+        pass
+    try:
+        import calendar
+        from datetime import date, timedelta
+
+        packed, year = struct.unpack_from("<HH", buf, offset)
+        if not (1900 <= year <= 2150):
+            return None
+        doy = packed & 0x01FF
+        max_days = 366 if calendar.isleap(year) else 365
+        if not (1 <= doy <= max_days):
+            return None
+        return date(year, 1, 1) + timedelta(days=doy - 1)
+    except Exception:
+        return None
+
+
+def _try_parse_shortlist_array_at(
+    hb: bytes,
+    count_off: int,
+    valid_pindices: Any = None,
+    require_zero_prefix: bool = False,
+) -> tuple[list[tuple[int, Any]], int] | None:
+    """Validate and parse a `<count: u32>` + `count * <HI4s>` manager shortlist array in `humans`."""
+    if count_off < 0 or count_off + 4 > len(hb):
+        return None
+    cnt = struct.unpack_from("<I", hb, count_off)[0]
+    if cnt == 0 or cnt > 2500:
+        return None
+    end_off = count_off + 4 + cnt * 10
+    if end_off > len(hb):
+        return None
+    if cnt == 1 and require_zero_prefix:
+        if count_off < 4 or hb[count_off - 4 : count_off] != b"\x00\x00\x00\x00":
+            return None
+
+    player_entries: list[tuple[int, Any]] = []
+    valid_player_hits = 0
+    player_kind_total = 0
+
+    cur = count_off + 4
+    for _ in range(cnt):
+        kind, sel = struct.unpack_from("<HI", hb, cur)
+        if kind not in (1, 2) or sel <= 0 or sel > 2_500_000:
+            return None
+        dt = _decode_shortlist_date_4b(hb, cur + 6)
+        if dt is None or dt.year < 2020 or dt.year > 2130:
+            return None
+        if kind == 1:
+            player_kind_total += 1
+            if valid_pindices is None or (sel - 1) in valid_pindices:
+                valid_player_hits += 1
+                player_entries.append((sel, dt))
+        cur += 10
+
+    if player_kind_total == 0:
+        return None
+    if valid_pindices is not None and valid_player_hits < max(1, int(player_kind_total * 0.8)):
+        return None
+    return player_entries, end_off
+
+
+def _scan_shortlist_entries_from_humans_bytes(
+    hb: bytes,
+    valid_pindices: Any = None,
+) -> list[tuple[int, Any]]:
+    """Extract `(selector, date)` player entries strictly from the human manager's own
+    in-game Shortlist(s) inside the `humans` section (ignoring un-shortlisted club scout reports)."""
+    if not hb or len(hb) < 24:
+        return []
+
+    collected: list[tuple[int, Any]] = []
+    seen_sels: set[int] = set()
+    consumed_ranges: list[tuple[int, int]] = []
+
+    def _add_parsed(res: tuple[list[tuple[int, Any]], int] | None, start_off: int) -> bool:
+        if res is None:
+            return False
+        entries, end_off = res
+        consumed_ranges.append((start_off, end_off))
+        for sel, dt in entries:
+            if sel not in seen_sels:
+                seen_sels.add(sel)
+                collected.append((sel, dt))
+        return True
+
+    # 1. Primary FM27 anchor: right after Recruitment Focus tail `fe 03 ff ff ff ff` + 18 bytes (+24 total)
+    focus_tail = b"\xfe\x03\xff\xff\xff\xff"
+    pos = hb.find(focus_tail)
+    while pos != -1:
+        cand_off = pos + 24
+        if cand_off + 4 <= len(hb):
+            raw_cnt = struct.unpack_from("<I", hb, cand_off)[0]
+            if raw_cnt == 0 and cand_off >= 8 and hb[cand_off - 8 : cand_off] == b"\x00" * 8:
+                # Explicitly empty default shortlist (0 players) — record consumed range cleanly
+                consumed_ranges.append((cand_off, cand_off + 4))
+            else:
+                parsed = _try_parse_shortlist_array_at(hb, cand_off, valid_pindices, require_zero_prefix=False)
+                if _add_parsed(parsed, cand_off) and parsed is not None:
+                    # Also check if an additional custom manager shortlist immediately follows
+                    next_off = parsed[1]
+                    while next_off + 14 <= len(hb):
+                        nxt = _try_parse_shortlist_array_at(hb, next_off, valid_pindices, require_zero_prefix=False)
+                        if not _add_parsed(nxt, next_off) or nxt is None:
+                            break
+                        next_off = nxt[1]
+        pos = hb.find(focus_tail, pos + 1)
+
+    # 2. Fallback bounded scan (if 0 Recruitment Focuses exist or custom shortlists sit before squad planner)
+    budget_marker = b"\x01\x00\x6c\x07\x01\x00\x6c\x07\x40\x00\x00\x02\x0f\x2d\x07\x64"
+    scan_limit = hb.find(budget_marker)
+    if scan_limit < 0:
+        scan_limit = min(len(hb), 22_500)
+
+    def _overlaps_consumed(off: int) -> bool:
+        return any(lo <= off < hi for lo, hi in consumed_ranges)
+
+    # Only run unanchored scan if primary anchor did not already find an explicit 0-count or populated shortlist,
+    # OR scan for multi-entry custom shortlists (cnt >= 2) before `scan_limit`.
+    off = 64
+    allow_single = len(consumed_ranges) == 0
+    while off + 14 <= scan_limit:
+        if _overlaps_consumed(off):
+            off += 2
+            continue
+        cnt = struct.unpack_from("<I", hb, off)[0]
+        if (1 if allow_single else 2) <= cnt <= 2500 and off + 4 + cnt * 10 <= scan_limit:
+            parsed = _try_parse_shortlist_array_at(
+                hb, off, valid_pindices, require_zero_prefix=True
+            )
+            if _add_parsed(parsed, off) and parsed is not None:
+                off = parsed[1]
+                continue
+        off += 1
+
+    return collected
+
+
+def _build_shortlist_target_dict(
+    p: Any,
+    game_date: Any,
+    nation_lookup: dict[int, str],
+    shortlist_dt: Any = None,
+) -> dict[str, Any] | None:
+    """Convert a decoded Player object from the manager's in-game shortlist into a sanitized
+    `RecruitmentTarget` dict with full personality, traits, transfer value, contract details,
+    foot, height, position familiarity, and 52 visible attributes (ZERO raw CA/PA)."""
+    p_name = getattr(p, "name", None)
+    if not p_name:
+        return None
+
+    uid = _int(getattr(p, "uid", None), 0) or 0
+    age = _int(getattr(p, "age", None), 22) or 22
+    attrs = getattr(p, "attributes", None)
+    attr_dict = _extract_52_attributes(p, attrs)
+    pers = getattr(p, "personality", None)
+    personality_label = _infer_personality_label(attr_dict["determination"], pers)
+
+    nat_pos = [str(x) for x in (getattr(p, "natural_positions", None) or []) if x]
+    acc_pos = [str(x) for x in (getattr(p, "accomplished_positions", None) or []) if x]
+    fallback_pos = str(getattr(p, "position", None) or "MC")
+    primary_pos = nat_pos[0] if nat_pos else (acc_pos[0] if acc_pos else fallback_pos)
+    secondary_pos: list[str] = []
+    for code in (*nat_pos[1:], *acc_pos):
+        if code != primary_pos and code not in secondary_pos:
+            secondary_pos.append(code)
+
+    raw_pos_map = getattr(p, "positions", None) or getattr(p, "position_ratings", None)
+    pos_ratings: dict[str, int] = {}
+    if raw_pos_map is not None:
+        for pos_key in (
+            "gk", "dl", "dc", "dr", "wbl", "dm", "wbr", "ml", "mc", "mr",
+            "aml", "amc", "amr", "st", "stc", "GK", "DL", "DC", "DR", "WBL",
+            "DM", "WBR", "ML", "MC", "MR", "AML", "AMC", "AMR", "ST", "STC",
+        ):
+            pv = (
+                raw_pos_map.get(pos_key)
+                if isinstance(raw_pos_map, dict)
+                else getattr(raw_pos_map, pos_key, None)
+            )
+            if pv is not None:
+                norm_key = "ST" if pos_key.upper() == "STC" else pos_key.upper()
+                pos_ratings[norm_key] = _clamp_attr(pv, 1)
+                if pos_key.upper() == "STC":
+                    pos_ratings["STC"] = _clamp_attr(pv, 1)
+    for np_code in nat_pos:
+        pos_ratings.setdefault(str(np_code).upper(), 20)
+    for ap_code in acc_pos:
+        pos_ratings.setdefault(str(ap_code).upper(), 16)
+
+    left_foot = _int(
+        getattr(p, "left_foot", None)
+        or (getattr(attrs, "left_foot", None) if attrs else None)
+    )
+    right_foot = _int(
+        getattr(p, "right_foot", None)
+        or (getattr(attrs, "right_foot", None) if attrs else None)
+    )
+    if (left_foot or 0) >= 15 and (right_foot or 0) >= 15:
+        preferred_foot = "Either"
+    elif (left_foot or 0) > (right_foot or 0):
+        preferred_foot = "Left"
+    else:
+        preferred_foot = "Right"
+
+    height_cm = _int(getattr(p, "height", None) or getattr(p, "height_cm", None))
+
+    p_club_uid = getattr(p, "club_uid", None)
+    club_name_raw = getattr(p, "club_name", None)
+    is_unattached = (p_club_uid in (None, 0)) and not club_name_raw
+    contract = getattr(p, "contract", None)
+    contract_end = getattr(contract, "end", None) if contract else None
+    contract_months = _int(
+        getattr(p, "contract_expiry_months", None),
+        _months_until(contract_end, game_date) if contract_end else (0 if is_unattached else 12),
+    )
+    if contract_months is None:
+        contract_months = 0 if is_unattached else 12
+
+    is_free_agent = is_unattached or (contract is None and not club_name_raw) or (is_unattached and contract_months == 0)
+    is_already_on_loan = bool(getattr(p, "on_loan", False))
+    p_wage = _int(
+        (getattr(contract, "wage", None) if contract else None)
+        or getattr(p, "wage", None),
+        0,
+    ) or 0
+    demanded_raw = _int(getattr(p, "demanded_wage", None), None)
+
+    is_loan_candidate = bool(
+        (not is_free_agent)
+        and (not is_already_on_loan)
+        and (16 <= age <= 23)
+        and contract_months > 6
+    )
+
+    raw_tv = getattr(p, "transfer_value", None)
+    raw_tv_state = getattr(p, "transfer_value_state", None)
+    tv_state_str = _enum_token(raw_tv_state)
+    if isinstance(raw_tv, (int, float)) and raw_tv > 0:
+        transfer_value: int | None = int(round(raw_tv))
+    elif tv_state_str == "zero":
+        transfer_value = 0
+    else:
+        transfer_value = None
+
+    tv_capped = bool(
+        transfer_value is not None
+        and transfer_value > 0
+        and (
+            tv_state_str in {"placeholder", "capped", "max"}
+            or transfer_value >= 300_000_000
+        )
+    )
+    if transfer_value is None:
+        transfer_value_state = "unset"
+    elif tv_capped:
+        transfer_value_state = "capped"
+    elif tv_state_str == "zero" or transfer_value == 0:
+        transfer_value_state = "zero"
+    else:
+        transfer_value_state = "ok"
+
+    contract_details = _extract_contract_details(contract, p)
+    est_demanded_wage = (
+        (demanded_raw if demanded_raw and demanded_raw > 0 else 0)
+        if is_free_agent
+        else (demanded_raw if demanded_raw and demanded_raw > 0 else p_wage)
+    )
+
+    attr_dict["keyPace"] = attr_dict["pace"]
+    attr_dict["keyVision"] = attr_dict["vision"]
+    attr_dict["keyDecision"] = attr_dict["decisions"]
+    attr_dict["keyStamina"] = attr_dict["stamina"]
+
+    return {
+        "uid": uid,
+        "name": str(p_name),
+        "age": age,
+        "nationality": _resolve_player_nationality(p, nation_lookup, default="Unknown"),
+        "primaryPosition": primary_pos,
+        "secondaryPositions": secondary_pos if secondary_pos else None,
+        "positionRatings": pos_ratings if pos_ratings else None,
+        "currentClub": "Free Agent" if is_free_agent else (str(club_name_raw) if club_name_raw else "Club"),
+        "shortlistOrigin": "in_game_shortlist",
+        "shortlistDate": _dmy(shortlist_dt) if shortlist_dt else None,
+        "personality": personality_label,
+        "preferredFoot": preferred_foot,
+        "heightCm": height_cm,
+        "currentWagePw": 0 if is_free_agent else p_wage,
+        "transferValue": 0 if is_free_agent else transfer_value,
+        "transferValueState": "zero" if is_free_agent else transfer_value_state,
+        "contractDetails": contract_details,
+        "isFreeAgent": is_free_agent,
+        "isLoanCandidate": is_loan_candidate,
+        "parentClubWagePw": p_wage if is_loan_candidate else None,
+        "contractExpiryMonths": 0 if is_free_agent else int(contract_months),
+        "expires": (
+            "Free"
+            if is_free_agent
+            else (_dmy(contract_end) or (f"<= {contract_months}m" if contract_months > 0 else "N/A"))
+        ),
+        "demandedWageEur": est_demanded_wage,
+        "scoutBadges": _extract_reliability_badges(p, pers),
+        "traits": _extract_traits(p),
+        "attributes": attr_dict,
+    }
+
+
+def _extract_manager_shortlist(
+    save: Any,
+    club_uid: int | None,
+    game_date: Any,
+) -> list[dict[str, Any]]:
+    """Extract strictly the human manager's own in-game Shortlist from `humans` via O(1)
+    `player_records` offset decoding (zero 160k-player database scan, zero raw CA/PA)."""
+    if save is None:
+        return []
+
+    nation_lookup = _build_nation_lookup(save)
+    squad_uids = {
+        int(p.get("uid"))
+        for p in (_STATE.get("players_out") or [])
+        if p.get("uid") is not None
+    }
+
+    ctx = getattr(save, "_context", None)
+    if ctx is None:
+        # Lightweight test-double support (never falls back to global save.players() dump)
+        shortlist_fn = getattr(save, "shortlist", None)
+        if callable(shortlist_fn):
+            out_mock: list[dict[str, Any]] = []
+            seen_mock_uids: set[int] = set()
+            for raw_p in shortlist_fn() or ():
+                p_cuid = getattr(raw_p, "club_uid", None)
+                if club_uid is not None and p_cuid == club_uid:
+                    continue
+                built = _build_shortlist_target_dict(raw_p, game_date, nation_lookup)
+                if built and built["uid"] not in squad_uids and built["uid"] not in seen_mock_uids:
+                    seen_mock_uids.add(built["uid"])
+                    out_mock.append(built)
+            return out_mock
+        return []
+
+    try:
+        from fmsave._layouts import ContractLayout, PersonBlockLayout, find_layout
+        from fmsave._save import GAME_DB_SECTION
+        from fmsave.readers._common import HUMANS_SECTION
+        from fmsave.readers.player_scan import window_end
+        from fmsave.readers.players import build_player_decoder
+
+        with ctx.section(HUMANS_SECTION) as raw_humans:
+            if len(raw_humans) <= 0 or len(raw_humans) > 24 * 1024 * 1024:
+                return []
+            hb = bytes(raw_humans)
+
+        save_info = ctx.info
+        clock = game_date or save_info.game_date
+        if clock is None:
+            return []
+
+        game_db_schema = save_info.section_schemas.get(GAME_DB_SECTION)
+        with ctx.section(GAME_DB_SECTION) as game_db:
+            ci = ctx.club_index()
+            pr = ctx.player_records()
+            np = ctx.name_pools()
+            shortlist_entries = _scan_shortlist_entries_from_humans_bytes(
+                hb, pr.position_by_pindex
+            )
+            if not shortlist_entries:
+                return []
+
+            person_layout = find_layout(
+                PersonBlockLayout, GAME_DB_SECTION, game_db_schema, save_info.build
+            ).layout
+            contract_layout = find_layout(
+                ContractLayout, GAME_DB_SECTION, game_db_schema, save_info.build
+            ).layout
+            decoder = build_player_decoder(
+                pr.layout, ci, np, clock, person_layout, contract_layout, save_info.file_name
+            )
+            offsets = pr.record_offsets
+            ambiguous = pr.ambiguous_positions
+            db_len = len(game_db)
+            last_pos = len(offsets) - 1
+            club_team_ids = _STATE.get("club_team_ids") or _resolve_club_team_ids(ci, club_uid)
+
+            results: list[dict[str, Any]] = []
+            seen_uids: set[int] = set()
+
+            for sel, entry_dt in shortlist_entries:
+                pos = pr.position_by_pindex.get(sel - 1)
+                if pos is None or pos in ambiguous:
+                    continue
+                off = offsets[pos]
+                rec_end = window_end(pr, pos, db_len)
+                try:
+                    p_obj, _ = decoder.decode(
+                        game_db,
+                        off,
+                        rec_end,
+                        is_last_record=(pos == last_pos),
+                        next_record_ambiguous=(pos + 1) in ambiguous,
+                        suspension_entries=(),
+                    )
+                except Exception:
+                    continue
+
+                p_uid = _int(getattr(p_obj, "uid", None), 0) or 0
+                if p_uid in seen_uids or p_uid in squad_uids:
+                    continue
+                p_club_uid = getattr(p_obj, "club_uid", None)
+                if club_uid is not None and p_club_uid == club_uid:
+                    continue
+                p_team_id = getattr(p_obj, "team_id", None)
+                if p_team_id is not None and p_team_id in club_team_ids:
+                    continue
+
+                cand = _build_shortlist_target_dict(p_obj, clock, nation_lookup, entry_dt)
+                if cand is not None:
+                    seen_uids.add(p_uid)
+                    results.append(cand)
+
+            return results
+    except Exception as exc:
+        _record_warning(f"shortlist_extract: {type(exc).__name__}")
+        return []
+
+
 def _scan_recruitment_targets_group4(
     save: Any,
     club_uid: int | None,
@@ -6042,23 +6479,22 @@ def _prefetch_fixture_gamedb_indexes(save: Any) -> None:
 
 
 def step_3_4_market_scan_and_release_gamedb(fast_sync: bool | None = None) -> str:
-    """Step 3/6: Group 4 Free-Agent & Expiring-Contract Market Scan —
-    strict 6s cap on desktop, SKIPPED completely when fast_sync=True.
-    Always pre-warms lightweight fixture indexes, then releases game_db borrow & heavy caches."""
+    """Step 3/6: Extract strictly the manager's own In-Game Shortlist from `humans` via O(1)
+    `player_records` offset lookup (< 50ms even in Fast Sync), pre-warm lightweight fixture
+    indexes, and release game_db borrow & heavy caches."""
     t0 = time.monotonic()
     use_fast = _STATE.get("fast_sync", False) if fast_sync is None else bool(fast_sync)
     save = _STATE["save"]
     club_uid = _STATE["club_uid"]
     game_date = _STATE["game_date"]
-    wage_budget_weekly = _STATE.get("wage_budget_weekly")
 
     recruitment_targets: list[dict[str, Any]] = []
     if use_fast:
         _STATE["squad_match_windows"] = {}
         _record_fast_sync_skip_note()
-    elif save is not None:
-        recruitment_targets = _scan_recruitment_targets_group4(
-            save, club_uid, game_date, wage_budget_weekly
+    if save is not None:
+        recruitment_targets = _extract_manager_shortlist(
+            save, club_uid, game_date
         )
 
     _STATE["recruitment_targets"] = recruitment_targets
@@ -6075,7 +6511,7 @@ def step_3_4_market_scan_and_release_gamedb(fast_sync: bool | None = None) -> st
 
     elapsed_ms = _record_step_timing("step_3_4_market_scan", t0)
     return json.dumps({
-        "skipped": use_fast,
+        "skipped": False,
         "recruitmentTargets": len(recruitment_targets),
         "elapsedMs": elapsed_ms,
     })
@@ -8741,36 +9177,7 @@ def extract_pass_0_data(save_instance: Any, target_club_uid: int | None = None) 
             "netCashflow": _float(_get_attr(f, "net_cashflow", 0.0), 0.0) or 0.0,
         })
 
-    recruitment_targets = []
-    all_players_iter = _safe_call(lambda: save_instance.players(), "players", default=()) or ()
-    for idx, p in enumerate(all_players_iter):
-        if (idx & 255) == 0 and (time.monotonic() - start_time) >= SCOUT_BUDGET_SEC:
-            break
-        if len(recruitment_targets) >= SCOUT_MAX_CANDIDATES:
-            break
-        c_uid = _coalesce_uid(p, "club_uid", "team_id", None)
-        if c_uid == user_club_uid:
-            continue
-        contract_months = _int(_get_attr(p, "contract_expiry_months", 999), 999)
-        is_free_agent = (c_uid in (None, 0)) or (contract_months == 0)
-        is_expiring = contract_months is not None and contract_months <= 6
-        if is_free_agent or is_expiring:
-            recruitment_targets.append({
-                "uid": _int(_get_attr(p, "uid", 0), 0) or 0,
-                "name": _get_attr(p, "name", "Scout Target"),
-                "age": _int(_get_attr(p, "age", 20), 20) or 20,
-                "nationality": _get_attr(p, "nationality", "Unknown"),
-                "primaryPosition": _get_attr(p, "position", "ST"),
-                "isFreeAgent": is_free_agent,
-                "contractExpiryMonths": contract_months or 0,
-                "demandedWageEur": _int(_get_attr(p, "demanded_wage", _get_attr(p, "wage", 0)), 0) or 0,
-                "attributes": {
-                    "keyPace": _clamp_attr(_get_attr(p, "pace", 10), 10),
-                    "keyVision": _clamp_attr(_get_attr(p, "vision", 10), 10),
-                    "keyDecision": _clamp_attr(_get_attr(p, "decisions", 10), 10),
-                    "keyStamina": _clamp_attr(_get_attr(p, "stamina", 10), 10),
-                },
-            })
+    recruitment_targets = _extract_manager_shortlist(save_instance, user_club_uid, None)
 
     player_name_map = {int(p["uid"]): str(p["name"]) for p in squad_players}
     active_suspensions, _ = _extract_structured_suspensions(
@@ -8811,7 +9218,7 @@ def extract_fm_save_payload(
     """Single-call extractor executing the reordered 4-stage Pass 0/1 pipeline:
     Stage 1: Open save + Club & Squad (52 attributes, traits, badges, direct contract/bans/injuries)
     Stage 2: Finances/12-month cash runway, Club Staff, Tactics & Mentoring
-    Stage 3: Full Sync game_db ops + Market Scan (then releases game_db once)
+    Stage 3: Full Sync game_db ops + In-Game Shortlist (then releases game_db once)
     Stage 4: Fixtures, League Table, Team xG, Player Season Stats & Career History
     """
     def _emit(step: str, label: str):
@@ -8856,7 +9263,7 @@ def extract_fm_save_payload(
         step_4_2_player_match_stats(False)
         _emit("Stage 3/4", "Reading detailed contracts & suspensions...")
         step_4_4_contracts_and_suspensions(False)
-        _emit("Stage 3/4", "Scanning free-agent & expiring contract targets...")
+        _emit("Stage 3/4", "Reading your in-game FM27 shortlist...")
         step_3_4_market_scan_and_release_gamedb(False)
     else:
         step_3_4_market_scan_and_release_gamedb(True)

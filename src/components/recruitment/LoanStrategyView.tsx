@@ -53,7 +53,7 @@ export const LoanStrategyView: React.FC<LoanStrategyViewProps> = ({
                 className="min-h-[40px] sm:min-h-[34px] inline-flex items-center gap-1.5 rounded-lg border border-sky-500/40 bg-sky-500/15 hover:bg-sky-500/25 px-3 py-1.5 text-xs font-semibold text-sky-200 transition cursor-pointer"
               >
                 <ArrowDownLeft className="h-3.5 w-3.5" />
-                Browse Loan Targets ({loanCandidatesCount})
+                Shortlisted Loan Options ({loanCandidatesCount})
               </button>
             )}
             {onAskAnalyst && (

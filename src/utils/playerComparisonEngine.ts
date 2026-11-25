@@ -256,8 +256,8 @@ export function buildMultiPlayerComparison(
   inputs: Array<PlayerRecord | RecruitmentTarget | ComparablePlayer>,
   squadBaseline?: PlayerRecord[]
 ): MultiPlayerComparisonDataset {
-  const players = inputs.slice(0, 3).map((item) =>
-    'source' in item ? item : normalizePlayerForComparison(item)
+  const players: ComparablePlayer[] = inputs.slice(0, 3).map((item) =>
+    'subtitle' in item ? item : normalizePlayerForComparison(item)
   );
   const isGk =
     players.length > 0 &&

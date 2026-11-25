@@ -359,13 +359,13 @@ self.onmessage = async (event) => {
         await yieldTick();
         mapperModule.step_4_4_contracts_and_suspensions(false);
 
-        activeStep = 'Stage 3/4: Free-agent & expiring market scan';
+        activeStep = 'Stage 3/4: Reading in-game FM27 shortlist';
         reply({
           type: 'stage',
           stage: 'parse',
           step: 'Stage 3/4',
           elapsedSec: elapsedSec(),
-          label: `Stage 3/4: Free-agent & expiring market scan (${elapsedSec()}s)...`,
+          label: `Stage 3/4: Reading in-game FM27 shortlist (${elapsedSec()}s)...`,
         });
         await yieldTick();
         mapperModule.step_3_4_market_scan_and_release_gamedb(false);

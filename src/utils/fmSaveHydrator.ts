@@ -1780,12 +1780,21 @@ export function hydrateAppFromDecodedFmSave(
 
   const targetsSummary =
     recruitmentTargets.length > 0
-      ? `\n=== PASS 0 SCOUTED FREE AGENTS & EXPIRING <=6M (${recruitmentTargets.length} TARGETS) ===\n${recruitmentTargets
+      ? `\n=== MANAGER'S IN-GAME FM27 SHORTLIST (${recruitmentTargets.length} PLAYERS) ===\n${recruitmentTargets
           .slice(0, 12)
-          .map(
-            (t) =>
-              `- ${t.name} (${t.primaryPosition}, Age ${t.age}, ${t.nationality || 'Unknown'}): ${t.isFreeAgent ? 'Free Agent' : `Exp <=${t.contractExpiryMonths}m`} · Wage ~£${(t.demandedWageEur ?? 0).toLocaleString()}/wk`
-          )
+          .map((t) => {
+            const clubStr = t.isFreeAgent
+              ? 'Free Agent'
+              : `${t.currentClub || 'Club'} (Exp ${t.expires || `<=${t.contractExpiryMonths}m`})`;
+            const valStr =
+              typeof t.transferValue === 'number' &&
+              t.transferValue > 0 &&
+              t.transferValueState !== 'capped'
+                ? ` · Val £${t.transferValue.toLocaleString()}`
+                : '';
+            const persStr = t.personality ? ` · ${t.personality}` : '';
+            return `- ${t.name} (${t.primaryPosition}, Age ${t.age}, ${t.nationality || 'Unknown'}): ${clubStr}${valStr} · Wage ~£${(t.currentWagePw ?? t.demandedWageEur ?? 0).toLocaleString()}/wk${persStr}`;
+          })
           .join('\n')}\n`
       : '';
 

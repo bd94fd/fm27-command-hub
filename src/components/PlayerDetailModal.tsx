@@ -19,7 +19,9 @@ import {
   ClubGovernanceState,
   DivisionBenchmarks,
   LastMatchTacticBlueprint,
+  RecruitmentTarget,
 } from '../types/fmSave';
+import type { ShortlistTargetAdvice } from '../utils/shortlistAdviceEngine';
 import { evaluateSquadPlayerCard } from '../utils/cardIntelligenceEngine';
 import {
   FM27_ROLES,
@@ -62,6 +64,8 @@ interface PlayerDetailModalProps {
   isFastSync?: boolean;
   playedMatchesCount?: number;
   shortlists: ShortlistRecord[];
+  shortlistUpgrades?: ShortlistTargetAdvice[];
+  onOpenShortlistTarget?: (target: RecruitmentTarget) => void;
   isManagedClubPlayer?: boolean;
   isTracked?: boolean;
   onClose: () => void;
@@ -144,6 +148,8 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
   isFastSync = false,
   playedMatchesCount,
   shortlists,
+  shortlistUpgrades = [],
+  onOpenShortlistTarget,
   isManagedClubPlayer = false,
   isTracked = false,
   onClose,
@@ -887,6 +893,90 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                   Stars ({player.ability.toFixed(1)}★ / {player.potential.toFixed(1)}★) are measured relative to your current squad.
                 </p>
               </div>
+
+              {/* Role in Squad: Now vs 1–3 Year Future Outlook */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3.5 space-y-1">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                    Role in Squad · Right Now
+                  </div>
+                  <p className="text-slate-200 leading-relaxed">
+                    {analysis.squadDepth
+                      ? `${analysis.squadDepth.summary}. `
+                      : ''}
+                    Best deployed as{' '}
+                    <strong className="text-emerald-300">
+                      {analysis.bestIpRole?.role.name || player.ipRole || 'Standard'}
+                    </strong>{' '}
+                    (IP) /{' '}
+                    <strong className="text-sky-300">
+                      {analysis.bestOopRole?.role.name || player.oopRole || 'Standard'}
+                    </strong>{' '}
+                    (OOP) · {analysis.physical.durability.tier} durability ({analysis.physical.durability.stamina}/20 Stamina).
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3.5 space-y-1">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-sky-400">
+                    1–3 Year Squad Outlook · {analysis.development.stage}
+                  </div>
+                  <p className="text-slate-200 leading-relaxed">
+                    {analysis.development.headline} — {analysis.development.note}
+                    {analysis.contractStanding.monthsRemaining !== null &&
+                    analysis.contractStanding.monthsRemaining <= 12
+                      ? ` Contract expires in ${analysis.contractStanding.monthsRemaining}m (${player.expires}).`
+                      : ''}
+                  </p>
+                </div>
+              </div>
+
+              {/* Inline In-Game Shortlist Upgrade / Replacement Callout */}
+              {shortlistUpgrades.length > 0 && (
+                <div className="rounded-xl border border-amber-500/40 bg-amber-950/20 p-3.5 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-amber-200">
+                      ★ In-Game Shortlist Upgrade / Replacement Ready ({shortlistUpgrades.length})
+                    </span>
+                    <span className="text-[10px] font-mono text-emerald-300">
+                      Passes Strict Club Budget Gate
+                    </span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {shortlistUpgrades.slice(0, 2).map((up) => (
+                      <div
+                        key={up.target.uid}
+                        className="rounded-lg border border-slate-800 bg-slate-950/80 p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs"
+                      >
+                        <div className="min-w-0 flex-1 space-y-0.5">
+                          <div className="font-bold text-white">
+                            {up.target.name}{' '}
+                            <span className="font-mono text-[11px] text-emerald-300">
+                              ({up.target.primaryPosition}, Age {up.target.age})
+                            </span>{' '}
+                            <span className="rounded bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] text-emerald-200">
+                              {up.tierLabel}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-300 leading-snug">
+                            {up.whyUpgradeOrHold}
+                          </p>
+                        </div>
+                        {onOpenShortlistTarget && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onClose();
+                              onOpenShortlistTarget(up.target);
+                            }}
+                            className="min-h-[36px] shrink-0 rounded-lg border border-emerald-500/40 bg-emerald-500/15 hover:bg-emerald-500/25 px-3 py-1.5 text-[11px] font-semibold text-emerald-200 transition cursor-pointer"
+                          >
+                            Open Profile →
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* FM27 Intelligence Profile: 8-Spoke Percentile Pizza + Active Tactic & Promise Audit */}
               {cardIntel && (

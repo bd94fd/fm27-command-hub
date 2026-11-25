@@ -516,7 +516,18 @@ export interface RecruitmentTarget {
   age: number;
   nationality: string;
   primaryPosition: string;
+  secondaryPositions?: string[];
+  positionRatings?: Record<string, number> | null;
   currentClub?: string;
+  shortlistOrigin?: 'in_game_shortlist' | 'manual_tracked';
+  shortlistDate?: string | null;
+  personality?: string | null;
+  preferredFoot?: 'Left' | 'Right' | 'Either' | null;
+  heightCm?: number | null;
+  currentWagePw?: number | null;
+  transferValue?: number | null;
+  transferValueState?: 'ok' | 'capped' | 'unset' | 'zero';
+  contractDetails?: ContractDetails | null;
   isFreeAgent: boolean;
   isLoanCandidate?: boolean;
   parentClubWagePw?: number | null;

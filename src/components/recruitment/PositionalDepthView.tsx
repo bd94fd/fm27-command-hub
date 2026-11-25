@@ -1,6 +1,9 @@
 import React from 'react';
-import { AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Sparkles } from 'lucide-react';
 import type { PlayerRecord } from '../../types/fm27';
+import type { RecruitmentTarget } from '../../types/fmSave';
+import type { ShortlistTargetAdvice } from '../../utils/shortlistAdviceEngine';
+import type { PositionBucketCode } from '../../utils/transferAudit';
 import type { PositionalNeed, SquadAudit } from './recruitmentTypes';
 
 interface PositionalDepthViewProps {
@@ -9,7 +12,9 @@ interface PositionalDepthViewProps {
   promoteInternalPositions: PositionalNeed[];
   successionGapPositions: PositionalNeed[];
   overstockedPositions: PositionalNeed[];
+  shortlistByBucketCode?: Record<PositionBucketCode, ShortlistTargetAdvice[]>;
   onSelectPlayer: (player: PlayerRecord) => void;
+  onOpenShortlistTarget?: (target: RecruitmentTarget) => void;
 }
 
 export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
@@ -18,7 +23,9 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
   promoteInternalPositions,
   successionGapPositions,
   overstockedPositions,
+  shortlistByBucketCode,
   onSelectPlayer,
+  onOpenShortlistTarget,
 }) => {
   return (
     <div className="space-y-3">
@@ -155,6 +162,61 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
                   Senior primary depth is overstocked ({b.currentCount} vs ideal {b.idealMin}–{b.idealMax}) — review paid backups before adding wages.
                 </div>
               )}
+
+              {/* Contextual In-Game Shortlist Matches for Gaps & Succession */}
+              {(isThin || isSuccessionGap) && shortlistByBucketCode && (() => {
+                const bucketMatches = (shortlistByBucketCode[b.code] || []).filter(
+                  (m) => m.isActionable || m.tier === 'monitor_budget_blocked'
+                );
+                const actionableMatches = bucketMatches.filter((m) => m.isActionable);
+                return (
+                  <div className="rounded-lg border border-sky-500/30 bg-sky-950/20 p-2.5 space-y-1.5 text-[11px]">
+                    <div className="flex items-center justify-between gap-1.5 font-bold text-sky-200">
+                      <span className="inline-flex items-center gap-1">
+                        <Sparkles className="h-3.5 w-3.5 text-sky-300 shrink-0" />
+                        On Your In-Game Shortlist ({actionableMatches.length} Budget-Ready)
+                      </span>
+                    </div>
+                    {bucketMatches.length === 0 ? (
+                      <p className="text-slate-400 leading-snug">
+                        No matching {b.code} on your in-game shortlist yet — add a {b.code} matching the profile above in FM27 and re-sync.
+                      </p>
+                    ) : (
+                      <div className="space-y-1">
+                        {bucketMatches.slice(0, 3).map((m) => (
+                          <button
+                            key={m.target.uid}
+                            type="button"
+                            onClick={() => onOpenShortlistTarget?.(m.target)}
+                            className="w-full rounded-lg border border-slate-800 bg-slate-950/80 hover:border-emerald-500/50 px-2.5 py-1.5 text-left transition cursor-pointer"
+                          >
+                            <div className="flex items-center justify-between gap-1.5">
+                              <span className="font-semibold text-white truncate">
+                                {m.target.name}{' '}
+                                <span className="font-normal text-slate-400">
+                                  ({m.target.age}y · {m.bestIpRole} {m.ipRoleFitPct}%)
+                                </span>
+                              </span>
+                              <span
+                                className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold ${
+                                  m.isActionable
+                                    ? 'bg-emerald-500/20 text-emerald-300'
+                                    : 'bg-amber-500/20 text-amber-300'
+                                }`}
+                              >
+                                {m.tierLabel}
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-slate-400 truncate mt-0.5">
+                              {m.budget.feeLabel} · {m.character.personalityLabel}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* 1. Senior Primary Players (All rows shown cleanly, zero mid-row clipping) */}
               <div className="space-y-1.5">

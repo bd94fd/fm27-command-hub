@@ -1698,7 +1698,7 @@ test('Full Sync Default on Mobile & Desktop + Timing Labels: shouldDefaultFastSy
   assert.equal(formatStepTimingLabel('step_3_3_facilities'), '4.2 Facilities');
   assert.equal(formatStepTimingLabel('step_3_3_competition_rules'), '4.3 Comp Rules');
   assert.equal(formatStepTimingLabel('step_3_3_transfer_windows'), '4.4 Transfer Windows');
-  assert.equal(formatStepTimingLabel('step_3_4_market_scan'), '4.6 Market Scan');
+  assert.equal(formatStepTimingLabel('step_3_4_market_scan'), '4.6 In-Game Shortlist');
   assert.equal(formatStepTimingLabel('step_4_team_match_stats'), '4.7 Team Match Stats');
   assert.equal(formatStepTimingLabel('step_4_1_season_stats'), '4.8 Season Stats');
   assert.equal(formatStepTimingLabel('totalDecodeMs'), 'Total');

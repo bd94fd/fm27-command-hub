@@ -326,7 +326,7 @@ export const ClubGovernanceBanner: React.FC<ClubGovernanceBannerProps> = ({
           <div>Tactics: {extractionManifest.tactics} ({extractionManifest.tacticInstructionsCount ?? 0} instr)</div>
           <div>Planner: {extractionManifest.squadPlannerSlots ?? 0} slots</div>
           <div>Staff: {extractionManifest.staff}</div>
-          <div>Scout Pool: {extractionManifest.shortlistScouted}</div>
+          <div>Shortlist: {extractionManifest.shortlistScouted}</div>
           <div>Set Pieces: {extractionManifest.setPieceRoutines ?? 0}</div>
           <div>Mentoring: {extractionManifest.mentoringGroups ?? 0}</div>
         </div>

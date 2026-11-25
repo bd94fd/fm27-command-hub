@@ -286,8 +286,8 @@ export const RecruitmentHeader: React.FC<RecruitmentHeaderProps> = ({
         </div>
       </div>
 
-      {/* 6 Focused View Switchers (incl. Club & League-Calibrated Loan Hub) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 pt-1">
+      {/* 5 Focused View Switchers (Unified In-Game Shortlist, Zero Generic Market Dump) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1.5 pt-1">
         {(
           [
             {
@@ -319,13 +319,8 @@ export const RecruitmentHeader: React.FC<RecruitmentHeaderProps> = ({
               icon: Layers,
             },
             {
-              id: 'targets',
-              label: `Scouted (${scoutedTargets.length})`,
-              icon: UserPlus,
-            },
-            {
               id: 'shortlist',
-              label: `Shortlist (${trackedTargets.length})`,
+              label: `Shortlist (${scoutedTargets.length}${trackedTargets.length > 0 ? ` · ${trackedTargets.length} ★` : ''})`,
               icon: Bookmark,
             },
           ] as const

@@ -1,12 +1,14 @@
 import React from 'react';
 import { GitCompare } from 'lucide-react';
 import type { RecruitmentTarget } from '../../types/fmSave';
+import type { ShortlistTargetAdvice } from '../../utils/shortlistAdviceEngine';
 import { isScoutTargetTracked } from '../../services/fmStorage';
 import type { ActiveComparison } from './recruitmentTypes';
 import { MobileSheetFrame } from '../MobileSheetFrame';
 
 interface CompareTargetModalProps {
   activeComparison: ActiveComparison | null;
+  shortlistAdvice?: ShortlistTargetAdvice | null;
   setCompareTarget: (target: RecruitmentTarget | null) => void;
   handleOpenTargetCard: (target: RecruitmentTarget) => void;
   handleToggleTrack: (target: RecruitmentTarget) => void;
@@ -15,6 +17,7 @@ interface CompareTargetModalProps {
 
 export const CompareTargetModal: React.FC<CompareTargetModalProps> = ({
   activeComparison,
+  shortlistAdvice = null,
   setCompareTarget,
   handleOpenTargetCard,
   handleToggleTrack,
@@ -232,6 +235,43 @@ export const CompareTargetModal: React.FC<CompareTargetModalProps> = ({
                       {activeComparison.comparison.starterArchetype.score}%
                     </span>
                   </span>
+                </div>
+
+                {/* Personality, Deal Fee & Budget Gate Comparison */}
+                <div className="rounded-lg border border-slate-800 bg-slate-900/80 p-2.5 space-y-1.5 text-[11px]">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-slate-400">Personality</span>
+                    <span className="font-semibold">
+                      <span className="text-emerald-300">
+                        {shortlistAdvice?.character.personalityLabel ||
+                          activeComparison.target.personality ||
+                          'Balanced'}
+                      </span>{' '}
+                      <span className="text-slate-500">vs</span>{' '}
+                      <span className="text-sky-300">
+                        {activeComparison.starter.personality || 'Balanced'}
+                      </span>
+                    </span>
+                  </div>
+                  {shortlistAdvice && (
+                    <>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-slate-400">Deal / Budget Gate</span>
+                        <span
+                          className={`font-mono font-semibold ${
+                            shortlistAdvice.budget.passesBudgetGate
+                              ? 'text-emerald-300'
+                              : 'text-amber-300'
+                          }`}
+                        >
+                          {shortlistAdvice.budget.feeLabel}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 leading-snug pt-0.5 border-t border-slate-800/80">
+                        {shortlistAdvice.whyUpgradeOrHold}
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

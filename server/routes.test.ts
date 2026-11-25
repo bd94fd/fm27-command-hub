@@ -447,8 +447,8 @@ describe('server routes & JSON 404', () => {
       path.resolve(process.cwd(), 'src/components/RecruitmentWorkspace.tsx'),
       'utf8'
     );
-    assert.match(recSrc, /import \{ VList \} from 'virtua'/);
-    assert.match(recSrc, /<VList/);
+    assert.match(recSrc, /evaluateInGameShortlist/);
+    assert.match(recSrc, /<ShortlistView/);
 
     // Pack 3 checks
     const dockerfileSrc = fs.readFileSync(

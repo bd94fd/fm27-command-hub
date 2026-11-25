@@ -27,7 +27,7 @@ const STEP_TIMING_LABELS: Record<string, string> = {
   step_3_3_transfer_windows: '4.4 Transfer Windows',
   step_3_3_secondary_ops: '4.5 Secondary Ops',
   step_3_3_club_ops: '4.x Club Ops',
-  step_3_4_market_scan: '4.6 Market Scan',
+  step_3_4_market_scan: '4.6 In-Game Shortlist',
   step_4_team_match_stats: '4.7 Team Match Stats',
   step_4_1_season_stats: '4.8 Season Stats',
   step_4_2_player_match_stats: '4.9 Match Form',

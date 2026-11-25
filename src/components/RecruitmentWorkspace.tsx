@@ -1,6 +1,5 @@
 import React, { useMemo, useState, useDeferredValue } from 'react';
 import { CheckCircle2 } from 'lucide-react';
-import { VList } from 'virtua';
 import {
   PlayerRecord,
   RecruitmentCase,
@@ -21,39 +20,27 @@ import {
   ClubLeagueContextInput,
   TransferActionVerdict,
 } from '../utils/transferAudit';
+import { evaluateInGameShortlist } from '../utils/shortlistAdviceEngine';
 import { ScoutTargetDetailModal } from './ScoutTargetDetailModal';
 import {
   buildTargetVsStarterComparison,
   computeTargetBestRoleFit,
-  enrichAndFilterScoutedTargets,
-  evaluatePlaybookArchetype,
   findTopSeniorStarterForPosition,
-  formatTargetContractSummary,
-  ScoutAgeBand,
-  ScoutContractFilter,
-  ScoutPositionGroup,
 } from '../utils/recruitmentHelpers';
 import {
   isScoutTargetTracked,
   loadTrackedScoutTargets,
-  removeTrackedScoutTarget,
   toggleTrackedScoutTarget,
 } from '../services/fmStorage';
 import {
   ClubDnaPillarWeights,
-  DEFAULT_CLUB_DNA_WEIGHTS,
-  evaluatePlayerClubDna,
   loadPersistedClubDnaWeights,
-  savePersistedClubDnaWeights,
-  StrategicDnaArchetypeId,
 } from '../utils/clubDnaEngine';
 import { RecruitmentHeader } from './recruitment/RecruitmentHeader';
 import { SquadAdviceView } from './recruitment/SquadAdviceView';
 import { LoanStrategyView } from './recruitment/LoanStrategyView';
 import { ContractHorizonView } from './recruitment/ContractHorizonView';
 import { PositionalDepthView } from './recruitment/PositionalDepthView';
-import { ScoutTargetFilters } from './recruitment/ScoutTargetFilters';
-import { ScoutTargetCard } from './recruitment/ScoutTargetCard';
 import { ShortlistView } from './recruitment/ShortlistView';
 import { CompareTargetModal } from './recruitment/CompareTargetModal';
 import { SelectionCompareDock } from './recruitment/SelectionCompareDock';
@@ -111,31 +98,19 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
   onSelectPlayer,
 }) => {
   const [view, setView] = useState<AuditView>('advice');
+  const [shortlistInitialFilter, setShortlistInitialFilter] = useState<'ALL' | 'LOAN'>('ALL');
   const [includeYouthInAudit, setIncludeYouthInAudit] = useState<boolean>(false);
   const [verdictFilter, setVerdictFilter] = useState<
     'ALL' | TransferActionVerdict
   >('ALL');
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
-  const [targetFilter, setTargetFilter] = useState<ScoutContractFilter>('ALL');
-  const [targetPosGroup, setTargetPosGroup] = useState<ScoutPositionGroup>('ALL');
-  const [exactPosFilter, setExactPosFilter] = useState<string>('ALL');
-  const [dnaArchetypeFilter, setDnaArchetypeFilter] = useState<
-    'ALL' | StrategicDnaArchetypeId
-  >('ALL');
-  const [clubDnaWeights, setClubDnaWeights] = useState<ClubDnaPillarWeights>(
+  const [clubDnaWeights] = useState<ClubDnaPillarWeights>(
     () => loadPersistedClubDnaWeights()
   );
-  const [showDnaTuner, setShowDnaTuner] = useState<boolean>(false);
   const [contractHorizonTier, setContractHorizonTier] = useState<
     'ALL' | 'CRITICAL_6M' | 'WARNING_12M' | 'WATCH_18M' | 'SECURE_18M_PLUS'
   >('ALL');
-  const [targetSortBy, setTargetSortBy] = useState<
-    'GAP_FIT' | 'CLUB_DNA' | 'ROLE_FIT' | 'ARCHETYPE' | 'AGE' | 'WAGE'
-  >('GAP_FIT');
-  const [visibleTargetCount, setVisibleTargetCount] = useState<number>(24);
-  const [targetAgeBand, setTargetAgeBand] = useState<ScoutAgeBand>('ALL');
-  const [genuineGapsOnly, setGenuineGapsOnly] = useState<boolean>(false);
   const [localTrackedTargets, setLocalTrackedTargets] = useState<RecruitmentTarget[]>(() =>
     loadTrackedScoutTargets()
   );
@@ -164,23 +139,6 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
     });
   };
 
-  const handleUpdateDnaWeight = (
-    key: keyof ClubDnaPillarWeights,
-    val: number
-  ) => {
-    const next = {
-      ...clubDnaWeights,
-      [key]: Math.max(0, Math.min(100, val)),
-    };
-    setClubDnaWeights(next);
-    savePersistedClubDnaWeights(next);
-  };
-
-  const handleResetDnaWeights = () => {
-    setClubDnaWeights({ ...DEFAULT_CLUB_DNA_WEIGHTS });
-    savePersistedClubDnaWeights({ ...DEFAULT_CLUB_DNA_WEIGHTS });
-  };
-
   const firstTeamPlayers = useMemo(
     () =>
       players.filter(
@@ -207,8 +165,8 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
       const nowTracked = onToggleTrackTarget(target);
       showToast(
         nowTracked
-          ? `Added ${target.name} to Shortlist`
-          : `Removed ${target.name} from Shortlist`
+          ? `Pinned ${target.name} as Priority Target`
+          : `Unpinned ${target.name}`
       );
       return;
     }
@@ -236,117 +194,19 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
           (target.isFreeAgent
             ? 'Free'
             : `<= ${target.contractExpiryMonths}m`),
-        notes: `Scouted Target (${target.nationality}) · ${bestRole.roleName} (${bestRole.fitPct}% Fit)`,
+        notes: `In-Game Shortlist (${target.nationality}) · ${bestRole.roleName} (${bestRole.fitPct}% Fit)`,
       });
     }
     showToast(
       tracked
-        ? `Added ${target.name} to Shortlist`
-        : `Removed ${target.name} from Shortlist`
+        ? `Pinned ${target.name} as Priority Target`
+        : `Unpinned ${target.name}`
     );
-  };
-
-  const handleRemoveTracked = (target: RecruitmentTarget) => {
-    if (onToggleTrackTarget) {
-      onToggleTrackTarget(target);
-      showToast(`Removed ${target.name} from Shortlist`);
-      return;
-    }
-    const next = removeTrackedScoutTarget(target.uid || target.name, localTrackedTargets);
-    setLocalTrackedTargets(next);
-    showToast(`Removed ${target.name} from Shortlist`);
   };
 
   const handleOpenTargetCard = (target: RecruitmentTarget) => {
     setDeepScoutTarget(target);
   };
-
-  const handleAskAnalystCompareShortlist = () => {
-    if (!onAskAnalyst || trackedTargets.length === 0) return;
-    const summaryLines = trackedTargets.slice(0, 10).map((t) => {
-      const arch = evaluatePlaybookArchetype(t.primaryPosition, t.attributes);
-      const role = computeTargetBestRoleFit(t);
-      const contract = formatTargetContractSummary(t);
-      const starter = findTopSeniorStarterForPosition(t.primaryPosition, auditPlayers);
-      return `- ${t.name} (${t.primaryPosition}, Age ${t.age}, ${t.nationality}) | ${arch.name} ${arch.score}% | Best Role: ${role.roleName} (${role.fitPct}%) | ${contract.primaryLabel}${contract.trialBadge ? ' [2-Week Free Trial]' : ''}${contract.wageLabel ? ` · ${contract.wageLabel}` : ''} | vs Starter: ${starter ? `${starter.name} (${starter.ability.toFixed(1)}★, £${starter.wagePw}/wk)` : 'None'}`;
-    });
-    const prompt = `Compare my persisted Shortlist (${trackedTargets.length} targets) against my current senior starters using Bobby Dean's Playbook v2.0 Section 7 recruitment archetypes and £0-budget free-trial rules. Rank who to trial/sign first and who to skip:\n${summaryLines.join('\n')}`;
-    onAskAnalyst(prompt);
-  };
-
-  const activeComparison = useMemo(() => {
-    if (!compareTarget) return null;
-    const starter = findTopSeniorStarterForPosition(compareTarget.primaryPosition, auditPlayers);
-    if (!starter) return { target: compareTarget, starter: null, comparison: null };
-    return {
-      target: compareTarget,
-      starter,
-      comparison: buildTargetVsStarterComparison(compareTarget, starter),
-    };
-  }, [compareTarget, auditPlayers]);
-
-  const filteredScoutedTargets = useMemo(() => {
-    const base = enrichAndFilterScoutedTargets({
-      targets: scoutedTargets,
-      squadPlayers: auditPlayers,
-      posGroup: targetPosGroup,
-      ageBand: targetAgeBand,
-      contractFilter: targetFilter,
-      genuineGapsOnly,
-      searchQuery: deferredSearch,
-    });
-    const withDna = base.map((item) => ({
-      ...item,
-      dna: evaluatePlayerClubDna(
-        item.target.primaryPosition,
-        item.target.attributes,
-        clubDnaWeights,
-        divisionBenchmarks
-      ),
-    }));
-    const posFiltered =
-      exactPosFilter === 'ALL'
-        ? withDna
-        : withDna.filter((item) => item.depth.slot === exactPosFilter);
-    const dnaFiltered =
-      dnaArchetypeFilter === 'ALL'
-        ? posFiltered
-        : posFiltered.filter(
-            (item) => item.dna.bestArchetypeId === dnaArchetypeFilter
-          );
-    if (targetSortBy === 'GAP_FIT') return dnaFiltered;
-    return [...dnaFiltered].sort((a, b) => {
-      if (targetSortBy === 'CLUB_DNA') {
-        return b.dna.overallDnaScore - a.dna.overallDnaScore;
-      }
-      if (targetSortBy === 'ROLE_FIT') {
-        return b.bestRole.fitPct - a.bestRole.fitPct;
-      }
-      if (targetSortBy === 'ARCHETYPE') {
-        return b.archetype.score - a.archetype.score;
-      }
-      if (targetSortBy === 'AGE') {
-        return a.target.age - b.target.age || b.bestRole.fitPct - a.bestRole.fitPct;
-      }
-      return (
-        (a.target.demandedWageEur || 0) - (b.target.demandedWageEur || 0) ||
-        b.bestRole.fitPct - a.bestRole.fitPct
-      );
-    });
-  }, [
-    scoutedTargets,
-    auditPlayers,
-    targetPosGroup,
-    exactPosFilter,
-    dnaArchetypeFilter,
-    clubDnaWeights,
-    divisionBenchmarks,
-    targetSortBy,
-    targetAgeBand,
-    targetFilter,
-    genuineGapsOnly,
-    deferredSearch,
-  ]);
 
   // Always audit the full club roster so Senior / Youth / Out-on-Loan splits and U21 successor paths stay unified.
   const audit = useMemo(
@@ -532,6 +392,63 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
     [audit.positionalNeeds]
   );
 
+  const shortlistAudit = useMemo(
+    () =>
+      evaluateInGameShortlist({
+        shortlistTargets: scoutedTargets,
+        squadPlayers: players,
+        audit,
+        divisionBenchmarks,
+        lastMatchTactic,
+        clubDnaWeights,
+        transferBudgetRemaining: finances?.transferBudgetRemaining ?? null,
+      }),
+    [
+      scoutedTargets,
+      players,
+      audit,
+      divisionBenchmarks,
+      lastMatchTactic,
+      clubDnaWeights,
+      finances?.transferBudgetRemaining,
+    ]
+  );
+
+  const shortlistAdviceByUid = useMemo(() => {
+    const map = new Map<number, (typeof shortlistAudit.items)[number]>();
+    for (const item of shortlistAudit.items) {
+      map.set(item.target.uid, item);
+    }
+    return map;
+  }, [shortlistAudit.items]);
+
+  const handleAskAnalystCompareShortlist = () => {
+    if (!onAskAnalyst || shortlistAudit.items.length === 0) return;
+    const summaryLines = shortlistAudit.items.slice(0, 10).map((item) => {
+      const t = item.target;
+      const inc = item.targetIncumbent
+        ? `${item.targetIncumbent.name} (${item.targetIncumbent.ability.toFixed(1)}★, £${item.targetIncumbent.wagePw}/wk)`
+        : 'Open Gap';
+      return `- ${t.name} (${t.primaryPosition}, Age ${t.age}, ${t.currentClub || 'Free Agent'}) | ${item.tierLabel} | ${item.bestIpRole}/${item.bestOopRole} (${item.ipRoleFitPct}%) | ${item.budget.feeLabel} · £${item.budget.expectedWagePw}/wk | ${item.character.personalityLabel} | vs ${inc}`;
+    });
+    const prompt = `Review my In-Game FM27 Shortlist (${shortlistAudit.items.length} players, ${shortlistAudit.actionableCount} passing our Strict Club Budget Gate). Rank the top moves to sign or loan first — covering Direct First-Team Upgrades, Immediate Gap Fillers, and Future U23 Successors — and tell me who to remove from my shortlist:\n${summaryLines.join('\n')}`;
+    onAskAnalyst(prompt);
+  };
+
+  const activeComparison = useMemo(() => {
+    if (!compareTarget) return null;
+    const advice = shortlistAdviceByUid.get(compareTarget.uid) ?? null;
+    const starter =
+      advice?.targetIncumbent ??
+      findTopSeniorStarterForPosition(compareTarget.primaryPosition, auditPlayers);
+    if (!starter) return { target: compareTarget, starter: null, comparison: null };
+    return {
+      target: compareTarget,
+      starter,
+      comparison: buildTargetVsStarterComparison(compareTarget, starter),
+    };
+  }, [compareTarget, shortlistAdviceByUid, auditPlayers]);
+
   return (
     <div className="space-y-4">
       {/* Header & Club Financial Health Banner */}
@@ -569,7 +486,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
     </div>
       ) : (
         <>
-          {/* VIEW 1: TAILORED PLAYER-BY-PLAYER ADVICE */}
+          {/* VIEW 1: TAILORED PLAYER-BY-PLAYER ADVICE (with inline Shortlist Upgrade callouts) */}
           {view === 'advice' && (
             <SquadAdviceView
               scopedPlayerAdvice={scopedPlayerAdvice}
@@ -579,7 +496,10 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
               search={search}
               setSearch={setSearch}
               filteredAdvice={filteredAdvice}
+              shortlistBySquadPlayerId={shortlistAudit.bySquadPlayerId}
               onSelectPlayer={onSelectPlayer}
+              onOpenShortlistTarget={handleOpenTargetCard}
+              onCompareShortlistTarget={setCompareTarget}
             />
           )}
 
@@ -590,31 +510,9 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
               scoutedTargets={scoutedTargets}
               onSelectPlayer={onSelectPlayer}
               onAskAnalyst={onAskAnalyst}
-              onJumpToLoanTargets={(bucketCode) => {
-                setTargetFilter('LOAN');
-                if (bucketCode) {
-                  const mapBucketToExactSlot: Record<string, string> = {
-                    GK: 'GK',
-                    RB: 'DR',
-                    CB: 'DC',
-                    LB: 'DL',
-                    DM: 'DM',
-                    CM: 'MC',
-                    AM: 'AMC',
-                    ST: 'STC',
-                  };
-                  if (bucketCode === 'W') {
-                    setExactPosFilter('ALL');
-                    setTargetPosGroup('MID');
-                  } else if (mapBucketToExactSlot[bucketCode]) {
-                    setExactPosFilter(mapBucketToExactSlot[bucketCode]);
-                    setTargetPosGroup('ALL');
-                  }
-                } else {
-                  setExactPosFilter('ALL');
-                  setTargetPosGroup('ALL');
-                }
-                setView('targets');
+              onJumpToLoanTargets={() => {
+                setShortlistInitialFilter('LOAN');
+                setView('shortlist');
               }}
             />
           )}
@@ -629,7 +527,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
             />
           )}
 
-          {/* VIEW 3: 4-3-3 POSITIONAL DEPTH — SENIOR PRIMARY VS VERSATILITY COVER VS U21/YOUTH VS ON LOAN */}
+          {/* VIEW 3: 4-3-3 POSITIONAL DEPTH & SUCCESSION (with embedded Shortlist Gap Fillers) */}
           {view === 'depth' && (
             <PositionalDepthView
               audit={audit}
@@ -637,126 +535,26 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
               promoteInternalPositions={promoteInternalPositions}
               successionGapPositions={successionGapPositions}
               overstockedPositions={overstockedPositions}
+              shortlistByBucketCode={shortlistAudit.byBucketCode}
               onSelectPlayer={onSelectPlayer}
+              onOpenShortlistTarget={handleOpenTargetCard}
             />
           )}
 
-          {/* VIEW 4: PASS 0 GROUP 4 SCOUTED FREE AGENTS & EXPIRING <= 6M + PHASE 2 CLUB DNA ENGINE */}
-          {view === 'targets' && (
-            <div className="space-y-3">
-              {/* Interactive Scouted Filter Bar */}
-              <ScoutTargetFilters
-                scoutedTargets={scoutedTargets}
-                filteredScoutedTargets={filteredScoutedTargets}
-                targetPosGroup={targetPosGroup}
-                setTargetPosGroup={setTargetPosGroup}
-                targetAgeBand={targetAgeBand}
-                setTargetAgeBand={setTargetAgeBand}
-                dnaArchetypeFilter={dnaArchetypeFilter}
-                setDnaArchetypeFilter={setDnaArchetypeFilter}
-                setVisibleTargetCount={setVisibleTargetCount}
-                showDnaTuner={showDnaTuner}
-                setShowDnaTuner={setShowDnaTuner}
-                clubDnaWeights={clubDnaWeights}
-                handleUpdateDnaWeight={handleUpdateDnaWeight}
-                handleResetDnaWeights={handleResetDnaWeights}
-                targetFilter={targetFilter}
-                setTargetFilter={setTargetFilter}
-                exactPosFilter={exactPosFilter}
-                setExactPosFilter={setExactPosFilter}
-                targetSortBy={targetSortBy}
-                setTargetSortBy={setTargetSortBy}
-                genuineGapsOnly={genuineGapsOnly}
-                setGenuineGapsOnly={setGenuineGapsOnly}
-                search={search}
-                setSearch={setSearch}
-              />
-
-              {scoutedTargets.length === 0 ? (
-                <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 text-center text-xs text-slate-400">
-                  No Free Agent or Expiring ≤6m targets decoded in this save yet. Drop a `.fm` save in the Hub tab to run the full recruitment scan.
-                </div>
-              ) : filteredScoutedTargets.length === 0 ? (
-                <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 text-center text-xs text-slate-400">
-                  No scouted targets match the active filters. Try clearing &ldquo;Genuine Gaps Only&rdquo;{search.trim() ? ', clearing the search filter,' : ''} or broadening the position/age band.
-                </div>
-              ) : (
-                <VList
-                  style={{ height: 680 }}
-                  className="pr-1"
-                >
-                  {Array.from(
-                    { length: Math.ceil(filteredScoutedTargets.length / 3) },
-                    (_, rowIdx) =>
-                      filteredScoutedTargets.slice(rowIdx * 3, rowIdx * 3 + 3)
-                  ).map((rowItems, rowIdx) => (
-                    <div
-                      key={`scout-row-${rowIdx}`}
-                      className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pb-3"
-                    >
-                      {rowItems.map(
-                        ({
-                          target,
-                          bestRole,
-                          archetype,
-                          dna,
-                          relevantAttributes,
-                          depth,
-                          contractDisplay,
-                        }) => {
-                          const isTracked = isScoutTargetTracked(
-                            trackedTargets,
-                            target
-                          );
-
-                          return (
-                            <ScoutTargetCard
-                              key={target.uid || target.name}
-                              item={{
-                                target,
-                                bestRole,
-                                archetype,
-                                dna,
-                                relevantAttributes,
-                                depth,
-                                contractDisplay,
-                              }}
-                              isTracked={isTracked}
-                              handleOpenTargetCard={handleOpenTargetCard}
-                              handleToggleCompareTray={handleToggleCompareTray}
-                              setCompareTarget={setCompareTarget}
-                              handleToggleTrack={handleToggleTrack}
-                              compareTrayTargets={compareTrayTargets}
-                              players={players}
-                              divisionBenchmarks={divisionBenchmarks}
-                              lastMatchTactic={lastMatchTactic}
-                              governance={governance}
-                              clubDnaWeights={clubDnaWeights}
-                            />
-                          );
-                        }
-                      )}
-                    </div>
-                  ))}
-                </VList>
-              )}
-            </div>
-          )}
-
-          {/* VIEW 5: PERSISTED SHORTLIST */}
+          {/* VIEW 4: UNIFIED IN-GAME SHORTLIST & DIRECT UPGRADE HUB */}
           {view === 'shortlist' && (
             <ShortlistView
+              key={`sl-${shortlistInitialFilter}`}
+              shortlistAudit={shortlistAudit}
               trackedTargets={trackedTargets}
+              initialFilter={shortlistInitialFilter}
               onAskAnalyst={onAskAnalyst}
               handleAskAnalystCompareShortlist={handleAskAnalystCompareShortlist}
               handleOpenTargetCard={handleOpenTargetCard}
               setCompareTarget={setCompareTarget}
-              handleRemoveTracked={handleRemoveTracked}
-              players={players}
-              divisionBenchmarks={divisionBenchmarks}
-              lastMatchTactic={lastMatchTactic}
-              governance={governance}
-              clubDnaWeights={clubDnaWeights}
+              handleToggleTrack={handleToggleTrack}
+              handleToggleCompareTray={handleToggleCompareTray}
+              compareTrayTargets={compareTrayTargets}
             />
           )}
         </>
@@ -775,6 +573,9 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
 
       <CompareTargetModal
         activeComparison={activeComparison}
+        shortlistAdvice={
+          compareTarget ? shortlistAdviceByUid.get(compareTarget.uid) ?? null : null
+        }
         setCompareTarget={setCompareTarget}
         handleOpenTargetCard={handleOpenTargetCard}
         handleToggleTrack={handleToggleTrack}
@@ -790,9 +591,12 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
         auditPlayers={auditPlayers}
       />
 
-      {/* Deep Scout Target Analysis Modal (Percentile Pizza + Starter Radar + FM27 Fit) */}
+      {/* Deep Shortlist Player Profile & Squad Fit Dossier */}
       <ScoutTargetDetailModal
         target={deepScoutTarget}
+        shortlistAdvice={
+          deepScoutTarget ? shortlistAdviceByUid.get(deepScoutTarget.uid) ?? null : null
+        }
         squadPlayers={players}
         divisionBenchmarks={divisionBenchmarks}
         lastMatchTactic={lastMatchTactic}
