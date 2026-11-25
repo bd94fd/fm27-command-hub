@@ -1035,3 +1035,47 @@ test('a player with no recorded minutes gets the shared placeholder, never a fak
   assert.ok(line.includes(`STATS ${MISSING_VALUE}`), `expected shared placeholder, got ${line}`);
   assert.ok(!/\b0m\b/.test(line), 'must not print a zeroed stat line for an unplayed player');
 });
+
+test('staff Preferred Jobs carry the specialist-only guardrail so a 1/20 scout is not read as a bad coach', () => {
+  const ctx = buildLiveTacticalAnalystContext({
+    clubName: 'KVV Zelzate',
+    managerName: 'Bobby Dean',
+    saveDate: '15/09/2027',
+    nextFixture: '18/09/2027 vs Jong Cercle (Away)',
+    leagueStandingSub: '#3 of 16 (6 Pts)',
+    wageSpend: '£4,200 / £4,800 p/w',
+    balance: '£210K',
+    players: samplePlayers,
+    matches: [],
+    hydratedFmSave: null,
+    staff: [
+      {
+        id: 'st-scout',
+        name: 'Bram Scout',
+        role: 'Scout',
+        age: 45,
+        nation: 'BEL',
+        club: 'KVV Zelzate',
+        wagePw: 300,
+        expires: '30/06/2028',
+        attributes: {} as never,
+        jobRatings: {
+          fitness_coach: 1,
+          goalkeeping_coach: 2,
+          set_piece_coach: 1,
+          loan_manager: 3,
+          physio: 1,
+          sports_scientist: 2,
+        },
+      },
+    ],
+  });
+
+  assert.ok(
+    ctx.includes(
+      'Specialist Job Ratings ONLY (Fit/GK/Set/Loan/Phy/Sci — does NOT measure Scouting, Management, Coaching, or HoYD ability; 1/20 on a Scout/Manager is expected and NOT a low rating)'
+    ),
+    'staff block must label Preferred Jobs as specialist-only'
+  );
+  assert.ok(ctx.includes('Bram Scout(Fit 1/GK 2/Set 1/Loan 3/Phy 1/Sci 2)'), 'job ratings missing');
+});

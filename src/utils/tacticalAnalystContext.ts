@@ -1298,7 +1298,7 @@ export function buildLiveTacticalAnalystContext(
         expiringStaff.length > 0 ? `\nExpiring Soon: ${expiringStaff.join(' | ')}` : ''
       }${secondaryJobs.length > 0 ? `\nSecondary Jobs: ${secondaryJobs.join(' | ')}` : ''}${
         preferredJobs.length > 0
-          ? `\nPreferred Jobs (Fit/GK/Set/Loan/Phy/Sci): ${preferredJobs.join(' | ')}`
+          ? `\nSpecialist Job Ratings ONLY (Fit/GK/Set/Loan/Phy/Sci — does NOT measure Scouting, Management, Coaching, or HoYD ability; 1/20 on a Scout/Manager is expected and NOT a low rating): ${preferredJobs.join(' | ')}`
           : ''
       }`,
       compactText:
