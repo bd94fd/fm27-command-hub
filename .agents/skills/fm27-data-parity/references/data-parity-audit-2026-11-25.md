@@ -126,6 +126,12 @@ The `40` vs `35` pair is dormant today only because the decoder always emits an 
 is worse than a gap: it makes a £0 earner indistinguishable from an undecoded contract. The UI
 coerces the same way — `CompareTargetModal.tsx:207,209` render `£{wagePw || 0}`.
 
+Staff wages are the one row this PR fixes: `_staff_contract_fields()` reads the flat fmsave
+`Staff` contract (`has_contract`/`wage`/`contract_end`) instead of the nonexistent `s.contract`, so
+wages and contract ends arrive at all, and an unreadable wage stays `null` instead of `0` so the
+shared payroll total prints `-- (n of m wages unreadable)` rather than a partial sum. Player and
+Analyst defaults are untouched and remain open.
+
 ### 11. Two "has played" predicates — FIXED (TypeScript parity PR #31)
 
 - UI: `squadViewHelpers.ts:294-302` — minutes > 0, apps ≠ "0", goals, assists, or rating > 0.
