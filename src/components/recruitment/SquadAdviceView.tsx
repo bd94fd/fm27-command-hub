@@ -4,7 +4,7 @@ import type { PlayerRecord } from '../../types/fm27';
 import type { RecruitmentTarget } from '../../types/fmSave';
 import type { ShortlistTargetAdvice } from '../../utils/shortlistAdviceEngine';
 import type { TransferActionVerdict } from '../../utils/transferAudit';
-import { formatWeeklyWage } from '../../utils/squadViewHelpers';
+import { formatAge, formatWeeklyWage } from '../../utils/squadViewHelpers';
 import {
   formatCompactCurrency,
   formatContractExpiry,
@@ -98,7 +98,7 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Filter player, pos, tag..."
+            placeholder="Filter player, pos, tag…"
             className="w-full rounded-xl border border-slate-800 bg-slate-950 py-2 sm:py-1.5 pl-8 pr-3 text-xs text-slate-100 placeholder:text-slate-500"
           />
         </div>
@@ -137,7 +137,7 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
                       {p.position}
                     </span>
                     <span className="text-[11px] font-mono text-slate-400">
-                      {p.age}y
+                      {formatAge(p.age)}y
                     </span>
                     <span className="text-[11px] font-mono font-bold text-amber-300 tabular-nums">
                       {p.ability.toFixed(1)}★/{p.potential.toFixed(1)}★
@@ -291,7 +291,7 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
                           In-Game Shortlist {best.tier === 'direct_xi_upgrade' ? 'Direct Upgrade' : 'Replacement'}:{' '}
                           <span className="text-white">{best.target.name}</span>{' '}
                           <span className="font-mono text-[11px] text-emerald-300">
-                            ({best.target.primaryPosition}, {best.target.age}y)
+                            ({best.target.primaryPosition}, {formatAge(best.target.age)}y)
                           </span>
                         </span>
                       </div>

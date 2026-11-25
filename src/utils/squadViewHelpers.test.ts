@@ -12,8 +12,10 @@ import {
   countSquadPool,
   describeSquadPool,
   filterAndSortSquadRows,
+  formatAge,
   formatCompactCurrency,
   formatContractExpiry,
+  formatNation,
   formatShortContractExpiry,
   formatWeeklyWage,
   getSquadPositionOrder,
@@ -350,4 +352,19 @@ test('Shared "has played" predicate (§11): apps without minutes or a 0.00 ratin
   assert.equal(hasPlayerMatchStats(makePlayer({ id: 'y', apps: '0', minutes: 0, rating: 0 })), false);
   assert.equal(hasPlayerMatchStats(makePlayer({ id: 'z', apps: '0', minutes: 0, rating: 6.8 })), true);
   assert.equal(hasPlayerMatchStats(makePlayer({ id: 'w', apps: '0', minutes: 90 })), true);
+});
+
+
+test('age and nationality render an explicit gap, never 20/22/35/FM/Unknown', () => {
+  for (const age of [null, undefined, NaN, 0, -1]) {
+    assert.equal(formatAge(age), MISSING_VALUE);
+  }
+  assert.equal(formatAge(22), '22');
+  assert.equal(formatAge(35.4), '35');
+
+  for (const nation of [null, undefined, '', ' ', 'Unknown', 'N/A', 'FM', '--', 'none']) {
+    assert.equal(formatNation(nation), MISSING_VALUE);
+  }
+  assert.equal(formatNation('Belgium'), 'Belgium');
+  assert.equal(formatNation(' Côte d’Ivoire '), 'Côte d’Ivoire');
 });

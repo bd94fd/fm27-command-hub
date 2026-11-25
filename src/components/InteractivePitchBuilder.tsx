@@ -855,7 +855,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                   }
                   onClick={() => setSelectedSlotId(slot.slotId)}
                   style={{ left: `${displayX}%`, top: `${displayY}%` }}
-                  className={`absolute -translate-x-1/2 -translate-y-1/2 px-1 sm:px-2 py-1 sm:py-1.5 rounded-lg text-center transition-all duration-300 w-[62px] min-h-[44px] sm:w-auto sm:min-h-0 sm:min-w-[82px] sm:max-w-[126px] flex flex-col justify-center border cursor-pointer ${categoryRing} ${
+                  className={`absolute -translate-x-1/2 -translate-y-1/2 px-1 sm:px-2 py-1 sm:py-1.5 rounded-lg text-center transition-[transform,background-color,border-color,box-shadow] duration-300 w-[62px] min-h-[44px] sm:w-auto sm:min-h-0 sm:min-w-[82px] sm:max-w-[126px] flex flex-col justify-center border cursor-pointer ${categoryRing} ${
                     isSelected
                       ? 'bg-emerald-500 text-slate-950 border-white shadow-lg scale-105 z-20'
                       : hasWarning

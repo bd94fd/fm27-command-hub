@@ -4,7 +4,7 @@ import type { PlayerRecord } from '../../types/fm27';
 import type { RecruitmentTarget } from '../../types/fmSave';
 import type { ShortlistTargetAdvice } from '../../utils/shortlistAdviceEngine';
 import type { PositionBucketCode } from '../../utils/transferAudit';
-import { formatWeeklyWage } from '../../utils/squadViewHelpers';
+import { formatAge, formatWeeklyWage } from '../../utils/squadViewHelpers';
 import type { PositionalNeed, SquadAudit } from './recruitmentTypes';
 
 interface PositionalDepthViewProps {
@@ -133,7 +133,7 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
                   </div>
                   <div className="text-[11px] text-slate-300 leading-snug">
                     {b.firstTeamReadyYouthPlayers
-                      .map((p) => `${p.name} (Age ${p.age}, ${p.ability.toFixed(1)}★)`)
+                      .map((p) => `${p.name} (Age ${formatAge(p.age)}, ${p.ability.toFixed(1)}★)`)
                       .join(', ')}{' '}
                     already meet your {audit.tierBenchmarks.firstTeamRotationFloor.toFixed(1)}★ First-Team standard.
                   </div>
@@ -195,7 +195,7 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
                               <span className="font-semibold text-white truncate">
                                 {m.target.name}{' '}
                                 <span className="font-normal text-slate-400">
-                                  ({m.target.age}y · {m.bestIpRole} {m.ipRoleFitPct}%)
+                                  ({formatAge(m.target.age)}y · {m.bestIpRole} {m.ipRoleFitPct}%)
                                 </span>
                               </span>
                               <span
@@ -254,7 +254,7 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
                               {p.name}
                             </div>
                             <div className="text-[10px] text-slate-400 mt-0.5 flex flex-wrap items-center gap-1.5">
-                              <span>Age {p.age}</span>
+                              <span>Age {formatAge(p.age)}</span>
                               <span>·</span>
                               <span className="font-mono tabular-nums">
                                 {formatWeeklyWage(p.wagePw)}
@@ -303,7 +303,7 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
                             <span className="text-teal-50 font-semibold break-words">
                               {p.name}{' '}
                               <span className="text-[10px] font-normal text-teal-200/80">
-                                (Age {p.age})
+                                (Age {formatAge(p.age)})
                               </span>
                             </span>
                             <div className="mt-0.5 flex flex-wrap items-center gap-1">
@@ -380,7 +380,7 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
                             <span className="text-purple-100/90 font-medium break-words">
                               {p.name}{' '}
                               <span className="text-[10px] text-purple-300/70">
-                                (Age {p.age})
+                                (Age {formatAge(p.age)})
                               </span>
                             </span>
                             <div className="mt-0.5 flex flex-wrap items-center gap-1">

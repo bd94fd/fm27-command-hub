@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { Sparkles, Trash2, TrendingUp } from 'lucide-react';
 import type { PlayerRecord } from '../../types/fm27';
 import { MAX_PROGRESSION_SNAPSHOTS } from '../../utils/progressionDiff';
+import { formatAge } from '../../utils/squadViewHelpers';
 import type { ProgressionDiffReport, ProgressionSnapshot } from '../../utils/progressionDiff';
 
 interface SquadProgressionViewProps {
@@ -310,7 +311,7 @@ export const SquadProgressionView: React.FC<SquadProgressionViewProps> = ({
                                 {summary.playerName}
                               </div>
                               <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">
-                                {summary.position} · Age {summary.age}
+                                {summary.position} · Age {formatAge(summary.age)}
                                 {summary.majorCount > 0
                                   ? ` · ${summary.majorCount} major shift${summary.majorCount === 1 ? '' : 's'}`
                                   : ''}
@@ -447,7 +448,7 @@ export const SquadProgressionView: React.FC<SquadProgressionViewProps> = ({
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-mono">
                         <span className="text-slate-300">
-                          {n.position} · Age {n.age}
+                          {n.position} · Age {formatAge(n.age)}
                         </span>
                         <span className="text-amber-400 font-bold">
                           {n.abilityStars.toFixed(1)}★/{n.potentialStars.toFixed(1)}★

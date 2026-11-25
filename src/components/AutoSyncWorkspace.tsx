@@ -1184,7 +1184,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           cancelDecodeRef.current = cancelFmSaveDecode;
           const uploadControl = createUploadController();
           uploadControlRef.current = uploadControl;
-          const initialLabel = `Reading ${file.name}${fastSync ? ' (Fast Sync)' : ''}...`;
+          const initialLabel = `Reading ${file.name}${fastSync ? ' (Fast Sync)' : ''}…`;
           setFmDecodeStage({
             stage: 'read',
             step: 'Preparing .fm Save',
@@ -1223,7 +1223,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                   });
                   onBackgroundSyncStatusChange?.({
                     label:
-                      'Squad, staff & tactics ready — finishing fixtures, match xG & season stats...',
+                      'Squad, staff & tactics ready — finishing fixtures, match xG & season stats…',
                     clubCoreReady: true,
                   });
                 }
@@ -2462,7 +2462,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             <textarea
               rows={2}
               aria-label="Message your FM27 Tactical Analyst"
-              placeholder="Ask tactics, drop a .fm save, or paste text/screenshots..."
+              placeholder="Ask tactics, drop a .fm save, or paste text/screenshots…"
               value={messageInput}
               onChange={(e) => setMessageInput(e.target.value)}
               onPaste={handleTextareaPaste}

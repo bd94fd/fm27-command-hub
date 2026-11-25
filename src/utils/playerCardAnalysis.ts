@@ -613,7 +613,10 @@ export function evaluateSquadDepth(
 }
 
 export function evaluateContractStanding(player: PlayerRecord): ContractStandingInsight {
-  const annualWage = Math.round((player.wagePw || 0) * 52);
+  const annualWage =
+    typeof player.wagePw === 'number' && Number.isFinite(player.wagePw) && player.wagePw > 0
+      ? Math.round(player.wagePw * 52)
+      : NaN;
   const monthsRemaining =
     typeof player.contractExpiryMonths === 'number' && Number.isFinite(player.contractExpiryMonths)
       ? player.contractExpiryMonths

@@ -34,7 +34,12 @@ import {
   getPlaybookContractNotes,
   partitionContractClausesAndBonuses,
 } from '../utils/recruitmentHelpers';
-import { formatContractExpiry, formatWeeklyWage } from '../utils/squadViewHelpers';
+import {
+  formatAge,
+  formatContractExpiry,
+  formatNation,
+  formatWeeklyWage,
+} from '../utils/squadViewHelpers';
 import {
   analyzePlayerCard,
   getPrimaryPositionCode,
@@ -468,7 +473,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
     ctx.fillStyle = '#94a3b8';
     ctx.font = '13px sans-serif';
     ctx.fillText(
-      `Age ${player.age} · ${player.nation} · ${player.preferredFoot || 'Right'} Foot · ${player.personality} · ${formatWeeklyWage(player.wagePw)} (exp ${formatContractExpiry(player.expires)})`,
+      `Age ${formatAge(player.age)} · ${formatNation(player.nation)} · ${player.preferredFoot || 'Right'} Foot · ${player.personality} · ${formatWeeklyWage(player.wagePw)} (exp ${formatContractExpiry(player.expires)})`,
       28,
       144
     );
@@ -701,8 +706,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                 })()}
               </div>
               <p className="text-[11px] sm:text-xs text-slate-400 leading-snug">
-                Age {player.age}
-                {player.nation && player.nation !== 'Unknown' ? ` · ${player.nation}` : ''} ·{' '}
+                Age {formatAge(player.age)} · {formatNation(player.nation)} ·{' '}
                 {formatFootLabel(player)}
                 {player.heightCm ? ` · ${player.heightCm} cm` : ''}
                 <span className="hidden sm:inline"> · {player.personality}</span> ·{' '}
@@ -1769,8 +1773,10 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="text-slate-400">Weekly / Annual:</span>
                     <span className="font-mono text-slate-200 text-right tabular-nums">
-                      {formatWeeklyWage(player.wagePw)} (£
-                      {analysis.contractStanding.annualWage.toLocaleString()}/yr)
+                      {formatWeeklyWage(player.wagePw)} (
+                      {Number.isFinite(analysis.contractStanding.annualWage)
+                        ? `£${analysis.contractStanding.annualWage.toLocaleString()}/yr`
+                        : '--'})
                     </span>
                   </div>
                   <div className="flex items-baseline justify-between gap-2">

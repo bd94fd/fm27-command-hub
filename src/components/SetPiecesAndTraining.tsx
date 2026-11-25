@@ -460,7 +460,7 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
 
           <div className="h-2 w-full rounded-full bg-slate-800 overflow-hidden">
             <div
-              className={`h-full rounded-full transition-all ${
+              className={`h-full rounded-full transition-[width] ${
                 loadSummary.fatigueIndex >= 72
                   ? 'bg-rose-500'
                   : loadSummary.fatigueIndex >= 52

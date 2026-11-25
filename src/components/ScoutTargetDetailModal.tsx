@@ -22,6 +22,7 @@ import type { ClubDnaPillarWeights } from '../utils/clubDnaEngine';
 import type { ShortlistTargetAdvice } from '../utils/shortlistAdviceEngine';
 import { AttributeRadarChart, PercentilePizzaChart } from './charts/PlayerRadarAndPizzaCharts';
 import { MobileSheetFrame } from './MobileSheetFrame';
+import { formatAge, formatContractExpiry, formatNation } from '../utils/squadViewHelpers';
 
 interface ScoutTargetDetailModalProps {
   target: RecruitmentTarget | null;
@@ -185,7 +186,7 @@ export const ScoutTargetDetailModal: React.FC<ScoutTargetDetailModalProps> = ({
 
   const handleAsk = () => {
     if (!onAskAnalyst) return;
-    const prompt = `Give me a full FM27 Patch 27.1.0 shortlist verdict on ${target.name} (${target.primaryPosition}, Age ${target.age}, ${clubLabel}, Personality: ${personality}, ${weeklyWage > 0 ? `£${weeklyWage.toLocaleString()}/wk` : 'Free Agent'}, ${shortlistAdvice?.budget.feeLabel || intel.valueTag}, expires ${target.expires || 'N/A'}). Explain how he fills our squad gaps NOW vs over the next 1–3 seasons, compare him directly against ${incumbentName || 'our current starter'} for ${displayIpRole} IP / ${displayOopRole} OOP, and confirm whether he fits our club finances.`;
+    const prompt = `Give me a full FM27 Patch 27.1.0 shortlist verdict on ${target.name} (${target.primaryPosition}, Age ${formatAge(target.age)}, ${clubLabel}, Personality: ${personality}, ${weeklyWage > 0 ? `£${weeklyWage.toLocaleString()}/wk` : 'Free Agent'}, ${shortlistAdvice?.budget.feeLabel || intel.valueTag}, expires ${formatContractExpiry(target.expires)}). Explain how he fills our squad gaps NOW vs over the next 1–3 seasons, compare him directly against ${incumbentName || 'our current starter'} for ${displayIpRole} IP / ${displayOopRole} OOP, and confirm whether he fits our club finances.`;
     onClose();
     onAskAnalyst(prompt);
   };
@@ -213,7 +214,7 @@ export const ScoutTargetDetailModal: React.FC<ScoutTargetDetailModalProps> = ({
               </span>
             )}
             <span className="text-xs text-slate-400">
-              Age {target.age} · {target.nationality || 'Unknown'} · {clubLabel}
+              Age {formatAge(target.age)} · {formatNation(target.nationality)} · {clubLabel}
             </span>
           </div>
           <p className="text-xs text-slate-400">

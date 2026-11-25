@@ -409,7 +409,7 @@ export async function decodeFmSaveViaServer(
       ? pauseReason === 'offline'
         ? `Signal dropped at ${pct}% (${uploadedMbLabel} / ${totalMbLabel} MB) — paused safely. Will auto-resume when signal returns.`
         : `Upload paused at ${pct}% (${uploadedMbLabel} / ${totalMbLabel} MB) — tap Resume to continue.`
-      : `Uploading save to server (${uploadedMbLabel} / ${totalMbLabel} MB — ${pct}%)...`;
+      : `Uploading save to server (${uploadedMbLabel} / ${totalMbLabel} MB — ${pct}%)…`;
 
     onProgress?.({
       stage: 'read',
@@ -451,7 +451,7 @@ export async function decodeFmSaveViaServer(
       speedTracker.markResumed();
       emitUploadProgress(
         uploadedBytes,
-        'Resuming upload — checking saved progress on server...'
+        'Resuming upload — checking saved progress on server…'
       );
     }
   });
@@ -580,7 +580,7 @@ export async function decodeFmSaveViaServer(
     // 1. Initialize chunked upload session
     emitUploadProgress(
       0,
-      `Uploading save to server (0.0 / ${totalMbLabel} MB — 0%)...`
+      `Uploading save to server (0.0 / ${totalMbLabel} MB — 0%)…`
     );
 
     const initialized = await initUploadSession();
@@ -643,7 +643,7 @@ export async function decodeFmSaveViaServer(
         speedTracker.reset(totalBytes);
         emitUploadProgress(
           0,
-          'Server hold expired — restarting upload cleanly from 0%...'
+          'Server hold expired — restarting upload cleanly from 0%…'
         );
         const fresh = await initUploadSession();
         uploadId = fresh.uploadId;
@@ -746,7 +746,7 @@ export async function decodeFmSaveViaServer(
                 stallTipVisible = true;
                 emitUploadProgress(
                   uploadedBytes,
-                  `Still reading ${fileName} from device storage (${formatBytesMb(uploadedBytes)} / ${totalMbLabel} MB)...`
+                  `Still reading ${fileName} from device storage (${formatBytesMb(uploadedBytes)} / ${totalMbLabel} MB)…`
                 );
               },
             }
@@ -841,7 +841,7 @@ export async function decodeFmSaveViaServer(
           const maxAttempts = SERVER_CHUNK_MAX_RETRIES + 1;
           emitUploadProgress(
             uploadedBytes,
-            `Connection blip${status ? ` (HTTP ${status})` : ''} — retrying chunk (attempt ${nextAttempt}/${maxAttempts})...`
+            `Connection blip${status ? ` (HTTP ${status})` : ''} — retrying chunk (attempt ${nextAttempt}/${maxAttempts})…`
           );
           await sleepWithAbort(
             retryBaseDelayMs * Math.pow(2, attempt),
@@ -1026,7 +1026,7 @@ export async function decodeFmSaveViaServer(
       stage: 'parse',
       step: `Server ${syncModeLabel}`,
       elapsedSec: elapsedSec(),
-      label: `Starting native server ${syncModeLabel} decode...`,
+      label: `Starting native server ${syncModeLabel} decode…`,
       transport: 'server_decode',
       canPause: false,
       canFallbackToLocal: true,
@@ -1068,7 +1068,7 @@ export async function decodeFmSaveViaServer(
     }
 
     // 4. Poll async decode job every 1.2 seconds until done or error
-    let lastProgress = 'Opening .fm save...';
+    let lastProgress = 'Opening .fm save…';
     let consecutivePollErrors = 0;
     let emittedCheckpointStage: string | null = null;
     while (true) {
@@ -1106,7 +1106,7 @@ export async function decodeFmSaveViaServer(
           stage: 'parse',
           step: `Server ${syncModeLabel}`,
           elapsedSec: elapsedSec(),
-          label: `Server busy — reconnecting to decode status (${consecutivePollErrors}/${SERVER_POLL_MAX_RETRIES})...`,
+          label: `Server busy — reconnecting to decode status (${consecutivePollErrors}/${SERVER_POLL_MAX_RETRIES})…`,
           transport: 'server_decode',
           canPause: false,
           canFallbackToLocal: true,
@@ -1139,7 +1139,7 @@ export async function decodeFmSaveViaServer(
           stage: 'parse',
           step: `Server ${syncModeLabel}`,
           elapsedSec: elapsedSec(),
-          label: `Server busy (HTTP ${jobRes.status}) — reconnecting to decode status (${consecutivePollErrors}/${SERVER_POLL_MAX_RETRIES})...`,
+          label: `Server busy (HTTP ${jobRes.status}) — reconnecting to decode status (${consecutivePollErrors}/${SERVER_POLL_MAX_RETRIES})…`,
           transport: 'server_decode',
           canPause: false,
           canFallbackToLocal: true,
@@ -1229,7 +1229,7 @@ export async function decodeFmSaveViaServer(
           step: `Server ${syncModeLabel}`,
           progressPct: 100,
           elapsedSec: elapsedSec(),
-          label: `Server ${syncModeLabel} complete — hydrating Command Hub...`,
+          label: `Server ${syncModeLabel} complete — hydrating Command Hub…`,
           transport: 'server_decode',
           canPause: false,
           canFallbackToLocal: false,
@@ -1655,8 +1655,8 @@ export async function decodeFmSaveWithServerFirst(
           canPause: false,
           canFallbackToLocal: false,
           label: manualFallback
-            ? 'Switched to on-device decoder — starting local browser reader...'
-            : 'Server decoder unavailable or restarted — switching automatically to local browser decoder...',
+            ? 'Switched to on-device decoder — starting local browser reader…'
+            : 'Server decoder unavailable or restarted — switching automatically to local browser decoder…',
         });
       }
     }

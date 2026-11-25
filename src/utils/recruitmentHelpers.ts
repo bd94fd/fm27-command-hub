@@ -5,6 +5,7 @@ import {
   doesPlayerMatchRolePositionGroup,
   scorePlayerForFm27Role,
 } from './fm27RoleMatcher';
+import { formatNation } from './squadViewHelpers';
 
 export type ScoutPositionGroup = 'ALL' | 'GK' | 'DEF' | 'MID' | 'FWD';
 export type ScoutAgeBand = 'ALL' | 'U23' | '23-28' | '29+';
@@ -282,7 +283,7 @@ export function buildCompareTargetFromSquadPlayer(
     uid: resolveSquadPlayerUid(player),
     name: player.name,
     age: player.age,
-    nationality: player.nation || 'Unknown',
+    nationality: formatNation(player.nation),
     primaryPosition: player.position,
     secondaryPositions: Array.isArray(player.secondaryPositions)
       ? [...player.secondaryPositions]
@@ -363,7 +364,7 @@ export function buildScoutTargetPlayerRecord(target: RecruitmentTarget): PlayerR
         : `<= ${target.contractExpiryMonths || 6}m`),
     contractExpiryMonths: target.isFreeAgent ? 0 : target.contractExpiryMonths,
     contractDetails: target.contractDetails ?? undefined,
-    nation: target.nationality || 'Unknown',
+    nation: formatNation(target.nationality),
     wagePw: target.currentWagePw ?? target.demandedWageEur ?? 0,
     marketValue: target.transferValue ?? null,
     marketValueState: target.transferValueState,

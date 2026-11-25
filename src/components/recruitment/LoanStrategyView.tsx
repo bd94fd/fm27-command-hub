@@ -9,7 +9,11 @@ import {
 import type { PlayerRecord } from '../../types/fm27';
 import type { RecruitmentTarget } from '../../types/fmSave';
 import type { SquadTransferAuditSummary } from '../../utils/transferAudit';
-import { formatContractExpiry, formatWeeklyWage } from '../../utils/squadViewHelpers';
+import {
+  formatAge,
+  formatContractExpiry,
+  formatWeeklyWage,
+} from '../../utils/squadViewHelpers';
 
 interface LoanStrategyViewProps {
   audit: SquadTransferAuditSummary;
@@ -219,7 +223,7 @@ export const LoanStrategyView: React.FC<LoanStrategyViewProps> = ({
                   >
                     {item.player.name}{' '}
                     <span className="font-mono text-slate-400">
-                      ({item.player.position}, {item.player.age}y)
+                      ({item.player.position}, {formatAge(item.player.age)}y)
                     </span>
                   </button>
                   <span className="font-mono text-xs font-bold text-amber-300">
@@ -270,7 +274,7 @@ export const LoanStrategyView: React.FC<LoanStrategyViewProps> = ({
                     >
                       {item.player.name}{' '}
                       <span className="text-slate-400 font-mono">
-                        ({item.primaryBucketCode}, {item.player.age}y)
+                        ({item.primaryBucketCode}, {formatAge(item.player.age)}y)
                       </span>
                     </button>
                     <span className="font-mono font-bold text-amber-300 shrink-0">
@@ -306,7 +310,7 @@ export const LoanStrategyView: React.FC<LoanStrategyViewProps> = ({
                   >
                     {item.player.name}{' '}
                     <span className="text-slate-400 font-mono">
-                      ({item.player.ability.toFixed(1)}★, {item.player.age}y)
+                      ({item.player.ability.toFixed(1)}★, {formatAge(item.player.age)}y)
                     </span>
                   </button>
                   <span className="text-[10px] font-mono text-rose-200 truncate max-w-[180px]">

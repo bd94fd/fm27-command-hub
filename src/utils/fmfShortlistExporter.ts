@@ -13,6 +13,7 @@ import {
   TacticalEffectivenessFactor,
 } from './dualPhaseRoleEngine';
 import { evaluatePlayerMetaScore } from './metaScoreEngine';
+import { formatAge } from './squadViewHelpers';
 
 export interface ShortlistExportEntry {
   uid: number | null;
@@ -79,8 +80,8 @@ export function exportShortlistToCsv(players: PlayerRecord[]): string {
       e.uid,
       e.name,
       e.position,
-      e.age,
-      e.wagePw,
+      Number.isFinite(e.age) ? e.age : '',
+      Number.isFinite(e.wagePw) ? e.wagePw : '',
       e.marketValue,
       e.metaScore,
       e.paMetaScore,
@@ -153,7 +154,7 @@ export function buildAiResearchContextBlock(params: {
         params.includeDualPhase !== false
           ? ` | IP: ${item.roles.bestInPossession?.name ?? '--'} / OOP: ${item.roles.bestOutOfPossession?.name ?? '--'}`
           : '';
-      lines.push(`- ${item.player.name} (${item.player.position}, ${item.player.age}y): Meta ${m} (Pot ${paM})${roleStr}`);
+      lines.push(`- ${item.player.name} (${item.player.position}, ${formatAge(item.player.age)}y): Meta ${m} (Pot ${paM})${roleStr}`);
     }
   }
 

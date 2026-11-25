@@ -214,7 +214,7 @@ export function sanitizeReaderNote(raw: string): string {
     .trim();
 
   if (text.length > 220) {
-    text = `${text.slice(0, 217).trimEnd()}...`;
+    text = `${text.slice(0, 217).trimEnd()}…`;
   }
   return text;
 }

@@ -3,7 +3,11 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { PlayerRecord } from '../../types/fm27';
 import { verdictBadgeClass } from './recruitmentBadges';
 import type { ContractHorizonSummary, ContractHorizonTier } from './recruitmentTypes';
-import { formatContractExpiry, formatWeeklyWage } from '../../utils/squadViewHelpers';
+import {
+  formatAge,
+  formatContractExpiry,
+  formatWeeklyWage,
+} from '../../utils/squadViewHelpers';
 
 interface ContractHorizonViewProps {
   contractHorizonSummary: ContractHorizonSummary;
@@ -144,7 +148,7 @@ export const ContractHorizonView: React.FC<ContractHorizonViewProps> = ({
                       {p.position}
                     </span>
                     <span className="text-[11px] font-mono text-slate-400">
-                      {p.age}y
+                      {formatAge(p.age)}y
                     </span>
                     <span className="text-[11px] font-mono font-bold text-amber-300 tabular-nums">
                       {p.ability.toFixed(1)}★/{p.potential.toFixed(1)}★

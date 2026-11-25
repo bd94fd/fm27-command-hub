@@ -243,8 +243,10 @@ export function evaluateSquadPlayerCard(
   const refWage = divWage > 0 ? divWage : medianSquadWage;
 
   const valueTag =
-    player.wagePw <= 0
-      ? 'Youth / Non-Contract'
+    !Number.isFinite(player.wagePw)
+      ? 'Wage not decoded'
+      : player.wagePw <= 0
+        ? 'Youth / Non-Contract'
       : player.wagePw <= refWage * 0.75 && dna.overallDnaScore >= 58
         ? 'High Wage Value'
         : player.wagePw >= refWage * 1.45 && dna.overallDnaScore < 62

@@ -132,7 +132,7 @@ export const SquadListToolbar: React.FC<SquadListToolbarProps> = ({
         <input
           type="text"
           aria-label="Search squad players"
-          placeholder="Search player, pos, role..."
+          placeholder="Search player, pos, role…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full min-h-[44px] sm:min-h-[34px] pl-8 pr-10 sm:pr-7 py-1.5 text-base sm:text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"

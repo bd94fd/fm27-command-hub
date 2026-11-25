@@ -15,6 +15,7 @@ import type {
 } from '../../utils/shortlistAdviceEngine';
 import { isScoutTargetTracked } from '../../services/fmStorage';
 import { getPositionRelevantAttributes } from '../../utils/recruitmentHelpers';
+import { formatAge, formatNation } from '../../utils/squadViewHelpers';
 
 type ShortlistFilterKey =
   | 'ALL'
@@ -171,7 +172,7 @@ export const ShortlistView: React.FC<ShortlistViewProps> = ({
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search player, club, personality, position..."
+                placeholder="Search player, club, personality, position…"
                 className="w-full rounded-xl border border-slate-800 bg-slate-950 py-2 pl-8 pr-3 text-xs text-slate-100 placeholder:text-slate-500"
               />
             </div>
@@ -230,7 +231,7 @@ export const ShortlistView: React.FC<ShortlistViewProps> = ({
                       {target.name}
                     </h4>
                     <p className="text-[11px] text-slate-400 truncate">
-                      {target.age}y · {target.nationality} ·{' '}
+                      {formatAge(target.age)}y · {formatNation(target.nationality)} ·{' '}
                       <span className="font-mono font-semibold text-emerald-300">
                         {target.primaryPosition}
                       </span>{' '}
