@@ -20,6 +20,7 @@
 - Save-load speed, memory, bundle or performance-budget work: use `fm27-performance-audit`.
 - Any screen, layout, or mobile change: use `fm27-ui-ux-review` and `web-design-guidelines`.
 - Measured UI audit for contrast, tap targets, spacing or alignment: use `ui-ux-audit` as a supporting rubric after `fm27-ui-ux-review` and `accessibility`.
+- Design critique, audit, polish, layout, adapt or anti-slop work: use `impeccable` after reading `.agents/skills/impeccable/FM27-SETUP.md`. Do not run its live mode or installer hooks without explicit approval.
 - Accessibility or WCAG work: use `accessibility`.
 - Lighthouse, Core Web Vitals or page quality work: use `web-quality-audit`, `performance` and `core-web-vitals`.
 - Browser automation, screenshots or end-to-end checks: use `playwright-skill`.
@@ -34,6 +35,7 @@
 - Engineering explanations and design discussion: use `technical-writing`.
 - A recurring fix or workflow: use `skill-creator` to capture it as a reusable skill.
 - Updating project memory or `AGENTS.md`: use `agent-memory`.
+- Before searching for a new tool or skill, read `TOOLING-WATCHLIST.md`. When you find a useful candidate, add it there with the roadmap item, source, licence and risk. Do not search for the same thing twice.
 - Do not invoke unrelated skills just to fill the list. Say which skills apply and why the others do not.
 - Priority when instructions conflict: latest explicit user instruction, then this file, then the task-specific skill, then general guidance. State the conflict once and record any partial work.
 - Every PR body and final summary includes a short `Skills applied:` line.
