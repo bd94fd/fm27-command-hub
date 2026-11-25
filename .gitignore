@@ -7,7 +7,9 @@ coverage/
 .env*
 !.env.example
 .aistudio/
-.agents/
+.agents/*
+!.agents/skills/
+!.agents/skills/**
 .playwright-cli/
 public/assets/aistudio/
 *.fm
