@@ -4,26 +4,25 @@ import type { PlayerRecord } from '../../types/fm27';
 import type { RecruitmentTarget } from '../../types/fmSave';
 import { buildMultiPlayerComparison } from '../../utils/playerComparisonEngine';
 import { findTopSeniorStarterForPosition } from '../../utils/recruitmentHelpers';
+import { useCompareTray } from '../../context/CompareTrayContext';
 import { MultiPlayerComparisonChart } from '../charts/MultiPlayerComparisonChart';
 import { MobileSheetFrame } from '../MobileSheetFrame';
 
 interface SelectionCompareDockProps {
-  compareTrayTargets: RecruitmentTarget[];
-  handleToggleCompareTray: (target: RecruitmentTarget) => void;
-  setCompareTrayTargets: (targets: RecruitmentTarget[]) => void;
-  isMultiCompareOpen: boolean;
-  setIsMultiCompareOpen: (open: boolean) => void;
   auditPlayers: PlayerRecord[];
 }
 
 export const SelectionCompareDock: React.FC<SelectionCompareDockProps> = ({
-  compareTrayTargets,
-  handleToggleCompareTray,
-  setCompareTrayTargets,
-  isMultiCompareOpen,
-  setIsMultiCompareOpen,
   auditPlayers,
 }) => {
+  const {
+    targets: compareTrayTargets,
+    toggle: handleToggleCompareTray,
+    clear: clearCompareTray,
+    isOpen: isMultiCompareOpen,
+    setOpen: setIsMultiCompareOpen,
+  } = useCompareTray();
+
   return (
     <>
       {compareTrayTargets.length > 0 && (
@@ -48,7 +47,7 @@ export const SelectionCompareDock: React.FC<SelectionCompareDockProps> = ({
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={() => setCompareTrayTargets([])}
+              onClick={() => clearCompareTray()}
               className="min-h-[44px] px-3 rounded-xl border border-slate-700 bg-slate-800 text-xs font-semibold text-slate-300 hover:text-white cursor-pointer"
             >
               Clear
@@ -89,13 +88,15 @@ export const SelectionCompareDock: React.FC<SelectionCompareDockProps> = ({
           dataset={buildMultiPlayerComparison(
             compareTrayTargets.length === 1
               ? (() => {
+                  const only = compareTrayTargets[0];
                   const starter = findTopSeniorStarterForPosition(
-                    compareTrayTargets[0].primaryPosition,
+                    only.primaryPosition,
                     auditPlayers
                   );
-                  return starter
-                    ? [compareTrayTargets[0], starter]
-                    : compareTrayTargets;
+                  // A squad member can be the best starter himself: never compare a player with himself.
+                  const isSamePlayer =
+                    starter !== null && (starter.uid ?? 0) === only.uid;
+                  return starter && !isSamePlayer ? [only, starter] : compareTrayTargets;
                 })()
               : compareTrayTargets,
             auditPlayers

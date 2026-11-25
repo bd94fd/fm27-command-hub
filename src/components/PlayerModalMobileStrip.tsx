@@ -1,5 +1,6 @@
 import React from 'react';
 import { BookmarkPlus, ClipboardPlus, Download } from 'lucide-react';
+import { CompareTrayToggle } from './CompareTrayToggle';
 import type { PlayerRecord, ShortlistRecord } from '../types/fm27';
 import type { PlayerCardAnalysis } from '../utils/playerCardAnalysis';
 import type { CardIntelligenceSummary } from '../utils/cardIntelligenceEngine';
@@ -48,6 +49,8 @@ export const PlayerQuickActionBar: React.FC<PlayerQuickActionBarProps> = ({
         <Download className="h-3.5 w-3.5 shrink-0" />
         <span>{exportFeedback || 'Export PNG'}</span>
       </button>
+
+      <CompareTrayToggle player={player} />
 
       {!isManagedClubPlayer && (
         <button

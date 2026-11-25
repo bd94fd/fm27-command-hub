@@ -44,6 +44,7 @@ import { PositionalDepthView } from './recruitment/PositionalDepthView';
 import { ShortlistView } from './recruitment/ShortlistView';
 import { CompareTargetModal } from './recruitment/CompareTargetModal';
 import { SelectionCompareDock } from './recruitment/SelectionCompareDock';
+import { useCompareTray } from '../context/CompareTrayContext';
 import type { AuditView } from './recruitment/recruitmentTypes';
 
 interface RecruitmentWorkspaceProps {
@@ -117,8 +118,6 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [compareTarget, setCompareTarget] = useState<RecruitmentTarget | null>(null);
   const [deepScoutTarget, setDeepScoutTarget] = useState<RecruitmentTarget | null>(null);
-  const [compareTrayTargets, setCompareTrayTargets] = useState<RecruitmentTarget[]>([]);
-  const [isMultiCompareOpen, setIsMultiCompareOpen] = useState<boolean>(false);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -127,16 +126,12 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
     }, 2600);
   };
 
+  const compareTray = useCompareTray();
+
   const handleToggleCompareTray = (target: RecruitmentTarget) => {
-    setCompareTrayTargets((prev) => {
-      const exists = prev.some((t) => t.uid === target.uid);
-      if (exists) return prev.filter((t) => t.uid !== target.uid);
-      if (prev.length >= 3) {
-        showToast('Compare tray holds up to 3 players — remove one first.');
-        return prev;
-      }
-      return [...prev, target];
-    });
+    if (compareTray.toggle(target) === 'full') {
+      showToast('Compare tray holds up to 3 players — remove one first.');
+    }
   };
 
   const firstTeamPlayers = useMemo(
@@ -559,7 +554,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
               setCompareTarget={setCompareTarget}
               handleToggleTrack={handleToggleTrack}
               handleToggleCompareTray={handleToggleCompareTray}
-              compareTrayTargets={compareTrayTargets}
+              compareTrayTargets={compareTray.targets}
             />
           )}
         </>
@@ -587,14 +582,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
         trackedTargets={trackedTargets}
       />
 
-      <SelectionCompareDock
-        compareTrayTargets={compareTrayTargets}
-        handleToggleCompareTray={handleToggleCompareTray}
-        setCompareTrayTargets={setCompareTrayTargets}
-        isMultiCompareOpen={isMultiCompareOpen}
-        setIsMultiCompareOpen={setIsMultiCompareOpen}
-        auditPlayers={auditPlayers}
-      />
+      <SelectionCompareDock auditPlayers={auditPlayers} />
 
       {/* Deep Shortlist Player Profile & Squad Fit Dossier */}
       <ScoutTargetDetailModal
