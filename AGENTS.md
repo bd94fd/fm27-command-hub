@@ -24,3 +24,8 @@
 - Do not invoke unrelated skills just to fill the list. Say which skills apply and why the others do not.
 - Priority when instructions conflict: latest explicit user instruction, then this file, then the task-specific skill, then general guidance. State the conflict once and record any partial work.
 - Every PR body and final summary includes a short `Skills applied:` line.
+
+## Planning
+
+- The living product and engineering backlog is `ROADMAP.md`. Read it before choosing new work.
+- Update the matching item status when work starts or finishes. Add new ideas to the right wave instead of keeping them only in chat.
