@@ -11,6 +11,8 @@ Status: living backlog
 - Add new ideas to the matching wave. Re-rank only when the new idea changes trust, speed or safety.
 - This is a map of options, not a promise to build everything.
 
+See `SKILLS-MAP.md` for the skills to use on each item.
+
 ## Ranking method
 
 The order follows this rule:
