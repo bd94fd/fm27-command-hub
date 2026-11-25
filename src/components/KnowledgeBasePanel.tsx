@@ -169,7 +169,7 @@ export const KnowledgeBasePanel: React.FC<KnowledgeBasePanelProps> = ({
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Search FM27 mechanics (e.g. Tracking Winger, Patch 27.1.0, corners, SCR, fatigue)..."
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 py-2.5 pl-9 pr-3 text-xs text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 py-2.5 pl-9 pr-3 text-xs text-slate-100 placeholder:text-slate-500 focus-visible:border-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
                   />
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -200,7 +200,7 @@ export const KnowledgeBasePanel: React.FC<KnowledgeBasePanelProps> = ({
                   value={verifyInput}
                   onChange={(e) => setVerifyInput(e.target.value)}
                   placeholder="Paste any tactical advice or AI answer to check for retired FM24 roles, legacy duties, or raw CA/PA leaks..."
-                  className="w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-xs text-slate-200 placeholder:text-slate-500 focus:border-indigo-400 focus:outline-none"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-xs text-slate-200 placeholder:text-slate-500 focus-visible:border-indigo-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60"
                 />
                 {verification && (
                   <div
@@ -287,7 +287,7 @@ export const KnowledgeBasePanel: React.FC<KnowledgeBasePanelProps> = ({
                     value={roleSearch}
                     onChange={(e) => setRoleSearch(e.target.value)}
                     placeholder={`Search ${FM27_ROLE_CATALOG.length} FM27 IP/OOP roles or key attributes (e.g. Tracking Winger, Pressing, Pace)...`}
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 py-2.5 pl-9 pr-3 text-xs text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 py-2.5 pl-9 pr-3 text-xs text-slate-100 placeholder:text-slate-500 focus-visible:border-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
                   />
                 </div>
 

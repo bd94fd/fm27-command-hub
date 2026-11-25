@@ -478,7 +478,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
           ))}
         </svg>
         {pts.length === 2 && (
-          <div className="text-[10px] text-slate-500">
+          <div className="text-[10px] text-slate-400">
             2 save checkpoints tracked so far — import future dates to build a multi-month trend curve.
           </div>
         )}
@@ -780,7 +780,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                             </span>
                           </div>
                           {bucket.rec.played === 0 ? (
-                            <div className="text-[11px] text-slate-500 py-0.5">
+                            <div className="text-[11px] text-slate-400 py-0.5">
                               No matches recorded yet
                             </div>
                           ) : (
@@ -809,7 +809,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                               </div>
                             </div>
                           )}
-                          <div className="text-[10px] text-slate-500 pt-0.5">
+                          <div className="text-[10px] text-slate-400 pt-0.5">
                             {bucket.subtitle}
                           </div>
                         </div>

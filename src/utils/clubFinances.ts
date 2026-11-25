@@ -1,4 +1,8 @@
-import { FinancialRunway, MonthlyFinance } from '../types/fmSave';
+import { FinancialRunway, MonthlyFinance, SponsorshipDeal } from '../types/fmSave';
+import {
+  computeWeeklyStaffPayroll,
+  formatWeeklyStaffPayroll,
+} from './staffRatings';
 
 export type WageComplianceSeverity = 'under' | 'minor_over' | 'over' | 'unknown';
 
@@ -296,5 +300,164 @@ export function resolveCanonicalClubFinances(
         : '--',
     runwayMonths: input.financialRunway?.runwayMonths ?? null,
     runwayStatus: input.financialRunway?.status ?? null,
+  };
+}
+
+export interface SquadWageSubtotal {
+  count: number;
+  knownWeekly: number;
+  missingWageCount: number;
+  /** Never presented as club payroll — it is the sum of individual player contracts. */
+  label: string;
+}
+
+/**
+ * Sum of individual player contracts, labelled as a squad subtotal only. FM27's finance
+ * table Club Payroll is the canonical club-wide wage figure; this helper must never be
+ * rendered under a payroll label.
+ */
+export function computeSquadWageSubtotal(
+  wages: ReadonlyArray<number | null | undefined> | null | undefined
+): SquadWageSubtotal {
+  const list = wages ?? [];
+  let knownWeekly = 0;
+  let missingWageCount = 0;
+  for (const wage of list) {
+    if (typeof wage === 'number' && Number.isFinite(wage) && wage > 0) {
+      knownWeekly += wage;
+    } else {
+      missingWageCount += 1;
+    }
+  }
+  const label =
+    list.length === 0
+      ? '--'
+      : missingWageCount > 0
+        ? `£${knownWeekly.toLocaleString()}/wk known (${missingWageCount} of ${list.length} unreadable)`
+        : `£${knownWeekly.toLocaleString()}/wk`;
+  return { count: list.length, knownWeekly, missingWageCount, label };
+}
+
+export interface ClubFinancesPanelInput extends CanonicalClubFinancesInput {
+  staff?: ReadonlyArray<{ wagePw?: number | null }> | null;
+  playerWages?: ReadonlyArray<number | null | undefined> | null;
+  sponsorships?: SponsorshipDeal[] | null;
+}
+
+export interface ClubFinancesPanelData {
+  cash: {
+    balanceLabel: string;
+    isInDebt: boolean;
+    monthlyNetAmount: number | null;
+    monthlyNetLabel: string;
+    runwayStatus: 'Critical' | 'Warning' | 'Healthy' | null;
+    runwayLabel: string;
+    runwayWarning: string | null;
+  };
+  payroll: {
+    clubPayrollLabel: string;
+    wageBudgetLabel: string;
+    wageComplianceLabel: string;
+    wageHeadroomLabel: string;
+    wageHeadroomWeekly: number | null;
+    wageSeverity: WageComplianceSeverity;
+    staffPayrollLabel: string;
+    staffMissingWageCount: number;
+    squadWageSubtotalLabel: string;
+    squadWageMissingCount: number;
+  };
+  sponsorships: Array<{
+    name: string;
+    type: string;
+    annualValueLabel: string;
+    expires: string;
+    datesReordered: boolean;
+  }>;
+}
+
+function formatWeeklyMoney(amount: number | null, currencySymbol: string): string {
+  if (amount === null || !Number.isFinite(amount)) return '--';
+  return `${currencySymbol}${Math.round(amount).toLocaleString()}/wk`;
+}
+
+/**
+ * Builds every number the Hub Finances panel shows. Both the UI and the Analyst read the
+ * same `resolveCanonicalClubFinances` and `staffRatings` payroll selectors, so a wage or
+ * balance question cannot get two answers.
+ */
+export function buildClubFinancesPanel(
+  input: ClubFinancesPanelInput
+): ClubFinancesPanelData {
+  const canonical = resolveCanonicalClubFinances(input);
+  const currencySymbol = canonical.currencySymbol;
+  const latestMonth = input.monthlyFinances?.[input.monthlyFinances.length - 1] ?? null;
+  const monthlyNetAmount =
+    latestMonth && Number.isFinite(latestMonth.netCashflow)
+      ? Math.round(latestMonth.netCashflow)
+      : null;
+  const monthlyNetLabel =
+    monthlyNetAmount === null
+      ? '--'
+      : `${monthlyNetAmount >= 0 ? '+' : ''}${formatClubMoney(
+          monthlyNetAmount,
+          currencySymbol
+        )}/mo`;
+
+  const runwayStatus = canonical.runwayStatus;
+  const runwayMonths = canonical.runwayMonths;
+  const runwayLabel =
+    runwayStatus === null
+      ? '--'
+      : `${runwayStatus}${
+          runwayMonths !== null && runwayMonths < 999 ? ` · ${runwayMonths} months` : ''
+        }`;
+  const runwayWarning =
+    runwayStatus === 'Critical'
+      ? `Critical runway${runwayMonths !== null ? ` — ${runwayMonths} months left` : ''}. Cut wages or sell players now.`
+      : runwayStatus === 'Warning'
+        ? `Runway warning${runwayMonths !== null ? ` — ${runwayMonths} months remaining` : ''}. Plan sales or wage relief.`
+        : null;
+
+  const staffPayroll = computeWeeklyStaffPayroll(input.staff ?? []);
+  const squadWages = computeSquadWageSubtotal(input.playerWages ?? []);
+
+  const wageHeadroomLabel =
+    canonical.wageHeadroomWeekly === null
+      ? '--'
+      : canonical.wageHeadroomWeekly >= 0
+        ? `${currencySymbol}${canonical.wageHeadroomWeekly.toLocaleString()}/wk under cap`
+        : `${currencySymbol}${Math.abs(canonical.wageHeadroomWeekly).toLocaleString()}/wk over cap`;
+
+  const sponsorships = (input.sponsorships ?? []).map((deal, index) => ({
+    name: deal.name || `Sponsorship ${index + 1}`,
+    type: deal.type || 'Sponsorship',
+    annualValueLabel: formatClubMoney(deal.annualValue ?? null, currencySymbol),
+    expires: deal.expires || '--',
+    datesReordered: Boolean(deal.dates_reordered),
+  }));
+
+  return {
+    cash: {
+      balanceLabel: canonical.balanceLabel,
+      isInDebt: canonical.isInDebt,
+      monthlyNetAmount,
+      monthlyNetLabel,
+      runwayStatus,
+      runwayLabel,
+      runwayWarning,
+    },
+    payroll: {
+      clubPayrollLabel: formatWeeklyMoney(canonical.wagePayrollWeekly, currencySymbol),
+      wageBudgetLabel: formatWeeklyMoney(canonical.wageBudgetWeekly, currencySymbol),
+      wageComplianceLabel: canonical.wageComplianceLabel,
+      wageHeadroomLabel,
+      wageHeadroomWeekly: canonical.wageHeadroomWeekly,
+      wageSeverity: canonical.wageComplianceSeverity,
+      staffPayrollLabel: formatWeeklyStaffPayroll(staffPayroll),
+      staffMissingWageCount: staffPayroll.missingWageCount,
+      squadWageSubtotalLabel: squadWages.label,
+      squadWageMissingCount: squadWages.missingWageCount,
+    },
+    sponsorships,
   };
 }

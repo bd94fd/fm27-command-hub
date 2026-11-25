@@ -563,7 +563,7 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
                           aria-label={`Select In-Possession role for ${activeStarter.playerName || ipPos}`}
                           value={validIpRoles.includes(ipRole) ? ipRole : ''}
                           onChange={(e) => handleConfirmRole(activeStarter, 'ip', e.target.value)}
-                          className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px] text-slate-200 focus:border-emerald-500 focus:outline-none"
+                          className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px] text-slate-200 focus-visible:border-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
                         >
                           {!validIpRoles.includes(ipRole) && (
                             <option value="">{ipRole} (select FM27 role...)</option>
@@ -668,7 +668,7 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
                           aria-label={`Select Out-of-Possession role for ${activeStarter.playerName || oopPos}`}
                           value={validOopRoles.includes(oopRole) ? oopRole : ''}
                           onChange={(e) => handleConfirmRole(activeStarter, 'oop', e.target.value)}
-                          className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px] text-slate-200 focus:border-sky-500 focus:outline-none"
+                          className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px] text-slate-200 focus-visible:border-sky-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/60"
                         >
                           {!validOopRoles.includes(oopRole) && (
                             <option value="">{oopRole} (select FM27 role...)</option>

@@ -22,6 +22,7 @@ import {
   Clock,
   Shield,
   Briefcase,
+  Wallet,
   MessageSquare,
   History,
   Copy,
@@ -92,6 +93,7 @@ import {
   toApiResponseError,
 } from '../utils/apiResponse';
 import { countSquadPool, describeSquadPool } from '../utils/squadViewHelpers';
+import { buildClubFinancesPanel } from '../utils/clubFinances';
 
 const SaveSnapshotDiffPanel = lazy(() =>
   import('./SaveSnapshotDiffPanel').then((m) => ({
@@ -103,6 +105,31 @@ const FmUploadProgressCard = lazy(() =>
   import('./FmUploadProgressCard').then((m) => ({
     default: m.FmUploadProgressCard,
   }))
+);
+
+const FinancesStat: React.FC<{
+  label: string;
+  value: string;
+  hint?: string;
+  valueClassName?: string;
+}> = ({ label, value, hint, valueClassName }) => (
+  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 p-2.5 min-w-0">
+    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">
+      {label}
+    </div>
+    <div
+      className={`mt-0.5 font-mono text-sm font-bold break-words tabular-nums ${
+        valueClassName || 'text-slate-900 dark:text-white'
+      }`}
+    >
+      {value}
+    </div>
+    {hint && (
+      <div className="text-[10px] text-slate-500 dark:text-slate-400 break-words">
+        {hint}
+      </div>
+    )}
+  </div>
 );
 
 async function probeServerDecodeAvailability(): Promise<boolean> {
@@ -277,7 +304,11 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       [updateTurnsForClub]
     );
   const lastSnapshotResetNonceRef = useRef<number>(snapshotResetNonce);
-  const [mobileHubView, setMobileHubView] = useState<'chat' | 'journey'>('chat');
+  const [mobileHubView, setMobileHubView] = useState<
+    'chat' | 'finances' | 'journey'
+  >('chat');
+  const [clearChatArmed, setClearChatArmed] = useState<boolean>(false);
+  const clearChatTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [importScope] = useState<FmImportScope>('club_and_division');
   const [serverDecodeAvailable, setServerDecodeAvailable] = useState<boolean | null>(
     null
@@ -1403,6 +1434,67 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     handleCopyText('full-chat', transcript);
   };
 
+  const disarmClearChat = useCallback(() => {
+    if (clearChatTimerRef.current) {
+      clearTimeout(clearChatTimerRef.current);
+      clearChatTimerRef.current = null;
+    }
+    setClearChatArmed(false);
+  }, []);
+
+  const armClearChat = useCallback(() => {
+    if (clearChatTimerRef.current) {
+      clearTimeout(clearChatTimerRef.current);
+    }
+    setClearChatArmed(true);
+    clearChatTimerRef.current = setTimeout(() => {
+      clearChatTimerRef.current = null;
+      setClearChatArmed(false);
+    }, 5000);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (clearChatTimerRef.current) {
+        clearTimeout(clearChatTimerRef.current);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (turns.length === 0 && clearChatArmed) {
+      disarmClearChat();
+    }
+  }, [turns.length, clearChatArmed, disarmClearChat]);
+
+  const handleConfirmClearChat = useCallback(() => {
+    clearClubChatHistory(chatClubKey);
+    setTurns([]);
+    setChatError(null);
+    setChatFallbackNotice(null);
+    disarmClearChat();
+  }, [chatClubKey, setTurns, disarmClearChat]);
+
+  const financesPanel = useMemo(() => {
+    const decoded = hydratedFmSave?.decodedPayload ?? null;
+    return buildClubFinancesPanel({
+      financesBalance: decoded?.finances?.balance ?? null,
+      metaBalance: decoded?.meta?.balance ?? null,
+      monthlyFinances: decoded?.monthlyFinances ?? null,
+      balanceLabel: hydratedFmSave?.balanceLabel ?? balance,
+      wagePayrollWeekly: decoded?.finances?.wagePayrollWeekly ?? null,
+      wageBudgetWeekly: decoded?.finances?.wageBudgetWeekly ?? null,
+      wageSpendLabel: hydratedFmSave?.wageComplianceLabel ?? wageSpend,
+      transferBudgetRemaining: decoded?.finances?.transferBudgetRemaining ?? null,
+      financialRunway: hydratedFmSave?.financialRunway ?? null,
+      staff:
+        staff.length > 0 ? staff : hydratedFmSave?.updatedStaff ?? [],
+      playerWages: players.map((p) => p.wagePw),
+      sponsorships: decoded?.sponsorships ?? null,
+    });
+  }, [hydratedFmSave, balance, wageSpend, staff, players]);
+
   const handleTextareaPaste = async (
     e: React.ClipboardEvent<HTMLTextAreaElement>
   ) => {
@@ -1716,18 +1808,32 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                     </>
                   )}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    clearClubChatHistory(chatClubKey);
-                    setTurns([]);
-                    setChatError(null);
-                    setChatFallbackNotice(null);
-                  }}
-                  className="min-h-[44px] md:min-h-[32px] px-2.5 md:px-2 py-1 text-xs md:text-[11px] font-medium text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-lg cursor-pointer whitespace-nowrap"
-                >
-                  Clear Chat
-                </button>
+                {clearChatArmed ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleConfirmClearChat}
+                      className="min-h-[44px] md:min-h-[32px] px-2.5 md:px-2 py-1 text-xs md:text-[11px] font-bold text-rose-200 bg-rose-500/20 border border-rose-500/50 rounded-lg cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+                    >
+                      Confirm Clear
+                    </button>
+                    <button
+                      type="button"
+                      onClick={disarmClearChat}
+                      className="min-h-[44px] md:min-h-[32px] px-2.5 md:px-2 py-1 text-xs md:text-[11px] font-medium text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-lg cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={armClearChat}
+                    className="min-h-[44px] md:min-h-[32px] px-2.5 md:px-2 py-1 text-xs md:text-[11px] font-medium text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-lg cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                  >
+                    Clear Chat
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -1923,20 +2029,20 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         aria-label="Mobile Hub view"
         className="md:hidden px-3.5 pt-3 pb-1 border-b border-slate-200 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-950/50"
       >
-        <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-200/70 dark:bg-slate-900 border border-slate-300 dark:border-slate-800">
+        <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-slate-200/70 dark:bg-slate-900 border border-slate-300 dark:border-slate-800">
           <button
             type="button"
             role="tab"
             aria-selected={mobileHubView === 'chat'}
             onClick={() => setMobileHubView('chat')}
-            className={`min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+            className={`min-h-[44px] inline-flex min-w-0 items-center justify-center gap-1 rounded-lg px-1.5 text-[11px] sm:text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
               mobileHubView === 'chat'
                 ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40 shadow-xs'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
             }`}
           >
             <MessageSquare className="w-4 h-4 shrink-0" />
-            <span>Analyst Chat</span>
+            <span className="truncate">Analyst Chat</span>
             {turns.length > 0 && (
               <span className="rounded-md bg-emerald-500/20 px-1.5 py-0.5 font-mono text-[10px] leading-none text-emerald-700 dark:text-emerald-300 tabular-nums">
                 {turns.length}
@@ -1946,16 +2052,30 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           <button
             type="button"
             role="tab"
+            aria-selected={mobileHubView === 'finances'}
+            onClick={() => setMobileHubView('finances')}
+            className={`min-h-[44px] inline-flex min-w-0 items-center justify-center gap-1 rounded-lg px-1.5 text-[11px] sm:text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+              mobileHubView === 'finances'
+                ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
+            }`}
+          >
+            <Wallet className="w-4 h-4 shrink-0" />
+            <span className="truncate">Finances</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
             aria-selected={mobileHubView === 'journey'}
             onClick={() => setMobileHubView('journey')}
-            className={`min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+            className={`min-h-[44px] inline-flex min-w-0 items-center justify-center gap-1 rounded-lg px-1.5 text-[11px] sm:text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
               mobileHubView === 'journey'
                 ? 'bg-sky-500/20 text-sky-700 dark:text-sky-300 border border-sky-500/40 shadow-xs'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
             }`}
           >
             <History className="w-4 h-4 shrink-0" />
-            <span>Save Journey</span>
+            <span className="truncate">Save Journey</span>
             {latestJourneyReport && (
               <span
                 aria-hidden="true"
@@ -2388,6 +2508,170 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           )}
         </form>
       </div>
+
+      {/* CLUB FINANCES PANEL — mobile sub-tab, always visible on desktop */}
+      {(isDesktopViewport || mobileHubView === 'finances') && (
+        <div
+          className={
+            mobileHubView === 'finances' ? 'block p-3.5 md:p-0' : 'hidden md:block'
+          }
+        >
+          <section
+            aria-labelledby="hub-finances-heading"
+            className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/60 p-4 sm:p-5 space-y-4"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h3
+                  id="hub-finances-heading"
+                  className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2"
+                >
+                  <Wallet className="h-4 w-4 text-amber-500 dark:text-amber-400 shrink-0" />
+                  Club Finances
+                </h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Cash, payroll &amp; sponsorship decoded from the save — the same
+                  selectors the Analyst uses.
+                </p>
+              </div>
+              <span
+                className={`rounded-md border px-2 py-0.5 font-mono text-[11px] font-semibold tabular-nums ${
+                  financesPanel.payroll.wageSeverity === 'over'
+                    ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40'
+                    : financesPanel.payroll.wageSeverity === 'minor_over'
+                      ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40'
+                      : financesPanel.payroll.wageSeverity === 'under'
+                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
+                        : 'bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+                }`}
+              >
+                {financesPanel.payroll.wageComplianceLabel}
+              </span>
+            </div>
+
+            <div className="space-y-2">
+              <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Cash &amp; Runway
+              </h4>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                <FinancesStat
+                  label="Bank Balance"
+                  value={financesPanel.cash.balanceLabel}
+                  valueClassName={
+                    financesPanel.cash.isInDebt
+                      ? 'text-rose-600 dark:text-rose-300'
+                      : 'text-emerald-600 dark:text-emerald-300'
+                  }
+                />
+                <FinancesStat
+                  label="Latest Monthly Net"
+                  value={financesPanel.cash.monthlyNetLabel}
+                  valueClassName={
+                    financesPanel.cash.monthlyNetAmount !== null &&
+                    financesPanel.cash.monthlyNetAmount < 0
+                      ? 'text-rose-600 dark:text-rose-300'
+                      : 'text-emerald-600 dark:text-emerald-300'
+                  }
+                />
+                <FinancesStat
+                  label="Financial Runway"
+                  value={financesPanel.cash.runwayLabel}
+                  valueClassName={
+                    financesPanel.cash.runwayStatus === 'Critical'
+                      ? 'text-rose-600 dark:text-rose-300'
+                      : financesPanel.cash.runwayStatus === 'Warning'
+                        ? 'text-amber-600 dark:text-amber-300'
+                        : 'text-emerald-600 dark:text-emerald-300'
+                  }
+                />
+              </div>
+              {financesPanel.cash.runwayWarning && (
+                <p
+                  role="status"
+                  aria-live="polite"
+                  className="flex items-start gap-1.5 rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1.5 text-[11px] text-amber-700 dark:text-amber-200"
+                >
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span>{financesPanel.cash.runwayWarning}</span>
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Weekly Payroll Breakdown
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <FinancesStat
+                  label="Club Payroll (Canonical)"
+                  value={financesPanel.payroll.clubPayrollLabel}
+                  hint="FM27 finance table: every player in every squad plus all staff"
+                />
+                <FinancesStat
+                  label="Wage Budget"
+                  value={financesPanel.payroll.wageBudgetLabel}
+                  hint={financesPanel.payroll.wageHeadroomLabel}
+                />
+                <FinancesStat
+                  label="Weekly Staff Payroll"
+                  value={financesPanel.payroll.staffPayrollLabel}
+                  hint="Backroom staff contracts only"
+                />
+                <FinancesStat
+                  label="Squad Wage Subtotal"
+                  value={financesPanel.payroll.squadWageSubtotalLabel}
+                  hint="Sum of individual player contracts — not club payroll"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Sponsorship Deals
+              </h4>
+              {financesPanel.sponsorships.length === 0 ? (
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  No sponsorship deals decoded from this save.
+                </p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {financesPanel.sponsorships.map((deal, idx) => (
+                    <li
+                      key={`${deal.name}-${idx}`}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 px-2.5 py-1.5 text-[11px]"
+                    >
+                      <div className="min-w-0">
+                        <div className="font-semibold text-slate-900 dark:text-white truncate">
+                          {deal.name}
+                        </div>
+                        <div className="text-slate-500 dark:text-slate-400 truncate">
+                          {deal.type} · exp {deal.expires}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {deal.datesReordered && (
+                          <span
+                            title="fmsave reversed the stored dates of this ended contract — start and end are swapped"
+                            className="inline-flex items-center gap-0.5 rounded border border-amber-500/40 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300"
+                          >
+                            <AlertTriangle className="h-2.5 w-2.5" />
+                            Dates reordered
+                          </span>
+                        )}
+                        <span className="font-mono font-bold text-emerald-600 dark:text-emerald-300 tabular-nums">
+                          {deal.annualValueLabel === '--'
+                            ? '--'
+                            : `${deal.annualValueLabel}/yr`}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
 
       {/* SAVE-TO-SAVE JOURNEY PANEL (lazy-loaded; deferred on mobile until Journey tab opened) */}
       {(isDesktopViewport || mobileHubView === 'journey' || hasOpenedJourneyPanel) && (

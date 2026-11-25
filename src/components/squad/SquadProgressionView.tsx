@@ -143,7 +143,7 @@ export const SquadProgressionView: React.FC<SquadProgressionViewProps> = ({
                     <div className="text-base font-bold font-mono tabular-nums text-emerald-500 mt-0.5">
                       {netPositivePlayers} / {totalPlayersChanged}
                     </div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
                       Net positive attribute shift
                     </div>
                   </div>
@@ -154,7 +154,7 @@ export const SquadProgressionView: React.FC<SquadProgressionViewProps> = ({
                     <div className="text-base font-bold font-mono tabular-nums text-sky-400 mt-0.5">
                       {progressionDiff.majorShiftsCount}
                     </div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
                       High-impact growth/decline
                     </div>
                   </div>
@@ -165,7 +165,7 @@ export const SquadProgressionView: React.FC<SquadProgressionViewProps> = ({
                     <div className="text-base font-bold font-mono tabular-nums text-amber-400 mt-0.5">
                       {progressionDiff.mentoringDeterminationJumps.length}
                     </div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
                       Determination +2 or higher
                     </div>
                   </div>
@@ -176,7 +176,7 @@ export const SquadProgressionView: React.FC<SquadProgressionViewProps> = ({
                     <div className="text-base font-bold font-mono tabular-nums text-slate-300 mt-0.5">
                       {progressionDiff.filteredIrrelevantCount}
                     </div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
                       Irrelevant GK/outfield stats
                     </div>
                   </div>

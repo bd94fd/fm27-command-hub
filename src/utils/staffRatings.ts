@@ -170,9 +170,69 @@ export function calculateAllStaffRoleRatings(
     .sort((a, b) => b.score - a.score);
 }
 
-export function getBestStaffRoleRating(staff: StaffRecord): StaffRoleRating {
+export type StaffJobEligibility = 'coaching' | 'recruitment' | 'medical';
+
+const MEDICAL_ROLE_RE = /physio|doctor|medic|sport\w*\s*scien|rehab/;
+const RECRUITMENT_ROLE_RE =
+  /scout|recruit|director of football|technical director|loan manager|analyst|data/;
+const COACHING_ROLE_RE =
+  /manager|assistant|coach|goalkeep|fitness|set.?piece|head of youth|hoyd|u21|u19|u18/;
+
+/**
+ * Real FM27 job eligibility, used to stop a Chief Scout leading Attacking training or a
+ * Manager showing a Medical rating. Explicit role matches win; unrecognised roles fall back
+ * to the attribute-driven department so custom roles still land somewhere sensible.
+ */
+export function resolveStaffJobEligibility(member: StaffRecord): StaffJobEligibility {
+  const role = (member.role || '').toLowerCase();
+  if (MEDICAL_ROLE_RE.test(role)) return 'medical';
+  if (RECRUITMENT_ROLE_RE.test(role)) return 'recruitment';
+  if (COACHING_ROLE_RE.test(role)) return 'coaching';
+  const best = calculateAllStaffRoleRatings(member.attributes)[0];
+  if (best?.category === 'Medical') return 'medical';
+  if (best?.category === 'Scouting & Analysis') return 'recruitment';
+  return 'coaching';
+}
+
+const COACHING_RATING_KEYS = [
+  'att_tech',
+  'att_tac',
+  'def_tech',
+  'def_tac',
+  'pos_tech',
+  'pos_tac',
+  'set_pieces',
+  'fitness',
+  'goalkeeping',
+];
+const RECRUITMENT_RATING_KEYS = ['scouting', 'analysis'];
+const MEDICAL_RATING_KEYS = ['medical'];
+
+const DEPARTMENT_RATING_KEYS: Record<StaffJobEligibility, string[]> = {
+  coaching: COACHING_RATING_KEYS,
+  recruitment: RECRUITMENT_RATING_KEYS,
+  medical: MEDICAL_RATING_KEYS,
+};
+
+/**
+ * Ratings scoped to the member's actual job family, highest first. A Scout is scored on
+ * Scouting/Analysis, a Physio on Medical, a Manager/Coach on their best coaching fit.
+ */
+export function getDepartmentStaffRoleRatings(staff: StaffRecord): StaffRoleRating[] {
   const all = calculateAllStaffRoleRatings(staff.attributes);
-  return all[0];
+  const keys = DEPARTMENT_RATING_KEYS[resolveStaffJobEligibility(staff)];
+  const scoped = all.filter((r) => keys.includes(r.key));
+  return scoped.length > 0 ? scoped : all;
+}
+
+/** Headline star rating for a staff card, scored on the member's actual department first. */
+export function getHeadlineStaffRoleRating(staff: StaffRecord): StaffRoleRating {
+  return getDepartmentStaffRoleRatings(staff)[0];
+}
+
+/** @deprecated Use `getHeadlineStaffRoleRating`; kept so existing call sites stay department-aware. */
+export function getBestStaffRoleRating(staff: StaffRecord): StaffRoleRating {
+  return getHeadlineStaffRoleRating(staff);
 }
 
 export function formatStars(stars: number): string {
@@ -194,29 +254,75 @@ const DEPARTMENT_SPECS: Array<{
   id: string;
   label: string;
   ratingKeys: string[];
+  eligibility: StaffJobEligibility;
 }> = [
-  { id: 'attacking', label: 'Attacking Coaching', ratingKeys: ['att_tech', 'att_tac'] },
-  { id: 'defending', label: 'Defending Coaching', ratingKeys: ['def_tech', 'def_tac'] },
-  { id: 'possession', label: 'Possession & Tactical', ratingKeys: ['pos_tech', 'pos_tac'] },
-  { id: 'fitness', label: 'Strength & Quickness', ratingKeys: ['fitness'] },
-  { id: 'goalkeeping', label: 'Goalkeeping Coaching', ratingKeys: ['goalkeeping'] },
-  { id: 'set_pieces', label: 'Set Pieces Coaching', ratingKeys: ['set_pieces'] },
-  { id: 'scouting', label: 'Scouting & Recruitment', ratingKeys: ['scouting', 'analysis'] },
-  { id: 'medical', label: 'Medical & Sports Science', ratingKeys: ['medical'] },
+  {
+    id: 'attacking',
+    label: 'Attacking Coaching',
+    ratingKeys: ['att_tech', 'att_tac'],
+    eligibility: 'coaching',
+  },
+  {
+    id: 'defending',
+    label: 'Defending Coaching',
+    ratingKeys: ['def_tech', 'def_tac'],
+    eligibility: 'coaching',
+  },
+  {
+    id: 'possession',
+    label: 'Possession & Tactical',
+    ratingKeys: ['pos_tech', 'pos_tac'],
+    eligibility: 'coaching',
+  },
+  {
+    id: 'fitness',
+    label: 'Strength & Quickness',
+    ratingKeys: ['fitness'],
+    eligibility: 'coaching',
+  },
+  {
+    id: 'goalkeeping',
+    label: 'Goalkeeping Coaching',
+    ratingKeys: ['goalkeeping'],
+    eligibility: 'coaching',
+  },
+  {
+    id: 'set_pieces',
+    label: 'Set Pieces Coaching',
+    ratingKeys: ['set_pieces'],
+    eligibility: 'coaching',
+  },
+  {
+    id: 'scouting',
+    label: 'Scouting & Recruitment',
+    ratingKeys: ['scouting', 'analysis'],
+    eligibility: 'recruitment',
+  },
+  {
+    id: 'medical',
+    label: 'Medical & Sports Science',
+    ratingKeys: ['medical'],
+    eligibility: 'medical',
+  },
 ];
 
 /**
  * Evaluates all 8 backroom departments across the club's synced staff list (inspired by fm-scoring)
  * to highlight the top lead specialist per department and flag weak/understaffed areas.
+ * Each department only considers staff whose real FM job makes them eligible: a Chief Scout
+ * never leads Attacking coaching and a Manager never shows a Medical lead.
  */
 export function evaluateBackroomDepartmentEfficiency(
   staffList: StaffRecord[]
 ): BackroomDepartmentSummary[] {
   return DEPARTMENT_SPECS.map((dept) => {
+    const eligible = staffList.filter(
+      (member) => resolveStaffJobEligibility(member) === dept.eligibility
+    );
     let bestLead: StaffRecord | null = null;
     let bestRating: StaffRoleRating | null = null;
 
-    for (const member of staffList) {
+    for (const member of eligible) {
       const ratings = calculateAllStaffRoleRatings(member.attributes);
       for (const r of ratings) {
         if (!dept.ratingKeys.includes(r.key)) continue;
@@ -255,32 +361,8 @@ export function evaluateBackroomDepartmentEfficiency(
 export type StaffDepartmentGroup = 'coaching' | 'scouting' | 'medical';
 
 export function classifyStaffDepartment(member: StaffRecord): StaffDepartmentGroup {
-  const roleLower = (member.role || '').toLowerCase();
-  if (
-    /physio|doctor|medic|sport.?scien|rehab|head of sports science|head physio/.test(
-      roleLower
-    )
-  ) {
-    return 'medical';
-  }
-  if (
-    /scout|recruit|director of football|technical director|analyst|data|loan manager|chief scout/.test(
-      roleLower
-    )
-  ) {
-    return 'scouting';
-  }
-  if (
-    /coach|manager|assistant|goalkeep|fitness|set piece|head of youth|u21|u19|u18/.test(
-      roleLower
-    )
-  ) {
-    return 'coaching';
-  }
-  const best = getBestStaffRoleRating(member);
-  if (best.category === 'Medical') return 'medical';
-  if (best.category === 'Scouting & Analysis') return 'scouting';
-  return 'coaching';
+  const eligibility = resolveStaffJobEligibility(member);
+  return eligibility === 'recruitment' ? 'scouting' : eligibility;
 }
 
 export interface CoachingCategoryMatrixRow {
@@ -308,13 +390,15 @@ const COACHING_MATRIX_KEYS: Array<{ key: string; label: string }> = [
 
 /**
  * Deterministic 9-category FM27 Coaching Rating Matrix with workload/overload indicators.
- * Uses FM27 star weighting (specialist attributes + Determination, Authority, Motivating 2x).
+ * Only coaching-eligible staff (Manager, Assistant, Coaches, GK/Fitness/Set Piece Coaches,
+ * HoYD) are considered, so a Chief Scout or Physio can never lead a training unit.
  */
 export function buildCoachingCategoryMatrix(
   staffList: StaffRecord[]
 ): CoachingCategoryMatrixRow[] {
-  const coaches = staffList.filter((m) => classifyStaffDepartment(m) === 'coaching');
-  const pool = coaches.length > 0 ? coaches : staffList;
+  const pool = staffList.filter(
+    (m) => resolveStaffJobEligibility(m) === 'coaching'
+  );
 
   return COACHING_MATRIX_KEYS.map((cat) => {
     let bestMember: StaffRecord | null = null;
@@ -329,6 +413,7 @@ export function buildCoachingCategoryMatrix(
       if (rating.stars >= 2.5) {
         qualifiedCount += 1;
       }
+      // Best attributes win: never force the GK Coach ahead of a Manager who scores higher.
       if (!bestRating || rating.score > bestRating.score) {
         bestRating = rating;
         bestMember = member;
@@ -355,6 +440,143 @@ export function buildCoachingCategoryMatrix(
       workload,
     };
   });
+}
+
+export interface UnifiedStaffMatrixRow {
+  key: string;
+  label: string;
+  group: 'Pitch Training' | 'Scouting & Recruitment' | 'Medical & Sports Science';
+  leadStaffName: string;
+  leadStaffRole: string;
+  stars: number;
+  score: number;
+  qualifiedCount: number;
+  workload: CoachingCategoryMatrixRow['workload'] | 'n/a';
+}
+
+const NON_COACHING_MATRIX_SPECS: Array<{
+  key: string;
+  label: string;
+  group: UnifiedStaffMatrixRow['group'];
+  eligibility: StaffJobEligibility;
+  ratingKeys: string[];
+}> = [
+  {
+    key: 'scouting',
+    label: 'Scouting & Recruitment',
+    group: 'Scouting & Recruitment',
+    eligibility: 'recruitment',
+    ratingKeys: RECRUITMENT_RATING_KEYS,
+  },
+  {
+    key: 'medical',
+    label: 'Medical & Sports Science',
+    group: 'Medical & Sports Science',
+    eligibility: 'medical',
+    ratingKeys: MEDICAL_RATING_KEYS,
+  },
+];
+
+/**
+ * One merged, single-scale staff matrix: the 9 pitch-training units plus Scouting and
+ * Medical, each with the best eligible lead on the same star scale. Replaces the two
+ * near-identical 8-card walls that used to stack above the staff list.
+ */
+export function buildUnifiedStaffMatrix(
+  staffList: StaffRecord[]
+): UnifiedStaffMatrixRow[] {
+  const coachingRows: UnifiedStaffMatrixRow[] = buildCoachingCategoryMatrix(
+    staffList
+  ).map((row) => ({
+    key: row.key,
+    label: row.label,
+    group: 'Pitch Training',
+    leadStaffName: row.leadCoachName,
+    leadStaffRole: row.leadCoachRole,
+    stars: row.stars,
+    score: row.score,
+    qualifiedCount: row.qualifiedCount,
+    workload: row.workload,
+  }));
+
+  const specialistRows = NON_COACHING_MATRIX_SPECS.map((spec) => {
+    const eligible = staffList.filter(
+      (member) => resolveStaffJobEligibility(member) === spec.eligibility
+    );
+    let bestMember: StaffRecord | null = null;
+    let bestRating: StaffRoleRating | null = null;
+    let qualifiedCount = 0;
+
+    for (const member of eligible) {
+      const ratings = calculateAllStaffRoleRatings(member.attributes);
+      const scoped = ratings.filter((r) => spec.ratingKeys.includes(r.key));
+      const bestForMember = scoped[0];
+      if (!bestForMember) continue;
+      if (bestForMember.stars >= 2.5) qualifiedCount += 1;
+      if (!bestRating || bestForMember.score > bestRating.score) {
+        bestRating = bestForMember;
+        bestMember = member;
+      }
+    }
+
+    return {
+      key: spec.key,
+      label: spec.label,
+      group: spec.group,
+      leadStaffName: bestMember ? bestMember.name : 'Unassigned',
+      leadStaffRole: bestMember ? bestMember.role : '--',
+      stars: bestRating ? bestRating.stars : 0.5,
+      score: bestRating ? bestRating.score : 15,
+      qualifiedCount,
+      workload: 'n/a' as const,
+    };
+  });
+
+  return [...coachingRows, ...specialistRows];
+}
+
+export interface StaffKpiSummary {
+  totalStaff: number;
+  weeklyPayrollLabel: string;
+  expiringSoonCount: number;
+  averageHeadlineStars: number | null;
+  averageHeadlineLabel: string;
+  weakDepartmentCount: number;
+}
+
+/** Shared KPI strip numbers for the Staff tab; payroll and expiry reuse the Analyst selectors. */
+export function computeStaffKpiSummary(
+  staffList: StaffRecord[],
+  saveDate?: string
+): StaffKpiSummary {
+  const list = staffList ?? [];
+  const expiringSoonCount = list.filter((s) =>
+    isStaffContractExpiringSoon(s.expires, saveDate)
+  ).length;
+  const averageHeadlineStars =
+    list.length > 0
+      ? Math.round(
+          (list.reduce(
+            (sum, s) => sum + getHeadlineStaffRoleRating(s).stars,
+            0
+          ) /
+            list.length) *
+            10
+        ) / 10
+      : null;
+  const weakDepartmentCount = evaluateBackroomDepartmentEfficiency(list).filter(
+    (d) => d.status === 'Weak / Upgrade Needed'
+  ).length;
+
+  return {
+    totalStaff: list.length,
+    weeklyPayrollLabel: formatWeeklyStaffPayroll(computeWeeklyStaffPayroll(list)),
+    expiringSoonCount,
+    averageHeadlineStars,
+    averageHeadlineLabel:
+      averageHeadlineStars === null ? '--' : `${averageHeadlineStars.toFixed(1)}★`,
+    weakDepartmentCount,
+  };
 }
 
 function parseFmDate(raw: string | undefined): Date | null {
@@ -463,6 +685,13 @@ export function formatWeeklyStaffPayroll(payroll: WeeklyStaffPayroll): string {
   }
   return `£${payroll.totalWeekly.toLocaleString()}/wk`;
 }
+
+/**
+ * One caption for the six FM27 job_ratings, shared verbatim by StaffDetailModal and the
+ * Analyst prompt so neither surface can imply these numbers measure skill.
+ */
+export const PREFERRED_JOB_AFFINITY_CAPTION =
+  'Preferred Job Affinity (0–20, NOT coaching/scouting ability — only indicates job preference across Fit/GK/Set/Loan/Phy/Sci; do NOT treat 20/20 as elite skill or 1/20 on a Scout/Manager as poor performance)';
 
 const PREFERRED_JOB_ABBREVIATIONS: Array<[keyof StaffJobRatings, string]> = [
   ['fitness_coach', 'Fit'],

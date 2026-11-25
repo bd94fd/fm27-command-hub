@@ -44,10 +44,15 @@ import {
 } from './clubGovernanceAndTactics';
 import { loadFm27BinaryDictionary } from './fm27BinaryDictionary';
 import {
+  buildUnifiedStaffMatrix,
+  classifyStaffDepartment,
   computeWeeklyStaffPayroll,
   formatStaffJobRatings,
+  formatStars,
   formatWeeklyStaffPayroll,
+  getHeadlineStaffRoleRating,
   isStaffContractExpiringSoon,
+  PREFERRED_JOB_AFFINITY_CAPTION,
 } from './staffRatings';
 import {
   classifyMatchCompetitionBucket,
@@ -1288,6 +1293,22 @@ export function buildLiveTacticalAnalystContext(
     const staffPayrollLabel = formatWeeklyStaffPayroll(
       computeWeeklyStaffPayroll(effectiveStaff)
     );
+    // Ratings come from the same staffRatings selectors the Staff tab renders, so the
+    // Analyst cannot quote a different best coach/scout/physio than the UI.
+    const ratedStaff = (effectiveStaff as StaffRecord[]).filter(
+      (st) =>
+        st.attributes && typeof st.attributes.attacking === 'number'
+    );
+    const departmentRatings = ratedStaff.slice(0, 8).map((st) => {
+      const headline = getHeadlineStaffRoleRating(st);
+      return `${st.name}(${classifyStaffDepartment(st)} — ${headline.label} ${formatStars(headline.stars)})`;
+    });
+    const departmentLeads =
+      ratedStaff.length > 0
+        ? buildUnifiedStaffMatrix(ratedStaff).map(
+            (row) => `${row.label}: ${row.leadStaffName} (${formatStars(row.stars)})`
+          )
+        : [];
     blocks.push({
       id: 'backroom_staff',
       tier: 'P2',
@@ -1297,8 +1318,16 @@ export function buildLiveTacticalAnalystContext(
         .join(' | ')}\nWeekly Staff Payroll: ${staffPayrollLabel}${
         expiringStaff.length > 0 ? `\nExpiring Soon: ${expiringStaff.join(' | ')}` : ''
       }${secondaryJobs.length > 0 ? `\nSecondary Jobs: ${secondaryJobs.join(' | ')}` : ''}${
+        departmentRatings.length > 0
+          ? `\nDepartment Ratings (shared with Staff tab): ${departmentRatings.join(' | ')}`
+          : ''
+      }${
+        departmentLeads.length > 0
+          ? `\nDepartment Leads: ${departmentLeads.join(' | ')}`
+          : ''
+      }${
         preferredJobs.length > 0
-          ? `\nSpecialist Job Ratings ONLY (Fit/GK/Set/Loan/Phy/Sci — does NOT measure Scouting, Management, Coaching, or HoYD ability; 1/20 on a Scout/Manager is expected and NOT a low rating): ${preferredJobs.join(' | ')}`
+          ? `\n${PREFERRED_JOB_AFFINITY_CAPTION}: ${preferredJobs.join(' | ')}`
           : ''
       }`,
       compactText:

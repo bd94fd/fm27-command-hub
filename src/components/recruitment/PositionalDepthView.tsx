@@ -226,7 +226,7 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
                   <span>{b.seniorPrimaryPlayers.length}</span>
                 </div>
                 {b.seniorPrimaryPlayers.length === 0 ? (
-                  <div className="text-[11px] text-slate-500 italic px-1">
+                  <div className="text-[11px] text-slate-400 italic px-1">
                     {readyYouthCount > 0
                       ? '0 assigned to Senior slot — promote Ready U21 below'
                       : 'No senior primary options'}

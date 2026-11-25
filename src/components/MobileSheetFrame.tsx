@@ -3,8 +3,25 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
+
+/**
+ * Focusable descendants used by the sheet's focus trap. Disabled controls and
+ * `tabindex="-1"` elements are excluded so Tab never parks on an unfocusable node.
+ */
+export const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+type FocusableContainer = Pick<HTMLElement, 'querySelectorAll'>;
+
+export function getFocusableElements(
+  container: FocusableContainer
+): HTMLElement[] {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
+  ).filter((el) => el.tabIndex >= 0);
+}
 
 // Reference-counted body scroll lock so stacked or rapid-swap modals never leave body frozen.
 let activeScrollLockCount = 0;
@@ -104,22 +121,57 @@ export const MobileSheetFrame: React.FC<MobileSheetFrameProps> = ({
   disableWindowEscape = false,
   children,
 }) => {
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
+  // Latest callbacks in refs so a parent re-render cannot re-run the focus/scroll effect
+  // and steal focus back to the first control mid-interaction.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const disableEscapeRef = useRef(disableWindowEscape);
+  disableEscapeRef.current = disableWindowEscape;
+
   useEffect(() => {
     if (!isOpen) return;
     acquireBodyScrollLock();
 
+    const previouslyFocused =
+      typeof document !== 'undefined'
+        ? (document.activeElement as HTMLElement | null)
+        : null;
+
+    const focusInitial = () => {
+      const surface = surfaceRef.current;
+      if (!surface) return;
+      const focusable = getFocusableElements(surface);
+      (focusable[0] ?? surface).focus();
+    };
+    const raf =
+      typeof requestAnimationFrame === 'function'
+        ? requestAnimationFrame(focusInitial)
+        : null;
+    if (raf === null) focusInitial();
+
     const handleWindowKeyDown = (e: KeyboardEvent) => {
-      if (!disableWindowEscape && e.key === 'Escape') {
+      if (!disableEscapeRef.current && e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
       }
     };
     window.addEventListener('keydown', handleWindowKeyDown);
     return () => {
+      if (raf !== null && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(raf);
+      }
       releaseBodyScrollLock();
       window.removeEventListener('keydown', handleWindowKeyDown);
+      if (
+        previouslyFocused &&
+        typeof previouslyFocused.focus === 'function' &&
+        (typeof document === 'undefined' || document.contains(previouslyFocused))
+      ) {
+        previouslyFocused.focus();
+      }
     };
-  }, [isOpen, onClose, disableWindowEscape]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -129,18 +181,43 @@ export const MobileSheetFrame: React.FC<MobileSheetFrameProps> = ({
       alignTopDesktop,
     });
 
+  const handleSurfaceKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Tab' && surfaceRef.current) {
+      const surface = surfaceRef.current;
+      const focusable = getFocusableElements(surface);
+      if (focusable.length === 0) {
+        e.preventDefault();
+        surface.focus();
+      } else {
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement as HTMLElement | null;
+        if (e.shiftKey && (active === first || active === surface)) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && active === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    }
+    onKeyDown?.(e);
+  };
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label={ariaLabel}
-      onKeyDown={onKeyDown}
       className={overlayClass}
       onClick={onClose}
     >
       <div
-        className={surfaceClass}
+        ref={surfaceRef}
+        tabIndex={-1}
+        className={`${surfaceClass} focus:outline-none`}
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={handleSurfaceKeyDown}
       >
         {/* Mobile bottom-sheet grab handle */}
         <div className="sm:hidden pt-2.5 pb-1 flex justify-center shrink-0 bg-slate-900">
