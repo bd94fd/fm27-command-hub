@@ -17,6 +17,10 @@
 - Before changing code, run a skill check: name the skills that apply and invoke them. Do not silently skip a matching skill.
 - Save data, Analyst, staff, finances, or decoder work: use `fm27-data-parity`.
 - Any screen, layout, or mobile change: use `fm27-ui-ux-review` and `web-design-guidelines`.
+- User-visible behavior changes: use `qa-changes` to exercise the real app, not just the test suite.
+- Multi-file cleanup or refactor: use `code-simplifier`.
+- Explaining a technical topic to the user: use `show-me` for a small visual, and `plain-english-content` for the prose.
+- A recurring fix or workflow: use `skill-creator` to capture it as a reusable skill.
 - Do not invoke unrelated skills just to fill the list. Say which skills apply and why the others do not.
 - Priority when instructions conflict: latest explicit user instruction, then this file, then the task-specific skill, then general guidance. State the conflict once and record any partial work.
 - Every PR body and final summary includes a short `Skills applied:` line.
