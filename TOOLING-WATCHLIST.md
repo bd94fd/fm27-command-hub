@@ -59,6 +59,7 @@ Purpose: remember tools and skills worth adding later, so we do not search for t
 - 25 Nov 2026: added Playwright, the addyosmani web quality set and the small UI/UX audit rubric.
 - 25 Nov 2026: made `fm27-ui-ux-review`, `accessibility` and `web-quality-audit` the primary UI path. Kept `ui-ux-audit` as a supporting rubric.
 - 25 Nov 2026: reviewed `pbakaus/impeccable`. It is popular and capable, so it was added with a pinned engine, checksum verification, no hook and no live mode. See `.agents/skills/impeccable/FM27-SETUP.md`.
+- 25 Nov 2026: trialled Impeccable on the loaded Staff and Hub screens. Staff had 135 mobile and 106 desktop findings, mostly the same 9px card labels repeated. Hub had 12 findings. Verdict: useful for targeted audits with JSON and dedupe, not yet a blocking CI gate.
 
 ## Rejected for now
 
