@@ -48,7 +48,7 @@ import {
   deriveFootballSeasonLabel,
 } from './matchScopeHelpers';
 
-export const WORKER_CACHE_BUSTER = '?v=23';
+export const WORKER_CACHE_BUSTER = '?v=24';
 
 export function resolveSquadUnit(
   teamSlot?: number | null

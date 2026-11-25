@@ -48,7 +48,7 @@ try:
 except Exception:
     _layout_patcher = None  # type: ignore[assignment]
 
-MAPPER_CACHE_BUSTER = "?v=23"
+MAPPER_CACHE_BUSTER = "?v=24"
 
 # Detect native server Python vs browser Pyodide (emscripten) for realistic budgets
 _IS_PYODIDE = sys.platform == "emscripten"
@@ -3893,6 +3893,22 @@ def _extract_club_finances_fast(save: Any, club_uid: int | None) -> list[Any] | 
         return None
 
 
+def _staff_contract_fields(s: Any) -> tuple[int, str]:
+    """Weekly wage and contract expiry for one staff row.
+
+    fmsave's `Staff` row carries flat `wage` / `contract_end`; older surfaces nested the
+    terms under `contract`. Read both shapes so staff contracts never silently fall to 0.
+    """
+    contract = getattr(s, "contract", None)
+    wage = None if contract is None else getattr(contract, "wage", None)
+    if wage is None:
+        wage = getattr(s, "wage", None)
+    end = None if contract is None else getattr(contract, "end", None)
+    if end is None:
+        end = getattr(s, "contract_end", None)
+    return _int(wage, 0), (_dmy(end) or "N/A")
+
+
 def _staff_secondary_fields(s: Any) -> tuple[str | None, dict[str, int] | None]:
     """Secondary job label and FM27 Preferred Jobs ratings (fmsave 0.14.4+ only)."""
     secondary = _label(getattr(s, "secondary_job", None))
@@ -4481,7 +4497,7 @@ def step_3_2_staff() -> str:
                             s_attrs = scaled_attrs
                     except Exception:
                         pass
-                s_contract = getattr(s, "contract", None)
+                s_wage, s_expires = _staff_contract_fields(s)
                 s_def = _clamp_attr(_first_attr(s_attrs, ("defending", "coaching_defending")) if s_attrs else _first_attr(s, ("coaching_defending", "defending")), 10)
                 s_att = _clamp_attr(_first_attr(s_attrs, ("attacking", "coaching_attacking")) if s_attrs else _first_attr(s, ("coaching_attacking", "attacking")), 10)
                 s_tac = _clamp_attr(_first_attr(s_attrs, ("tactical", "coaching_tactical")) if s_attrs else _first_attr(s, ("coaching_tactical", "tactical")), 10)
@@ -4497,8 +4513,8 @@ def step_3_2_staff() -> str:
                     "age": _int(getattr(s, "age", None), 35),
                     "nation": _resolve_player_nationality(s, staff_nation_lookup, default="N/A"),
                     "club": club_name,
-                    "wagePw": _int(getattr(s_contract, "wage", None), 0) if s_contract else 0,
-                    "expires": (_dmy(getattr(s_contract, "end", None)) or "N/A") if s_contract else "N/A",
+                    "wagePw": s_wage,
+                    "expires": s_expires,
                     "coachingDefending": s_def,
                     "coachingAttacking": s_att,
                     "coachingTactical": s_tac,

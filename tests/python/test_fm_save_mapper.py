@@ -595,6 +595,59 @@ class TestFmsave0144Integration(unittest.TestCase):
         self.assertEqual(row["secondaryRole"], "Loan Manager")
         self.assertEqual(row["jobRatings"], {"fitness_coach": 17})
 
+    def test_staff_contract_fields_read_flat_and_nested_shapes(self) -> None:
+        class _FlatRow:
+            wage = 531
+            contract_end = date(2028, 6, 30)
+
+        self.assertEqual(mapper._staff_contract_fields(_FlatRow()), (531, "30/06/2028"))
+
+        class _Nested:
+            wage = 185
+            end = date(2026, 7, 23)
+
+        class _NestedRow:
+            contract = _Nested()
+
+        self.assertEqual(mapper._staff_contract_fields(_NestedRow()), (185, "23/07/2026"))
+
+        class _Empty:
+            pass
+
+        self.assertEqual(mapper._staff_contract_fields(_Empty()), (0, "N/A"))
+
+    def test_staff_payload_carries_wage_and_contract_expiry(self) -> None:
+        class _StaffRow:
+            uid = 77
+            name = "Griffin De Vroe"
+            role = "Goalkeeping Coach"
+            secondary_job = None
+            job_ratings = None
+            club_uid = 77
+            age = 44
+            nationality = "BEL"
+            attributes = None
+            wage = 531
+            contract_end = date(2028, 6, 30)
+            has_contract = True
+
+        class _StaffSave:
+            def staff(self) -> list[object]:
+                return [_StaffRow()]
+
+            def clubs(self) -> list[object]:
+                return []
+
+        mapper._STATE["save"] = _StaffSave()
+        mapper._STATE["club_uid"] = 77
+        mapper._STATE["club_name"] = "KVV Zelzate"
+        mapper._STATE["game_date"] = date(2027, 8, 11)
+
+        mapper.step_3_2_staff()
+        row = mapper._STATE["staff_out"][0]
+        self.assertEqual(row["wagePw"], 531)
+        self.assertEqual(row["expires"], "30/06/2028")
+
     def test_person_object_kwargs_follow_the_installed_dataclass(self) -> None:
         import dataclasses
 

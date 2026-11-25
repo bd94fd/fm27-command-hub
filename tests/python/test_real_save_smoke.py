@@ -175,6 +175,19 @@ class TestRealSaveSmoke(unittest.TestCase):
             "expected at least one on an FM27 save",
         )
 
+    def test_staff_contract_terms_decode(self) -> None:
+        staff = self.payload.get("staff") or []
+        for row in staff:
+            self.assertIsInstance(row.get("wagePw"), int)
+            self.assertGreaterEqual(row["wagePw"], 0)
+            self.assertIsInstance(row.get("expires"), str)
+            self.assertTrue(row["expires"])
+        self.assertGreater(
+            sum(row["wagePw"] for row in staff),
+            0,
+            "every staff wage decoded as 0; flat wage / contract_end are not being read",
+        )
+
     def test_sponsorship_records_serialise(self) -> None:
         deals = self.payload.get("sponsorships") or []
         if not deals:
