@@ -59,8 +59,11 @@ import {
 import { listSaveHistoryPoints, SaveHistoryPoint } from '../services/saveCache';
 import { decodeFmSaveFile } from '../services/fmSaveReader';
 import {
+  buildFm27AgentHandoff,
   buildPatchDiagnosticReport,
+  describeFm27HandoffVerdict,
   describePatchLayout,
+  formatFm27AgentHandoff,
   isNewFm27BuildDetected,
 } from '../utils/fm27PatchDiagnostics';
 
@@ -189,6 +192,10 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
   const mappingCounts = useMemo(() => countDictionaryMappings(dict), [dict]);
   const patchCompat = decodedPayload?.meta?.patchCompatibility ?? null;
   const newBuildDetected = isNewFm27BuildDetected(patchCompat);
+  const handoffVerdict = useMemo(
+    () => describeFm27HandoffVerdict(patchCompat),
+    [patchCompat]
+  );
 
   const notifySaved = (nextDict: Fm27BinaryDictionary, msg: string) => {
     setDict(nextDict);
@@ -200,6 +207,12 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
     copyTextToClipboard(buildPatchDiagnosticReport(decodedPayload))
       .then(() => setStatusNotice('Patch diagnostic report copied to clipboard.'))
       .catch(() => setStatusNotice('Could not copy the patch diagnostic report automatically.'));
+  };
+
+  const handleCopyAgentHandoff = () => {
+    copyTextToClipboard(formatFm27AgentHandoff(buildFm27AgentHandoff(decodedPayload)))
+      .then(() => setStatusNotice('Agent handoff packet copied to clipboard.'))
+      .catch(() => setStatusNotice('Could not copy the agent handoff packet automatically.'));
   };
 
   // Current active save as a CompactBinaryDiffSnapshot
@@ -1426,18 +1439,35 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                       through a runtime fallback.
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleCopyPatchDiagnosticReport}
-                    disabled={!decodedPayload}
-                    className="min-h-[32px] inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-2.5 text-[11px] font-medium text-slate-200 hover:border-sky-500/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <Copy className="h-3.5 w-3.5 text-sky-400" /> Copy Patch Diagnostic Report
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCopyPatchDiagnosticReport}
+                      disabled={!decodedPayload}
+                      className="min-h-[32px] inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-2.5 text-[11px] font-medium text-slate-200 hover:border-sky-500/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <Copy className="h-3.5 w-3.5 text-sky-400" /> Copy Patch Diagnostic Report
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCopyAgentHandoff}
+                      disabled={!decodedPayload}
+                      title="Copy a Markdown packet to paste into an agent that can investigate the decode failure"
+                      className="min-h-[36px] inline-flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 text-[11px] font-medium text-amber-100 hover:border-amber-400/60 hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <Copy className="h-3.5 w-3.5 text-amber-300" /> Copy Agent Handoff
+                    </button>
+                  </div>
                 </div>
                 {patchCompat ? (
                   <>
-                    <p className="text-xs font-mono tabular-nums text-slate-300">
+                    <p className="text-xs text-slate-300">
+                      <span className="font-semibold text-slate-100">
+                        {handoffVerdict.headline}.
+                      </span>{' '}
+                      {handoffVerdict.detail}
+                    </p>
+                    <p className="text-xs font-mono tabular-nums text-slate-400">
                       {patchCompat.summary}
                     </p>
                     <div className="flex flex-wrap gap-1.5">
