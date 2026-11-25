@@ -4,7 +4,7 @@
 [![Live App](https://img.shields.io/badge/Live_App-Render-46E3B7?logo=render&logoColor=white)](https://fm27-command-hub.onrender.com)
 
 A production-ready Football Manager 27 web application unifying:
-- **Server-First Chunked `.fm` Save Decoder + Local Pyodide Fallback**: Handles `.fm` saves up to **1 GB** via 4 MB chunked streaming to native Python `fmsave` (`0.14.3+`) on Render / Cloud Run, with automatic fallback to in-browser **Pyodide 3.14 (`314.0.8`) + zero-copy `WORKERFS` (`?v=22`)** on static/serverless hosts.
+- **Server-First Chunked `.fm` Save Decoder + Local Pyodide Fallback**: Handles `.fm` saves up to **1 GB** via 4 MB chunked streaming to native Python `fmsave` (`0.14.4+`) on Render / Cloud Run, with automatic fallback to in-browser **Pyodide 3.14 (`314.0.8`) + zero-copy `WORKERFS` (`?v=23`)** on static/serverless hosts.
 - **Verified FM27 (Patch 27.1.0) Knowledge Base & Dual-Phase IP/OOP Engine**: Grounded in Patch 27.1.0 Dual-Phase In-Possession (IP) and Out-of-Possession (OOP) roles—never retired FM24 roles or legacy duties.
 - **AI Tactical Analyst (Fast vs. Deep) & Multi-Save Journey Diffs**: Multi-turn tactical co-pilot powered by `gemini-3.5-flash-lite` (Fast / Fallback) and `gemini-3.6-flash` (Deep), with automatic failover, offline tactical briefings, and same-club save-to-save Journey diffs.
 - **Dynamic Tactical War Room, Set Pieces, Training Planner (`fm27-trainer` JSON/CSV), Squad Analytics, Recruitment Pipeline, Staff Ratings & Local `fm-cli` Live Bridge (`http://127.0.0.1:7777`)**.
@@ -69,7 +69,7 @@ npm run build  # Production Vite bundle (dist/)
 - Health check endpoint: `GET /api/health` • Native decoder probe: `GET /api/fm27/decode-status`.
 
 ### Option B: Vercel / Static-Only Hosting (Browser Pyodide Fallback)
-- When native Python `fmsave` is not available on the server (`503` from `/api/fm27/decode-save/init`), the client automatically falls back to local in-browser **Pyodide 3.14 (`314.0.8`) + `WORKERFS`** (`public/fm-save-worker.js?v=22`).
+- When native Python `fmsave` is not available on the server (`503` from `/api/fm27/decode-save/init`), the client automatically falls back to local in-browser **Pyodide 3.14 (`314.0.8`) + `WORKERFS`** (`public/fm-save-worker.js?v=23`).
 - On mobile browsers, Full Sync is the default with automatic Fast Sync fallback if memory pressure triggers a worker or server OOM (`507`).
 
 ---

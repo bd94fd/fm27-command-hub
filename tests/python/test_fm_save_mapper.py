@@ -23,8 +23,14 @@ def _install_stub_fmsave() -> types.ModuleType:
     """Install a minimal stub fmsave module tree if fmsave is not installed."""
     if "fmsave" in sys.modules:
         return sys.modules["fmsave"]
+    try:
+        import fmsave  # real wheel wins when installed (Docker/CI with the dependency)
+
+        return fmsave
+    except Exception:
+        pass
     mod = types.ModuleType("fmsave")
-    mod.__version__ = "0.14.3"
+    mod.__version__ = "0.14.4"
     mod.open = lambda *_a, **_kw: None  # type: ignore[attr-defined]
     sys.modules["fmsave"] = mod
     return mod
@@ -484,6 +490,113 @@ class TestFmSaveMapperHardening(unittest.TestCase):
         self.assertIn("Consistent Performer", first["scoutBadges"])
         self.assertNotIn("ca", first)
         self.assertNotIn("pa", first)
+
+
+class TestFmsave0144Adoption(unittest.TestCase):
+    """fmsave 0.14.4 additions: staff jobs, native-first role labels, sponsorship flags."""
+
+    class _StaffJob:
+        def __init__(self, name: str) -> None:
+            self.label = types.SimpleNamespace(name=name)
+
+    def _staff(self, with_new_fields: bool) -> object:
+        staff = types.SimpleNamespace(uid=77, name="Kris De Vos")
+        if with_new_fields:
+            staff.secondary_job = self._StaffJob("SET_PIECE_COACH")
+            staff.job_ratings = types.SimpleNamespace(
+                fitness_coach=12,
+                goalkeeping_coach=4,
+                set_piece_coach=17,
+                loan_manager=None,
+                physio=3,
+                sports_scientist=9,
+            )
+        return staff
+
+    def test_staff_secondary_job_and_job_ratings_are_version_gated(self) -> None:
+        original = mapper.fmsave.__version__
+        try:
+            mapper.fmsave.__version__ = "0.14.4"
+            staff = self._staff(with_new_fields=True)
+            self.assertEqual(mapper._resolve_staff_secondary_job(staff), "Set Piece Coach")
+            self.assertEqual(
+                mapper._resolve_staff_job_ratings(staff),
+                {
+                    "fitness_coach": 12,
+                    "goalkeeping_coach": 4,
+                    "set_piece_coach": 17,
+                    "loan_manager": None,
+                    "physio": 3,
+                    "sports_scientist": 9,
+                },
+            )
+
+            # 0.14.3 predates both fields: the mapper must not invent them.
+            mapper.fmsave.__version__ = "0.14.3"
+            self.assertIsNone(mapper._resolve_staff_secondary_job(staff))
+            self.assertIsNone(mapper._resolve_staff_job_ratings(staff))
+        finally:
+            mapper.fmsave.__version__ = original
+
+    def test_staff_job_ratings_absent_when_save_carries_none(self) -> None:
+        self.assertIsNone(mapper._resolve_staff_job_ratings(self._staff(with_new_fields=False)))
+        self.assertIsNone(mapper._resolve_staff_secondary_job(self._staff(with_new_fields=False)))
+
+    def test_role_labels_stay_native_first_and_report_their_source(self) -> None:
+        # Native wins even when fmsave disagrees, so the UI keeps its verified names.
+        self.assertEqual(
+            mapper._resolve_tactic_slot_roles("Inside Winger", "Tracking Winger", "Inverted Winger", "Wide Midfielder"),
+            ("Inside Winger", "Tracking Winger", "native"),
+        )
+        # Upstream fills the gaps where the bit table has no role for the slot — but only with
+        # names the Hub's own vocabulary knows ("Inverted Winger" is not in fm27Roles.json).
+        self.assertEqual(
+            mapper._resolve_tactic_slot_roles(None, "Tracking Winger", "Inverted Winger", "Wide Midfielder"),
+            (None, "Tracking Winger", "native"),
+        )
+        self.assertEqual(
+            mapper._resolve_tactic_slot_roles(None, None, "Inverted Winger", "Wide Midfielder"),
+            (None, "Wide Midfielder", "upstream"),
+        )
+        self.assertEqual(
+            mapper._resolve_tactic_slot_roles(None, None, None, None),
+            (None, None, "none"),
+        )
+
+    def test_native_role_decoder_reads_the_slot_role_bits(self) -> None:
+        # 0x400004 (DR, FB) decodes through the slot's secondHigh word, as upstream reports it.
+        self.assertEqual(
+            mapper._decode_fm27_native_role("ip", [{"secondHigh": 0x400004}], 0),
+            "Full-Back",
+        )
+        self.assertEqual(
+            mapper._decode_fm27_native_role("oop", [{"secondHigh": 0x800002}], 0),
+            "Sweeper Keeper",
+        )
+        self.assertIsNone(mapper._decode_fm27_native_role("ip", [{"secondHigh": 0x400000}], 0))
+
+    def test_sponsorship_dataclass_serializes_dates_reordered(self) -> None:
+        from dataclasses import dataclass
+
+        @dataclass(frozen=True, slots=True)
+        class FakeSponsorship:
+            club_uid: int
+            start: date
+            end: date
+            dates_reordered: bool
+
+        out = mapper._to_json_safe(
+            FakeSponsorship(club_uid=9, start=date(2026, 7, 1), end=date(2027, 6, 30), dates_reordered=True)
+        )
+        self.assertEqual(
+            out,
+            {
+                "club_uid": 9,
+                "start": "2026-07-01",
+                "end": "2027-06-30",
+                "dates_reordered": True,
+            },
+        )
 
 
 if __name__ == "__main__":

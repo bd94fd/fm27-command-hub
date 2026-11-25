@@ -1,6 +1,6 @@
 """FM27 Command Hub — Pass 0 Deep .fm Save Extractor (Groups 1–4).
 
-Runs inside Pyodide 3.14 (with native Python 3.14 zstd support) + fmsave==0.14.3
+Runs inside Pyodide 3.14 (with native Python 3.14 zstd support) + fmsave==0.14.4
 inside a browser Web Worker or via CLI.
 - Mounts save directly with zero-copy WORKERFS (no memory copying).
 - Holds ONE shared game_db section borrow across Steps 2-3 (including Group 4
@@ -30,6 +30,8 @@ import struct
 import sys
 import time
 import warnings
+from dataclasses import fields as _dc_fields
+from dataclasses import is_dataclass as _is_dataclass
 from datetime import date, time as dt_time
 from typing import Any
 
@@ -47,7 +49,137 @@ try:
 except Exception:
     _layout_patcher = None  # type: ignore[assignment]
 
-MAPPER_CACHE_BUSTER = "?v=22"
+MAPPER_CACHE_BUSTER = "?v=23"
+
+# FM27 27.1.0 native 64-bit in/out-of-possession role bit tables. Bits already claimed by
+# _FM27_ROLE_DUTY_MASK are duty bits, not role bits, and are masked out before decoding.
+_FM27_ROLE_DUTY_MASK = 0x200000 | 0x400000 | 0x800000 | 0x2000000 | 0x4000000 | 0x400000000
+_FM27_IP_ROLE_BY_BIT: dict[int, str] = {
+    0: "Goalkeeper", 1: "Centre-Back", 2: "Full-Back", 3: "Wing-Back",
+    4: "Defensive Midfielder", 5: "Central Midfielder", 6: "Wide Midfielder", 7: "Winger",
+    9: "Attacking Midfielder", 10: "Deep-Lying Forward", 11: "Centre Forward",
+    12: "Ball-Playing Goalkeeper", 14: "Advanced Centre-Back", 15: "Deep-Lying Playmaker",
+    16: "Box-to-Box Midfielder", 17: "Advanced Playmaker", 18: "Target Forward",
+    19: "Poacher", 20: "Complete Forward", 24: "Ball-Playing Centre-Back",
+    27: "Inside Forward", 28: "Ball-Winning Midfielder", 29: "No-Nonsense Centre-Back",
+    30: "Defensive Winger", 31: "Channel Forward", 32: "Free Role", 33: "Anchor",
+    35: "Half-Back", 36: "No-Nonsense Full-Back", 37: "Enganche", 38: "Advanced Wing-Back",
+    39: "Regista", 40: "False Nine", 41: "Second Striker", 42: "Wide Target Forward",
+    43: "Playmaking Winger", 44: "Inside Wing-Back", 45: "Wide Forward",
+    46: "Box-to-Box Playmaker", 47: "Mezzala", 48: "Wide Central Midfielder",
+    49: "Inside Winger", 50: "Segundo Volante", 51: "Wide Centre-Back",
+    52: "Inside Full-Back", 53: "No-Nonsense Goalkeeper", 54: "Overlapping Centre-Back",
+    55: "Playmaking Wing-Back", 56: "Channel Midfielder", 57: "Midfield Playmaker",
+}
+_FM27_OOP_ROLE_BY_BIT: dict[int, str] = {
+    0: "Goalkeeper", 1: "Sweeper Keeper", 2: "Line-Holding Keeper",
+    3: "Centre-Back", 4: "Stopping Centre-Back", 5: "Covering Centre-Back",
+    6: "Wide Centre-Back", 7: "Stopping Wide Centre-Back", 8: "Covering Wide Centre-Back",
+    9: "Full-Back", 10: "Pressing Full-Back", 11: "Holding Full-Back",
+    12: "Wing-Back", 13: "Pressing Wing-Back", 14: "Holding Wing-Back",
+    15: "Defensive Midfielder", 16: "Dropping Defensive Midfielder",
+    17: "Pressing Defensive Midfielder", 18: "Screening Defensive Midfielder",
+    19: "Wide Covering Defensive Midfielder", 20: "Central Midfielder",
+    27: "Pressing Central Midfielder", 28: "Screening Central Midfielder",
+    29: "Wide Covering Central Midfielder", 30: "Attacking Midfielder",
+    31: "Tracking Attacking Midfielder", 32: "Central Outlet Attacking Midfielder",
+    33: "Splitting Outlet Attacking Midfielder", 35: "Wide Midfielder",
+    36: "Tracking Wide Midfielder", 37: "Wide Outlet Wide Midfielder",
+    38: "Winger", 39: "Tracking Winger", 40: "Inside Outlet Winger",
+    41: "Wide Outlet Winger", 42: "Centre Forward", 43: "Tracking Centre Forward",
+    44: "Central Outlet Centre Forward", 45: "Splitting Outlet Centre Forward",
+}
+
+# Native 64-bit FM27 (27.1.0) IP & OOP Role Decoder (verified 18/18 against rhiever/fmsave#122)
+# Bit tables live at module scope (_FM27_IP_ROLE_BY_BIT / _FM27_OOP_ROLE_BY_BIT) so
+# tests/python can parity-check them against fmsave's own role labels.
+def _decode_fm27_native_role(phase: str, raw_units_list: list[dict[str, Any]], trail_bits_val: Any) -> str | None:
+    table = _FM27_IP_ROLE_BY_BIT if phase == "ip" else _FM27_OOP_ROLE_BY_BIT
+    high32 = (int(trail_bits_val) & 0xFFFFFFFF) if isinstance(trail_bits_val, int) and trail_bits_val >= 0 else 0
+    candidates_low: list[int] = []
+    if raw_units_list:
+        for u_item in reversed(raw_units_list):
+            sh = u_item.get("secondHigh")
+            if isinstance(sh, int) and sh >= 0:
+                candidates_low.append(sh & 0xFFFFFFFF)
+    if not candidates_low and high32 > 0:
+        candidates_low.append(0)
+    for low32 in candidates_low:
+        mask64 = (high32 << 32) | low32
+        role_only = mask64 & ~_FM27_ROLE_DUTY_MASK
+        if role_only <= 0:
+            continue
+        if (role_only & (role_only - 1)) == 0:
+            bit_idx = role_only.bit_length() - 1
+            if bit_idx in table:
+                return table[bit_idx]
+        matched_bit = None
+        for b_idx in table:
+            if role_only & (1 << b_idx):
+                if matched_bit is None or b_idx > matched_bit:
+                    matched_bit = b_idx
+        if matched_bit is not None:
+            return table[matched_bit]
+    return None
+
+
+_KNOWN_ROLE_LABELS = frozenset(_FM27_IP_ROLE_BY_BIT.values()) | frozenset(_FM27_OOP_ROLE_BY_BIT.values())
+
+
+def _resolve_tactic_slot_roles(
+    native_ip: str | None,
+    native_oop: str | None,
+    upstream_ip: str | None,
+    upstream_oop: str | None,
+) -> tuple[str | None, str | None, str]:
+    """Pick the slot role names the Hub shows.
+
+    Native bit labels win, so the UI and the Analyst keep the same role names they used
+    before fmsave shipped its own labels. fmsave's label is only a fallback, and only when
+    the Hub's own role vocabulary knows it (`fm27Roles.json` drives the matcher, so an
+    unknown name would show a role nothing else can resolve). The returned source is
+    'native' when every resolved role came from the bit tables, 'upstream' when at least
+    one fell back to fmsave, and 'none' when neither side resolved a role.
+    """
+    fallback_ip = upstream_ip if upstream_ip in _KNOWN_ROLE_LABELS else None
+    fallback_oop = upstream_oop if upstream_oop in _KNOWN_ROLE_LABELS else None
+    slot_ip = native_ip or fallback_ip
+    slot_oop = native_oop or fallback_oop
+    used_upstream = bool((slot_ip and not native_ip) or (slot_oop and not native_oop))
+    if not slot_ip and not slot_oop:
+        source = "none"
+    elif used_upstream:
+        source = "upstream"
+    else:
+        source = "native"
+    return slot_ip, slot_oop, source
+
+
+def _resolve_staff_secondary_job(s_obj: Any) -> str | None:
+    """FM27 secondary job on the current contract (fmsave 0.14.4+)."""
+    if _fmsave_version_tuple() < (0, 14, 4):
+        return None
+    return _label(getattr(s_obj, "secondary_job", None))
+
+
+def _resolve_staff_job_ratings(s_obj: Any) -> dict[str, int | None] | None:
+    """FM27 Preferred Jobs ratings (fmsave 0.14.4+); None when the save carries none."""
+    if _fmsave_version_tuple() < (0, 14, 4):
+        return None
+    raw_ratings = getattr(s_obj, "job_ratings", None)
+    if raw_ratings is None:
+        return None
+    out: dict[str, int | None] = {}
+    for key in (
+        "fitness_coach",
+        "goalkeeping_coach",
+        "set_piece_coach",
+        "loan_manager",
+        "physio",
+        "sports_scientist",
+    ):
+        out[key] = _int(getattr(raw_ratings, key, None), None)
+    return out if any(v is not None for v in out.values()) else None
 
 # Detect native server Python vs browser Pyodide (emscripten) for realistic budgets
 _IS_PYODIDE = sys.platform == "emscripten"
@@ -667,6 +799,13 @@ def _to_json_safe(obj: Any, depth: int = 0) -> Any:
         return out
     if isinstance(obj, (list, tuple, set)):
         return [_to_json_safe(v, depth + 1) for v in list(obj)[:40]]
+    # fmsave's frozen+slots records carry no __dict__, so without this branch they degrade to
+    # a repr string and every field (e.g. Sponsorship.dates_reordered) is lost.
+    if _is_dataclass(obj) and not isinstance(obj, type):
+        return _to_json_safe(
+            {f.name: getattr(obj, f.name, None) for f in _dc_fields(obj)},
+            depth + 1,
+        )
     if hasattr(obj, "__dict__") and not hasattr(obj, "value"):
         return _to_json_safe(
             {k: v for k, v in vars(obj).items() if not k.startswith("_")},
@@ -4368,6 +4507,8 @@ def step_3_2_staff() -> str:
                     "club": club_name,
                     "wagePw": _int(getattr(s_contract, "wage", None), 0) if s_contract else 0,
                     "expires": (_dmy(getattr(s_contract, "end", None)) or "N/A") if s_contract else "N/A",
+                    "secondaryJob": _resolve_staff_secondary_job(s),
+                    "jobRatings": _resolve_staff_job_ratings(s),
                     "coachingDefending": s_def,
                     "coachingAttacking": s_att,
                     "coachingTactical": s_tac,
@@ -5073,72 +5214,7 @@ def step_3_3_tactics_and_mentoring() -> str:
                     "styleCode": style_code_val,
                 }
 
-            # Native 64-bit FM27 (27.1.0) IP & OOP Role Decoder (verified 18/18 against rhiever/fmsave#122)
-            _FM27_ROLE_DUTY_MASK = 0x200000 | 0x400000 | 0x800000 | 0x2000000 | 0x4000000 | 0x400000000
-            _FM27_IP_ROLE_BY_BIT: dict[int, str] = {
-                0: "Goalkeeper", 1: "Centre-Back", 2: "Full-Back", 3: "Wing-Back",
-                4: "Defensive Midfielder", 5: "Central Midfielder", 6: "Wide Midfielder", 7: "Winger",
-                9: "Attacking Midfielder", 10: "Deep-Lying Forward", 11: "Centre Forward",
-                12: "Ball-Playing Goalkeeper", 14: "Advanced Centre-Back", 15: "Deep-Lying Playmaker",
-                16: "Box-to-Box Midfielder", 17: "Advanced Playmaker", 18: "Target Forward",
-                19: "Poacher", 20: "Complete Forward", 24: "Ball-Playing Centre-Back",
-                27: "Inside Forward", 28: "Ball-Winning Midfielder", 29: "No-Nonsense Centre-Back",
-                30: "Defensive Winger", 31: "Channel Forward", 32: "Free Role", 33: "Anchor",
-                35: "Half-Back", 36: "No-Nonsense Full-Back", 37: "Enganche", 38: "Advanced Wing-Back",
-                39: "Regista", 40: "False Nine", 41: "Second Striker", 42: "Wide Target Forward",
-                43: "Playmaking Winger", 44: "Inside Wing-Back", 45: "Wide Forward",
-                46: "Box-to-Box Playmaker", 47: "Mezzala", 48: "Wide Central Midfielder",
-                49: "Inside Winger", 50: "Segundo Volante", 51: "Wide Centre-Back",
-                52: "Inside Full-Back", 53: "No-Nonsense Goalkeeper", 54: "Overlapping Centre-Back",
-                55: "Playmaking Wing-Back", 56: "Channel Midfielder", 57: "Midfield Playmaker",
-            }
-            _FM27_OOP_ROLE_BY_BIT: dict[int, str] = {
-                0: "Goalkeeper", 1: "Sweeper Keeper", 2: "Line-Holding Keeper",
-                3: "Centre-Back", 4: "Stopping Centre-Back", 5: "Covering Centre-Back",
-                6: "Wide Centre-Back", 7: "Stopping Wide Centre-Back", 8: "Covering Wide Centre-Back",
-                9: "Full-Back", 10: "Pressing Full-Back", 11: "Holding Full-Back",
-                12: "Wing-Back", 13: "Pressing Wing-Back", 14: "Holding Wing-Back",
-                15: "Defensive Midfielder", 16: "Dropping Defensive Midfielder",
-                17: "Pressing Defensive Midfielder", 18: "Screening Defensive Midfielder",
-                19: "Wide Covering Defensive Midfielder", 20: "Central Midfielder",
-                27: "Pressing Central Midfielder", 28: "Screening Central Midfielder",
-                29: "Wide Covering Central Midfielder", 30: "Attacking Midfielder",
-                31: "Tracking Attacking Midfielder", 32: "Central Outlet Attacking Midfielder",
-                33: "Splitting Outlet Attacking Midfielder", 35: "Wide Midfielder",
-                36: "Tracking Wide Midfielder", 37: "Wide Outlet Wide Midfielder",
-                38: "Winger", 39: "Tracking Winger", 40: "Inside Outlet Winger",
-                41: "Wide Outlet Winger", 42: "Centre Forward", 43: "Tracking Centre Forward",
-                44: "Central Outlet Centre Forward", 45: "Splitting Outlet Centre Forward",
-            }
-
-            def _decode_fm27_native_role(phase: str, raw_units_list: list[dict[str, Any]], trail_bits_val: Any) -> str | None:
-                table = _FM27_IP_ROLE_BY_BIT if phase == "ip" else _FM27_OOP_ROLE_BY_BIT
-                high32 = (int(trail_bits_val) & 0xFFFFFFFF) if isinstance(trail_bits_val, int) and trail_bits_val >= 0 else 0
-                candidates_low: list[int] = []
-                if raw_units_list:
-                    for u_item in reversed(raw_units_list):
-                        sh = u_item.get("secondHigh")
-                        if isinstance(sh, int) and sh >= 0:
-                            candidates_low.append(sh & 0xFFFFFFFF)
-                if not candidates_low and high32 > 0:
-                    candidates_low.append(0)
-                for low32 in candidates_low:
-                    mask64 = (high32 << 32) | low32
-                    role_only = mask64 & ~_FM27_ROLE_DUTY_MASK
-                    if role_only <= 0:
-                        continue
-                    if (role_only & (role_only - 1)) == 0:
-                        bit_idx = role_only.bit_length() - 1
-                        if bit_idx in table:
-                            return table[bit_idx]
-                    matched_bit = None
-                    for b_idx in table:
-                        if role_only & (1 << b_idx):
-                            if matched_bit is None or b_idx > matched_bit:
-                                matched_bit = b_idx
-                    if matched_bit is not None:
-                        return table[matched_bit]
-                return None
+            # (native role decoder + role tables live at module scope for tests)
 
             def _extract_setting_units_raw(raw_units: Any) -> list[dict[str, Any]]:
                 out_units: list[dict[str, Any]] = []
@@ -5275,13 +5351,16 @@ def step_3_3_tactics_and_mentoring() -> str:
                     ip_units_raw = _extract_setting_units_raw(ip_settings)
                     oop_units_raw = _extract_setting_units_raw(oop_settings)
 
-                    sl_ip = (
-                        _label(_first_attr(sl, ("in_possession_role", "ip_role", "role", "role_name")))
-                        or _decode_fm27_native_role("ip", ip_units_raw, ip_tb)
-                    )
-                    sl_oop = (
-                        _label(_first_attr(oop_ref, ("out_of_possession_role", "oop_role")))
-                        or _decode_fm27_native_role("oop", oop_units_raw, oop_tb)
+                    # Native-first: fmsave 0.14.4+ now ships its own role labels, but the Hub
+                    # names roles from the verified bit tables so UI and Analyst keep the exact
+                    # role names they showed on 0.14.3. Upstream's label rides along for visibility.
+                    upstream_ip = _label(_first_attr(sl, ("in_possession_role", "ip_role", "role", "role_name")))
+                    upstream_oop = _label(_first_attr(oop_ref, ("out_of_possession_role", "oop_role")))
+                    sl_ip, sl_oop, role_label_source = _resolve_tactic_slot_roles(
+                        _decode_fm27_native_role("ip", ip_units_raw, ip_tb),
+                        _decode_fm27_native_role("oop", oop_units_raw, oop_tb),
+                        upstream_ip,
+                        upstream_oop,
                     )
 
                     slots_out.append({
@@ -5291,6 +5370,9 @@ def step_3_3_tactics_and_mentoring() -> str:
                         "outOfPossessionPositionIndex": oop_idx,
                         "inPossessionRole": sl_ip,
                         "outOfPossessionRole": sl_oop,
+                        "upstreamInPossessionRole": upstream_ip,
+                        "upstreamOutOfPossessionRole": upstream_oop,
+                        "roleLabelSource": role_label_source,
                         "ipRoleBits": f"0x{ip_rb:x}" if isinstance(ip_rb, int) else None,
                         "oopRoleBits": f"0x{oop_rb:x}" if isinstance(oop_rb, int) else None,
                         "ipTrailBits": f"0x{ip_tb:x}" if isinstance(ip_tb, int) else None,

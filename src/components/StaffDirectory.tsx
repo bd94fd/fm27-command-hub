@@ -12,8 +12,10 @@ import { JobVacancyEntry } from '../types/fmSave';
 import {
   buildCoachingCategoryMatrix,
   classifyStaffDepartment,
+  computeWeeklyStaffPayroll,
   evaluateBackroomDepartmentEfficiency,
   formatStars,
+  formatWeeklyStaffPayroll,
   getBestStaffRoleRating,
   isStaffContractExpiringSoon,
   StaffDepartmentGroup,
@@ -84,6 +86,11 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
     [staff]
   );
 
+  const weeklyPayrollLabel = useMemo(
+    () => formatWeeklyStaffPayroll(computeWeeklyStaffPayroll(staff)),
+    [staff]
+  );
+
   const coachingMatrix = useMemo(
     () => buildCoachingCategoryMatrix(staff),
     [staff]
@@ -131,6 +138,10 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
           <p className="text-xs text-slate-400 mt-0.5">
             {staff.length} club-scoped staff synced for {clubName || 'your club'} ·
             FM27 2x DDM Star Weighting (Determination, Level of Discipline, Motivating)
+          </p>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Weekly staff payroll:{' '}
+            <span className="font-mono text-slate-200">{weeklyPayrollLabel}</span>
           </p>
         </div>
 
@@ -383,6 +394,11 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                             · {dept}
                           </span>
                         </div>
+                        {s.secondaryJob && (
+                          <div className="text-[11px] text-slate-400 truncate">
+                            2nd job: {s.secondaryJob}
+                          </div>
+                        )}
                       </div>
                       <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 font-mono text-xs font-bold text-amber-300 shrink-0">
                         <Star className="h-3 w-3" />
@@ -425,6 +441,7 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                   <tr>
                     <th className="px-4 py-3">Name</th>
                     <th className="px-4 py-3">Role / Dept</th>
+                    <th className="px-4 py-3">Secondary Job</th>
                     <th className="px-4 py-3">Key Attributes</th>
                     <th className="px-4 py-3">DDM (Det/Dis/Mot)</th>
                     <th className="px-4 py-3">Best FM27 Specialty</th>
@@ -461,6 +478,9 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                           <div className="text-[10px] uppercase tracking-wider text-slate-500">
                             {dept}
                           </div>
+                        </td>
+                        <td className="px-4 py-3 text-slate-400 whitespace-nowrap">
+                          {s.secondaryJob || '--'}
                         </td>
                         <td className="px-4 py-3 font-mono text-slate-300 whitespace-nowrap">
                           {keyAttrsLabel}

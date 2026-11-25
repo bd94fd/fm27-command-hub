@@ -1,6 +1,6 @@
 import React from 'react';
 import { Star, UserCheck } from 'lucide-react';
-import { StaffAttributes, StaffRecord } from '../types/fm27';
+import { StaffAttributes, StaffJobRatings, StaffRecord } from '../types/fm27';
 import {
   calculateAllStaffRoleRatings,
   formatStars,
@@ -43,6 +43,15 @@ const MENTAL_SCOUTING_KEYS: Array<keyof StaffAttributes> = [
   'analysing_data',
 ];
 
+const PREFERRED_JOB_LABELS: Array<[keyof StaffJobRatings, string]> = [
+  ['fitness_coach', 'Fitness Coach'],
+  ['goalkeeping_coach', 'Goalkeeping Coach'],
+  ['set_piece_coach', 'Set-Piece Coach'],
+  ['loan_manager', 'Loan Manager'],
+  ['physio', 'Physio'],
+  ['sports_scientist', 'Sports Scientist'],
+];
+
 function attrColor(val: number): string {
   if (val >= 16) return 'text-emerald-300 font-bold';
   if (val >= 13) return 'text-lime-300 font-semibold';
@@ -80,6 +89,11 @@ export const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
               <span className="rounded-md bg-slate-800 px-2 py-0.5 text-xs font-medium text-sky-300">
                 {staff.role}
               </span>
+              {staff.secondaryJob && (
+                <span className="rounded-md bg-slate-800/70 px-2 py-0.5 text-xs font-medium text-slate-300">
+                  2nd job: {staff.secondaryJob}
+                </span>
+              )}
               <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-xs font-semibold text-amber-300">
                 <Star className="h-3 w-3" />
                 Best: {best.label} ({formatStars(best.stars)})
@@ -156,6 +170,38 @@ export const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
           ))}
         </div>
       </div>
+
+      {staff.jobRatings && (
+        <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+            FM27 Preferred Jobs (fmsave)
+          </h4>
+          <p className="text-[11px] text-slate-500 mb-2">
+            Read straight from the save — informational only, star ratings above still come
+            from the Hub&apos;s own calculator.
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-xs">
+            {PREFERRED_JOB_LABELS.map(([key, label]) => {
+              const val = staff.jobRatings?.[key];
+              return (
+                <div
+                  key={key}
+                  className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/60 px-2.5 py-1.5"
+                >
+                  <span className="text-slate-300">{label}</span>
+                  <span
+                    className={`font-mono ${
+                      typeof val === 'number' ? attrColor(val) : 'text-slate-500'
+                    }`}
+                  >
+                    {typeof val === 'number' ? val : '--'}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </MobileSheetFrame>
   );
 };

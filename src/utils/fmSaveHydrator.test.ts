@@ -408,8 +408,120 @@ test('hydrateAppFromDecodedFmSave handles non-contract players with null expires
   assert.equal(trialist.expires.slice(-4), 'N/A');
 });
 
-test('Worker cache-buster is bumped to ?v=22 and FmImportScope supports club_and_division with clamping', () => {
-  assert.equal(WORKER_CACHE_BUSTER, '?v=22');
+test('fmsave 0.14.4 staff jobs thread through while 0.14.3 payloads stay valid', () => {
+  const basePayload = {
+    meta: {
+      game: 'FM27',
+      build: '27.1.0',
+      knownBuild: true,
+      saveName: 'jobs.fm',
+      gameDateIso: '2027-09-19',
+      gameDateDmy: '19/09/2027',
+      clubUid: 4165,
+      clubName: 'KVV Zelzate',
+      managerName: 'Bobby Dean',
+      balance: -700000,
+    },
+    players: [],
+    playedMatches: [],
+    upcomingFixtures: [],
+    leagueStanding: null,
+    finances: null,
+    activeInjuries: [],
+    tactics: [],
+    mentoring: [],
+  };
+
+  const oldStaff = {
+    uid: 501,
+    name: 'Pieter Coach',
+    role: 'Assistant Manager',
+    age: 42,
+    wagePw: 400,
+    expires: '30/06/2031',
+  };
+  const newStaff = {
+    ...oldStaff,
+    uid: 502,
+    name: 'Wouter Analyst',
+    secondaryJob: 'Set Piece Coach',
+    jobRatings: {
+      fitness_coach: 12,
+      goalkeeping_coach: 4,
+      set_piece_coach: 17,
+      loan_manager: null,
+      physio: 3,
+      sports_scientist: 9,
+    },
+  };
+
+  const legacy = hydrateAppFromDecodedFmSave(
+    {
+      ...(basePayload as unknown as DecodedFmSavePayload),
+      meta: { ...basePayload.meta, fmsaveVersion: '0.14.3' },
+      staff: [oldStaff] as never,
+    },
+    SQUAD_PLAYERS,
+    COMPETITIVE_MATCH_LOGS
+  );
+  const legacyStaff = legacy.updatedStaff.find((s) => s.name === 'Pieter Coach');
+  assert.ok(legacyStaff);
+  assert.equal(legacyStaff.secondaryJob, null);
+  assert.equal(legacyStaff.jobRatings, null);
+
+  const current = hydrateAppFromDecodedFmSave(
+    {
+      ...(basePayload as unknown as DecodedFmSavePayload),
+      meta: { ...basePayload.meta, fmsaveVersion: '0.14.4' },
+      staff: [newStaff] as never,
+    },
+    SQUAD_PLAYERS,
+    COMPETITIVE_MATCH_LOGS
+  );
+  const currentStaff = current.updatedStaff.find((s) => s.name === 'Wouter Analyst');
+  assert.ok(currentStaff);
+  assert.equal(currentStaff.secondaryJob, 'Set Piece Coach');
+  assert.equal(currentStaff.jobRatings?.set_piece_coach, 17);
+  assert.equal(currentStaff.jobRatings?.loan_manager, null);
+});
+
+test('fmsave 0.14.4 sponsorship dates_reordered raises an extraction warning', () => {
+  const payload = {
+    meta: {
+      game: 'FM27',
+      build: '27.1.0',
+      knownBuild: true,
+      saveName: 'sponsors.fm',
+      gameDateIso: '2027-09-19',
+      gameDateDmy: '19/09/2027',
+      clubUid: 4165,
+      clubName: 'KVV Zelzate',
+      managerName: 'Bobby Dean',
+      balance: -700000,
+      fmsaveVersion: '0.14.4',
+    },
+    players: [],
+    playedMatches: [],
+    upcomingFixtures: [],
+    leagueStanding: null,
+    finances: null,
+    activeInjuries: [],
+    tactics: [],
+    mentoring: [],
+    sponsorships: [
+      { club: 'KVV Zelzate', sponsor: 'Bold Brew', kind: 2, start: '2027-06-30', end: '2026-07-01', dates_reordered: true },
+      { club: 'KVV Zelzate', sponsor: 'Clean Kit Co', kind: 1, start: '2027-07-01', end: '2028-06-30', dates_reordered: false },
+    ],
+  } as unknown as DecodedFmSavePayload;
+
+  const hydrated = hydrateAppFromDecodedFmSave(payload, SQUAD_PLAYERS, COMPETITIVE_MATCH_LOGS);
+  const warning = hydrated.extractionWarnings.find((w) => w.startsWith('sponsorships:'));
+  assert.ok(warning, 'expected a sponsorship date warning');
+  assert.match(warning, /1 ended FM27 contract/);
+});
+
+test('Worker cache-buster is bumped to ?v=23 and FmImportScope supports club_and_division with clamping', () => {
+  assert.equal(WORKER_CACHE_BUSTER, '?v=23');
 
   const scope: FmImportScope = 'club_and_division';
   assert.equal(scope, 'club_and_division');
@@ -1270,7 +1382,7 @@ test('Step 4/6 & Step 3/6 Watchdogs: 150s inactivity + 480s hard ceiling, detail
   assert.doesNotMatch(hydrated.analystPromptContext, /\bCA\s*\d+|\bPA\s*\d+/i);
 });
 
-test('Single-Pass game_db 4-Stage Pipeline & ?v=22 Static Guardrails: all game_db reads finish before releasing game_db for Fixtures/League/SeasonStats/CareerHistory, and Checkpoints emitted', () => {
+test('Single-Pass game_db 4-Stage Pipeline & ?v=23 Static Guardrails: all game_db reads finish before releasing game_db for Fixtures/League/SeasonStats/CareerHistory, and Checkpoints emitted', () => {
   const workerSrc = fs.readFileSync(
     path.resolve(process.cwd(), 'public/fm-save-worker.js'),
     'utf8'
@@ -1288,10 +1400,10 @@ test('Single-Pass game_db 4-Stage Pipeline & ?v=22 Static Guardrails: all game_d
     'utf8'
   );
 
-  // Worker, mapper, and client cache-buster synced to ?v=22
-  assert.equal(WORKER_CACHE_BUSTER, '?v=22');
-  assert.match(workerSrc, /\/fm-save-mapper\.py\?v=22/);
-  assert.match(mapperSrc, /MAPPER_CACHE_BUSTER\s*=\s*"\?v=22"/);
+  // Worker, mapper, and client cache-buster synced to ?v=23
+  assert.equal(WORKER_CACHE_BUSTER, '?v=23');
+  assert.match(workerSrc, /\/fm-save-mapper\.py\?v=23/);
+  assert.match(mapperSrc, /MAPPER_CACHE_BUSTER\s*=\s*"\?v=23"/);
   assert.match(clientSrc, /WORKER_CACHE_BUSTER/);
   assert.match(clientSrc, /WORKER_INACTIVITY_TIMEOUT_MS\s*=\s*150_000/);
   assert.match(clientSrc, /WORKER_HARD_CEILING_MS\s*=\s*480_000/);
@@ -1573,7 +1685,7 @@ test('Progressive Checkpoint Recovery: resolves with latest valid squad checkpoi
     new ArrayBuffer(8)
   )) as DecodedFmSavePayload;
 
-  assert.equal(capturedWorkerUrl, '/fm-save-worker.js?v=22');
+  assert.equal(capturedWorkerUrl, '/fm-save-worker.js?v=23');
   assert.equal(terminatedAfterStage3, true);
   assert.equal(recovered.players.length, 1);
   assert.equal(recovered.players[0].name, 'Quinten Boudry');
@@ -2405,7 +2517,7 @@ test('hydrateAppFromDecodedFmSave hydrates marketValue on re-sync and keeps 0-ap
       game: 'FM27',
       build: '27.1.0+2505117',
       knownBuild: true,
-      fmsaveVersion: '0.14.3',
+      fmsaveVersion: '0.14.4',
       saveName: 'auto save',
       gameDateIso: '2027-09-15',
       gameDateDmy: '15/09/2027',
@@ -2574,7 +2686,7 @@ test('Phase 1: strips leaked Last-5 form for 0-minute players, updates per-90 on
       game: 'FM27',
       build: '27.1.0+2505117',
       knownBuild: true,
-      fmsaveVersion: '0.14.3',
+      fmsaveVersion: '0.14.4',
       saveName: 'phase1.fm',
       clubUid: 999,
       clubName: 'Test FC',
@@ -2766,7 +2878,7 @@ test('Server Decode Parallel Upload & Progressive Checkpoint: uploads chunks con
       gameDateDmy: '15/11/2026',
       game: 'FM27',
       build: '27.1.0',
-      fmsaveVersion: '0.14.3',
+      fmsaveVersion: '0.14.4',
     },
     players: [
       {

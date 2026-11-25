@@ -511,7 +511,7 @@ describe('server routes & JSON 404', () => {
           available: true,
           pythonBin: 'python3',
           pythonVersion: '3.14.0',
-          fmsaveVersion: '0.14.3',
+          fmsaveVersion: '0.14.4',
           checkedAtMs: Date.now(),
         }),
       })
@@ -624,7 +624,7 @@ describe('server routes & JSON 404', () => {
           available: true,
           pythonBin: 'python3',
           pythonVersion: '3.12',
-          fmsaveVersion: '0.14.3',
+          fmsaveVersion: '0.14.4',
           checkedAtMs: Date.now(),
         }),
       })
@@ -740,7 +740,7 @@ describe('server routes & JSON 404', () => {
           available: true,
           pythonBin: 'python3',
           pythonVersion: '3.12',
-          fmsaveVersion: '0.14.3',
+          fmsaveVersion: '0.14.4',
           checkedAtMs: Date.now(),
         }),
       })

@@ -3,10 +3,14 @@ import test from 'node:test';
 import { StaffRecord } from '../types/fm27';
 import {
   calculateAllStaffRoleRatings,
+  computeWeeklyStaffPayroll,
   evaluateBackroomDepartmentEfficiency,
+  formatStaffJobRatings,
   formatStars,
+  formatWeeklyStaffPayroll,
   getBestStaffRoleRating,
   isStaffContractExpiringSoon,
+  STAFF_CONTRACT_EXPIRY_WINDOW_DAYS,
 } from './staffRatings';
 
 const sampleCoach: StaffRecord = {
@@ -92,6 +96,52 @@ test('isStaffContractExpiringSoon parses UK DD/MM/YYYY and ISO YYYY-MM-DD dates 
   assert.equal(isStaffContractExpiringSoon('30/06/2029', '15/02/2028'), false);
   assert.equal(isStaffContractExpiringSoon('2028-06-30', '2028-02-15'), true);
   assert.equal(isStaffContractExpiringSoon('2029-06-30', '2028-02-15'), false);
+});
+
+test('staff expiry uses one shared 190-day window and never flags unreadable dates', () => {
+  assert.equal(STAFF_CONTRACT_EXPIRY_WINDOW_DAYS, 190);
+  // 189 days out is inside the window, 191 days out is not.
+  assert.equal(isStaffContractExpiringSoon('23/09/2028', '18/03/2028'), true);
+  assert.equal(isStaffContractExpiringSoon('25/09/2028', '18/03/2028'), false);
+  for (const unreadable of [undefined, '', '--', 'Unknown', 'N/A', null as never]) {
+    assert.equal(isStaffContractExpiringSoon(unreadable, '15/02/2028'), false);
+  }
+});
+
+test('computeWeeklyStaffPayroll sums wages and refuses to fake a total when a wage is missing', () => {
+  const complete = computeWeeklyStaffPayroll([
+    { wagePw: 400 },
+    { wagePw: 250 },
+    { wagePw: 300 },
+  ]);
+  assert.equal(complete.totalWeekly, 950);
+  assert.equal(complete.missingWageCount, 0);
+  assert.equal(formatWeeklyStaffPayroll(complete), '£950/wk');
+
+  const partial = computeWeeklyStaffPayroll([{ wagePw: 400 }, { wagePw: null }, {}]);
+  assert.equal(partial.totalWeekly, null);
+  assert.equal(partial.knownWeekly, 400);
+  assert.equal(partial.missingWageCount, 2);
+  assert.match(formatWeeklyStaffPayroll(partial), /^-- \(2 of 3 wages unreadable\)$/);
+
+  assert.equal(formatWeeklyStaffPayroll(computeWeeklyStaffPayroll([])), '--');
+  assert.equal(formatWeeklyStaffPayroll(computeWeeklyStaffPayroll(null)), '--');
+});
+
+test('formatStaffJobRatings prints the six Preferred Jobs and dashes unreadable ones', () => {
+  assert.equal(
+    formatStaffJobRatings({
+      fitness_coach: 12,
+      goalkeeping_coach: 4,
+      set_piece_coach: 17,
+      loan_manager: null,
+      physio: 3,
+      sports_scientist: 9,
+    }),
+    'Fit 12/GK 4/Set 17/Loan --/Phy 3/Sci 9'
+  );
+  assert.equal(formatStaffJobRatings(null), '--');
+  assert.equal(formatStaffJobRatings(undefined), '--');
 });
 
 

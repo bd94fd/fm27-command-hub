@@ -147,6 +147,15 @@ export interface StaffAttributes {
   analysing_data: number;
 }
 
+export interface StaffJobRatings {
+  fitness_coach?: number | null;
+  goalkeeping_coach?: number | null;
+  set_piece_coach?: number | null;
+  loan_manager?: number | null;
+  physio?: number | null;
+  sports_scientist?: number | null;
+}
+
 export interface StaffRecord {
   id: string;
   uid?: number;
@@ -158,6 +167,10 @@ export interface StaffRecord {
   wagePw: number;
   expires: string;
   attributes: StaffAttributes;
+  /** FM27 secondary job on the current contract (fmsave 0.14.4+); display-only. */
+  secondaryJob?: string | null;
+  /** FM27 Preferred Jobs ratings (fmsave 0.14.4+); display-only, never fed into star ratings. */
+  jobRatings?: StaffJobRatings | null;
 }
 
 export type InterestStatus =

@@ -191,7 +191,7 @@ test('End-to-end buildLastMatchTacticBlueprint auto-decodes roles & team instruc
       saveName: 'zelzate.fm',
       clubName: 'KVV Zelzate',
       managerName: 'Coach',
-      fmsaveVersion: '0.14.3',
+      fmsaveVersion: '0.14.4',
       gameDateDmy: '15/09/2027',
     },
     players: [],

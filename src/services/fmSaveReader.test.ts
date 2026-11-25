@@ -29,7 +29,7 @@ test('checkServerDecodeStatus returns runtime metadata when available and false 
       JSON.stringify({
         serverDecodeAvailable: true,
         pythonVersion: '3.11.9',
-        fmsaveVersion: '0.14.3',
+        fmsaveVersion: '0.14.4',
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     )
@@ -37,7 +37,7 @@ test('checkServerDecodeStatus returns runtime metadata when available and false 
   assert.deepEqual(ok, {
     serverDecodeAvailable: true,
     pythonVersion: '3.11.9',
-    fmsaveVersion: '0.14.3',
+    fmsaveVersion: '0.14.4',
   });
 
   const down = await checkServerDecodeStatus(async () => new Response('err', { status: 503 }));

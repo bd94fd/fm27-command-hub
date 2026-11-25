@@ -44,6 +44,12 @@ import {
 } from './clubGovernanceAndTactics';
 import { loadFm27BinaryDictionary } from './fm27BinaryDictionary';
 import {
+  computeWeeklyStaffPayroll,
+  formatStaffJobRatings,
+  formatWeeklyStaffPayroll,
+  isStaffContractExpiringSoon,
+} from './staffRatings';
+import {
   classifyMatchCompetitionBucket,
   deriveFootballSeasonLabel,
   extractMatchSeasons,
@@ -1214,39 +1220,41 @@ export function buildLiveTacticalAnalystContext(
           role: s.role,
           age: s.age ?? 40,
           nation: s.nation ?? '',
-          wagePw: s.wagePw ?? 0,
+          wagePw: s.wagePw ?? null,
           expires: s.expires ?? 'N/A',
+          secondaryJob: s.secondaryJob ?? null,
+          jobRatings: s.jobRatings ?? null,
           notes: '',
         }));
   if (effectiveStaff.length > 0) {
-    const parseDateToUtcMs = (raw?: string | null): number | null => {
-      if (!raw) return null;
-      const dmy = raw.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-      if (dmy) return Date.UTC(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
-      const iso = raw.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-      if (iso) return Date.UTC(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
-      return null;
-    };
-    const refMs = parseDateToUtcMs(saveDate);
     const expiringStaff = effectiveStaff
-      .filter((st) => {
-        if (!st.expires) return false;
-        const expMs = parseDateToUtcMs(st.expires);
-        if (refMs != null && expMs != null) {
-          const monthsLeft = (expMs - refMs) / (1000 * 60 * 60 * 24 * 30.4375);
-          return monthsLeft >= -1 && monthsLeft <= 12;
-        }
-        return false;
-      })
+      .filter((st) => isStaffContractExpiringSoon(st.expires ?? undefined, saveDate))
       .slice(0, 5)
       .map((st) => `${st.name}(${st.role},exp ${st.expires})`);
+    const secondaryJobs = effectiveStaff
+      .filter((st) => Boolean(st.secondaryJob))
+      .slice(0, 6)
+      .map((st) => `${st.name}:${st.secondaryJob}`);
+    const preferredJobs = effectiveStaff
+      .filter((st) => Boolean(st.jobRatings))
+      .slice(0, 6)
+      .map((st) => `${st.name}(${formatStaffJobRatings(st.jobRatings)})`);
+    const staffPayrollLabel = formatWeeklyStaffPayroll(
+      computeWeeklyStaffPayroll(effectiveStaff)
+    );
     blocks.push({
       id: 'backroom_staff',
       tier: 'P2',
       fullText: `=== BACKROOM STAFF (${effectiveStaff.length}) ===\nRoles: ${effectiveStaff
         .slice(0, 8)
         .map((st) => `${st.role}:${st.name}`)
-        .join(' | ')}${expiringStaff.length > 0 ? `\nExpiring Soon: ${expiringStaff.join(' | ')}` : ''}`,
+        .join(' | ')}\nWeekly Staff Payroll: ${staffPayrollLabel}${
+        expiringStaff.length > 0 ? `\nExpiring Soon: ${expiringStaff.join(' | ')}` : ''
+      }${secondaryJobs.length > 0 ? `\nSecondary Jobs: ${secondaryJobs.join(' | ')}` : ''}${
+        preferredJobs.length > 0
+          ? `\nPreferred Jobs (Fit/GK/Set/Loan/Phy/Sci): ${preferredJobs.join(' | ')}`
+          : ''
+      }`,
       compactText:
         expiringStaff.length > 0
           ? `=== BACKROOM STAFF (${effectiveStaff.length}) ===\nExpiring Soon: ${expiringStaff.join(' | ')}`

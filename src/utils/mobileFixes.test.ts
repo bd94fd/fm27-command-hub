@@ -731,7 +731,7 @@ test('Autonomous fmsave Runtime Patcher & Mapper: CodedValue tactic bitmasks, 4-
   );
   assert.match(decodeRoutesSrc, /router\.delete\('\/fm27\/decode-save\/upload\/:uploadId'/);
   assert.match(saveReaderSrc, /\/api\/fm27\/decode-save\/upload\//);
-  assert.match(workerSrc, /\/fm_layout_patcher\.py\?v=22/);
+  assert.match(workerSrc, /\/fm_layout_patcher\.py\?v=23/);
 
   const pythonBin = fs.existsSync('/opt/fmsave-venv/bin/python3')
     ? '/opt/fmsave-venv/bin/python3'

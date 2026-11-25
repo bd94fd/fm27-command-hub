@@ -133,7 +133,7 @@ function makeForensics(): BinaryForensicsSnapshot {
 
   return {
     fmBuild: 'FM27 (27.1.0)',
-    fmsaveVersion: '0.14.3',
+    fmsaveVersion: '0.14.4',
     sections: [
       { name: 'humans', schema: 1, sizeBytes: 42000 },
       { name: 'board_confidence', schema: 2, sizeBytes: 8192 },
@@ -604,7 +604,7 @@ test('supports shareable JSON export, conflict-safe merge preview/apply, rule de
   // Privacy-safe Anonymized Probe Export (must strip player/manager/club names and never contain CA/PA)
   const probeJson = exportAnonymizedProbeSummary({
     fmBuild: 'FM27 (27.1.0)',
-    fmsaveVersion: '0.14.3',
+    fmsaveVersion: '0.14.4',
     tactics: [makeTactic()],
     binaryForensics: makeForensics(),
   });

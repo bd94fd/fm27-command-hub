@@ -38,7 +38,7 @@ def _install_stub_fmsave() -> None:
     except Exception:
         pass
     mod = types.ModuleType("fmsave")
-    mod.__version__ = "0.14.3"
+    mod.__version__ = "0.14.4"
     mod.open = lambda *_a, **_kw: None  # type: ignore[attr-defined]
     sys.modules["fmsave"] = mod
 
