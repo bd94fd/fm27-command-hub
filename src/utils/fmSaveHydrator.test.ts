@@ -555,11 +555,11 @@ test('an undecoded staff wage stays null so the payroll total reads -- instead o
   assert.equal(staff.length, 2);
   assert.equal(staff[0].wagePw, 1250);
   assert.equal(staff[1].wagePw, null);
-  // One missing wage makes the shared total unknown (-- plus a count), never a partial sum read as complete.
+  // A partial decode still shows the known sum, explicitly labelled, never as a complete total.
   const payroll = computeWeeklyStaffPayroll(staff);
   assert.equal(payroll.totalWeekly, null);
   assert.equal(payroll.missingWageCount, 1);
-  assert.equal(formatWeeklyStaffPayroll(payroll), '-- (1 of 2 wages unreadable)');
+  assert.equal(formatWeeklyStaffPayroll(payroll), '£1,250/wk known (1 of 2 without wage)');
 });
 
 test('Worker cache-buster is bumped to ?v=24 and FmImportScope supports club_and_division with clamping', () => {

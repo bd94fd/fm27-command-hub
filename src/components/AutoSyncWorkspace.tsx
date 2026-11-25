@@ -83,6 +83,7 @@ import type { PersistedCustomSlot } from '../services/fmStorage';
 import type {
   ClubGovernanceState,
   LastMatchTacticBlueprint,
+  SponsorshipDeal,
 } from '../types/fmSave';
 import {
   ApiResponseError,
@@ -106,6 +107,28 @@ const FmUploadProgressCard = lazy(() =>
     default: m.FmUploadProgressCard,
   }))
 );
+
+const UNREADABLE_SPONSOR_DATE = new Set(['', '--', 'unknown', 'n/a', 'none']);
+
+/**
+ * Keeps a sponsorship row only when it carries a real annual value or a real expiry.
+ * Decoded saves often contain placeholder rows with neither, which used to render as
+ * empty "Sponsorship 1 — exp --" cards.
+ */
+export function isUsableSponsorshipDeal(deal: SponsorshipDeal): boolean {
+  const amount = deal.annualValue;
+  const hasAmount =
+    typeof amount === 'number' && Number.isFinite(amount) && amount > 0;
+  const expires = (deal.expires ?? '').trim().toLowerCase();
+  return hasAmount || !UNREADABLE_SPONSOR_DATE.has(expires);
+}
+
+export function filterUsableSponsorshipDeals(
+  deals: readonly SponsorshipDeal[] | null | undefined
+): SponsorshipDeal[] | null {
+  if (!deals) return null;
+  return deals.filter(isUsableSponsorshipDeal);
+}
 
 const FinancesStat: React.FC<{
   label: string;
@@ -1491,7 +1514,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       staff:
         staff.length > 0 ? staff : hydratedFmSave?.updatedStaff ?? [],
       playerWages: players.map((p) => p.wagePw),
-      sponsorships: decoded?.sponsorships ?? null,
+      sponsorships: filterUsableSponsorshipDeals(decoded?.sponsorships),
     });
   }, [hydratedFmSave, balance, wageSpend, staff, players]);
 
@@ -2615,7 +2638,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                 <FinancesStat
                   label="Weekly Staff Payroll"
                   value={financesPanel.payroll.staffPayrollLabel}
-                  hint="Backroom staff contracts only"
+                  hint="Backroom staff contracts only · board/executives without contracts excluded"
                 />
                 <FinancesStat
                   label="Squad Wage Subtotal"
@@ -2631,7 +2654,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               </h4>
               {financesPanel.sponsorships.length === 0 ? (
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  No sponsorship deals decoded from this save.
+                  No decoded sponsorship amounts in this save.
                 </p>
               ) : (
                 <ul className="space-y-1.5">
@@ -2645,7 +2668,10 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                           {deal.name}
                         </div>
                         <div className="text-slate-500 dark:text-slate-400 truncate">
-                          {deal.type} · exp {deal.expires}
+                          {deal.type}
+                          {deal.expires && deal.expires !== '--'
+                            ? ` · exp ${deal.expires}`
+                            : ''}
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">

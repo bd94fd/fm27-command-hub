@@ -1149,3 +1149,114 @@ test('Analyst staff ratings match the Staff tab department-first headline', () =
     'a Chief Scout must never lead Attacking training'
   );
 });
+
+test('board/executive staff never lead training and partial staff payroll is labelled', () => {
+  const attributes = {
+    attacking: 17,
+    defending: 11,
+    fitness: 9,
+    goalkeeping: 4,
+    mental: 14,
+    possession: 15,
+    set_pieces: 12,
+    tactical: 16,
+    technical: 16,
+    working_with_youngsters: 15,
+    adaptability: 12,
+    authority: 15,
+    determination: 16,
+    judging_player_ability: 14,
+    judging_player_potential: 14,
+    judging_staff_ability: 12,
+    man_management: 15,
+    motivating: 16,
+    negotiating: 10,
+    physiotherapy: 3,
+    sports_science: 5,
+    tactical_knowledge: 16,
+    analysing_data: 14,
+  };
+
+  const ctx = buildLiveTacticalAnalystContext({
+    clubName: 'KVV Zelzate',
+    managerName: 'Bobby Dean',
+    saveDate: '15/09/2027',
+    nextFixture: '18/09/2027 vs Jong Cercle (Away)',
+    leagueStandingSub: '#3 of 16 (6 Pts)',
+    wageSpend: '£4,200 / £4,800 p/w',
+    balance: '£210K',
+    players: samplePlayers,
+    matches: [],
+    hydratedFmSave: null,
+    staff: [
+      {
+        id: 'st-manager',
+        name: 'Real Manager',
+        role: 'Manager',
+        age: 42,
+        nation: 'BEL',
+        club: 'KVV Zelzate',
+        wagePw: 450,
+        expires: '30/06/2029',
+        attributes: {
+          ...attributes,
+          attacking: 18,
+          technical: 18,
+          tactical: 18,
+          determination: 18,
+          authority: 18,
+          motivating: 18,
+        },
+      },
+      {
+        id: 'st-chair',
+        name: 'Elite Chair',
+        role: 'Chairperson',
+        age: 60,
+        nation: 'BEL',
+        club: 'KVV Zelzate',
+        wagePw: null,
+        expires: '30/06/2032',
+        attributes: {
+          ...attributes,
+          attacking: 20,
+          technical: 20,
+          tactical: 20,
+          possession: 20,
+          defending: 20,
+          set_pieces: 20,
+          fitness: 20,
+          goalkeeping: 20,
+        },
+      },
+      {
+        id: 'st-physio',
+        name: 'Pat Physio',
+        role: 'Head Physio',
+        age: 38,
+        nation: 'BEL',
+        club: 'KVV Zelzate',
+        wagePw: null,
+        expires: '30/06/2030',
+        attributes: {
+          ...attributes,
+          physiotherapy: 19,
+          sports_science: 18,
+        },
+      },
+    ],
+  });
+
+  // Chairperson is unpaid/non-contract, so the denominator is the 2 salaried staff.
+  assert.ok(
+    ctx.includes('Weekly Staff Payroll: £450/wk known (1 of 2 without wage)'),
+    'partial payroll must show the known sum instead of hiding it behind --'
+  );
+  assert.ok(
+    ctx.includes('Elite Chair(board — Board / Executive (no coaching rating))'),
+    'a Chairperson must be labelled board, never shown a coaching rating'
+  );
+  const leads = ctx.split('\n').find((line) => line.startsWith('Department Leads:'));
+  assert.ok(leads?.includes('Attacking — Technical: Real Manager'));
+  assert.ok(!leads?.includes('Elite Chair'), 'board staff must never lead a training unit');
+});

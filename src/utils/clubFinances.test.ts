@@ -190,7 +190,7 @@ test('buildClubFinancesPanel assembles cash, payroll, and sponsorship rows', () 
   assert.equal(panel.payroll.clubPayrollLabel, '£10,257/wk');
   assert.equal(panel.payroll.wageBudgetLabel, '£10,203/wk');
   assert.equal(panel.payroll.wageSeverity, 'minor_over');
-  assert.equal(panel.payroll.staffPayrollLabel, '-- (1 of 2 wages unreadable)');
+  assert.equal(panel.payroll.staffPayrollLabel, '£400/wk known (1 of 2 without wage)');
   assert.equal(panel.payroll.staffMissingWageCount, 1);
   assert.equal(
     panel.payroll.squadWageSubtotalLabel,

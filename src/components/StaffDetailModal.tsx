@@ -4,7 +4,7 @@ import { StaffAttributes, StaffJobRatings, StaffRecord } from '../types/fm27';
 import {
   calculateAllStaffRoleRatings,
   formatStars,
-  getHeadlineStaffRoleRating,
+  getStaffHeadlineDisplay,
   PREFERRED_JOB_AFFINITY_CAPTION,
   STAFF_ATTRIBUTE_LABELS,
 } from '../utils/staffRatings';
@@ -68,7 +68,7 @@ export const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
   if (!staff) return null;
 
   const allRatings = calculateAllStaffRoleRatings(staff.attributes);
-  const headline = getHeadlineStaffRoleRating(staff);
+  const headline = getStaffHeadlineDisplay(staff);
 
   return (
     <MobileSheetFrame
@@ -96,10 +96,16 @@ export const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
                   2nd job: {staff.secondaryJob}
                 </span>
               )}
-              <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-xs font-semibold text-amber-300">
-                <Star className="h-3 w-3" />
-                Dept: {headline.label} ({formatStars(headline.stars)})
-              </span>
+              {headline.stars === null ? (
+                <span className="rounded-md bg-slate-800 border border-slate-700 px-2 py-0.5 text-xs font-semibold text-slate-300">
+                  Dept: {headline.label}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-xs font-semibold text-amber-300">
+                  <Star className="h-3 w-3" />
+                  Dept: {headline.label} ({formatStars(headline.stars)})
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
               Age {staff.age} · {staff.nation} · {formatWeeklyWage(staff.wagePw)} (exp{' '}

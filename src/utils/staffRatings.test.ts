@@ -5,6 +5,7 @@ import {
   buildCoachingCategoryMatrix,
   buildUnifiedStaffMatrix,
   calculateAllStaffRoleRatings,
+  classifyStaffDepartment,
   computeStaffKpiSummary,
   computeWeeklyStaffPayroll,
   evaluateBackroomDepartmentEfficiency,
@@ -13,6 +14,7 @@ import {
   formatWeeklyStaffPayroll,
   getBestStaffRoleRating,
   getHeadlineStaffRoleRating,
+  getStaffHeadlineDisplay,
   isStaffContractExpiringSoon,
   PREFERRED_JOB_AFFINITY_CAPTION,
   resolveStaffJobEligibility,
@@ -128,10 +130,46 @@ test('computeWeeklyStaffPayroll sums wages and refuses to fake a total when a wa
   assert.equal(partial.totalWeekly, null);
   assert.equal(partial.knownWeekly, 400);
   assert.equal(partial.missingWageCount, 2);
-  assert.match(formatWeeklyStaffPayroll(partial), /^-- \(2 of 3 wages unreadable\)$/);
+  assert.equal(
+    formatWeeklyStaffPayroll(partial),
+    '£400/wk known (2 of 3 without wage)'
+  );
+
+  const allMissing = computeWeeklyStaffPayroll([{ wagePw: null }, {}]);
+  assert.equal(formatWeeklyStaffPayroll(allMissing), '--');
 
   assert.equal(formatWeeklyStaffPayroll(computeWeeklyStaffPayroll([])), '--');
   assert.equal(formatWeeklyStaffPayroll(computeWeeklyStaffPayroll(null)), '--');
+});
+
+test('board/executive staff without contracts do not inflate the missing-wage count', () => {
+  const withUnpaidBoard = computeWeeklyStaffPayroll([
+    { wagePw: 450, role: 'Manager' },
+    { wagePw: null, role: 'Chairperson' },
+  ]);
+  assert.equal(withUnpaidBoard.staffCount, 1);
+  assert.equal(withUnpaidBoard.missingWageCount, 0);
+  assert.equal(withUnpaidBoard.excludedWithoutContractCount, 1);
+  assert.equal(formatWeeklyStaffPayroll(withUnpaidBoard), '£450/wk');
+
+  const paidBoard = computeWeeklyStaffPayroll([
+    { wagePw: 450, role: 'Manager' },
+    { wagePw: 200, role: 'Chairman' },
+  ]);
+  assert.equal(paidBoard.staffCount, 2);
+  assert.equal(formatWeeklyStaffPayroll(paidBoard), '£650/wk');
+
+  const partialWithBoard = computeWeeklyStaffPayroll([
+    { wagePw: 450, role: 'Manager' },
+    { wagePw: null, role: 'Coach' },
+    { wagePw: null, role: 'Owner' },
+  ]);
+  assert.equal(partialWithBoard.staffCount, 2);
+  assert.equal(partialWithBoard.missingWageCount, 1);
+  assert.equal(
+    formatWeeklyStaffPayroll(partialWithBoard),
+    '£450/wk known (1 of 2 without wage)'
+  );
 });
 
 test('formatStaffJobRatings prints the six Preferred Jobs and dashes unreadable ones', () => {
@@ -176,8 +214,10 @@ function makeStaff(
   };
 }
 
-test('FM job eligibility separates coaching, recruitment, and medical roles', () => {
-  const cases: Array<[string, 'coaching' | 'recruitment' | 'medical']> = [
+test('FM job eligibility separates coaching, recruitment, medical, and board roles', () => {
+  const cases: Array<
+    [string, 'coaching' | 'recruitment' | 'medical' | 'board']
+  > = [
     ['Manager', 'coaching'],
     ['Assistant Manager', 'coaching'],
     ['First Team Coach', 'coaching'],
@@ -193,6 +233,12 @@ test('FM job eligibility separates coaching, recruitment, and medical roles', ()
     ['Head Physio', 'medical'],
     ['Club Doctor', 'medical'],
     ['Sports Scientist', 'medical'],
+    ['Chairperson', 'board'],
+    ['Chairman', 'board'],
+    ['Owner', 'board'],
+    ['President', 'board'],
+    ['Managing Director', 'board'],
+    ['Board Director', 'board'],
   ];
   for (const [role, expected] of cases) {
     assert.equal(
@@ -201,6 +247,86 @@ test('FM job eligibility separates coaching, recruitment, and medical roles', ()
       `${role} should be ${expected}`
     );
   }
+});
+
+test('board and executive roles are labelled BOARD and never lead a training unit', () => {
+  const boardRoles = [
+    'Chairperson',
+    'Chairman',
+    'Owner',
+    'President',
+    'Managing Director',
+    'Board Director',
+  ];
+  for (const role of boardRoles) {
+    const member = makeStaff(role);
+    assert.equal(resolveStaffJobEligibility(member), 'board', `${role} must be board`);
+    assert.equal(classifyStaffDepartment(member), 'board', `${role} must render BOARD`);
+  }
+  // Technical Director / DoF stay in recruitment.
+  assert.equal(resolveStaffJobEligibility(makeStaff('Technical Director')), 'recruitment');
+  assert.equal(resolveStaffJobEligibility(makeStaff('Director of Football')), 'recruitment');
+
+  const chair = makeStaff('Chairperson', {
+    name: 'Elite Chair',
+    attributes: {
+      attacking: 20,
+      technical: 20,
+      tactical: 20,
+      possession: 20,
+      defending: 20,
+      set_pieces: 20,
+      fitness: 20,
+      goalkeeping: 20,
+      determination: 20,
+      authority: 20,
+      motivating: 20,
+    },
+  });
+  const manager = makeStaff('Manager', { name: 'Real Manager' });
+
+  for (const row of buildCoachingCategoryMatrix([chair, manager])) {
+    assert.notEqual(row.leadCoachName, 'Elite Chair', `${row.label} must not be led by a chairperson`);
+  }
+  const attacking = buildUnifiedStaffMatrix([chair, manager]).find(
+    (row) => row.key === 'att_tech'
+  );
+  assert.equal(attacking?.leadStaffName, 'Real Manager');
+  const depts = evaluateBackroomDepartmentEfficiency([chair, manager]);
+  assert.equal(depts.find((d) => d.departmentId === 'attacking')?.leadStaffName, 'Real Manager');
+});
+
+test('board staff headline is explicitly not a coaching rating', () => {
+  const chair = getStaffHeadlineDisplay(makeStaff('Chairperson'));
+  assert.equal(chair.stars, null);
+  assert.match(chair.label, /Board \/ Executive/);
+  assert.match(chair.label, /no coaching rating/);
+
+  const coach = getStaffHeadlineDisplay(makeStaff('Manager'));
+  assert.ok(coach.stars !== null);
+  assert.doesNotMatch(coach.label, /Board \/ Executive/);
+});
+
+test('Avg Staff Rating excludes board/executive members from the average', () => {
+  const coach = makeStaff('Manager', { name: 'Real Manager' });
+  const chair = makeStaff('Chairperson', {
+    name: 'Elite Chair',
+    attributes: {
+      ...sampleCoach.attributes,
+      attacking: 1,
+      technical: 1,
+      tactical: 1,
+      possession: 1,
+      defending: 1,
+      set_pieces: 1,
+      fitness: 1,
+      goalkeeping: 1,
+    },
+  });
+  const withBoard = computeStaffKpiSummary([coach, chair], '15/02/2028');
+  const coachOnly = computeStaffKpiSummary([coach], '15/02/2028');
+  assert.equal(withBoard.totalStaff, 2);
+  assert.equal(withBoard.averageHeadlineLabel, coachOnly.averageHeadlineLabel);
 });
 
 test('coaching matrix excludes scouts and medical staff from every training unit', () => {
