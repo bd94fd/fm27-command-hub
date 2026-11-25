@@ -173,6 +173,24 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
     [unifiedMatrix]
   );
 
+  const overloadedLeads = useMemo(() => {
+    const byLead = new Map<string, { name: string; units: number }>();
+    for (const row of unifiedMatrix) {
+      if (row.group !== 'Pitch Training' || row.leadUnitCount < 3) continue;
+      const key = `${row.leadStaffName}|${row.leadStaffRole}`;
+      const existing = byLead.get(key);
+      if (existing) {
+        existing.units = Math.max(existing.units, row.leadUnitCount);
+      } else {
+        byLead.set(key, {
+          name: row.leadStaffName,
+          units: row.leadUnitCount,
+        });
+      }
+    }
+    return [...byLead.values()];
+  }, [unifiedMatrix]);
+
   if (!staff || staff.length === 0) {
     return (
       <div className="space-y-4">
@@ -487,7 +505,7 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
       ) : (
         <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
+            <div className="min-w-0">
               <div className="text-xs font-bold uppercase tracking-wider text-slate-200">
                 Training &amp; Department Matrix
               </div>
@@ -497,7 +515,14 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                 Executive staff are excluded from every unit.
               </p>
             </div>
-            {overloadedCount > 0 ? (
+            {overloadedLeads.length > 0 ? (
+              <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/35 px-2.5 py-0.5 text-[11px] font-semibold text-amber-300">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                {overloadedLeads.length === 1
+                  ? `Overloaded: ${overloadedLeads[0].name} (${overloadedLeads[0].units} units)`
+                  : `${overloadedLeads.length} coaches overloaded`}
+              </span>
+            ) : overloadedCount > 0 ? (
               <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/35 px-2.5 py-0.5 text-[11px] font-semibold text-amber-300">
                 <AlertTriangle className="h-3.5 w-3.5" />
                 {overloadedCount} Overloaded Unit
@@ -509,6 +534,13 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
               </span>
             )}
           </div>
+
+          <p className="text-[11px] text-slate-400 leading-relaxed">
+            FM27 stars use an absolute global scale, not a league-relative one — the
+            best assigned coach sets each unit's stars, and extra coaches only lower
+            workload. One coach leading 3+ pitch units is overloaded and hurts
+            training effectiveness even though the stars stay the same.
+          </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
             {unifiedMatrix.map((row) => {
@@ -539,6 +571,11 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                   <div className="text-[11px] text-slate-300 break-words">
                     Lead: <strong className="text-white">{row.leadStaffName}</strong>{' '}
                     <span className="text-slate-400">({row.leadStaffRole})</span>
+                    {row.leadUnitCount >= 2 && (
+                      <span className="text-amber-300">
+                        {' '}· {row.leadUnitCount} units
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center justify-between gap-2 pt-0.5">
                     <span className="text-[10px] text-slate-400">

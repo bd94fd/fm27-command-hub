@@ -395,6 +395,60 @@ test('a Manager with better attributes leads Goalkeeping ahead of the GK Coach',
   assert.equal(gk?.leadCoachName, 'Better Manager');
 });
 
+test('one coach leading 3+ pitch units is flagged Heavy even when qualified staff are plentiful', () => {
+  const manager = makeStaff('Manager', {
+    name: 'Overloaded Manager',
+    attributes: {
+      ...sampleCoach.attributes,
+      attacking: 20,
+      technical: 20,
+      tactical: 20,
+      possession: 20,
+      defending: 20,
+      set_pieces: 20,
+      fitness: 20,
+      goalkeeping: 20,
+      determination: 20,
+      authority: 20,
+      motivating: 20,
+    },
+  });
+  const deputies = Array.from({ length: 4 }, (_, index) =>
+    makeStaff('Coach', {
+      name: `Deputy ${index + 1}`,
+      attributes: {
+        ...sampleCoach.attributes,
+        attacking: 12,
+        technical: 12,
+        tactical: 12,
+        possession: 12,
+        defending: 12,
+        set_pieces: 12,
+        fitness: 12,
+        goalkeeping: 12,
+        determination: 12,
+        authority: 12,
+        motivating: 12,
+      },
+    })
+  );
+
+  const matrix = buildCoachingCategoryMatrix([manager, ...deputies]);
+  const managerRows = matrix.filter(
+    (row) => row.leadCoachName === 'Overloaded Manager'
+  );
+  assert.ok(managerRows.length >= 3, 'the manager must win at least three units');
+  for (const row of managerRows) {
+    assert.equal(row.leadUnitCount, managerRows.length);
+    assert.equal(row.workload, 'Heavy / Overloaded');
+  }
+  assert.equal(
+    matrix.some((row) => row.workload === 'Light'),
+    false,
+    'a 3+ unit lead must never leave any unit looking Light'
+  );
+});
+
 test('department efficiency only considers eligible leads per department', () => {
   const chiefScout = makeStaff('Chief Scout', {
     name: 'Chief Scout',

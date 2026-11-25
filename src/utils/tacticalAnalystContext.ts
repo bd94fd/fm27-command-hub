@@ -1307,9 +1307,13 @@ export function buildLiveTacticalAnalystContext(
     });
     const departmentLeads =
       ratedStaff.length > 0
-        ? buildUnifiedStaffMatrix(ratedStaff).map(
-            (row) => `${row.label}: ${row.leadStaffName} (${formatStars(row.stars)})`
-          )
+        ? buildUnifiedStaffMatrix(ratedStaff).map((row) => {
+            const overload =
+              row.leadUnitCount >= 3
+                ? `, ${row.leadUnitCount} units overloaded`
+                : '';
+            return `${row.label}: ${row.leadStaffName} (${formatStars(row.stars)}${overload})`;
+          })
         : [];
     blocks.push({
       id: 'backroom_staff',

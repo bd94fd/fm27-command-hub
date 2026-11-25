@@ -412,6 +412,8 @@ export interface CoachingCategoryMatrixRow {
   score: number;
   qualifiedCount: number;
   workload: 'Light' | 'Average' | 'Heavy / Overloaded';
+  /** How many of the 9 pitch-training units this row's lead coach is carrying. */
+  leadUnitCount: number;
 }
 
 const COACHING_MATRIX_KEYS: Array<{ key: string; label: string }> = [
@@ -426,6 +428,11 @@ const COACHING_MATRIX_KEYS: Array<{ key: string; label: string }> = [
   { key: 'goalkeeping', label: 'Goalkeeping' },
 ];
 
+interface CoachingMatrixDraft
+  extends Omit<CoachingCategoryMatrixRow, 'workload' | 'leadUnitCount'> {
+  leadStaffId: string | null;
+}
+
 /**
  * Deterministic 9-category FM27 Coaching Rating Matrix with workload/overload indicators.
  * Only coaching-eligible staff (Manager, Assistant, Coaches, GK/Fitness/Set Piece Coaches,
@@ -438,7 +445,7 @@ export function buildCoachingCategoryMatrix(
     (m) => resolveStaffJobEligibility(m) === 'coaching'
   );
 
-  return COACHING_MATRIX_KEYS.map((cat) => {
+  const drafts = COACHING_MATRIX_KEYS.map((cat): CoachingMatrixDraft => {
     let bestMember: StaffRecord | null = null;
     let bestRating: StaffRoleRating | null = null;
     let qualifiedCount = 0;
@@ -460,12 +467,6 @@ export function buildCoachingCategoryMatrix(
 
     const stars = bestRating ? bestRating.stars : 0.5;
     const score = bestRating ? bestRating.score : 15;
-    const workload: CoachingCategoryMatrixRow['workload'] =
-      pool.length <= 3 || qualifiedCount === 0
-        ? 'Heavy / Overloaded'
-        : qualifiedCount === 1
-          ? 'Average'
-          : 'Light';
 
     return {
       key: cat.key,
@@ -475,8 +476,32 @@ export function buildCoachingCategoryMatrix(
       stars,
       score,
       qualifiedCount,
-      workload,
+      leadStaffId: bestMember ? bestMember.id : null,
     };
+  });
+
+  // A strong Manager often wins every unit, so the old per-unit qualified count called
+  // that "Light". FM27 training is hurt when one person carries 3+ categories.
+  const leadCounts = new Map<string, number>();
+  for (const row of drafts) {
+    if (!row.leadStaffId) continue;
+    leadCounts.set(
+      row.leadStaffId,
+      (leadCounts.get(row.leadStaffId) ?? 0) + 1
+    );
+  }
+
+  return drafts.map(({ leadStaffId, ...row }) => {
+    const leadUnitCount = leadStaffId
+      ? (leadCounts.get(leadStaffId) ?? 0)
+      : 0;
+    const workload: CoachingCategoryMatrixRow['workload'] =
+      leadUnitCount >= 3 || pool.length <= 3 || row.qualifiedCount === 0
+        ? 'Heavy / Overloaded'
+        : leadUnitCount === 2 || row.qualifiedCount === 1
+          ? 'Average'
+          : 'Light';
+    return { ...row, workload, leadUnitCount };
   });
 }
 
@@ -490,6 +515,7 @@ export interface UnifiedStaffMatrixRow {
   score: number;
   qualifiedCount: number;
   workload: CoachingCategoryMatrixRow['workload'] | 'n/a';
+  leadUnitCount: number;
 }
 
 const NON_COACHING_MATRIX_SPECS: Array<{
@@ -535,6 +561,7 @@ export function buildUnifiedStaffMatrix(
     score: row.score,
     qualifiedCount: row.qualifiedCount,
     workload: row.workload,
+    leadUnitCount: row.leadUnitCount,
   }));
 
   const specialistRows = NON_COACHING_MATRIX_SPECS.map((spec) => {
@@ -567,6 +594,7 @@ export function buildUnifiedStaffMatrix(
       score: bestRating ? bestRating.score : 15,
       qualifiedCount,
       workload: 'n/a' as const,
+      leadUnitCount: 0,
     };
   });
 

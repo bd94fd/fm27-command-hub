@@ -333,7 +333,7 @@ export function computeSquadWageSubtotal(
     list.length === 0
       ? '--'
       : missingWageCount > 0
-        ? `£${knownWeekly.toLocaleString()}/wk known (${missingWageCount} of ${list.length} unreadable)`
+        ? `£${knownWeekly.toLocaleString()}/wk known (${missingWageCount} of ${list.length} with no weekly wage — youth/amateur/loan)`
         : `£${knownWeekly.toLocaleString()}/wk`;
   return { count: list.length, knownWeekly, missingWageCount, label };
 }
