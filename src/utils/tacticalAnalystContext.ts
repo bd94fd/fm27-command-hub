@@ -43,6 +43,7 @@ import {
   buildLastMatchTacticBlueprint,
 } from './clubGovernanceAndTactics';
 import { loadFm27BinaryDictionary } from './fm27BinaryDictionary';
+import { normalizeJobVacancy } from './jobVacancies';
 import {
   buildUnifiedStaffMatrix,
   classifyStaffDepartment,
@@ -112,6 +113,7 @@ export function buildTacticalAnalystContext(data: Pass0ExtractionPayload): strin
 
   const vacanciesList =
     (data.jobVacancies || [])
+      .map((v, index) => normalizeJobVacancy(v, index))
       .map((v) => `${v.role || 'Staff'} at ${v.club || 'Unknown'}`)
       .join(', ') || 'None';
 
@@ -1259,6 +1261,25 @@ export function buildLiveTacticalAnalystContext(
         thinNextYear.length > 0
           ? `=== FM27 SQUAD PLANNER DEPTH (CURRENT SEASON) ===\nNext Season Thin Spots (+1yr): ${thinNextYear.join(', ')}`
           : undefined,
+    });
+  }
+
+  const jobVacancies = (decoded?.jobVacancies || []).map((vacancy, index) =>
+    normalizeJobVacancy(vacancy, index)
+  );
+  if (jobVacancies.length > 0) {
+    const vacancyLines = jobVacancies.map(
+      (vacancy) =>
+        `- ${vacancy.role} at ${vacancy.club}${vacancy.league ? ` (${vacancy.league})` : ''}`
+    );
+    blocks.push({
+      id: 'job_vacancies',
+      tier: 'P2',
+      fullText: `=== JOB CENTRE VACANCIES (${jobVacancies.length}) ===\nThe save's job-centre feed can retain filled roles; treat these as market context, not confirmed openings.\n${vacancyLines.slice(0, 12).join('\n')}`,
+      compactText: `Job Centre Vacancies (${jobVacancies.length}, feed may include filled roles): ${jobVacancies
+        .slice(0, 6)
+        .map((vacancy) => `${vacancy.role} at ${vacancy.club}`)
+        .join(' | ')}`,
     });
   }
 

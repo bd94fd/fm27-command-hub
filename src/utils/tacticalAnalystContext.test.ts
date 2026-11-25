@@ -162,6 +162,34 @@ test('buildLiveTacticalAnalystContext includes FM27 Patch 27.1.0 physics, Playbo
   assert.ok(ctx.includes('AWAITING .FM SAVE OR EXPORT IMPORT'));
 });
 
+test('buildLiveTacticalAnalystContext includes decoded job vacancies with real roles', () => {
+  const ctx = buildLiveTacticalAnalystContext({
+    clubName: 'KVV Zelzate',
+    managerName: 'Bobby Dean',
+    saveDate: '15/09/2027',
+    nextFixture: '--',
+    leagueStandingSub: '--',
+    wageSpend: '--',
+    balance: '--',
+    players: [],
+    matches: [],
+    hydratedFmSave: {
+      decodedPayload: {
+        jobVacancies: [
+          {
+            club_name: 'Leicester City',
+            unknown: "{'role': 20, 'advertised_slot': 13}",
+          },
+        ],
+      },
+    } as never,
+  });
+
+  assert.ok(ctx.includes('JOB CENTRE VACANCIES (1)'));
+  assert.ok(ctx.includes('Assistant Manager at Leicester City'));
+  assert.ok(!ctx.includes('Staff at Unknown'));
+});
+
 test('buildLiveTacticalAnalystContext compiles full squad, War Room XI, set-piece rankings, and match log when populated', () => {
   const ctx = buildLiveTacticalAnalystContext({
     clubName: 'KVV Zelzate',

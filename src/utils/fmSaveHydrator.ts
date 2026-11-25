@@ -37,6 +37,7 @@ import {
   clampAttributeValue,
   clampConditionSharpness,
 } from '../types/fmSave';
+import { normalizeJobVacancy } from './jobVacancies';
 import { normalizePlayerName } from './fmFileImporter';
 import { inferFm27Roles } from './fm27RoleMatcher';
 import { isSuspensionActiveForCompetition } from './bestXiSolver';
@@ -248,7 +249,11 @@ export function hydratePass0Payload(rawJson: string): Pass0ExtractionPayload {
     selections: parsed.selections || {},
     setPieces: parsed.setPieces || {},
     training: parsed.training || {},
-    jobVacancies: Array.isArray(parsed.jobVacancies) ? parsed.jobVacancies : [],
+    jobVacancies: Array.isArray(parsed.jobVacancies)
+      ? parsed.jobVacancies.map((vacancy: JobVacancyEntry, index: number) =>
+          normalizeJobVacancy(vacancy, index)
+        )
+      : [],
     recruitmentTargets: Array.isArray(parsed.recruitmentTargets)
       ? parsed.recruitmentTargets
       : [],
@@ -1695,6 +1700,7 @@ export function hydrateAppFromDecodedFmSave(
     decoded.jobVacancies && decoded.jobVacancies.length > 0
       ? `Active Job Vacancies (${decoded.jobVacancies.length}): ${decoded.jobVacancies
           .slice(0, 8)
+          .map((v, index) => normalizeJobVacancy(v, index))
           .map((v) => `${v.role || 'Staff'} at ${v.club || 'Club'}`)
           .join(', ')}`
       : '';
@@ -1878,6 +1884,9 @@ ANALYST MISSION FOR THIS .FM SAVE DROP:
       ...decoded,
       sponsorships: (decoded.sponsorships ?? []).map((deal, index) =>
         normalizeSponsorshipDeal(deal, index)
+      ),
+      jobVacancies: (decoded.jobVacancies ?? []).map((vacancy, index) =>
+        normalizeJobVacancy(vacancy, index)
       ),
     },
   };
