@@ -208,6 +208,29 @@ test('buildClubFinancesPanel assembles cash, payroll, and sponsorship rows', () 
   assert.equal(panel.sponsorships[1].annualValueLabel, '--');
 });
 
+test('buildClubFinancesPanel reads fmsave snake_case sponsorship fields', () => {
+  const panel = buildClubFinancesPanel({
+    sponsorships: [
+      {
+        club_uid: 18104898,
+        club_name: 'KVV Zelzate',
+        kind: { label: 1, raw: 1 },
+        start: '2027-05-23',
+        end: '2030-05-23',
+        total_value: 681435,
+        annual_value: 227145,
+        dates_reordered: false,
+      },
+    ] as never,
+  });
+
+  assert.equal(panel.sponsorships.length, 1);
+  assert.equal(panel.sponsorships[0].name, 'Sponsorship 1');
+  assert.equal(panel.sponsorships[0].annualValueLabel, '£227K');
+  assert.equal(panel.sponsorships[0].expires, '2030-05-23');
+  assert.equal(panel.sponsorships[0].datesReordered, false);
+});
+
 test('buildClubFinancesPanel degrades to explicit gaps when the save has no finances', () => {
   const panel = buildClubFinancesPanel({});
   assert.equal(panel.cash.balanceLabel, '--');

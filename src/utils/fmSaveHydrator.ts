@@ -2,6 +2,7 @@ import { MatchLogEntry, PlayerRecord, StaffJobRatings, StaffRecord } from '../ty
 import {
   formatClubMoney,
   formatWageComplianceSummary,
+  normalizeSponsorshipDeal,
   resolveCanonicalBalanceNum,
 } from './clubFinances';
 import {
@@ -237,7 +238,11 @@ export function hydratePass0Payload(rawJson: string): Pass0ExtractionPayload {
     staff: Array.isArray(parsed.staff) ? parsed.staff : [],
     monthlyFinances: Array.isArray(parsed.monthlyFinances) ? parsed.monthlyFinances : [],
     facilities: parsed.facilities || {},
-    sponsorships: Array.isArray(parsed.sponsorships) ? parsed.sponsorships : [],
+    sponsorships: Array.isArray(parsed.sponsorships)
+      ? parsed.sponsorships.map((deal: SponsorshipDeal, index: number) =>
+          normalizeSponsorshipDeal(deal, index)
+        )
+      : [],
     transferWindows: parsed.transferWindows || { isOpen: false },
     competitionRules: parsed.competitionRules || {},
     selections: parsed.selections || {},
@@ -1869,6 +1874,11 @@ ANALYST MISSION FOR THIS .FM SAVE DROP:
         ? { ...decoded.stepTimingsMs }
         : {},
     analystPromptContext,
-    decodedPayload: decoded,
+    decodedPayload: {
+      ...decoded,
+      sponsorships: (decoded.sponsorships ?? []).map((deal, index) =>
+        normalizeSponsorshipDeal(deal, index)
+      ),
+    },
   };
 }

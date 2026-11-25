@@ -113,18 +113,34 @@ test('sponsorship filter drops placeholders but keeps amount-only and expiry-onl
   assert.equal(isUsableSponsorshipDeal({ annualValue: null, expires: 'Unknown' }), false);
   assert.equal(isUsableSponsorshipDeal({ annualValue: 1_500_000, expires: '--' }), true);
   assert.equal(isUsableSponsorshipDeal({ annualValue: null, expires: '30/06/2028' }), true);
+  assert.equal(
+    isUsableSponsorshipDeal({
+      annual_value: 227_145,
+      end: '2030-05-23',
+      dates_reordered: false,
+    } as never),
+    true,
+    'fmsave snake_case sponsorship rows must not be filtered out'
+  );
 
   const filtered = filterUsableSponsorshipDeals([
     { name: 'Kit Deal', annualValue: 1_500_000, expires: '30/06/2028' },
     { name: 'Placeholder', annualValue: null, expires: '--' },
     { name: 'Expiry only', annualValue: null, expires: '30/06/2029' },
     { name: 'Amount only', annualValue: 250_000, expires: null },
+    {
+      annual_value: 227_145,
+      end: '2030-05-23',
+      dates_reordered: false,
+    } as never,
   ]);
-  assert.equal(filtered?.length, 3);
+  assert.equal(filtered?.length, 4);
   assert.deepEqual(
     filtered?.map((deal) => deal.name),
-    ['Kit Deal', 'Expiry only', 'Amount only']
+    ['Kit Deal', 'Expiry only', 'Amount only', 'Sponsorship 5']
   );
+  assert.equal(filtered?.[3].annualValue, 227_145);
+  assert.equal(filtered?.[3].expires, '2030-05-23');
   assert.equal(filterUsableSponsorshipDeals(null), null);
   assert.equal(filterUsableSponsorshipDeals(undefined), null);
 });

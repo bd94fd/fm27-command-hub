@@ -1315,9 +1315,21 @@ export function buildLiveTacticalAnalystContext(
             return `${row.label}: ${row.leadStaffName} (${formatStars(row.stars)}${overload})`;
           })
         : [];
+    // Staff payroll/ratings are UI-parity data, not an optional appendix: keep this P0 so
+    // a dense squad cannot silently drop the Analyst's staff block. The compact form
+    // retains payroll, unit leads, and the Preferred Job Affinity guardrail.
+    const staffCompactText = `=== BACKROOM STAFF (${effectiveStaff.length}) ===\nWeekly Staff Payroll: ${staffPayrollLabel}${
+      departmentLeads.length > 0
+        ? `\nDepartment Leads: ${departmentLeads.join(' | ')}`
+        : ''
+    }${
+      preferredJobs.length > 0
+        ? `\n${PREFERRED_JOB_AFFINITY_CAPTION}: ${preferredJobs.slice(0, 4).join(' | ')}`
+        : ''
+    }`;
     blocks.push({
       id: 'backroom_staff',
-      tier: 'P2',
+      tier: 'P0',
       fullText: `=== BACKROOM STAFF (${effectiveStaff.length}) ===\nRoles: ${effectiveStaff
         .slice(0, 8)
         .map((st) => `${st.role}:${st.name}`)
@@ -1336,10 +1348,7 @@ export function buildLiveTacticalAnalystContext(
           ? `\n${PREFERRED_JOB_AFFINITY_CAPTION}: ${preferredJobs.join(' | ')}`
           : ''
       }`,
-      compactText:
-        expiringStaff.length > 0
-          ? `=== BACKROOM STAFF (${effectiveStaff.length}) ===\nExpiring Soon: ${expiringStaff.join(' | ')}`
-          : undefined,
+      compactText: staffCompactText,
     });
   }
 

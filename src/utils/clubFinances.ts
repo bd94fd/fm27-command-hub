@@ -380,6 +380,61 @@ function formatWeeklyMoney(amount: number | null, currencySymbol: string): strin
   return `${currencySymbol}${Math.round(amount).toLocaleString()}/wk`;
 }
 
+const SPONSOR_PLACEHOLDERS = new Set(['', '--', 'unknown', 'n/a', 'none']);
+
+function isSponsorPlaceholder(value: unknown): boolean {
+  return typeof value !== 'string' || SPONSOR_PLACEHOLDERS.has(value.trim().toLowerCase());
+}
+
+/**
+ * fmsave emits sponsorship rows with snake_case dataclass fields (`annual_value`, `end`,
+ * `dates_reordered`), while the app reads camelCase. Normalize once at this boundary so
+ * the Hub panel and its usability filter see the same decoded deal.
+ */
+export function normalizeSponsorshipDeal(
+  deal: SponsorshipDeal,
+  index = 0
+): SponsorshipDeal {
+  const raw = deal as Record<string, unknown>;
+  const annualValue =
+    typeof deal.annualValue === 'number'
+      ? deal.annualValue
+      : typeof raw.annual_value === 'number'
+        ? raw.annual_value
+        : null;
+  const expires =
+    !isSponsorPlaceholder(deal.expires)
+      ? deal.expires
+      : typeof raw.end === 'string' && raw.end.trim()
+        ? raw.end
+        : null;
+  const start =
+    typeof deal.start === 'string'
+      ? deal.start
+      : typeof raw.start === 'string'
+        ? raw.start
+        : null;
+  const sponsor = typeof raw.sponsor === 'string' ? raw.sponsor.trim() : '';
+  const kindLabel =
+    raw.kind && typeof raw.kind === 'object'
+      ? (raw.kind as { label?: unknown }).label
+      : null;
+  const type =
+    deal.type ||
+    (typeof kindLabel === 'string' && kindLabel.trim() ? kindLabel : 'Sponsorship');
+
+  return {
+    ...deal,
+    name: deal.name || sponsor || `Sponsorship ${index + 1}`,
+    type,
+    annualValue,
+    expires,
+    start,
+    dates_reordered:
+      deal.dates_reordered === true || raw.dates_reordered === true,
+  };
+}
+
 /**
  * Builds every number the Hub Finances panel shows. Both the UI and the Analyst read the
  * same `resolveCanonicalClubFinances` and `staffRatings` payroll selectors, so a wage or
@@ -428,13 +483,16 @@ export function buildClubFinancesPanel(
         ? `${currencySymbol}${canonical.wageHeadroomWeekly.toLocaleString()}/wk under cap`
         : `${currencySymbol}${Math.abs(canonical.wageHeadroomWeekly).toLocaleString()}/wk over cap`;
 
-  const sponsorships = (input.sponsorships ?? []).map((deal, index) => ({
-    name: deal.name || `Sponsorship ${index + 1}`,
-    type: deal.type || 'Sponsorship',
-    annualValueLabel: formatClubMoney(deal.annualValue ?? null, currencySymbol),
-    expires: deal.expires || '--',
-    datesReordered: Boolean(deal.dates_reordered),
-  }));
+  const sponsorships = (input.sponsorships ?? []).map((deal, index) => {
+    const normalized = normalizeSponsorshipDeal(deal, index);
+    return {
+      name: normalized.name || `Sponsorship ${index + 1}`,
+      type: normalized.type || 'Sponsorship',
+      annualValueLabel: formatClubMoney(normalized.annualValue ?? null, currencySymbol),
+      expires: normalized.expires || '--',
+      datesReordered: Boolean(normalized.dates_reordered),
+    };
+  });
 
   return {
     cash: {

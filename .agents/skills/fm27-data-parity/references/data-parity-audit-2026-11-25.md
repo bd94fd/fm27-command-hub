@@ -229,3 +229,44 @@ virtualisation needed.
 5. Best Fit % into the analyst payload (§7) — reuse `scorePlayerForFm27Role`, do not add a
    second scorer.
 6. Matches-tab PPG scope label (§8) and the Clear Chat confirmation (UI section).
+
+---
+
+## Save-based verification — 27.0.1 vs 27.1.0 (2026-11-25)
+
+Three real KVV Zelzate saves from the same career were decoded with `fmsave 0.14.4` and
+compared through the hydrator, the Staff/Finances selectors, and the live Analyst context.
+
+| File | Build | In-game date | Squad | Staff | Player Wage Bill | Staff Payroll |
+| --- | --- | --- | --- | --- | --- | --- |
+| `auto_save_v03_.fm` | 27.0.1+2503222 | 11/08/2027 | 49 | 38 | £10,604 / £10,203 | £10,643/wk known (5 of 37 without wage) |
+| `auto_save.fm` | 27.1.0+2505117 | 15/09/2027 | 47 | 40 | £10,257 / £10,203 | £11,171/wk known (5 of 39 without wage) |
+| `last_save_overwrite_backup.fm` | 27.1.0+2505117 | 15/09/2027 | 47 | 40 | £10,257 / £10,203 | £11,171/wk known (5 of 39 without wage) |
+
+The third file is an overwrite backup, not a third career: it has the same build/date but
+an older league record and missing `tactics`/`selections`/`setPieces`, so the two canonical
+comparison saves are `auto_save_v03_.fm` and `auto_save.fm`.
+
+### Fixed in this pass
+
+1. **Staff block was dropped from dense Analyst contexts.** `backroom_staff` was P2 with a
+   compact form that only contained expiring contracts. On a full 47/49-player save the
+   budget assembler removed it, so the Analyst could not quote the Staff tab's payroll,
+   department ratings, or Preferred Job Affinity caption. It is now P0, and its compact
+   form keeps payroll, department leads, and the affinity guardrail. Verified with a
+   32-player dense-context test.
+2. **fmsave sponsorship rows were filtered out.** The decoder emits `annual_value`, `end`,
+   and `dates_reordered`; the app read `annualValue`, `expires`, and `dates_reordered`.
+   Every real deal therefore looked empty and the Hub showed “No decoded sponsorship
+   amounts”. `normalizeSponsorshipDeal` now bridges the fields at the hydrator/finance
+   boundary; the real saves render `£227K/yr` and `£2K/yr` with the correct end dates.
+
+### Confirmed unchanged / expected
+
+- `auto_save_v03_.fm` is pre-season: 15 friendlies, no league table, 0 competitive matches.
+  `auto_save.fm` has 4 league matches, #6 of 16, 6 points. The UI and Analyst both use the
+  same competitive-scope helper for those labels.
+- The Staff tab's 38 vs 40 staff count and £10,643 vs £11,171 payroll difference match the
+  save dates; both surfaces quote the same string for each save.
+- The 27.0.1 save has 15 friendlies but only 14 `teamMatchStats` rows; the missing row is
+  an honest decode gap, not a zeroed value.
