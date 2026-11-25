@@ -51,7 +51,7 @@ import {
   classifyMatchCompetitionBucket,
   deriveFootballSeasonLabel,
 } from './matchScopeHelpers';
-import { formatWeeklyWage, MISSING_VALUE } from './squadViewHelpers';
+import { formatAge, formatNation, formatWeeklyWage, MISSING_VALUE } from './squadViewHelpers';
 
 export const WORKER_CACHE_BUSTER = '?v=24';
 
@@ -417,7 +417,7 @@ export interface DecodedFmSavePlayer {
 export interface DecodedFmSaveStaff {
   uid: number;
   name: string;
-  role: string;
+  role: string | null;
   age?: number | null;
   nation?: string | null;
   club?: string;
@@ -1781,7 +1781,7 @@ export function hydrateAppFromDecodedFmSave(
                 ? ` · Val £${t.transferValue.toLocaleString()}`
                 : '';
             const persStr = t.personality ? ` · ${t.personality}` : '';
-            return `- ${t.name} (${t.primaryPosition}, Age ${t.age}, ${t.nationality || 'Unknown'}): ${clubStr}${valStr} · Wage ~£${(t.currentWagePw ?? t.demandedWageEur ?? 0).toLocaleString()}/wk${persStr}`;
+            return `- ${t.name} (${t.primaryPosition}, Age ${formatAge(t.age)}, ${formatNation(t.nationality)}): ${clubStr}${valStr} · Wage ~£${(t.currentWagePw ?? t.demandedWageEur ?? 0).toLocaleString()}/wk${persStr}`;
           })
           .join('\n')}\n`
       : '';

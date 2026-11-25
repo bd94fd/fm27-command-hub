@@ -14,7 +14,7 @@ import {
   RecruitmentTarget,
   TransferWindowInfo,
 } from '../types/fmSave';
-import { formatAge } from '../utils/squadViewHelpers';
+import { formatAge, formatNation } from '../utils/squadViewHelpers';
 import {
   buildSquadTransferAudit,
   ClubFinancialInput,
@@ -191,7 +191,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
           (target.isFreeAgent
             ? 'Free'
             : `<= ${target.contractExpiryMonths}m`),
-        notes: `In-Game Shortlist (${target.nationality}) · ${bestRole.roleName} (${bestRole.fitPct}% Fit)`,
+        notes: `In-Game Shortlist (${formatNation(target.nationality)}) · ${bestRole.roleName} (${bestRole.fitPct}% Fit)`,
       });
     }
     showToast(

@@ -350,7 +350,7 @@ export function buildScoutTargetPlayerRecord(target: RecruitmentTarget): PlayerR
     intPer90: 0,
     tckPct: 0,
     personality: target.personality || 'Balanced',
-    age: target.age,
+    age: target.age ?? NaN,
     ability: 2.5,
     potential: 3.0,
     condition: 100,
@@ -798,7 +798,7 @@ export interface TargetVsStarterComparison {
   archetype: PlaybookArchetypeMatch;
   starterArchetype: PlaybookArchetypeMatch;
   radarAxes: CompareAttributeDelta[];
-  ageDelta: number; // target.age - starter.age (negative = younger)
+  ageDelta: number | null; // target.age - starter.age (negative = younger); null when either age is unknown
   wageDelta: number; // target.demandedWageEur - starter.wagePw (negative = cheaper)
 }
 
@@ -889,7 +889,8 @@ export function buildTargetVsStarterComparison(
     archetype: evaluatePlaybookArchetype(target.primaryPosition, target.attributes),
     starterArchetype: evaluatePlaybookArchetype(target.primaryPosition, starter.attributes),
     radarAxes,
-    ageDelta: target.age - starter.age,
+    ageDelta:
+      target.age !== null && starter.age !== null ? target.age - starter.age : null,
     wageDelta: (target.demandedWageEur || 0) - (starter.wagePw || 0),
   };
 }
@@ -931,8 +932,9 @@ export function formatTargetContractSummary(
   };
 }
 
-export function matchesAgeBand(age: number, band: ScoutAgeBand): boolean {
+export function matchesAgeBand(age: number | null, band: ScoutAgeBand): boolean {
   if (band === 'ALL') return true;
+  if (age === null) return false;
   if (band === 'U23') return age <= 22;
   if (band === '23-28') return age >= 23 && age <= 28;
   return age >= 29;
@@ -965,7 +967,15 @@ export function computeMoneyballValueScore(params: {
 
   // Age curve: U23 carries resale/growth upside, 23-28 peak, 29+ depreciating
   const ageBonus =
-    target.age <= 22 ? 92 : target.age <= 26 ? 82 : target.age <= 29 ? 68 : 48;
+    target.age === null
+      ? 0
+      : target.age <= 22
+        ? 92
+        : target.age <= 26
+          ? 82
+          : target.age <= 29
+            ? 68
+            : 48;
 
   const qualityScore =
     bestRoleFitPct * 0.55 + archetypeScore * 0.25 + ageBonus * 0.2;
@@ -1077,7 +1087,7 @@ export function enrichAndFilterScoutedTargets(params: {
     if (b.bestRole.fitPct !== a.bestRole.fitPct) {
       return b.bestRole.fitPct - a.bestRole.fitPct;
     }
-    return a.target.age - b.target.age;
+    return (a.target.age ?? Number.POSITIVE_INFINITY) - (b.target.age ?? Number.POSITIVE_INFINITY);
   });
 
   return filtered;

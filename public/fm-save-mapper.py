@@ -775,8 +775,8 @@ def _build_nation_lookup(save: Any) -> dict[int, str]:
 
 
 def _resolve_player_nationality(
-    p: Any, nation_lookup: dict[int, str] | None = None, default: str = "Unknown"
-) -> str:
+    p: Any, nation_lookup: dict[int, str] | None = None, default: str | None = None
+) -> str | None:
     for attr in ("nation_name", "nationality", "country_name"):
         val = getattr(p, attr, None)
         if isinstance(val, str) and val.strip() and val.strip().lower() not in ("unknown", "none", "fm"):
@@ -2821,8 +2821,8 @@ def step_players() -> str:
             "position": pos_str,
             "primaryPosition": nat_pos[0] if nat_pos else (acc_pos[0] if acc_pos else pos_str),
             "secondaryPositions": secondary_pos,
-            "age": _int(getattr(p, "age", None), 22),
-            "nation": _resolve_player_nationality(p, nation_lookup, default="Unknown"),
+            "age": _int(getattr(p, "age", None)),
+            "nation": _resolve_player_nationality(p, nation_lookup),
             "abilityStars": ability_stars,
             "potentialStars": potential_stars,
             "personalityLabel": personality_label,
@@ -2832,12 +2832,12 @@ def step_players() -> str:
             "rightFoot": right_foot,
             "heightCm": height_cm,
             "positionRatings": pos_ratings,
-            "wagePw": _int(getattr(contract, "wage", None), 0) if contract else 0,
+            "wagePw": _int(getattr(contract, "wage", None)) if contract else None,
             "marketValue": market_value,
             "marketValueState": market_value_state,
             "marketValueCapped": tv_capped,
             "potentialUncertain": potential_uncertain,
-            "expires": (_dmy(contract_end) or "N/A") if contract else "N/A",
+            "expires": _dmy(contract_end) if contract else None,
             "contractExpiryMonths": contract_months,
             "contractDetails": contract_details,
             "onLoan": bool(getattr(p, "on_loan", False)),
@@ -3284,7 +3284,7 @@ def _build_shortlist_target_dict(
         return None
 
     uid = _int(getattr(p, "uid", None), 0) or 0
-    age = _int(getattr(p, "age", None), 22) or 22
+    age = _int(getattr(p, "age", None))
     attrs = getattr(p, "attributes", None)
     attr_dict = _extract_52_attributes(p, attrs)
     pers = getattr(p, "personality", None)
@@ -3363,6 +3363,7 @@ def _build_shortlist_target_dict(
     is_loan_candidate = bool(
         (not is_free_agent)
         and (not is_already_on_loan)
+        and age is not None
         and (16 <= age <= 23)
         and contract_months > 6
     )
@@ -3410,7 +3411,7 @@ def _build_shortlist_target_dict(
         "uid": uid,
         "name": str(p_name),
         "age": age,
-        "nationality": _resolve_player_nationality(p, nation_lookup, default="Unknown"),
+        "nationality": _resolve_player_nationality(p, nation_lookup, default=""),
         "primaryPosition": primary_pos,
         "secondaryPositions": secondary_pos if secondary_pos else None,
         "positionRatings": pos_ratings if pos_ratings else None,
@@ -3431,7 +3432,7 @@ def _build_shortlist_target_dict(
         "expires": (
             "Free"
             if is_free_agent
-            else (_dmy(contract_end) or (f"<= {contract_months}m" if contract_months > 0 else "N/A"))
+            else (_dmy(contract_end) or (f"<= {contract_months}m" if contract_months > 0 else None))
         ),
         "demandedWageEur": est_demanded_wage,
         "scoutBadges": _extract_reliability_badges(p, pers),
@@ -3824,8 +3825,8 @@ def _scan_recruitment_targets_group4(
             if club_uid is not None and p_club_uid == club_uid:
                 continue
 
-            age = _int(getattr(p, "age", None), 22) or 22
-            if age < 16 or age > 34:
+            age = _int(getattr(p, "age", None))
+            if age is None or age < 16 or age > 34:
                 continue
 
             is_unattached = p_club_uid in (None, 0)
@@ -3909,7 +3910,7 @@ def _scan_recruitment_targets_group4(
             else:
                 age_bonus = -3.2
 
-            resolved_nation = _resolve_player_nationality(p, nation_lookup, default="Unknown")
+            resolved_nation = _resolve_player_nationality(p, nation_lookup, default="")
             region_bonus = 0.0
             if club_nation_name and resolved_nation == club_nation_name:
                 region_bonus = 2.4
@@ -4004,7 +4005,7 @@ def _scan_recruitment_targets_group4(
     vet_ranked: list[tuple[float, dict[str, Any]]] = []
     for bucket in pos_heaps.values():
         for score, _tie, cand in bucket:
-            if (cand.get("age") or 22) >= 30:
+            if (cand.get("age") or 0) >= 30:
                 vet_ranked.append((score, cand))
             else:
                 prime_ranked.append((score, cand))
@@ -4532,7 +4533,7 @@ def step_3_2_staff() -> str:
             mgr_uid_target = _STATE.get("manager_staff_uid")
             mgr_name_fallback = str((_STATE.get("meta") or {}).get("managerName") or "").strip() or "Manager"
 
-            def _resolve_staff_role_label(s_obj: Any, is_human_mgr: bool) -> str:
+            def _resolve_staff_role_label(s_obj: Any, is_human_mgr: bool) -> str | None:
                 raw_role_obj = getattr(s_obj, "role", None) or getattr(s_obj, "job", None)
                 lbl = _label(raw_role_obj)
                 if lbl and lbl.lower() not in ("unknown", "none"):
@@ -4550,7 +4551,7 @@ def step_3_2_staff() -> str:
                     return FM27_STAFF_JOB_CODE_LABELS[raw_code]
                 if is_human_mgr:
                     return "Manager"
-                return "Coach"
+                return None
 
             def _append_staff_row(s: Any) -> None:
                 s_uid = _int(getattr(s, "uid", None), 0) or 0
@@ -4581,8 +4582,8 @@ def step_3_2_staff() -> str:
                     "uid": s_uid,
                     "name": str(s_name).strip(),
                     "role": _resolve_staff_role_label(s, is_human_mgr),
-                    "age": _int(getattr(s, "age", None), 35),
-                    "nation": _resolve_player_nationality(s, staff_nation_lookup, default="N/A"),
+                    "age": _int(getattr(s, "age", None)),
+                    "nation": _resolve_player_nationality(s, staff_nation_lookup),
                     "club": club_name,
                     "wagePw": s_wage,
                     "expires": s_expires,

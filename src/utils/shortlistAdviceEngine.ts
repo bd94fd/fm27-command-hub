@@ -28,6 +28,7 @@ import {
   ExactPositionSlot,
   TargetVsStarterComparison,
 } from './recruitmentHelpers';
+import { formatAge } from './squadViewHelpers';
 import type {
   PlayerTransferAdvice,
   PositionBucketCode,
@@ -511,7 +512,7 @@ function evaluateBudgetGate(
     if (!feePasses && target.contractExpiryMonths > 6) {
       const monthsToBosman = Math.max(1, target.contractExpiryMonths - 6);
       whenViableNote =
-        target.age <= 23
+        target.age !== null && target.age <= 23
           ? `Try a £0-fee / 0%–30% wage-share loan first, or revisit in ${monthsToBosman}m when he enters his pre-contract window.`
           : `Revisit in ${monthsToBosman}m for a £0 pre-contract, or once club debt/transfer budget clears.`;
     } else if (!wagePasses) {
@@ -738,6 +739,7 @@ export function evaluateInGameShortlist(
     const meetsStarterBaseline =
       ipRoleFitPct >= 58 || dna.overallDnaScore >= 56 || (footballDelta ?? -99) >= -1;
     const isYoungSuccessorProfile =
+      target.age !== null &&
       target.age <= 23 &&
       !character.hasSeriousRedFlag &&
       (dna.overallDnaScore >= 52 || ipRoleFitPct >= 55 || (footballDelta ?? -99) >= -4);
@@ -860,11 +862,13 @@ export function evaluateInGameShortlist(
       headline = `Direct First-Team Upgrade on ${targetIncumbent.name} (${bucketCode})`;
       howFitsNow = `Steps straight into your ${formationLabel} starting XI as ${bestIpRole} (IP ${ipRoleFitPct}%) / ${bestOopRole} (OOP ${oopRoleFitPct}%), directly improving on ${targetIncumbent.name}${attrEdgeText} while ${wagePhrase}.`;
       howFitsFuture =
-        target.age <= 23
-          ? `At Age ${target.age} (${character.personalityLabel}), he locks down ${bucketCode} for the next 3+ seasons with strong development and resale upside.`
-          : target.age <= 27
-            ? `Entering his peak years (Age ${target.age}, ${character.personalityLabel}) — gives immediate reliability over the next 2–3 seasons.`
-            : `Experienced bridge (Age ${target.age}) — raises your matchday floor right now while you develop a U23 successor behind him.`;
+        target.age === null
+          ? `Age not decoded — verify his age curve before committing to a long contract.`
+          : target.age <= 23
+            ? `At Age ${target.age} (${character.personalityLabel}), he locks down ${bucketCode} for the next 3+ seasons with strong development and resale upside.`
+            : target.age <= 27
+              ? `Entering his peak years (Age ${target.age}, ${character.personalityLabel}) — gives immediate reliability over the next 2–3 seasons.`
+              : `Experienced bridge (Age ${target.age}) — raises your matchday floor right now while you develop a U23 successor behind him.`;
       whyUpgradeOrHold = `Beats ${targetIncumbent.name} by +${(footballDelta ?? 0).toFixed(1)} overall role/DNA score${attrEdgeText}${charBit}. ${budget.budgetSummary}.`;
     } else if (tier === 'fills_gap_now') {
       headline = hasReplaceBeforeSelling && targetIncumbent
@@ -872,26 +876,28 @@ export function evaluateInGameShortlist(
         : `Plugs Immediate ${bucketCode} Depth Gap (${need?.effectiveReadyCount ?? 0}/${need?.idealMin ?? 2} Ready)`;
       howFitsNow = `Fills an open first-team ${bucketCode} slot immediately in your ${formationLabel} as ${bestIpRole} (IP ${ipRoleFitPct}%) / ${bestOopRole} (OOP ${oopRoleFitPct}%), meeting your ${audit.leagueLevelCalibration.competitionName} standard without stretching finances.`;
       howFitsFuture =
-        target.age <= 23
-          ? `Age ${target.age} (${character.personalityLabel}) — can grow from rotation cover into a multi-season starter.`
-          : `Age ${target.age} (${character.personalityLabel}) — stabilises ${bucketCode} depth this season while keeping wage commitments disciplined.`;
+        target.age === null
+          ? `Age not decoded — verify his age curve before committing to a long contract.`
+          : target.age <= 23
+            ? `Age ${target.age} (${character.personalityLabel}) — can grow from rotation cover into a multi-season starter.`
+            : `Age ${target.age} (${character.personalityLabel}) — stabilises ${bucketCode} depth this season while keeping wage commitments disciplined.`;
       whyUpgradeOrHold = `Directly resolves your ${bucketCode} shortage${attrEdgeText}${charBit}. ${budget.budgetSummary}.`;
     } else if (tier === 'cheaper_squad_upgrade' && targetIncumbent) {
       const savedPw = Math.abs(budget.netWeeklyWageDelta ?? 0);
       headline = `Cheaper ${bucketCode} Upgrade vs ${targetIncumbent.name} (Saves £${savedPw.toLocaleString()}/wk)`;
       howFitsNow = `Replaces ${targetIncumbent.name} (£${targetIncumbent.wagePw.toLocaleString()}/wk) in the ${bucketCode} rotation as ${bestIpRole} / ${bestOopRole} (${ipRoleFitPct}% IP fit) while trimming £${savedPw.toLocaleString()}/wk off payroll.`;
       howFitsFuture =
-        target.age < targetIncumbent.age
+        target.age !== null && targetIncumbent.age !== null && target.age < targetIncumbent.age
           ? `${targetIncumbent.age - target.age} years younger than ${targetIncumbent.name} — lowers squad age and wage bill simultaneously.`
           : `Keeps matchday cover intact on leaner wages so funds can go toward priority starters.`;
       whyUpgradeOrHold = `Matches or improves on ${targetIncumbent.name}${attrEdgeText} at lower weekly cost${charBit}. ${budget.budgetSummary}.`;
     } else if (tier === 'future_succession') {
-      headline = `U23 ${bucketCode} Successor for Next 12–24 Months (Age ${target.age})`;
+      headline = `U23 ${bucketCode} Successor for Next 12–24 Months (Age ${formatAge(target.age)})`;
       howFitsNow = `Joins as rotational ${bucketCode} cover (${bestIpRole} IP ${ipRoleFitPct}% / ${bestOopRole} OOP ${oopRoleFitPct}%) to learn your ${formationLabel} without blocking your current starter.`;
       howFitsFuture = isSuccessionGap
         ? `Directly fixes your 28+ ${bucketCode} Succession Gap — ready to inherit the starting role within 12–18 months (${character.personalityLabel}, Det ${synthetic.attributes.determination}/20).`
         : `Lined up to take over when expiring ${bucketCode} contracts depart next summer, giving you a low-wage U23 asset with resale value.`;
-      whyUpgradeOrHold = `Strong age-curve & character fit (Age ${target.age}, ${character.personalityLabel}${charBit}). ${budget.budgetSummary}.`;
+      whyUpgradeOrHold = `Strong age-curve & character fit (Age ${formatAge(target.age)}, ${character.personalityLabel}${charBit}). ${budget.budgetSummary}.`;
     } else if (tier === 'monitor_budget_blocked') {
       headline = targetIncumbent && beatsStarterClearly
         ? `Football Upgrade on ${targetIncumbent.name} — Blocked by Club Budget Today`

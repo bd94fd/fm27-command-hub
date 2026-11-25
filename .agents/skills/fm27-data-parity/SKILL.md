@@ -58,6 +58,11 @@ in the same change as:
 A decoder field with no hydrator, or a hydrator field no selector reads, is an
 incomplete change — not a follow-up.
 
+If the user explicitly excludes the decoder from a change, treat the parity item as
+partially closed: fix the TypeScript surfaces, record the remaining decoder gap in
+`references/data-parity-audit-2026-11-25.md`, and say so once. When the restriction is
+lifted, remove the decoder defaults at source and update the same reference.
+
 ## Reviewing against this skill
 
 When asked to `/data-parity` or during `/codereview`:

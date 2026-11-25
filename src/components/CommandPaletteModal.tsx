@@ -236,7 +236,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
         id: `target-${t.uid || idx}-${t.name}`,
         category: 'Scout Target',
         title: t.name,
-        subtitle: `${t.primaryPosition} · Age ${t.age} · ${t.nationality} · ${
+        subtitle: `${t.primaryPosition} · Age ${formatAge(t.age)} · ${t.nationality} · ${
           t.isFreeAgent ? 'Free Agent' : `Expires ${t.expires || '≤6m'}`
         }`,
         badge: t.isFreeAgent ? 'Free' : 'Scouted',

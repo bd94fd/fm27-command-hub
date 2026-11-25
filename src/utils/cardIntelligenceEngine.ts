@@ -356,7 +356,7 @@ export function evaluateScoutTargetCard(
     ? `${weakSlice.label} ${weakSlice.value}/20 (${weakSlice.percentile}th pct)`
     : 'Standard scouting variance';
 
-  if (target.age >= 30) {
+  if (target.age !== null && target.age >= 30) {
     primaryRisk = `Age ${target.age} — short-term bridge only, zero resale upside`;
   } else if ((synthetic.attributes.stamina ?? 11) <= 10 && !target.primaryPosition.toUpperCase().includes('GK')) {
     primaryRisk = `Stamina ${synthetic.attributes.stamina}/20 — struggles in FM27 dual-phase pressing`;
@@ -408,7 +408,7 @@ export function evaluateScoutTargetCard(
   } else if (starterDnaDelta !== null && starterDnaDelta >= 5) {
     verdictLabel = `Upgrade (+${starterDnaDelta} DNA)`;
     tone = 'emerald';
-  } else if (target.age <= 22 && dna.overallDnaScore >= 56 && (target.isFreeAgent || target.contractExpiryMonths <= 6)) {
+  } else if (target.age !== null && target.age <= 22 && dna.overallDnaScore >= 56 && (target.isFreeAgent || target.contractExpiryMonths <= 6)) {
     verdictLabel = 'High-Upside U23';
     tone = 'sky';
   } else if (starterDnaDelta !== null && starterDnaDelta <= -6 && isOverstocked) {
@@ -435,7 +435,7 @@ export function evaluateScoutTargetCard(
     options?.governance && options.governance.promisesAtRiskCount > 0 && isOverstocked
       ? 'Watch Squad Promises'
       : comparison
-        ? `${comparison.ageDelta <= 0 ? `${Math.abs(comparison.ageDelta)}y younger` : `${comparison.ageDelta}y older`} · ${comparison.wageDelta <= 0 ? `£${Math.abs(comparison.wageDelta)}/wk cheaper` : `+£${comparison.wageDelta}/wk`}`
+        ? `${comparison.ageDelta === null ? 'Age unknown' : comparison.ageDelta <= 0 ? `${Math.abs(comparison.ageDelta)}y younger` : `${comparison.ageDelta}y older`} · ${comparison.wageDelta <= 0 ? `£${Math.abs(comparison.wageDelta)}/wk cheaper` : `+£${comparison.wageDelta}/wk`}`
         : null;
 
   const inlineRationale = `${starterBit} · ${valueTag}`;

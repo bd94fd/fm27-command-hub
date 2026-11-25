@@ -201,5 +201,24 @@ class TestNationLookupTable(unittest.TestCase):
         self.assertEqual(nations[777], "Latvia")
 
 
+class TestMissingDecodedDefaults(unittest.TestCase):
+    def test_unresolvable_nationality_is_none(self) -> None:
+        self.assertIsNone(mapper._resolve_player_nationality(types.SimpleNamespace(), {}))
+        self.assertIsNone(mapper._resolve_player_nationality(types.SimpleNamespace(nation_id=999999), {}))
+
+    def test_player_and_staff_extractors_do_not_force_guesses(self) -> None:
+        with open(os.path.join(PUBLIC_DIR, "fm-save-mapper.py"), encoding="utf-8") as fh:
+            source = fh.read()
+        for forced in (
+            '"age": _int(getattr(p, "age", None), 22)',
+            '"age": _int(getattr(s, "age", None), 35)',
+            '"wagePw": _int(getattr(contract, "wage", None), 0) if contract else 0',
+            'default="Unknown"',
+            'default="N/A"',
+            'return "Coach"',
+        ):
+            self.assertNotIn(forced, source)
+
+
 if __name__ == "__main__":
     unittest.main()
