@@ -604,7 +604,7 @@ print(json.dumps({
   assert.equal(res.natResults.burkina, 'Burkina Faso');
   assert.equal(res.natResults.mali, 'Mali');
   assert.equal(res.natResults.belgium_no_collision, 'Belgium');
-  assert.equal(res.natResults.unmapped_not_algeria, 'Unknown');
+  assert.equal(res.natResults.unmapped_not_algeria, null);
 
   // Fix 3 assertions
   assert.equal(res.contractDetails.promisedPlayingTime, 'Regular Starter');

@@ -11,6 +11,7 @@ import {
   formatTargetContractSummary,
   getPlaybookContractNotes,
   getPositionRelevantAttributes,
+  matchesAgeBand,
   partitionContractClausesAndBonuses,
 } from './recruitmentHelpers';
 
@@ -361,4 +362,27 @@ test('Compare vs Starter: findTopSeniorStarterForPosition pairs target with top-
   const finAxis = cmp.radarAxes.find((a) => a.label === 'Fin');
   assert.ok(finAxis);
   assert.equal(finAxis.delta, 2);
+});
+
+
+test('Unknown target age stays an explicit gap instead of becoming a fake age', () => {
+  const starter = makePlayer({ age: 24 });
+  const target: RecruitmentTarget = {
+    uid: 778,
+    name: 'Unknown Age Target',
+    age: null,
+    nationality: '',
+    primaryPosition: 'MC',
+    isFreeAgent: true,
+    contractExpiryMonths: 0,
+    demandedWageEur: 0,
+    attributes: { passing: 13, tackling: 12 },
+  };
+
+  const cmp = buildTargetVsStarterComparison(target, starter);
+  assert.equal(cmp.ageDelta, null);
+  assert.equal(matchesAgeBand(null, 'ALL'), true);
+  assert.equal(matchesAgeBand(null, 'U23'), false);
+  assert.equal(matchesAgeBand(null, '23-28'), false);
+  assert.equal(matchesAgeBand(null, '29+'), false);
 });

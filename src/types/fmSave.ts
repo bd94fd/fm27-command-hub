@@ -436,7 +436,7 @@ export interface CompetitionRegistrationRules {
 export interface HydratedSquadPlayer {
   uid: number;
   name: string;
-  age: number;
+  age: number | null;
   nationality: string;
   primaryPosition: string;
   secondaryPositions: string[];
@@ -518,7 +518,7 @@ export interface FinancialRunway {
 export interface RecruitmentTarget {
   uid: number;
   name: string;
-  age: number;
+  age: number | null;
   nationality: string;
   primaryPosition: string;
   secondaryPositions?: string[];
@@ -537,7 +537,7 @@ export interface RecruitmentTarget {
   isLoanCandidate?: boolean;
   parentClubWagePw?: number | null;
   contractExpiryMonths: number;
-  expires?: string;
+  expires?: string | null;
   demandedWageEur: number;
   scoutBadges?: ScoutBadge[];
   traits?: string[];

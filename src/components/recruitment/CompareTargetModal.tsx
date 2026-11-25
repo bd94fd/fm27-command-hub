@@ -189,16 +189,22 @@ export const CompareTargetModal: React.FC<CompareTargetModalProps> = ({
                     <div className="font-mono font-bold text-white mt-0.5">
                       {formatAge(activeComparison.target.age)} vs {formatAge(activeComparison.starter.age)}
                     </div>
-                    <div
-                      className={`text-[10px] font-mono font-semibold ${
-                        activeComparison.comparison.ageDelta <= 0
-                          ? 'text-emerald-300'
-                          : 'text-amber-300'
-                      }`}
-                    >
-                      {activeComparison.comparison.ageDelta > 0 ? '+' : ''}
-                      {activeComparison.comparison.ageDelta} yrs
-                    </div>
+                    {activeComparison.comparison.ageDelta === null ? (
+                      <div className="text-[10px] font-mono font-semibold text-slate-400">
+                        Age gap unknown
+                      </div>
+                    ) : (
+                      <div
+                        className={`text-[10px] font-mono font-semibold ${
+                          activeComparison.comparison.ageDelta <= 0
+                            ? 'text-emerald-300'
+                            : 'text-amber-300'
+                        }`}
+                      >
+                        {activeComparison.comparison.ageDelta > 0 ? '+' : ''}
+                        {activeComparison.comparison.ageDelta} yrs
+                      </div>
+                    )}
                   </div>
 
                   <div className="rounded-lg border border-slate-800 bg-slate-900/80 p-2.5">

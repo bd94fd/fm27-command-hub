@@ -944,7 +944,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                           <div className="font-bold text-white">
                             {up.target.name}{' '}
                             <span className="font-mono text-[11px] text-emerald-300">
-                              ({up.target.primaryPosition}, Age {up.target.age})
+                              ({up.target.primaryPosition}, Age {formatAge(up.target.age)})
                             </span>{' '}
                             <span className="rounded bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] text-emerald-200">
                               {up.tierLabel}

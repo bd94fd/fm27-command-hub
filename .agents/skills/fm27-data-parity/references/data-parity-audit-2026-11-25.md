@@ -112,25 +112,30 @@ The analyst's own validator, `isPlaceholderString` (`tacticalAnalystContext.ts:2
 recognises `--`, `n/a`, `null`, `undefined`, `unknown` but **not** `—` or `-`, so its own expiry
 placeholder counts as real data during pre-flight validation.
 
-### 10. Invented defaults, with conflicting magic numbers
+### 10. Invented defaults, with conflicting magic numbers — FIXED (decoder follow-up)
 
 | Field | Decoder | Hydrator | Analyst fallback |
 | --- | --- | --- | --- |
-| Player age | `22` (`fm-save-mapper.py:2648`) | — | — |
-| Staff age | `35` (`fm-save-mapper.py:4362`) | `35` (`fmSaveHydrator.ts:1526`) | `40` (`tacticalAnalystContext.ts:1215`) |
-| Wage | `0` (`fm-save-mapper.py:2659,4369`) | `0` (`fmSaveHydrator.ts:1529`) | `0` (`:1217`) |
-| Nation | `"Unknown"` / `"N/A"` | `"FM"` (`:1527`) | `''` (`:1216`) |
-| Name | — | `'Club Staff'` (`:1524`) | unguarded `s.name` (`:1213`) |
+| Player age | `null` when absent | keeps `null` | `--` |
+| Staff age | `null` when absent | keeps `null` | `--` |
+| Wage | `null` when absent | keeps `null` | `--` |
+| Nation | `null` when absent (empty string on generated targets) | keeps the gap | `--` |
+| Name | unnamed non-manager staff rows are skipped; no invented name | `--` | `--` |
+| Staff role | `null` when the job code is unknown; no `"Coach"` fallback | `--` | `--` |
 
-The `40` vs `35` pair is dormant today only because the decoder always emits an age. A zeroed wage
-is worse than a gap: it makes a £0 earner indistinguishable from an undecoded contract. The UI
-coerces the same way — `CompareTargetModal.tsx:207,209` render `£{wagePw || 0}`.
+The active decoder path no longer fabricates `22`, `35`, `0`, `"Unknown"`, `"N/A"`, or
+`"Coach"`. `_resolve_player_nationality()` now returns `None` unless a caller explicitly asks for
+a display default. In-game shortlist targets keep an unknown age as `null`; the recruitment scan
+skips generated candidates whose age cannot be read, because it cannot rank them honestly.
+`RecruitmentTarget.age` and `ageDelta` are nullable, and the UI/Analyst render `--` or an explicit
+"Age not decoded" note instead of an age-based claim.
 
-Staff wages are the one row this PR fixes: `_staff_contract_fields()` reads the flat fmsave
-`Staff` contract (`has_contract`/`wage`/`contract_end`) instead of the nonexistent `s.contract`, so
-wages and contract ends arrive at all, and an unreadable wage stays `null` instead of `0` so the
-shared payroll total prints `-- (n of m wages unreadable)` rather than a partial sum. Player and
-Analyst defaults are untouched and remain open.
+Staff wages remain fixed from PR #43: `_staff_contract_fields()` reads the flat fmsave `Staff`
+contract (`has_contract`/`wage`/`contract_end`), and an unreadable wage stays `null` so the shared
+payroll total prints `-- (n of m wages unreadable)` rather than a partial sum.
+
+The unused legacy `extract_pass_0_data()` helper still carries its old local defaults; it is not on
+the active payload path. Remove or migrate it before anyone calls it again.
 
 ### 11. Two "has played" predicates — FIXED (TypeScript parity PR #31)
 
@@ -221,8 +226,8 @@ virtualisation needed.
 ## Suggested fix order (not applied)
 
 1. One wage formatter (§1) — smallest change, removes the most `£undefined` surfaces.
-2. Placeholder contract (§9) + drop invented defaults (§10) — make gaps explicit in decoder,
-   hydrator, and analyst at the same time.
+2. Placeholder contract (§9) + drop invented defaults (§10) — DONE: gaps are explicit in decoder,
+   hydrator, UI, and analyst.
 3. Staff payroll total and one expiring window (§5, §6) via `staffRatings`, consumed by both.
 4. One squad count and one squad table in the prompt (§2, §3) — pick 26, label the cap, and
    stop sending `analystPromptContext`'s duplicate squad block.
