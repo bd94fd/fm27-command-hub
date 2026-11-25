@@ -1,4 +1,4 @@
-import { StaffAttributes, StaffRecord } from '../types/fm27';
+import { StaffAttributes, StaffJobRatings, StaffRecord } from '../types/fm27';
 
 export interface StaffRoleRating {
   key: string;
@@ -389,7 +389,14 @@ function parseFmDate(raw: string | undefined): Date | null {
 }
 
 /**
- * Flags staff contracts expiring within ~6 months of the save date (or in the current save year).
+ * Single "expiring soon" window for staff contracts, in days. The Staff tab and the Analyst
+ * context both call `isStaffContractExpiringSoon`, so neither can drift from the other.
+ */
+export const STAFF_CONTRACT_EXPIRY_WINDOW_DAYS = 190;
+
+/**
+ * Flags staff contracts expiring within STAFF_CONTRACT_EXPIRY_WINDOW_DAYS of the save date
+ * (or in the current save year when only a year can be parsed).
  */
 export function isStaffContractExpiringSoon(
   expires: string | undefined,
@@ -407,9 +414,74 @@ export function isStaffContractExpiringSoon(
   if (parsedExp) {
     const diffDays =
       (parsedExp.getTime() - refDate.getTime()) / (1000 * 60 * 60 * 24);
-    return diffDays <= 190;
+    return diffDays <= STAFF_CONTRACT_EXPIRY_WINDOW_DAYS;
   }
   return expYear <= refYear;
+}
+
+export interface WeeklyStaffPayroll {
+  /** Total weekly staff wage; null when any wage is unreadable (never a silent 0). */
+  totalWeekly: number | null;
+  /** Sum of the wages that did decode, for context only — do not present it as the total. */
+  knownWeekly: number;
+  staffCount: number;
+  missingWageCount: number;
+}
+
+/**
+ * Canonical weekly staff payroll. Consumed by the Staff tab header and the Analyst context so
+ * both quote the same number. A missing or non-positive wage makes the total null instead of
+ * folding an unreadable contract into the sum as £0.
+ */
+export function computeWeeklyStaffPayroll(
+  staff: ReadonlyArray<{ wagePw?: number | null }> | null | undefined
+): WeeklyStaffPayroll {
+  const list = staff ?? [];
+  let knownWeekly = 0;
+  let missingWageCount = 0;
+  for (const member of list) {
+    const wage = member?.wagePw;
+    if (typeof wage === 'number' && Number.isFinite(wage) && wage > 0) {
+      knownWeekly += wage;
+    } else {
+      missingWageCount += 1;
+    }
+  }
+  return {
+    totalWeekly: missingWageCount === 0 ? knownWeekly : null,
+    knownWeekly,
+    staffCount: list.length,
+    missingWageCount,
+  };
+}
+
+/** Shared label for the payroll total so the Staff tab and the Analyst print it identically. */
+export function formatWeeklyStaffPayroll(payroll: WeeklyStaffPayroll): string {
+  if (payroll.staffCount === 0) return '--';
+  if (payroll.totalWeekly === null) {
+    return `-- (${payroll.missingWageCount} of ${payroll.staffCount} wages unreadable)`;
+  }
+  return `£${payroll.totalWeekly.toLocaleString()}/wk`;
+}
+
+const PREFERRED_JOB_ABBREVIATIONS: Array<[keyof StaffJobRatings, string]> = [
+  ['fitness_coach', 'Fit'],
+  ['goalkeeping_coach', 'GK'],
+  ['set_piece_coach', 'Set'],
+  ['loan_manager', 'Loan'],
+  ['physio', 'Phy'],
+  ['sports_scientist', 'Sci'],
+];
+
+/** One-line Preferred Jobs summary; unreadable ratings print `--` instead of a fake 0. */
+export function formatStaffJobRatings(
+  jobRatings: StaffJobRatings | null | undefined
+): string {
+  if (!jobRatings) return '--';
+  return PREFERRED_JOB_ABBREVIATIONS.map(([key, label]) => {
+    const value = jobRatings[key];
+    return `${label} ${typeof value === 'number' ? value : '--'}`;
+  }).join('/');
 }
 
 

@@ -77,7 +77,7 @@ test('buildPatchDiagnosticReport produces a compact copyable summary', () => {
       build: '27.2.0+2506012',
       saveName: 'Bobby Dean - Zelzate.fm',
       gameDateDmy: '14/03/2027',
-      fmsaveVersion: '0.14.3',
+      fmsaveVersion: '0.14.4',
       patchCompatibility: makeCompat(),
     },
     extractionManifest: {
@@ -94,7 +94,7 @@ test('buildPatchDiagnosticReport produces a compact copyable summary', () => {
   });
 
   assert.match(report, /^FM27 PATCH DIAGNOSTIC · 27\.2\.0\+2506012/);
-  assert.match(report, /Save: Bobby Dean - Zelzate\.fm · 14\/03\/2027 · fmsave 0\.14\.3/);
+  assert.match(report, /Save: Bobby Dean - Zelzate\.fm · 14\/03\/2027 · fmsave 0\.14\.4/);
   assert.match(report, /Layout: dynamic layout \(27\.1 base\) · runtime patches applied/);
   assert.match(report, /Build: NEW\/UNTESTED/);
   assert.match(report, /- fallback: Tactics & set-piece takers \(2\)/);
@@ -108,7 +108,7 @@ test('buildPatchDiagnosticReport produces a compact copyable summary', () => {
 
 test('buildPatchDiagnosticReport degrades calmly without a runtime summary', () => {
   const report = buildPatchDiagnosticReport({
-    meta: { build: '27.3.0+2507001', saveName: 'future.fm', fmsaveVersion: '0.14.3' },
+    meta: { build: '27.3.0+2507001', saveName: 'future.fm', fmsaveVersion: '0.14.4' },
   });
 
   assert.match(report, /FM27 PATCH DIAGNOSTIC · 27\.3\.0\+2507001/);

@@ -1,13 +1,13 @@
 /**
  * FM27 Command Hub — Browser Web Worker for local FM26/FM27 .fm Save Parsing.
  *
- * Uses Pyodide 3.14 (with native Python 3.14 zstd/zlib support) + fmsave (0.14.3)
+ * Uses Pyodide 3.14 (with native Python 3.14 zstd/zlib support) + fmsave (0.14.4)
  * + zero-copy WORKERFS so large 50–300 MB .fm save files are mounted and read
  * directly from disk inside the browser with zero network upload and zero ArrayBuffer copies.
  */
 
 const PYODIDE_VERSION = '314.0.8';
-const FMSAVE_VERSION = '0.14.3';
+const FMSAVE_VERSION = '0.14.4';
 const PYODIDE_INDEX_URL = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
 const MOUNT_DIR = '/mnt_save';
 // WORKERFS is the strict zero-copy path. Copying a large ArrayBuffer into MEMFS
@@ -59,7 +59,7 @@ async function ensureBooted(reply, origin) {
         micropip.destroy?.();
       }
 
-      const patcherUrl = new URL('/fm_layout_patcher.py?v=22', origin || self.location.origin).href;
+      const patcherUrl = new URL('/fm_layout_patcher.py?v=23', origin || self.location.origin).href;
       try {
         const patcherResp = await fetch(patcherUrl, { cache: 'no-cache' });
         if (patcherResp.ok) {
@@ -70,7 +70,7 @@ async function ensureBooted(reply, origin) {
         // Optional runtime layout patcher; mapper degrades gracefully if absent
       }
 
-      const mapperUrl = new URL('/fm-save-mapper.py?v=22', origin || self.location.origin).href;
+      const mapperUrl = new URL('/fm-save-mapper.py?v=23', origin || self.location.origin).href;
       const mapperResp = await fetch(mapperUrl, { cache: 'no-cache' });
       if (!mapperResp.ok) {
         throw new Error(`Failed to load save reader script (HTTP ${mapperResp.status}).`);

@@ -458,6 +458,18 @@ test('accuracy audit: userQuery surfaces player #35, dynamic staff expiry works 
         nation: 'BEL',
         club: 'KVV Zelzate',
         wagePw: 400,
+        expires: '31/12/2030',
+        secondaryJob: 'Set Piece Coach',
+        attributes: {} as never,
+      },
+      {
+        id: 'st-next-year',
+        name: 'Wouter Analyst',
+        role: 'Data Analyst',
+        age: 34,
+        nation: 'BEL',
+        club: 'KVV Zelzate',
+        wagePw: 250,
         expires: '30/06/2031',
         attributes: {} as never,
       },
@@ -527,9 +539,14 @@ test('accuracy audit: userQuery surfaces player #35, dynamic staff expiry works 
   // 1. Player #35 ("Kobe Vermeulen") surfaced into SQUAD PROFILES via userQuery
   assert.ok(ctx.includes('Kobe Vermeulen[U21]'), 'Expected queried U21 player #35 to be surfaced into SQUAD PROFILES');
 
-  // 2. Dynamic staff expiry in 2030 flags 2031 and ignores 2033
-  assert.ok(ctx.includes('Pieter Coach(Assistant Manager,exp 30/06/2031)'));
+  // 2. Staff expiry uses the shared 190-day window relative to the save date: 31/12/2030
+  //    (107 days out) is flagged, 30/06/2031 (288 days) and 30/06/2033 are not.
+  assert.ok(ctx.includes('Pieter Coach(Assistant Manager,exp 31/12/2030)'));
+  assert.ok(!ctx.includes('Wouter Analyst(Data Analyst,exp 30/06/2031)'));
   assert.ok(!ctx.includes('Lukas Scout(Chief Scout,exp 30/06/2033)'));
+  // ...and the Analyst quotes the same payroll total and secondary jobs as the Staff tab.
+  assert.ok(ctx.includes('Weekly Staff Payroll: £950/wk'));
+  assert.ok(ctx.includes('Secondary Jobs: Pieter Coach:Set Piece Coach'));
 
   // 3. Negative cross-season deltas are cleanly signed (-3G/-1A/-450m, never +-3G)
   assert.ok(ctx.includes('Squad Player 1 (-3G/-1A/-450m, 6.95rt)'));

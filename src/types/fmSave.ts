@@ -169,6 +169,11 @@ export interface TacticSlotAssignment {
   outOfPossessionPositionIndex?: number | null;
   inPossessionRole?: string | null;
   outOfPossessionRole?: string | null;
+  /** fmsave 0.14.4+'s own label for this slot, kept for visibility only. */
+  upstreamInPossessionRole?: string | null;
+  upstreamOutOfPossessionRole?: string | null;
+  /** Which side produced inPossessionRole / outOfPossessionRole. */
+  roleLabelSource?: 'native' | 'upstream' | 'none';
   ipRole?: string | null;
   oopRole?: string | null;
   ipRoleSource?:
@@ -559,6 +564,8 @@ export interface SponsorshipDeal {
   type?: string;
   annualValue?: number | null;
   expires?: string | null;
+  /** True when fmsave reversed the stored dates of an ended FM27 contract (start/end swapped). */
+  dates_reordered?: boolean;
   [key: string]: unknown;
 }
 

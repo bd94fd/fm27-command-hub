@@ -458,7 +458,7 @@ test('Irregularity fixes: pre-season 0 GP never blames Fast Sync, no fake shirt 
       gameDateIso: '2027-07-15',
       gameDateDmy: '15/07/2027',
       balance: -802000,
-      fmsaveVersion: '0.14.3',
+      fmsaveVersion: '0.14.4',
       fastSync: false,
     },
     players: [

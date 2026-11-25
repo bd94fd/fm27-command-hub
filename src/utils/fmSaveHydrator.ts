@@ -1,4 +1,4 @@
-import { MatchLogEntry, PlayerRecord, StaffRecord } from '../types/fm27';
+import { MatchLogEntry, PlayerRecord, StaffJobRatings, StaffRecord } from '../types/fm27';
 import {
   formatClubMoney,
   formatWageComplianceSummary,
@@ -48,7 +48,7 @@ import {
   deriveFootballSeasonLabel,
 } from './matchScopeHelpers';
 
-export const WORKER_CACHE_BUSTER = '?v=22';
+export const WORKER_CACHE_BUSTER = '?v=23';
 
 export function resolveSquadUnit(
   teamSlot?: number | null
@@ -410,6 +410,8 @@ export interface DecodedFmSaveStaff {
   club?: string;
   wagePw?: number;
   expires?: string | null;
+  secondaryJob?: string | null;
+  jobRatings?: StaffJobRatings | null;
   coachingDefending?: number;
   coachingAttacking?: number;
   coachingTactical?: number;
@@ -1528,6 +1530,8 @@ export function hydrateAppFromDecodedFmSave(
     club: s.club || decoded.meta.clubName || '',
     wagePw: Number(s.wagePw) || 0,
     expires: s.expires || 'N/A',
+    secondaryJob: s.secondaryJob ?? null,
+    jobRatings: s.jobRatings ?? null,
     attributes: s.attributes || {
       attacking: clampAttributeValue(s.coachingAttacking ?? 10),
       defending: clampAttributeValue(s.coachingDefending ?? 10),
@@ -1798,10 +1802,22 @@ export function hydrateAppFromDecodedFmSave(
           .join('\n')}\n`
       : '';
 
+  const reorderedSponsorships = (Array.isArray(decoded.sponsorships)
+    ? decoded.sponsorships
+    : []
+  ).filter((deal) => deal?.dates_reordered === true);
+  const sponsorshipWarnings =
+    reorderedSponsorships.length > 0
+      ? [
+          `sponsorships: fmsave reversed the stored dates of ${reorderedSponsorships.length} ended FM27 contract(s) using the financial term — start and end are swapped for those rows, so read the dates with that in mind`,
+        ]
+      : [];
+
   const mergedWarnings = Array.from(
     new Set([
       ...(Array.isArray(decoded.extractionWarnings) ? decoded.extractionWarnings : []),
       ...(Array.isArray(decoded.warnings) ? decoded.warnings : []),
+      ...sponsorshipWarnings,
     ])
   );
   const usedFastSync = Boolean(decoded.fastSync ?? decoded.meta?.fastSync ?? false);

@@ -56,19 +56,26 @@ profile table. Two overlapping tables also double the context budget pressure th
 The two numbers differ by scope (game payroll vs squad wage sum) and by rounding, and both are in
 the prompt, so the model can quote either.
 
-### 5. Staff payroll has no total anywhere
+### 5. Staff payroll has no total anywhere — FIXED (fmsave 0.14.4 PR)
 
 `StaffDirectory.tsx:407,484` show per-row `£{s.wagePw}/wk` only; the analyst payload has no staff
 wage figure at all. Asked "what is my staff payroll", the UI cannot answer and the Analyst must
 invent. `staffRatings.ts` already computes backroom summaries — the total belongs there, consumed
 by both.
 
-### 6. Staff "expiring soon" uses two different windows
+Fixed: `computeWeeklyStaffPayroll` + `formatWeeklyStaffPayroll` in `staffRatings.ts` are the one
+total. The Staff tab header and the Analyst `backroom_staff` block both call them, and an unreadable
+wage makes the total `--` (with a count) instead of folding in a fake £0.
+
+### 6. Staff "expiring soon" uses two different windows — FIXED (fmsave 0.14.4 PR)
 
 - UI: `staffRatings.ts:406-412` — `diffDays <= 190`.
 - Analyst: `tacticalAnalystContext.ts:1231-1240` — own date parse, `monthsLeft <= 12`.
 
 A coach expiring in 200 days is invisible in the Staff tab and listed as expiring to the Analyst.
+
+Fixed: the Analyst's local date parser and 12-month window are gone; both sides call
+`isStaffContractExpiringSoon` with `STAFF_CONTRACT_EXPIRY_WINDOW_DAYS` (190).
 
 ### 7. Best Fit % exists only in the UI
 

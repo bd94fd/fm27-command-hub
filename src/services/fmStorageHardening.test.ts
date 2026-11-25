@@ -100,7 +100,7 @@ function buildLargeSyntheticDecodedSave(): DecodedFmSavePayload {
     meta: {
       game: 'Football Manager 27',
       build: '27.4.0',
-      fmsaveVersion: '0.14.3',
+      fmsaveVersion: '0.14.4',
       saveName: 'stress-multi-season.fm',
       clubName: 'KVV Zelzate',
       managerName: 'Bobby',
