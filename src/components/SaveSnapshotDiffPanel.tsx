@@ -681,7 +681,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                   {typeof diff.kpiDeltas.toClubWagePayrollWeekly === 'number' &&
                     diff.kpiDeltas.toClubWagePayrollWeekly > 0 && (
                       <div className="mt-0.5 text-[10px] font-mono text-slate-400 tabular-nums truncate">
-                        Club Payroll: £{diff.kpiDeltas.toClubWagePayrollWeekly.toLocaleString()}
+                        Player Wage Bill: £{diff.kpiDeltas.toClubWagePayrollWeekly.toLocaleString()}
                         {typeof diff.kpiDeltas.toWageBudgetWeekly === 'number' &&
                         diff.kpiDeltas.toWageBudgetWeekly > 0
                           ? ` / £${diff.kpiDeltas.toWageBudgetWeekly.toLocaleString()}`

@@ -138,6 +138,14 @@ test('matrix is one column on mobile and no longer ellipsizes unit or lead text'
   assert.match(src, /Board \/\s+Executive staff are excluded/);
 });
 
+test('matrix header explains the absolute star scale and overload rule', () => {
+  const src = readSrc('src/components/StaffDirectory.tsx');
+  assert.match(src, /absolute global scale, not a league-relative one/);
+  assert.match(src, /best assigned coach sets each unit's stars/);
+  assert.match(src, /3\+ pitch units is overloaded and hurts/);
+  assert.match(src, /Overloaded: \$\{overloadedLeads\[0\]\.name\}/);
+});
+
 test('Hub finances uses filtered sponsorships and the compact empty note', () => {
   const src = readSrc('src/components/AutoSyncWorkspace.tsx');
   assert.match(src, /filterUsableSponsorshipDeals\(decoded\?\.sponsorships\)/);

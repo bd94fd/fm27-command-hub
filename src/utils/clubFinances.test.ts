@@ -139,7 +139,10 @@ test('computeSquadWageSubtotal labels a partial sum and never claims club payrol
   const partial = computeSquadWageSubtotal([1200, null, undefined]);
   assert.equal(partial.knownWeekly, 1200);
   assert.equal(partial.missingWageCount, 2);
-  assert.equal(partial.label, '£1,200/wk known (2 of 3 unreadable)');
+  assert.equal(
+    partial.label,
+    '£1,200/wk known (2 of 3 with no weekly wage — youth/amateur/loan)'
+  );
 
   assert.equal(computeSquadWageSubtotal([]).label, '--');
   assert.equal(computeSquadWageSubtotal(null).label, '--');
@@ -194,7 +197,7 @@ test('buildClubFinancesPanel assembles cash, payroll, and sponsorship rows', () 
   assert.equal(panel.payroll.staffMissingWageCount, 1);
   assert.equal(
     panel.payroll.squadWageSubtotalLabel,
-    '£2,000/wk known (1 of 3 unreadable)'
+    '£2,000/wk known (1 of 3 with no weekly wage — youth/amateur/loan)'
   );
   assert.equal(panel.payroll.squadWageMissingCount, 1);
 

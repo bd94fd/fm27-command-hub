@@ -702,6 +702,9 @@ describe('Phase 5: Priority-budgeted 18,000-char context builder (65-player / 65
     assert.ok(ctx.includes('Squad Playing-Time Promise Audit') && ctx.includes('Visar Shala'), 'Playing-time promise audit missing');
     assert.ok(ctx.includes('LAST GAME / ACTIVE SAVE TACTIC BLUEPRINT (Zelzate 4-3-3 Press v2)'), 'Active IP/OOP tactic blueprint missing');
     assert.ok(ctx.includes('IP:Winger/OOP:Tracking Winger') && ctx.includes('IP:Channel Forward/OOP:Central Outlet Centre Forward'), 'Decoded IP/OOP starter roles missing');
+    assert.ok(ctx.includes('Player Wage Bill £9,400 / £11,000 p/w'), 'Canonical player wage bill missing or mislabelled');
+    assert.ok(ctx.includes('Staff wages are separate and can exceed it'), 'Staff/player payroll scope must stay explicit');
+    assert.equal(ctx.includes('all players in every squad plus all staff'), false, 'The player wage bill must never be described as including all staff');
     assert.ok(ctx.includes('SAVE-TO-SAVE JOURNEY REPORT (01/09/2027 [2027/28] -> 15/11/2027 [2027/28]'), 'Save-to-Save Journey Report missing');
     assert.ok(ctx.includes('Mbey Epolo (+6G/+2A/+540m, 7.52rt)'), 'Journey player deltas missing');
 

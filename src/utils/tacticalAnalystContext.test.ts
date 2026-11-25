@@ -1258,5 +1258,10 @@ test('board/executive staff never lead training and partial staff payroll is lab
   );
   const leads = ctx.split('\n').find((line) => line.startsWith('Department Leads:'));
   assert.ok(leads?.includes('Attacking — Technical: Real Manager'));
+  assert.match(
+    leads ?? '',
+    /Real Manager \([^)]*units overloaded\)/,
+    'the Analyst must see the same single-lead overload as the Staff matrix'
+  );
   assert.ok(!leads?.includes('Elite Chair'), 'board staff must never lead a training unit');
 });
