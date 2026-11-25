@@ -376,6 +376,7 @@ const IDB_STORE_NAME = 'hub_state';
 // race overlapping IDB transactions or write stale snapshots out of order.
 let activeIdbWritePromise: Promise<void> | null = null;
 let queuedIdbPayload: FmHubPersistedState | null = null;
+let queuedIdbPayloadGeneration = 0;
 let queuedIdbWaiters: Array<(ok: boolean) => void> = [];
 let idbWriteGeneration = 0;
 
@@ -384,6 +385,7 @@ function enqueueIndexedDbStateWrite(
 ): Promise<boolean> {
   const gen = idbWriteGeneration;
   queuedIdbPayload = payload;
+  queuedIdbPayloadGeneration = gen;
   return new Promise<boolean>((resolve) => {
     queuedIdbWaiters.push(resolve);
     if (activeIdbWritePromise) return;
@@ -391,11 +393,14 @@ function enqueueIndexedDbStateWrite(
     const drain = async () => {
       while (queuedIdbPayload !== null) {
         const nextPayload = queuedIdbPayload;
+        const nextGeneration = queuedIdbPayloadGeneration;
         const waiters = queuedIdbWaiters;
         queuedIdbPayload = null;
         queuedIdbWaiters = [];
 
-        if (gen !== idbWriteGeneration) {
+        // Compare the payload's own generation: a save enqueued after a clear
+        // bumped the generation is fresh state and must still be written.
+        if (nextGeneration !== idbWriteGeneration) {
           for (const w of waiters) w(false);
           continue;
         }
