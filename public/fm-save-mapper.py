@@ -245,6 +245,7 @@ _STATE: dict[str, Any] = {
     "tactics_man_note_recorded": False,
     "import_scope": "managed_club_only",
     "fast_sync": False,
+    "layout_base_override": None,
     "fast_sync_warning_recorded": False,
     "game_date": None,
     "wage_budget_weekly": None,
@@ -1094,6 +1095,7 @@ def step_close() -> None:
     _STATE["tactics_man_note_recorded"] = False
     _STATE["import_scope"] = "managed_club_only"
     _STATE["fast_sync"] = False
+    _STATE["layout_base_override"] = None
     _STATE["fast_sync_warning_recorded"] = False
     _STATE["game_date"] = None
     _STATE["wage_budget_weekly"] = None
@@ -1282,12 +1284,16 @@ def _collect_patch_section_status() -> dict[str, bool]:
 
 
 def _build_patch_compatibility(
-    build_str: str, extracted: dict[str, bool] | None = None
+    build_str: str,
+    extracted: dict[str, bool] | None = None,
+    layout_base: str | None = None,
 ) -> dict[str, Any]:
     """Structured, non-fatal patch diagnostics for the loaded build (never raises)."""
     if _layout_patcher is not None:
         try:
-            return _layout_patcher.build_patch_compatibility_summary(build_str, extracted)
+            return _layout_patcher.build_patch_compatibility_summary(
+                build_str, extracted, layout_base or _STATE.get("layout_base_override")
+            )
         except Exception:
             pass
     normalized = str(build_str or "unknown")
@@ -1311,6 +1317,7 @@ def step_open(
     preferred_club_hint: str = "",
     import_scope: str = "managed_club_only",
     fast_sync: bool = False,
+    layout_base_override: str | None = None,
 ) -> str:
     t0 = time.monotonic()
     step_close()
@@ -1318,6 +1325,11 @@ def step_open(
     _STATE["save"] = save
     _STATE["import_scope"] = (import_scope or "managed_club_only").strip()
     _STATE["fast_sync"] = bool(fast_sync)
+    _STATE["layout_base_override"] = (
+        _layout_patcher.normalize_layout_base(layout_base_override)
+        if _layout_patcher is not None
+        else None
+    )
 
     info = save.info
     build_str = str(getattr(info, "build", "unknown"))
@@ -1328,7 +1340,9 @@ def step_open(
             pass
         if build_str.startswith("27."):
             try:
-                _layout_patcher.register_dynamic_fm27_build(build_str)
+                _layout_patcher.register_dynamic_fm27_build(
+                    build_str, _STATE.get("layout_base_override")
+                )
             except Exception:
                 pass
 
@@ -1449,7 +1463,9 @@ def step_open(
         "importScope": _STATE["import_scope"],
         "fastSync": _STATE["fast_sync"],
     }
-    meta["patchCompatibility"] = _build_patch_compatibility(build_str)
+    meta["patchCompatibility"] = _build_patch_compatibility(
+        build_str, layout_base=_STATE.get("layout_base_override")
+    )
     if meta["patchCompatibility"].get("isUntestedBuild"):
         untested_note = (
             f"New FM27 build {build_str} detected: dynamic layout inheritance active"
@@ -9359,6 +9375,7 @@ def extract_fm_save_payload(
     import_scope: str = "managed_club_only",
     fast_sync: bool = False,
     checkpoint_cb: Any = None,
+    layout_base: str | None = None,
 ) -> dict[str, Any]:
     """Single-call extractor executing the reordered 4-stage Pass 0/1 pipeline:
     Stage 1: Open save + Club & Squad (52 attributes, traits, badges, direct contract/bans/injuries)
@@ -9382,7 +9399,13 @@ def extract_fm_save_payload(
 
     # Stage 1: Open save + Club & Squad (game_db borrowed ONCE for entire Phase A)
     _emit("Stage 1/4", "Opening .fm save...")
-    step_open(path, preferred_club_hint, import_scope, fast_sync)
+    step_open(
+        path,
+        preferred_club_hint,
+        import_scope,
+        fast_sync,
+        layout_base_override=layout_base,
+    )
 
     _emit("Stage 1/4", "Extracting squad & 52 attributes...")
     step_players()
@@ -9442,6 +9465,199 @@ def _parse_cli_bool(raw_val: str) -> bool:
     return (raw_val or "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def _layout_compat_penalty(compat: Any) -> tuple[int, int, int]:
+    if not isinstance(compat, dict):
+        return (10**6, 10**6, 0)
+    sections = compat.get("sections")
+    if not isinstance(sections, list):
+        return (10**6, 10**6, 0)
+    unavailable = sum(1 for section in sections if section.get("status") == "unavailable")
+    fallback = sum(1 for section in sections if section.get("status") == "fallback")
+    clean = sum(1 for section in sections if section.get("status") in ("clean", "patched"))
+    return (unavailable, fallback, -clean)
+
+
+def should_try_alternate_layout(compat: Any) -> bool:
+    if not isinstance(compat, dict) or not compat.get("isUntestedBuild"):
+        return False
+    unavailable, fallback, _ = _layout_compat_penalty(compat)
+    return unavailable > 0 or fallback > 0
+
+
+def choose_better_layout_compat(first: Any, second: Any) -> bool:
+    """True when the second attempt is strictly better than the first."""
+    return _layout_compat_penalty(second) < _layout_compat_penalty(first)
+
+
+def _run_layout_attempt(
+    base_cmd: list[str],
+    layout_base: str | None,
+    output_path: str,
+    compat_path: str,
+    checkpoint_file: str | None = None,
+    relay_checkpoints: bool = True,
+) -> int:
+    import subprocess
+
+    cmd = list(base_cmd)
+    if layout_base:
+        cmd.extend(["--layout-base", layout_base])
+    cmd.extend(["--compat-out", compat_path])
+    if checkpoint_file:
+        cmd.extend(["--checkpoint-file", checkpoint_file])
+    with open(output_path, "wb") as out_fh:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=out_fh,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        assert proc.stderr is not None
+        for line in proc.stderr:
+            if not relay_checkpoints and line.startswith("CHECKPOINT:"):
+                continue
+            sys.stderr.write(line)
+            sys.stderr.flush()
+        return proc.wait()
+
+
+def _read_compat_file(path: str) -> dict[str, Any] | None:
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            value = json.load(fh)
+        return value if isinstance(value, dict) else None
+    except Exception:
+        return None
+
+
+AUTO_TRY_MAX_FIRST_ATTEMPT_SEC = 180
+
+
+def _copy_stage_checkpoints(source_file: str, target_file: str) -> list[str]:
+    import shutil
+
+    source_dir = os.path.dirname(source_file) or "."
+    target_dir = os.path.dirname(target_file) or "."
+    source_base = os.path.basename(source_file[:-5] if source_file.lower().endswith(".json") else source_file)
+    target_base = os.path.basename(target_file[:-5] if target_file.lower().endswith(".json") else target_file)
+    copied_stages: list[str] = []
+    try:
+        for name in os.listdir(source_dir):
+            if name.startswith(f"{source_base}-") and name.endswith(".json"):
+                suffix = name[len(source_base):]
+                shutil.copy2(
+                    os.path.join(source_dir, name),
+                    os.path.join(target_dir, f"{target_base}{suffix}"),
+                )
+                copied_stages.append(suffix.lstrip("-").removesuffix(".json"))
+    except Exception:
+        pass
+    return copied_stages
+
+
+def _run_auto_try_layout_cli(
+    parsed_args: Any,
+    norm_scope: str,
+    use_fast: bool,
+    display_name: str,
+    checkpoint_file: str = "",
+) -> int:
+    """Decode normally, then try the other 27.x base only when fallbacks or gaps remain."""
+    import shutil
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="fm27-auto-try-") as tmp_dir:
+        base_cmd = [
+            sys.executable,
+            os.path.abspath(__file__),
+            "--file",
+            parsed_args.file,
+            "--scope",
+            norm_scope,
+            "--fast-sync",
+            "1" if use_fast else "0",
+            "--filename",
+            display_name,
+        ]
+        if parsed_args.club_hint:
+            base_cmd.extend(["--club-hint", parsed_args.club_hint])
+
+        first_out = os.path.join(tmp_dir, "first.json")
+        first_compat_path = os.path.join(tmp_dir, "first-compat.json")
+        first_started = time.monotonic()
+        first_code = _run_layout_attempt(
+            base_cmd,
+            parsed_args.layout_base,
+            first_out,
+            first_compat_path,
+            checkpoint_file=checkpoint_file or None,
+        )
+        if first_code != 0:
+            return first_code
+        first_elapsed = time.monotonic() - first_started
+
+        chosen_out = first_out
+        chosen_base = parsed_args.layout_base or "default"
+        first_compat = _read_compat_file(first_compat_path)
+        if first_compat:
+            chosen_base = str(first_compat.get("layoutBase") or chosen_base)
+            penalty = _layout_compat_penalty(first_compat)
+            if should_try_alternate_layout(first_compat):
+                if first_elapsed >= AUTO_TRY_MAX_FIRST_ATTEMPT_SEC:
+                    sys.stderr.write(
+                        "PROGRESS: First decode used the time budget; kept "
+                        f"{chosen_base} base without a second attempt\n"
+                    )
+                    sys.stderr.flush()
+                    alternate_base = None
+                else:
+                    alternate_base = "27.0" if chosen_base != "27.0" else "27.1"
+                if alternate_base is not None:
+                    second_out = os.path.join(tmp_dir, "second.json")
+                    second_compat_path = os.path.join(tmp_dir, "second-compat.json")
+                    second_checkpoint = os.path.join(tmp_dir, "second-cp.json")
+                    second_code = _run_layout_attempt(
+                        base_cmd,
+                        alternate_base,
+                        second_out,
+                        second_compat_path,
+                        checkpoint_file=second_checkpoint,
+                        relay_checkpoints=False,
+                    )
+                    second_compat = _read_compat_file(second_compat_path)
+                    if second_code == 0 and second_compat:
+                        if choose_better_layout_compat(first_compat, second_compat):
+                            chosen_out = second_out
+                            chosen_base = alternate_base
+                            penalty = _layout_compat_penalty(second_compat)
+                            if checkpoint_file:
+                                for stage in _copy_stage_checkpoints(
+                                    second_checkpoint, checkpoint_file
+                                ):
+                                    sys.stderr.write(f"CHECKPOINT: {stage}\n")
+                                    sys.stderr.flush()
+                        sys.stderr.write(
+                            "PROGRESS: Auto-tried 27.0 and 27.1 layouts; kept "
+                            f"{chosen_base} base ({penalty[0]} unavailable, {penalty[1]} fallback)\n"
+                        )
+                        sys.stderr.flush()
+                    else:
+                        sys.stderr.write(
+                            "PROGRESS: Alternate layout attempt failed; kept the first result\n"
+                        )
+                        sys.stderr.flush()
+
+        try:
+            with open(chosen_out, "rb") as fh:
+                shutil.copyfileobj(fh, sys.stdout.buffer)
+            sys.stdout.buffer.flush()
+        except Exception:
+            return 1
+        return 0
+
+
 def _run_cli(argv: list[str] | None = None) -> int:
     import argparse
     from datetime import datetime, timezone
@@ -9464,6 +9680,22 @@ def _run_cli(argv: list[str] | None = None) -> int:
             help="0 for Full Sync (all tables, default), 1 for Fast Sync",
         )
         parser.add_argument("--club-hint", default="", help="Optional club name hint")
+        parser.add_argument(
+            "--layout-base",
+            choices=("27.0", "27.1"),
+            default=None,
+            help="Force a 27.x layout base for diagnostics and auto-try runs",
+        )
+        parser.add_argument(
+            "--auto-try-layout",
+            action="store_true",
+            help="Try the alternate 27.x base when the first decode has fallbacks or gaps",
+        )
+        parser.add_argument(
+            "--compat-out",
+            default="",
+            help="Optional path to write the patch compatibility summary",
+        )
         parser.add_argument("--filename", default="", help="Original display filename")
         parser.add_argument(
             "--checkpoint-file",
@@ -9478,6 +9710,10 @@ def _run_cli(argv: list[str] | None = None) -> int:
         save_file = parsed_args.file
         display_name = parsed_args.filename or os.path.basename(save_file)
         checkpoint_file = (parsed_args.checkpoint_file or "").strip()
+        if parsed_args.auto_try_layout:
+            return _run_auto_try_layout_cli(
+                parsed_args, norm_scope, use_fast, display_name, checkpoint_file
+            )
 
         try:
             file_size_mb = round(os.path.getsize(save_file) / (1024 * 1024), 2)
@@ -9548,9 +9784,21 @@ def _run_cli(argv: list[str] | None = None) -> int:
             import_scope=norm_scope,
             fast_sync=use_fast,
             checkpoint_cb=_write_checkpoint if checkpoint_file else None,
+            layout_base=parsed_args.layout_base,
         )
 
         _attach_cli_meta(payload)
+        compat_out_file = (parsed_args.compat_out or "").strip()
+        if compat_out_file:
+            try:
+                compat = (payload.get("meta") or {}).get("patchCompatibility")
+                if isinstance(compat, dict):
+                    tmp_compat = f"{compat_out_file}.tmp"
+                    with open(tmp_compat, "w", encoding="utf-8") as fh:
+                        json.dump(compat, fh)
+                    os.replace(tmp_compat, compat_out_file)
+            except Exception:
+                pass
 
         json.dump(payload, sys.stdout)
         sys.stdout.flush()

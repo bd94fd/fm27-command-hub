@@ -554,6 +554,7 @@ function startAsyncNativeFmDecodeJob(
     fastSync: '0' | '1';
     clubHint: string;
     displayFilename: string;
+    autoTryLayout: boolean;
   }
 ): void {
   const job: DecodeJobEntry = {
@@ -592,6 +593,9 @@ function startAsyncNativeFmDecodeJob(
   ];
   if (args.clubHint) {
     cliArgs.push('--club-hint', args.clubHint);
+  }
+  if (args.autoTryLayout) {
+    cliArgs.push('--auto-try-layout');
   }
 
   const jobTempPaths = new Set<string>([
@@ -924,8 +928,10 @@ function startAsyncNativeFmDecodeJob(
 export function createFmDecodeRouter(options?: {
   detectRuntime?: () => Promise<ServerPythonRuntime>;
   mapperPath?: string;
+  autoTryLayout?: boolean;
 }): express.Router {
   const router = express.Router();
+  const autoTryLayout = options?.autoTryLayout === true;
   const resolveRuntime = options?.detectRuntime ?? detectServerPythonFmsave;
   const resolvedMapperPath =
     options?.mapperPath ?? path.resolve(process.cwd(), 'public', 'fm-save-mapper.py');
@@ -1330,6 +1336,7 @@ export function createFmDecodeRouter(options?: {
         fastSync,
         clubHint,
         displayFilename,
+        autoTryLayout,
       });
 
       return res.json({ jobId });

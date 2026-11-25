@@ -132,9 +132,15 @@ known = patcher.build_patch_compatibility_summary(
 new = patcher.build_patch_compatibility_summary(
     "27.2.0+2506012", {"players": True, "fixtures": False}
 )
+forced = patcher.build_patch_compatibility_summary(
+    "27.2.0+2506012", {"players": True, "fixtures": False}, "27.0"
+)
+invalid = patcher.normalize_layout_base("27.2")
 print(json.dumps({
     "known": known,
     "new": new,
+    "forced": forced,
+    "invalid": invalid,
     "registered": patcher.register_dynamic_fm27_build("27.2.0+2506012"),
 }))
 `;
@@ -146,6 +152,8 @@ print(json.dumps({
   const parsed = JSON.parse(rawOut.trim()) as {
     known: PatchCompatibilitySummary;
     new: PatchCompatibilitySummary;
+    forced: PatchCompatibilitySummary;
+    invalid: string | null;
     registered: boolean;
   };
 
@@ -165,6 +173,10 @@ print(json.dumps({
   assert.equal(players?.status, 'clean');
   assert.equal(fixtures?.status, 'unavailable');
   assert.match(parsed.new.summary, /27\.2\.0\+2506012/);
+
+  assert.equal(parsed.forced.layoutBase, '27.0');
+  assert.match(parsed.forced.summary, /dynamic layout \(27\.0 base\)/);
+  assert.equal(parsed.invalid, null);
 });
 
 
