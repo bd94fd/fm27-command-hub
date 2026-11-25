@@ -266,14 +266,15 @@ comparison saves are `auto_save_v03_.fm` and `auto_save.fm`.
    out. `normalizeJobVacancy` now maps the confirmed fmsave `StaffJob` codes (for example
    20 = Assistant Manager, 14 = Scout, 2 = Coach) and the snake_case club/league fields at
    the hydrator, Staff tab, and Analyst boundary. The live club snapshot carries the
-   count and first two roles, labelled “may include filled”. Verified on both saves:
+   count and first two roles, labelled “may include filled”. Verified on all three saves:
    `Assistant Manager @ Clube Náutico Capibaribe`, `Coach @ Leicester City`,
    `Fitness Coach @ Tottenham Hotspur`.
 4. **Sponsorship rows reached the Hub but not the live Analyst.** The Hub rendered
    `£227K/yr` and `£2K/yr`, while the live prompt only mentioned the date-order reader
    note. `buildSponsorshipPanelRows` is now the one row formatter for the Hub panel and
-   the Analyst, and the live club snapshot carries `Sponsors: £227K/yr, £2K/yr` plus the
-   first two job-centre roles. The import prompt also reports the same deals. The
+   the Analyst, and the live club snapshot carries
+   `Sponsors: £227K/yr (to 2030-05-23), £2K/yr (to 2032-08-31)` plus the first two
+   job-centre roles. The import prompt also reports the same deals. The
    `dates_reordered` warning travels with the row instead of living only in reader notes.
 
 ### Confirmed unchanged / expected
@@ -281,6 +282,10 @@ comparison saves are `auto_save_v03_.fm` and `auto_save.fm`.
 - `auto_save_v03_.fm` is pre-season: 15 friendlies, no league table, 0 competitive matches.
   `auto_save.fm` has 4 league matches, #6 of 16, 6 points. The UI and Analyst both use the
   same competitive-scope helper for those labels.
+- `last_save_overwrite_backup.fm` is an overwrite backup with the same 27.1.0 staff,
+  finances, sponsorships, and 25 job-centre rows as `auto_save.fm`. It lacks the tactic
+  and selection payloads and has a different league/fixture snapshot, so its live context
+  is shorter, but the Staff and Finances parity strings match exactly.
 - The Staff tab's 38 vs 40 staff count and £10,643 vs £11,171 payroll difference match the
   save dates; both surfaces quote the same string for each save.
 - The 27.0.1 save has 15 friendlies but only 14 `teamMatchStats` rows; the missing row is
