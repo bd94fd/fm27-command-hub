@@ -128,6 +128,20 @@ export default defineConfig(({command, mode}) => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      // Vite answers 403 to any Host header it does not know, which breaks dev mode
+      // behind the sandbox tunnel. VITE_ALLOWED_HOSTS="*" turns the check off;
+      // comma-separated entries (".example.dev") extend the sandbox suffixes below.
+      allowedHosts: (() => {
+        const raw = (process.env.VITE_ALLOWED_HOSTS || '').trim();
+        if (raw === '*') {
+          return true as const;
+        }
+        const extra = raw
+          .split(',')
+          .map((host) => host.trim())
+          .filter(Boolean);
+        return ['.all-hands.dev', ...extra];
+      })(),
     },
   };
 });
