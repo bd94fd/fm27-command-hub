@@ -139,6 +139,25 @@ test('muted informational labels were bumped off text-slate-500', () => {
   );
 });
 
+test('Staff and Finances functional labels stay at 11px or above', () => {
+  const staff = readSrc('src/components/StaffDirectory.tsx');
+  assert.doesNotMatch(staff, /text-\[9px\]/);
+  assert.doesNotMatch(staff, /text-\[10px\]/);
+  assert.match(staff, /placeholder:text-slate-400/);
+  assert.match(staff, /text-\[11px\] font-bold uppercase tracking-wider text-slate-400 leading-tight/);
+  assert.match(staff, /grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2/);
+
+  const hub = readSrc('src/components/AutoSyncWorkspace.tsx');
+  assert.match(
+    hub,
+    /text-\[11px\] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 leading-tight/
+  );
+  assert.match(
+    hub,
+    /text-xs text-slate-500 dark:text-slate-400 break-words/
+  );
+});
+
 test('audited controls expose focus-visible rings instead of bare focus:outline-none', () => {
   for (const relPath of [
     'src/components/LastMatchTacticBlueprintCard.tsx',
