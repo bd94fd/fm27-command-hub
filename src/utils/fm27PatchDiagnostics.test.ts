@@ -314,3 +314,58 @@ test('handoff includes build history and says when a build was seen before', () 
   assert.match(markdown, /Last layout base: 27\.1/);
   assert.match(markdown, /This build was seen on 2 previous imports/);
 });
+
+
+test('handoff memory distinguishes first runs from repeat runs and keeps gaps visible', () => {
+  const firstRun = {
+    seenCount: 1,
+    firstSeenIso: '2027-01-02T10:00:00.000Z',
+    lastSeenIso: '2027-01-02T10:00:00.000Z',
+    layoutBase: '27.1',
+    fallbackCount: 0,
+    unavailableCount: 0,
+  };
+  const repeatRun = { ...firstRun, seenCount: 2, lastSeenIso: '2027-02-03T11:00:00.000Z' };
+
+  const cleanDynamic = makeCompat({
+    sections: [{ id: 'players', label: 'Squad', status: 'clean', fallbacks: 0 }],
+  });
+  assert.match(
+    describeFm27HandoffVerdict(cleanDynamic, firstRun).headline,
+    /New FM27 build — decoded cleanly/
+  );
+  assert.match(
+    describeFm27HandoffVerdict(cleanDynamic, repeatRun).headline,
+    /Seen before — decoded cleanly/
+  );
+  assert.doesNotMatch(
+    describeFm27HandoffVerdict(cleanDynamic, firstRun).detail,
+    /previous import/
+  );
+  assert.match(
+    describeFm27HandoffVerdict(
+      makeCompat({
+        sections: [
+          { id: 'selections', label: 'Selections', status: 'unavailable', fallbacks: 0 },
+        ],
+      }),
+      repeatRun
+    ).headline,
+    /Seen before — still has gaps/
+  );
+
+  const firstRunMarkdown = formatFm27AgentHandoff(
+    buildFm27AgentHandoff(
+      {
+        meta: {
+          build: '27.2.0+2506012',
+          fmsaveVersion: '0.14.4',
+          patchCompatibility: cleanDynamic,
+        },
+      },
+      firstRun
+    )
+  );
+  assert.match(firstRunMarkdown, /First run for this build/);
+  assert.doesNotMatch(firstRunMarkdown, /previous import/);
+});

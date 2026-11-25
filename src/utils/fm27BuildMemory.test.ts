@@ -104,12 +104,63 @@ test('build memory isolates builds and fmsave versions but can fall back to the 
   );
 });
 
+test('build memory updates section outcomes while keeping the first-seen date and run count', () => {
+  const storage = createStorage();
+  const first = recordFm27BuildRun(
+    makePayload(
+      '27.2.0+2506012',
+      '0.14.4',
+      makeCompat({
+        sections: [
+          { id: 'tactics_set_piece', label: 'Tactics', status: 'fallback', fallbacks: 2 },
+        ],
+      })
+    ),
+    storage
+  );
+  const second = recordFm27BuildRun(
+    makePayload(
+      '27.2.0+2506012',
+      '0.14.4',
+      makeCompat({
+        sections: [
+          { id: 'tactics_set_piece', label: 'Tactics', status: 'clean', fallbacks: 0 },
+        ],
+      })
+    ),
+    storage
+  );
+
+  assert.ok(first);
+  assert.ok(second);
+  assert.equal(second.firstSeenIso, first.firstSeenIso);
+  assert.equal(second.seenCount, 2);
+  assert.equal(second.fallbackCount, 0);
+  assert.equal(second.cleanCount, 1);
+  assert.equal(second.sections.tactics_set_piece?.status, 'clean');
+  assert.equal(second.sections.tactics_set_piece?.fallbacks, 0);
+});
+
 test('build memory ignores corrupt storage and missing diagnostics', () => {
   const storage = createStorage();
   storage.setItem(FM27_BUILD_MEMORY_STORAGE_KEY, 'not json');
   assert.deepEqual(loadFm27BuildMemory(storage).profiles, {});
   assert.equal(recordFm27BuildRun({ meta: {} }, storage), null);
   assert.equal(recordFm27BuildRun(null, storage), null);
+});
+
+test('build memory degrades when localStorage rejects writes', () => {
+  const storage: BuildMemoryStorage = {
+    getItem: () => null,
+    setItem: () => {
+      throw new Error('QuotaExceededError');
+    },
+    removeItem: () => {},
+  };
+  const profile = recordFm27BuildRun(makePayload(), storage);
+  assert.ok(profile);
+  assert.equal(profile.seenCount, 1);
+  assert.equal(getFm27BuildProfile('27.2.0+2506012', '0.14.4', storage), null);
 });
 
 test('build memory degrades without a storage target', () => {
