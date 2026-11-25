@@ -1194,6 +1194,36 @@ function isQuotaError(err: unknown): boolean {
   );
 }
 
+/**
+ * Opens a readwrite transaction over the cached save payloads and, where the
+ * database has it, the snapshot history store keyed by the same cache key.
+ */
+function openSaveCacheWriteTx(db: IDBDatabase): {
+  tx: IDBTransaction;
+  store: IDBObjectStore;
+  historyStore: IDBObjectStore | null;
+} {
+  let hasHistoryStore = false;
+  try {
+    hasHistoryStore = db.objectStoreNames.contains(SNAPSHOT_HISTORY_STORE);
+  } catch {
+    hasHistoryStore = false;
+  }
+  const tx = db.transaction(
+    hasHistoryStore ? [SAVE_CACHE_STORE, SNAPSHOT_HISTORY_STORE] : SAVE_CACHE_STORE,
+    'readwrite'
+  );
+  let historyStore: IDBObjectStore | null = null;
+  if (hasHistoryStore) {
+    try {
+      historyStore = tx.objectStore(SNAPSHOT_HISTORY_STORE);
+    } catch {
+      historyStore = null;
+    }
+  }
+  return { tx, store: tx.objectStore(SAVE_CACHE_STORE), historyStore };
+}
+
 async function evictOldestCachedSavesForQuota(
   db: IDBDatabase,
   excludeKey?: string,
@@ -1207,8 +1237,7 @@ async function evictOldestCachedSavesForQuota(
       resolve(evicted);
     };
     try {
-      const tx = db.transaction(SAVE_CACHE_STORE, 'readwrite');
-      const store = tx.objectStore(SAVE_CACHE_STORE);
+      const { tx, store, historyStore } = openSaveCacheWriteTx(db);
       const entries: Array<{ key: string; cachedAt: string }> = [];
       let evictedCount = 0;
 
@@ -1219,6 +1248,8 @@ async function evictOldestCachedSavesForQuota(
           .slice(0, maxToEvict);
         for (const c of candidates) {
           store.delete(c.key);
+          // Evicted payloads must not leave their Journey history orphaned.
+          historyStore?.delete(c.key);
           evictedCount += 1;
         }
       };
@@ -1281,8 +1312,7 @@ function writeCachedSavePayloadOnce<T>(
       resolve({ ok, quotaExceeded });
     };
     try {
-      const tx = db.transaction(SAVE_CACHE_STORE, 'readwrite');
-      const store = tx.objectStore(SAVE_CACHE_STORE);
+      const { tx, store, historyStore } = openSaveCacheWriteTx(db);
       const cachedAt = new Date().toISOString();
       store.put({ key, cachedAt, payload }, key);
 
@@ -1299,6 +1329,8 @@ function writeCachedSavePayloadOnce<T>(
         for (const old of excess) {
           if (old.key) {
             store.delete(old.key);
+            // Pruned payloads must not leave their Journey history orphaned.
+            historyStore?.delete(old.key);
           }
         }
       };

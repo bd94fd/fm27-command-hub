@@ -9,9 +9,11 @@ import {
 } from './fmStorage.ts';
 import {
   createSaveHistoryPoint,
+  MAX_CACHED_SAVES,
   putCachedSavePayload,
   putSaveHistoryPoint,
   SAVE_CACHE_STORE,
+  SNAPSHOT_HISTORY_STORE,
 } from './saveCache.ts';
 import { decodeFmSaveViaServer, createUploadController } from './fmSaveReader.ts';
 import {
@@ -546,4 +548,234 @@ test('fmSaveReader reconciles server receivedRanges strictly and retries partial
     sentHeaders.every((h) => h.length === '10'),
     'every chunk request must send exact x-fm-chunk-length header'
   );
+});
+
+test('pruning cached saves also deletes their snapshot_history entries', async () => {
+  const stores = new Map<string, Map<string, unknown>>([
+    [SAVE_CACHE_STORE, new Map()],
+    [SNAPSHOT_HISTORY_STORE, new Map()],
+  ]);
+  const prevIndexedDb = (globalThis as unknown as { indexedDB?: unknown }).indexedDB;
+
+  const indexedDB = {
+    open: () => {
+      const openReq: Record<string, unknown> = {
+        result: {
+          objectStoreNames: { contains: (name: string) => stores.has(name) },
+          createObjectStore: (name: string) => {
+            if (!stores.has(name)) stores.set(name, new Map());
+          },
+          close: () => {},
+          transaction: (storeNames: string | string[]) => {
+            const first = Array.isArray(storeNames) ? storeNames[0] : storeNames;
+            const firstMap = stores.get(first) ?? new Map<string, unknown>();
+            const tx: Record<string, unknown> = {
+              oncomplete: null as (() => void) | null,
+              onerror: null as (() => void) | null,
+              onabort: null as (() => void) | null,
+              objectStore: (name?: string) => {
+                const storeMap = stores.get(name ?? first) ?? firstMap;
+                return {
+                  put: (val: unknown, key: string) => {
+                    storeMap.set(key, val);
+                  },
+                  get: (key: string) => {
+                    const req: Record<string, unknown> = {
+                      result: storeMap.get(key),
+                      onsuccess: null as (() => void) | null,
+                      onerror: null as (() => void) | null,
+                    };
+                    queueMicrotask(() => (req.onsuccess as (() => void) | null)?.());
+                    return req;
+                  },
+                  getAll: () => {
+                    const req: Record<string, unknown> = {
+                      result: Array.from(storeMap.values()),
+                      onsuccess: null as (() => void) | null,
+                      onerror: null as (() => void) | null,
+                    };
+                    queueMicrotask(() => {
+                      (req.onsuccess as (() => void) | null)?.();
+                      queueMicrotask(() => (tx.oncomplete as (() => void) | null)?.());
+                    });
+                    return req;
+                  },
+                  delete: (key: string) => {
+                    storeMap.delete(key);
+                  },
+                };
+              },
+            };
+            return tx;
+          },
+        },
+        onupgradeneeded: null as (() => void) | null,
+        onsuccess: null as (() => void) | null,
+        onerror: null as (() => void) | null,
+      };
+      queueMicrotask(() => (openReq.onsuccess as (() => void) | null)?.());
+      return openReq;
+    },
+  };
+
+  (globalThis as unknown as { indexedDB: unknown }).indexedDB = indexedDB;
+
+  try {
+    for (let i = 1; i <= MAX_CACHED_SAVES; i++) {
+      assert.equal(
+        await putCachedSavePayload('auto_save.fm', `0${i}/08/2027`, { idx: i }),
+        true
+      );
+    }
+
+    const parsedStore = stores.get(SAVE_CACHE_STORE)!;
+    const historyStore = stores.get(SNAPSHOT_HISTORY_STORE)!;
+    assert.equal(parsedStore.size, MAX_CACHED_SAVES);
+
+    const keysBefore = Array.from(parsedStore.keys());
+    for (const cacheKey of keysBefore) {
+      historyStore.set(cacheKey, { cacheKey, capturedAt: new Date().toISOString() });
+    }
+
+    assert.equal(
+      await putCachedSavePayload('auto_save.fm', '06/08/2027', { idx: 6 }),
+      true
+    );
+
+    const evictedKey = keysBefore.find((cacheKey) => !parsedStore.has(cacheKey));
+    assert.ok(evictedKey, 'one cached save should have been pruned');
+    assert.equal(
+      historyStore.has(evictedKey),
+      false,
+      'a pruned save must not keep its Journey history entry'
+    );
+    assert.equal(historyStore.size, keysBefore.length - 1);
+    assert.ok(
+      Array.from(historyStore.keys()).every((cacheKey) => parsedStore.has(cacheKey)),
+      'every remaining history entry must belong to a still-cached save'
+    );
+  } finally {
+    if (prevIndexedDb === undefined) {
+      delete (globalThis as unknown as { indexedDB?: unknown }).indexedDB;
+    } else {
+      (globalThis as unknown as { indexedDB?: unknown }).indexedDB = prevIndexedDb;
+    }
+  }
+});
+
+test('a state save enqueued while a clear is draining still reaches IndexedDB', async () => {
+  const storageMap = new Map<string, string>();
+  const committedDates: string[] = [];
+  const hubStore = new Map<string, unknown>();
+  const prevWindow = (globalThis as unknown as { window?: unknown }).window;
+  // The first put stays open until the test releases it, so the "write in
+  // flight, clear already issued" window is explicit rather than timer-based.
+  let releaseFirstWrite: (() => void) | null = null;
+
+  const indexedDB = {
+    open: () => {
+      const req: Record<string, unknown> = {
+        result: {
+          objectStoreNames: { contains: (name: string) => name === 'hub_state' },
+          createObjectStore: () => {},
+          close: () => {},
+          transaction: () => {
+            const tx: Record<string, unknown> = {
+              objectStore: () => ({
+                put: (val: unknown, _key: string) => {
+                  const record = val as { saveDate?: string };
+                  const commit = () => {
+                    hubStore.set('fm27_command_hub_state_v1', val);
+                    if (record.saveDate) committedDates.push(record.saveDate);
+                    (tx.oncomplete as (() => void) | null)?.();
+                  };
+                  if (releaseFirstWrite === null) {
+                    releaseFirstWrite = commit;
+                  } else {
+                    setTimeout(commit, 0);
+                  }
+                },
+                delete: () => {
+                  setTimeout(() => {
+                    hubStore.clear();
+                    (tx.oncomplete as (() => void) | null)?.();
+                  }, 0);
+                },
+                get: () => {
+                  const getReq: Record<string, unknown> = {};
+                  setTimeout(() => {
+                    getReq.result = hubStore.get('fm27_command_hub_state_v1');
+                    (getReq.onsuccess as (() => void) | null)?.();
+                  }, 0);
+                  return getReq;
+                },
+              }),
+            };
+            return tx;
+          },
+        },
+        onupgradeneeded: null as (() => void) | null,
+        onsuccess: null as (() => void) | null,
+        onerror: null as (() => void) | null,
+      };
+      setTimeout(() => (req.onsuccess as (() => void) | null)?.(), 0);
+      return req;
+    },
+  };
+
+  (globalThis as unknown as { window: unknown }).window = {
+    localStorage: {
+      getItem: (k: string) => storageMap.get(k) ?? null,
+      setItem: (k: string, v: string) => storageMap.set(k, v),
+      removeItem: (k: string) => storageMap.delete(k),
+      clear: () => storageMap.clear(),
+    },
+    indexedDB,
+  };
+
+  const buildState = (saveDate: string) => ({
+    saveDate,
+    nextFixture: 'Fixture',
+    leagueStandingSub: '#1',
+    wageSpend: '£10K',
+    balance: '£500K',
+    players: [],
+    matches: [],
+    hydratedFmSave: null,
+  });
+
+  try {
+    const inFlight = savePersistedFmState(buildState('01/05/2028'));
+    while (releaseFirstWrite === null) {
+      await new Promise((r) => setTimeout(r, 1));
+    }
+
+    const clearing = clearPersistedFmState();
+    const freshSave = savePersistedFmState(buildState('02/05/2028'));
+    const release = releaseFirstWrite as (() => void) | null;
+    assert.ok(release, 'first write should be waiting to commit');
+    release();
+
+    await Promise.all([inFlight, freshSave]);
+    await clearing;
+
+    assert.ok(
+      committedDates.includes('01/05/2028'),
+      'the save already in flight must still be written'
+    );
+    assert.ok(
+      committedDates.includes('02/05/2028'),
+      'a save enqueued after the clear began must still reach IndexedDB'
+    );
+    assert.ok(
+      committedDates.indexOf('01/05/2028') < committedDates.indexOf('02/05/2028'),
+      'queued writes must stay serialised in arrival order'
+    );
+  } finally {
+    if (prevWindow === undefined) {
+      delete (globalThis as unknown as { window?: unknown }).window;
+    } else {
+      (globalThis as unknown as { window?: unknown }).window = prevWindow;
+    }
+  }
 });
