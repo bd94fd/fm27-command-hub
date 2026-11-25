@@ -2310,7 +2310,10 @@ test('Server Chunked Decode Guardrails: Express server/routes/fmDecodeRoutes.ts 
   const pkgSrc = fs.readFileSync(path.resolve(process.cwd(), 'package.json'), 'utf8');
 
   // Chunked upload routes mounted under /api (1 GB total cap, 8 MB raw chunk limit, lastActivityAt pruning, 300s decode timeout, stream stdout) — zero multer added
-  assert.match(serverSrc, /app\.use\(['"]\/api['"],\s*createFmDecodeRouter\(\)\)/);
+  assert.match(
+    serverSrc,
+    /app\.use\(['"]\/api['"],\s*createFmDecodeRouter\(\{\s*autoTryLayout:\s*true\s*\}\)\)/
+  );
   assert.match(decodeRouterSrc, /\/fm27\/decode-status/);
   assert.match(decodeRouterSrc, /\/fm27\/decode-save\/init/);
   assert.match(decodeRouterSrc, /\/fm27\/decode-save\/chunk/);
@@ -2318,6 +2321,9 @@ test('Server Chunked Decode Guardrails: Express server/routes/fmDecodeRoutes.ts 
   assert.match(decodeRouterSrc, /\/fm27\/decode-save\/job\/:jobId/);
   assert.match(decodeRouterSrc, /MAX_TOTAL_UPLOAD_BYTES\s*=\s*1024\s*\*\s*1024\s*\*\s*1024/);
   assert.match(decodeRouterSrc, /SERVER_DECODE_TIMEOUT_MS\s*=\s*480_000/);
+  assert.match(decodeRouterSrc, /--auto-try-layout/);
+  assert.match(mapperSrc, /def should_try_alternate_layout/);
+  assert.match(mapperSrc, /def choose_better_layout_compat/);
   assert.match(decodeRouterSrc, /lastActivityAt/);
   assert.match(decodeRouterSrc, /outStream\.write\(/);
   assert.match(decodeRouterSrc, /express\.raw\(\{\s*type:\s*['"]application\/octet-stream['"]\s*,\s*limit:\s*['"]8mb['"]/);

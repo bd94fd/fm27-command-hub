@@ -83,10 +83,19 @@ def _build_core(build_str: str) -> str:
     return str(build_str or "").split("+", 1)[0].strip()
 
 
-def _layout_base_for_build(build_str: str) -> str | None:
+def normalize_layout_base(layout_base: str | None) -> str | None:
+    """Accept an explicit 27.0/27.1 base override for layout experiments."""
+    normalized = str(layout_base or "").strip()
+    return normalized if normalized in ("27.0", "27.1") else None
+
+
+def _layout_base_for_build(build_str: str, layout_base: str | None = None) -> str | None:
     normalized = str(build_str or "").strip()
     if not normalized.startswith("27."):
         return None
+    override = normalize_layout_base(layout_base)
+    if override:
+        return override
     return "27.0" if normalized.startswith("27.0.") else "27.1"
 
 
@@ -126,6 +135,7 @@ def get_patch_telemetry() -> dict[str, Any]:
 def build_patch_compatibility_summary(
     build_str: str,
     extracted: dict[str, bool] | None = None,
+    layout_base: str | None = None,
 ) -> dict[str, Any]:
     """Structured, non-fatal patch compatibility summary for a loaded save build.
 
@@ -134,7 +144,8 @@ def build_patch_compatibility_summary(
     """
     normalized = str(build_str or "unknown").strip() or "unknown"
     is_fm27 = normalized.startswith("27.")
-    layout_status = _layout_status(normalized)
+    forced_base = normalize_layout_base(layout_base)
+    layout_status = "dynamic" if (is_fm27 and forced_base) else _layout_status(normalized)
     is_untested = is_fm27 and not is_tested_fm27_build(normalized)
     patches_applied = bool(_PATCH_TELEMETRY["patchesApplied"])
     sections: list[dict[str, Any]] = []
@@ -180,7 +191,7 @@ def build_patch_compatibility_summary(
 
     layout_descriptor = {
         "known": "known layout",
-        "dynamic": f"dynamic layout ({_layout_base_for_build(normalized)} base)",
+        "dynamic": f"dynamic layout ({_layout_base_for_build(normalized, layout_base)} base)",
         "unknown": "unverified layout",
         "not-fm27": "non-FM27 build",
     }[layout_status]
@@ -202,7 +213,7 @@ def build_patch_compatibility_summary(
         "detectedBuild": normalized,
         "isFm27": is_fm27,
         "layoutStatus": layout_status,
-        "layoutBase": _layout_base_for_build(normalized),
+        "layoutBase": _layout_base_for_build(normalized, layout_base),
         "isUntestedBuild": is_untested,
         "runtimePatchesApplied": patches_applied,
         "dynamicBuildRegistered": normalized in _REGISTERED_SYNTHETIC_BUILDS,
@@ -556,7 +567,7 @@ def apply_fmsave_runtime_patches() -> bool:
     return True
 
 
-def register_dynamic_fm27_build(build_str: str) -> bool:
+def register_dynamic_fm27_build(build_str: str, layout_base: str | None = None) -> bool:
     """Dynamically register an unseen FM27 27.x.y+z build to inherit matching 27.0 or 27.1 layouts."""
     if not build_str or not build_str.startswith("27."):
         return False
@@ -570,7 +581,8 @@ def register_dynamic_fm27_build(build_str: str) -> bool:
     if build_str in layouts_mod.known_builds() or build_str in _REGISTERED_SYNTHETIC_BUILDS:
         return True
 
-    base_mod = fm27_27_0_0 if build_str.startswith("27.0.") else fm27_27_1_0
+    selected_base = _layout_base_for_build(build_str, layout_base)
+    base_mod = fm27_27_0_0 if selected_base == "27.0" else fm27_27_1_0
     synthetic_layouts = tuple(
         LayoutEntry(e.region, e.schema, build_str, e.layout)
         for e in base_mod.LAYOUTS

@@ -66,7 +66,7 @@ export async function createApp(
     rateLimitMaxRequests: Math.max(config.rateLimitMaxRequests, 600),
   });
   app.use('/api/fm27/decode-save', decodeGuard);
-  app.use('/api', createFmDecodeRouter());
+  app.use('/api', createFmDecodeRouter({ autoTryLayout: true }));
 
   // Strict JSON 404 handler for any unmatched /api/* route BEFORE Vite/SPA HTML fallback
   app.all('/api/{*splat}', (req, res) => {
