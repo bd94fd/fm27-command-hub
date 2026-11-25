@@ -5,6 +5,7 @@ import type { ShortlistTargetAdvice } from '../../utils/shortlistAdviceEngine';
 import { isScoutTargetTracked } from '../../services/fmStorage';
 import type { ActiveComparison } from './recruitmentTypes';
 import { MobileSheetFrame } from '../MobileSheetFrame';
+import { formatWeeklyWage } from '../../utils/squadViewHelpers';
 
 interface CompareTargetModalProps {
   activeComparison: ActiveComparison | null;
@@ -203,8 +204,8 @@ export const CompareTargetModal: React.FC<CompareTargetModalProps> = ({
                   <div className="rounded-lg border border-slate-800 bg-slate-900/80 p-2.5">
                     <div className="text-[10px] text-slate-400">Weekly Wage</div>
                     <div className="font-mono font-bold text-white mt-0.5">
-                      £{(activeComparison.target.demandedWageEur || 0).toLocaleString()} vs £
-                      {(activeComparison.starter.wagePw || 0).toLocaleString()}
+                      {formatWeeklyWage(activeComparison.target.demandedWageEur)} vs{' '}
+                      {formatWeeklyWage(activeComparison.starter.wagePw)}
                     </div>
                     <div
                       className={`text-[10px] font-mono font-semibold ${

@@ -6,6 +6,8 @@ import {
   buildLiveTacticalAnalystContext,
 } from './tacticalAnalystContext';
 import { PlayerRecord, MatchLogEntry } from '../types/fm27';
+import { analyzePlayerCard } from './playerCardAnalysis';
+import { countSquadPool, MISSING_VALUE } from './squadViewHelpers';
 
 const samplePlayers: PlayerRecord[] = [
   {
@@ -966,3 +968,70 @@ test('validatePreFlightAnalystPayload flags missing or null required fields and 
 
 
 
+
+test('squad profile block is the single squad source: Best Fit % and pool counts match the UI', () => {
+  const ctx = buildLiveTacticalAnalystContext({
+    clubName: 'KVV Zelzate',
+    managerName: 'Bobby Dean',
+    saveDate: '15/09/2027',
+    nextFixture: '18/09/2027 vs Jong Cercle (Away)',
+    leagueStandingSub: '#3 of 16 (6 Pts)',
+    wageSpend: '£4,200 / £4,800 p/w',
+    balance: '£210K',
+    players: samplePlayers,
+    matches: sampleMatches,
+    hydratedFmSave: null,
+  });
+
+  const counts = countSquadPool(samplePlayers);
+  assert.ok(
+    ctx.includes(`OF ${counts.fullPool} FULL POOL`),
+    'squad header must carry the Full Pool count the Squad tab shows'
+  );
+  assert.ok(
+    ctx.includes(`${counts.firstTeam} FIRST TEAM`),
+    'squad header must carry the First Team count the Squad tab shows'
+  );
+
+  // Every profiled player's BF% must equal the exact number PlayerDetailModal renders.
+  for (const player of samplePlayers) {
+    const best = analyzePlayerCard(player, samplePlayers).bestIpRole;
+    const expected = best ? `|BF${best.fitPct}%|` : `|BF${MISSING_VALUE}|`;
+    const line = ctx.split('\n').find((l) => l.startsWith(`${player.name}`));
+    assert.ok(line, `squad line missing for ${player.name}`);
+    assert.ok(
+      line.includes(expected),
+      `${player.name} BF mismatch: expected ${expected} in ${line}`
+    );
+  }
+});
+
+test('a player with no recorded minutes gets the shared placeholder, never a fake zero stat line', () => {
+  const unplayed: PlayerRecord = {
+    ...samplePlayers[0],
+    id: 'p-unplayed',
+    name: 'Unplayed Youth',
+    apps: '0',
+    minutes: 0,
+    rating: null,
+    goals: 0,
+    assists: 0,
+  };
+  const ctx = buildLiveTacticalAnalystContext({
+    clubName: 'KVV Zelzate',
+    managerName: 'Bobby Dean',
+    saveDate: '15/09/2027',
+    nextFixture: '18/09/2027 vs Jong Cercle (Away)',
+    leagueStandingSub: '#3 of 16 (6 Pts)',
+    wageSpend: '£4,200 / £4,800 p/w',
+    balance: '£210K',
+    players: [unplayed],
+    matches: [],
+    hydratedFmSave: null,
+  });
+
+  const line = ctx.split('\n').find((l) => l.startsWith('Unplayed Youth'));
+  assert.ok(line, 'unplayed player must still be profiled');
+  assert.ok(line.includes(`STATS ${MISSING_VALUE}`), `expected shared placeholder, got ${line}`);
+  assert.ok(!/\b0m\b/.test(line), 'must not print a zeroed stat line for an unplayed player');
+});

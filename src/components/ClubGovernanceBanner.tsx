@@ -10,6 +10,7 @@ import {
   Users,
 } from 'lucide-react';
 import { ClubGovernanceState, FmExtractionManifest } from '../types/fmSave';
+import { formatContractExpiry, formatWeeklyWage } from '../utils/squadViewHelpers';
 
 interface ClubGovernanceBannerProps {
   governance: ClubGovernanceState | null | undefined;
@@ -99,10 +100,12 @@ export const ClubGovernanceBanner: React.FC<ClubGovernanceBannerProps> = ({
           {managerContract.available ? (
             <div className="font-mono text-[11px] tabular-nums text-emerald-300">
               {managerContract.wagePw != null
-                ? `£${managerContract.wagePw.toLocaleString()}/wk`
+                ? formatWeeklyWage(managerContract.wagePw)
                 : 'Wage N/A'}
               {' · '}
-              {managerContract.expires || 'Expiry N/A'}
+              {managerContract.expires
+                ? formatContractExpiry(managerContract.expires)
+                : 'Expiry N/A'}
               {managerContract.contractExpiryMonths != null && (
                 <span className="text-slate-400">
                   {' '}

@@ -143,7 +143,9 @@ export function buildAiResearchContextBlock(params: {
     .slice(0, 8);
 
   if (params.includeMeta !== false) {
-    lines.push('**Top Squad Meta Scores (FM-Arena weighted):**');
+    lines.push(
+      `**Top Squad Meta Scores (FM-Arena weighted, ranked across all ${params.players.length} players in the pool):**`
+    );
     for (const item of topMeta) {
       const m = item.meta.metaScore != null ? item.meta.metaScore.toFixed(1) : '--';
       const paM = item.meta.paMetaScore != null ? item.meta.paMetaScore.toFixed(1) : '--';

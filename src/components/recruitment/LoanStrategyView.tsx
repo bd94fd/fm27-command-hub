@@ -9,6 +9,7 @@ import {
 import type { PlayerRecord } from '../../types/fm27';
 import type { RecruitmentTarget } from '../../types/fmSave';
 import type { SquadTransferAuditSummary } from '../../utils/transferAudit';
+import { formatContractExpiry, formatWeeklyWage } from '../../utils/squadViewHelpers';
 
 interface LoanStrategyViewProps {
   audit: SquadTransferAuditSummary;
@@ -273,7 +274,7 @@ export const LoanStrategyView: React.FC<LoanStrategyViewProps> = ({
                       </span>
                     </button>
                     <span className="font-mono font-bold text-amber-300 shrink-0">
-                      £{item.player.wagePw.toLocaleString()}/wk
+                      {formatWeeklyWage(item.player.wagePw)}
                     </span>
                   </div>
                 ))}
@@ -334,7 +335,7 @@ export const LoanStrategyView: React.FC<LoanStrategyViewProps> = ({
                     {item.player.name} ({item.player.position})
                   </button>
                   <span className="font-mono text-[11px] text-slate-300">
-                    exp {item.player.expires}
+                    exp {formatContractExpiry(item.player.expires)}
                   </span>
                 </div>
               ))}

@@ -344,6 +344,13 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
       ? Math.round((wins / filteredMatches.length) * 100)
       : 0;
 
+  // Scope chip on the KPI strip: PPG/Win% are only meaningful next to the filter that produced them,
+  // and "All" silently includes friendlies (pre-season defaults to All).
+  const ppgScopeLabel =
+    activeCompFilter === 'all'
+      ? 'All incl. Friendlies'
+      : formatCompetitionFilterLabel(activeCompFilter);
+
   const [chronicleScope, setChronicleScope] = useState<MatchCompetitionFilter>('competitive');
 
   const momentumSummary = useMemo(
@@ -475,6 +482,9 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                 </div>
                 <div className="text-[10px] font-mono text-emerald-300">
                   {ppg.toFixed(2)} PPG · {winPct}% Win
+                </div>
+                <div className="text-[10px] font-mono text-slate-400">
+                  Scope: {ppgScopeLabel}
                 </div>
               </div>
               <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">

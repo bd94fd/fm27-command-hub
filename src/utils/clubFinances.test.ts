@@ -4,12 +4,12 @@ import {
   classifyWageCompliance,
   formatClubMoney,
   formatWageComplianceSummary,
-  formatWeeklyWage,
   parseSignedMoneyValue,
   parseWageSpendTriple,
   resolveCanonicalBalanceNum,
   resolveCanonicalClubFinances,
 } from './clubFinances.ts';
+import { formatWeeklyWage } from './squadViewHelpers.ts';
 
 test('parseSignedMoneyValue parses positive, negative, bracketed, and scaled money strings', () => {
   assert.equal(parseSignedMoneyValue('-£749K'), -749_000);
@@ -36,14 +36,16 @@ test('parseWageSpendTriple extracts payroll/budget pairs and single values', () 
   });
 });
 
-test('formatClubMoney and formatWeeklyWage format consistently with negative signs and -- fallback', () => {
+test('formatClubMoney stays exact and formatWeeklyWage is the single shared wage formatter', () => {
   assert.equal(formatClubMoney(1_550_000), '£1.55M');
   assert.equal(formatClubMoney(-749_400), '-£749K');
   assert.equal(formatClubMoney(450), '£450');
   assert.equal(formatClubMoney(null), '--');
 
-  assert.equal(formatWeeklyWage(10_257), '£10,257/wk');
-  assert.equal(formatWeeklyWage(-54), '-£54/wk');
+  // Imported from squadViewHelpers: clubFinances no longer exports a competing formatter.
+  assert.equal(formatWeeklyWage(10_257), '£10.3k/wk');
+  assert.equal(formatWeeklyWage(450), '£450/wk');
+  assert.equal(formatWeeklyWage(0), '--');
   assert.equal(formatWeeklyWage(undefined), '--');
 });
 

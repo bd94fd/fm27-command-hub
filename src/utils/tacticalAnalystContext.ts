@@ -58,6 +58,17 @@ import {
   formatSignedCurrency,
   summarizeMatchesByScope,
 } from './matchScopeHelpers';
+import {
+  countSquadPool,
+  describeSquadPool,
+  formatContractExpiry,
+  formatShortContractExpiry,
+  formatWeeklyWage,
+  hasPlayerMatchStats,
+  isPlaceholderValue,
+  MISSING_VALUE,
+} from './squadViewHelpers';
+import { analyzePlayerCard } from './playerCardAnalysis';
 
 export function formatCompactPositionRatings(player: PlayerRecord): string {
   const ratings = player.positionRatings;
@@ -277,7 +288,8 @@ export function scrubRawCaPaTokens(text: string): string {
  */
 export function assemblePriorityBudgetedContext(
   blocks: PriorityContextBlock[],
-  maxChars: number = MAX_LIVE_ANALYST_CONTEXT_CHARS
+  maxChars: number = MAX_LIVE_ANALYST_CONTEXT_CHARS,
+  softMaxChars?: number
 ): string {
   const nonEmpty = blocks.filter((b) => b.fullText.trim().length > 0);
   if (nonEmpty.length === 0) return '';
@@ -305,8 +317,22 @@ export function assemblePriorityBudgetedContext(
       .filter((txt): txt is string => Boolean(txt && txt.length > 0))
       .join('\n\n');
 
+  // P3 appendices (FM-Arena meta research) are optional. When the soft mobile envelope is set and the
+  // payload exceeds it, drop them before anything that carries UI-parity squad data.
+  const finalize = (): string => {
+    const assembled = scrubRawCaPaTokens(joinCurrent());
+    if (softMaxChars && assembled.length > softMaxChars) {
+      const p3Blocks = nonEmpty.filter((b) => b.tier === 'P3');
+      if (p3Blocks.length > 0) {
+        for (const b of p3Blocks) activeText.set(b.id, null);
+        return scrubRawCaPaTokens(joinCurrent());
+      }
+    }
+    return assembled;
+  };
+
   if (measureCurrent() <= maxChars) {
-    return scrubRawCaPaTokens(joinCurrent());
+    return finalize();
   }
 
   // Step 1: Trim or omit optional P3 appendices first (e.g. FM27 research appendix)
@@ -377,7 +403,7 @@ export function assemblePriorityBudgetedContext(
   }
   refitDynamicP0();
 
-  const assembled = scrubRawCaPaTokens(joinCurrent());
+  const assembled = finalize();
   if (assembled.length <= maxChars) {
     return assembled;
   }
@@ -385,6 +411,19 @@ export function assemblePriorityBudgetedContext(
 }
 
 export const MAX_LIVE_ANALYST_CONTEXT_CHARS = 15500;
+
+/**
+ * How many players the single canonical squad table profiles. The rest of the pool is counted in the
+ * header and in the block's "+N omitted" note, and every other squad block (XI, depth chart, action
+ * plan) still covers the whole pool.
+ */
+export const SQUAD_PROFILE_LIMIT = 26;
+
+/**
+ * Preferred size of the live context on a phone. P3 appendices are dropped to honour it; squad,
+ * staff and finance blocks are never sacrificed for it.
+ */
+export const LIVE_ANALYST_SOFT_MAX_CHARS = 10_000;
 
 export function buildLiveTacticalAnalystContext(
   state: LiveAnalystStateInput
@@ -429,7 +468,11 @@ export function buildLiveTacticalAnalystContext(
       fullText:
         '=== CURRENT APP STATE: AWAITING .FM SAVE OR EXPORT IMPORT ===\nNo .fm save or squad export loaded yet (0 players, 0 matches). Answer tactically using FM27 Patch 27.1.0 & Playbook v2.0 principles without inventing fake players.',
     });
-    return assemblePriorityBudgetedContext(blocks, MAX_LIVE_ANALYST_CONTEXT_CHARS);
+    return assemblePriorityBudgetedContext(
+      blocks,
+      MAX_LIVE_ANALYST_CONTEXT_CHARS,
+      LIVE_ANALYST_SOFT_MAX_CHARS
+    );
   }
 
   const decoded = hydratedFmSave?.decodedPayload;
@@ -450,19 +493,22 @@ export function buildLiveTacticalAnalystContext(
       ? hydratedFmSave.activeSuspensions
       : players.flatMap((p) => p.activeSuspensions || []);
 
-  const squadBasicWageSum = players.reduce((s, p) => s + (p.wagePw || 0), 0);
+  const squadPool = countSquadPool(players);
+  const payrollIsCanonical = Boolean(hydratedFmSave?.wageComplianceLabel);
+  const runway = hydratedFmSave?.financialRunway;
+  const runwayLabel = runway
+    ? ` | Runway: ${runway.status} (${runway.runwayMonths < 999 ? `${runway.runwayMonths}m` : 'Pos'}, net £${Math.round(runway.monthlyBurnRate).toLocaleString()}/mo)`
+    : '';
   const clubLines: string[] = [
     '=== LIVE CLUB SNAPSHOT ===',
     `Club: ${clubName !== '--' ? clubName : decoded?.meta.clubName || 'Managed Club'} | Mgr: ${managerName !== '--' ? managerName : decoded?.meta.managerName || 'Human Manager'} | Date: ${saveDate}`,
+    `Squad Pool: ${describeSquadPool(squadPool)}`,
     `Standing: ${hydratedFmSave?.leagueRecordLabel || `${summary.played}GP (${summary.wins}W-${summary.draws}D-${summary.losses}L, ${summary.points}Pts)`} · ${leagueStandingSub}`,
     `Next: ${nextFixture}${nextCompetitionName ? ` [${nextCompetitionName}]` : ''}`,
-    `Finances: Bal ${balance} | Club Payroll ${wageSpend}${
-      squadBasicWageSum > 0 ? ` | Player Basic Wages £${squadBasicWageSum.toLocaleString()}/wk` : ''
-    }${
-      hydratedFmSave?.financialRunway
-        ? ` | Runway: ${hydratedFmSave.financialRunway.status} (${hydratedFmSave.financialRunway.runwayMonths < 999 ? `${hydratedFmSave.financialRunway.runwayMonths}m` : 'Pos'}, net £${Math.round(hydratedFmSave.financialRunway.monthlyBurnRate).toLocaleString()}/mo)`
-        : ''
-    }`,
+    `Finances: Bal ${balance} | Club Payroll ${wageSpend}${runwayLabel}`,
+    payrollIsCanonical
+      ? 'Payroll Scope: "Club Payroll" is the ONLY club-wide wage total (FM27 finance table: all players in every squad plus all staff). Per-player wages quoted below are individual contracts, NOT a club total — never subtract a squad slice from Club Payroll to infer staff wages.'
+      : 'Payroll Scope: no club-wide payroll figure is decoded from this save. Per-player wages quoted below are individual contracts only — do NOT sum them and present the result as the club payroll or as staff wages.',
   ];
 
   if (decoded?.upcomingFixtures && decoded.upcomingFixtures.length > 0) {
@@ -609,7 +655,7 @@ export function buildLiveTacticalAnalystContext(
     const mc = gov.managerContract;
     govLines.push(
       mc.available
-        ? `Manager Contract: ${mc.managerName} | Wage: ${mc.wagePw ? `£${mc.wagePw.toLocaleString()}/wk` : 'N/A'} | Expires: ${mc.expires || 'N/A'}${mc.contractExpiryMonths != null ? ` (${mc.contractExpiryMonths}m left)` : ''}${mc.jobSecurity ? ` | Job Security: ${mc.jobSecurity}` : ''}`
+        ? `Manager Contract: ${mc.managerName} | Wage: ${formatWeeklyWage(mc.wagePw)} | Expires: ${formatContractExpiry(mc.expires)}${mc.contractExpiryMonths != null ? ` (${mc.contractExpiryMonths}m left)` : ''}${mc.jobSecurity ? ` | Job Security: ${mc.jobSecurity}` : ''}`
         : `Manager Contract: ${mc.managerName} (contract details not exposed in this save)`
     );
     govLines.push(
@@ -911,7 +957,7 @@ export function buildLiveTacticalAnalystContext(
   const reliefNames =
     loanPlan.wageReliefLoanFallbacks
       .slice(0, 3)
-      .map((w) => `${w.player.name}(£${w.player.wagePw}/wk)`)
+      .map((w) => `${w.player.name}(${formatWeeklyWage(w.player.wagePw)})`)
       .join(', ') || 'None';
   const calibrationLines: string[] = [
     `=== CLUB & LEAGUE LEVEL CALIBRATION + LOAN STRATEGY ===`,
@@ -1007,7 +1053,7 @@ export function buildLiveTacticalAnalystContext(
       `IN-GAME SURPLUS TO REQUIREMENTS (Active Sale Targets — Listed in FM27, DO NOT PICK ON BENCH/XI IF COVER EXISTS): ${surplusPlayers
         .map(
           (p) =>
-            `${p.name}(£${p.wagePw}/wk,${p.minutes}m,${p.goals}G/${p.xG.toFixed(2)}xG,${p.assists}A)`
+            `${p.name}(${formatWeeklyWage(p.wagePw)},${p.minutes}m,${p.goals}G/${p.xG.toFixed(2)}xG,${p.assists}A)`
         )
         .join(' | ')}`
     );
@@ -1027,7 +1073,7 @@ export function buildLiveTacticalAnalystContext(
           const succPart = youthTag
             ? `, promote ${youthTag.replace('Youth Ready: ', '')}`
             : '';
-          return `${a.player.name}(£${a.player.wagePw}/wk,InGame:${a.player.status}${succPart})`;
+          return `${a.player.name}(${formatWeeklyWage(a.player.wagePw)},InGame:${a.player.status}${succPart})`;
         })
         .join(' | ')}`
     );
@@ -1041,7 +1087,7 @@ export function buildLiveTacticalAnalystContext(
           const succPart = youthTag
             ? `, promote ${youthTag.replace('Youth Ready: ', '')}`
             : '';
-          return `${a.player.name}(£${a.player.wagePw}/wk,IN-GAME SURPLUS${succPart})`;
+          return `${a.player.name}(${formatWeeklyWage(a.player.wagePw)},IN-GAME SURPLUS${succPart})`;
         })
         .join(' | ')}`
     );
@@ -1053,7 +1099,7 @@ export function buildLiveTacticalAnalystContext(
   if (replaceList.length > 0) {
     actionPlanLines.push(
       `Replace Before Selling: ${replaceList
-        .map((a) => `${a.player.name}(£${a.player.wagePw}/wk)`)
+        .map((a) => `${a.player.name}(${formatWeeklyWage(a.player.wagePw)})`)
         .join(' | ')}`
     );
   }
@@ -1066,7 +1112,7 @@ export function buildLiveTacticalAnalystContext(
       `Promote to Backup (DO NOT LOAN OUT): ${promoteYouthList
         .map((a) => {
           const tag = a.tags.find((t) => t.startsWith('Promote to Backup'))!;
-          return `${a.player.name}(${a.player.ability.toFixed(1)}★/${a.player.potential.toFixed(1)}★,£${a.player.wagePw}/wk,${tag})`;
+          return `${a.player.name}(${a.player.ability.toFixed(1)}★/${a.player.potential.toFixed(1)}★,${formatWeeklyWage(a.player.wagePw)},${tag})`;
         })
         .join(' | ')}`
     );
@@ -1078,7 +1124,7 @@ export function buildLiveTacticalAnalystContext(
   if (protectList.length > 0) {
     actionPlanLines.push(
       `Protect Youth Asset: ${protectList
-        .map((a) => `${a.player.name}(exp ${a.player.expires})`)
+        .map((a) => `${a.player.name}(exp ${formatContractExpiry(a.player.expires)})`)
         .join(' | ')}`
     );
   }
@@ -1089,7 +1135,7 @@ export function buildLiveTacticalAnalystContext(
   if (renewList.length > 0) {
     actionPlanLines.push(
       `Renew Now: ${renewList
-        .map((a) => `${a.player.name}(£${a.player.wagePw}/wk,exp ${a.player.expires})`)
+        .map((a) => `${a.player.name}(${formatWeeklyWage(a.player.wagePw)},exp ${formatContractExpiry(a.player.expires)})`)
         .join(' | ')}`
     );
   }
@@ -1100,7 +1146,7 @@ export function buildLiveTacticalAnalystContext(
   if (letExpireList.length > 0) {
     actionPlanLines.push(
       `Let Expire: ${letExpireList
-        .map((a) => `${a.player.name}(£${a.player.wagePw}/wk,exp ${a.player.expires})`)
+        .map((a) => `${a.player.name}(${formatWeeklyWage(a.player.wagePw)},exp ${formatContractExpiry(a.player.expires)})`)
         .join(' | ')}`
     );
   }
@@ -1230,7 +1276,7 @@ export function buildLiveTacticalAnalystContext(
     const expiringStaff = effectiveStaff
       .filter((st) => isStaffContractExpiringSoon(st.expires ?? undefined, saveDate))
       .slice(0, 5)
-      .map((st) => `${st.name}(${st.role},exp ${st.expires})`);
+      .map((st) => `${st.name}(${st.role},exp ${formatContractExpiry(st.expires)})`);
     const secondaryJobs = effectiveStaff
       .filter((st) => Boolean(st.secondaryJob))
       .slice(0, 6)
@@ -1454,14 +1500,6 @@ export function buildLiveTacticalAnalystContext(
   }
 
   // 8. First-Team & Key Squad Profiles with FULL Season Stats, Wages, Standing, PosFam & Transfer Verdict (zero raw CA/PA)
-  const formatShortExpiry = (exp: string): string => {
-    const m = (exp || '').match(/(\d{1,2})\/(\d{1,2})\/20(\d{2})/);
-    if (m) return `${m[2].padStart(2, '0')}/${m[3]}`;
-    const iso = (exp || '').match(/20(\d{2})-(\d{2})/);
-    if (iso) return `${iso[2]}/${iso[1]}`;
-    return exp && exp !== 'N/A' && exp !== '--' ? exp : '-';
-  };
-
   const queryLower = (state.userQuery || '').trim().toLowerCase();
   const isMentionedInQuery = (p: PlayerRecord): boolean => {
     if (!queryLower) return false;
@@ -1548,9 +1586,19 @@ export function buildLiveTacticalAnalystContext(
     })
   );
   pushUnique(sortedSquad);
-  const topSquad = orderedSquadPool.slice(0, 26);
+  // Priority-ordered head of the pool. This is the ONLY squad table in the prompt, so the header
+  // states the pool size and the block counts anything it omits.
+  const profiledSquad = orderedSquadPool.slice(0, SQUAD_PROFILE_LIMIT);
 
-  const squadLines = topSquad.map((p) => {
+  // Best Fit % must be the number the UI shows on the player card, so it is read from the exact
+  // selector behind PlayerDetailModal.tsx rather than re-scored here.
+  const bestFitById = new Map<string, number>();
+  for (const p of profiledSquad) {
+    const best = analyzePlayerCard(p, players).bestIpRole;
+    if (best) bestFitById.set(p.id, best.fitPct);
+  }
+
+  const squadLines = profiledSquad.map((p) => {
     const a = p.attributes;
     const pBans = activeSuspensions.filter(
       (b) =>
@@ -1600,19 +1648,31 @@ export function buildLiveTacticalAnalystContext(
             .replace('Renew Now', 'Renew')
             .replace('Loan Out', 'Loan')}`
         : '';
-    const hasPlayed =
-      (p.minutes || 0) > 0 ||
-      p.rating !== null ||
-      (p.goals || 0) > 0 ||
-      (p.assists || 0) > 0;
-    const statsStr = hasPlayed
-      ? `${p.apps || '0'}/${p.minutes}m ${p.goals}G(${(p.xG || 0).toFixed(2)}xG) ${p.assists}A(${(p.xA || 0).toFixed(2)}xA) ${p.rating !== null ? `${p.rating.toFixed(2)}rt` : '-rt'}`
-      : '0m';
-    return `${p.name}${unitTag}|${p.position}|${p.age}y|${p.ability.toFixed(1)}★/${p.potential.toFixed(1)}★|${standing}|£${p.wagePw}/wk|${formatShortExpiry(p.expires)}|C${p.condition ?? '?'}%|${posFamStr ? `${posFamStr}|` : ''}${statsStr}|P${a.pace}S${a.stamina}J${a.jumpingReach}Pa${a.passing}F${a.finishing}T${a.tackling}D${a.decisions}W${a.workRate}${shortVerdict}${banTag}${injTag}`;
+    // Same predicate and same placeholder as the Squad table, so "has played" and "no rating"
+    // read identically in the UI and in this block.
+    const statsStr = hasPlayerMatchStats(p)
+      ? `${p.apps || '0'}/${p.minutes}m ${p.goals}G(${(p.xG || 0).toFixed(2)}xG) ${p.assists}A(${(p.xA || 0).toFixed(2)}xA) ${typeof p.rating === 'number' && p.rating > 0 ? `${p.rating.toFixed(2)}rt` : `${MISSING_VALUE}rt`}`
+      : `STATS ${MISSING_VALUE}`;
+    const bestFit = bestFitById.get(p.id);
+    const bestFitStr = bestFit !== undefined ? `BF${bestFit}%` : `BF${MISSING_VALUE}`;
+    // Badges, traits and Last-5 form live only here now that the import prompt no longer
+    // repeats a second squad table.
+    const badgeStr =
+      p.scoutBadges && p.scoutBadges.length > 0
+        ? `|B[${p.scoutBadges.slice(0, 3).join('/')}]`
+        : '';
+    const traitStr =
+      p.traits && p.traits.length > 0 ? `|T[${p.traits.slice(0, 3).join('/')}]` : '';
+    const formStr = p.last5Form
+      ? `|L5 ${p.last5Form.averageRating}(${p.last5Form.trend})`
+      : '';
+    return `${p.name}${unitTag}|${p.position}|${p.age}y|${p.ability.toFixed(1)}★/${p.potential.toFixed(1)}★|${standing}|${formatWeeklyWage(p.wagePw)}|${formatShortContractExpiry(p.expires)}|C${p.condition ?? '?'}%|${bestFitStr}|${posFamStr ? `${posFamStr}|` : ''}${statsStr}|P${a.pace}S${a.stamina}J${a.jumpingReach}Pa${a.passing}F${a.finishing}T${a.tackling}D${a.decisions}W${a.workRate}${badgeStr}${traitStr}${formStr}${shortVerdict}${banTag}${injTag}`;
   });
 
+  const squadProfileHeader = `=== SQUAD PROFILES & SEASON STATS (${profiledSquad.length} OF ${squadPool.fullPool} FULL POOL · ${squadPool.firstTeam} FIRST TEAM) — BF=Best Fit % ===`;
+
   const renderSquadProfilesToFit = (availableChars: number): string => {
-    const headerBase = `=== SQUAD PROFILES & SEASON STATS (${topSquad.length} OF ${players.length}) ===`;
+    const headerBase = squadProfileHeader;
     const fullBlock = `${headerBase}\n${squadLines.join('\n')}`;
     if (fullBlock.length <= availableChars) {
       return fullBlock;
@@ -1633,8 +1693,8 @@ export function buildLiveTacticalAnalystContext(
     if (kept.length === 0 && squadLines.length > 0) {
       kept.push(squadLines[0]);
     }
-    const omitted = Math.max(0, players.length - kept.length);
-    const dynamicHeader = `=== SQUAD PROFILES & SEASON STATS (${kept.length} OF ${players.length}) ===`;
+    const omitted = Math.max(0, squadPool.fullPool - kept.length);
+    const dynamicHeader = `=== SQUAD PROFILES & SEASON STATS (${kept.length} OF ${squadPool.fullPool} FULL POOL · ${squadPool.firstTeam} FIRST TEAM) — BF=Best Fit % ===`;
     return `${dynamicHeader}\n${kept.join('\n')}${
       omitted > 0 ? `\n(+${omitted} additional squad players omitted for context budget)` : ''
     }`;
@@ -1643,13 +1703,15 @@ export function buildLiveTacticalAnalystContext(
   blocks.push({
     id: 'squad_profiles',
     tier: 'P0',
-    fullText: `=== SQUAD PROFILES & SEASON STATS (${topSquad.length} OF ${players.length}) ===\n${squadLines.join('\n')}`,
+    fullText: `${squadProfileHeader}\n${squadLines.join('\n')}`,
     renderToFit: renderSquadProfilesToFit,
   });
 
+  // Meta scores are ranked across the FULL pool, not the 26 profiled players: otherwise the
+  // squad's highest-meta player can be missing from the prompt's "top" list entirely.
   const researchBlock = buildAiResearchContextBlock({
     clubName: clubName || 'Club',
-    players: topSquad,
+    players,
     includeMeta: true,
     includeDualPhase: true,
   });
@@ -1662,7 +1724,11 @@ export function buildLiveTacticalAnalystContext(
       avail > 180 ? researchBlock.slice(0, avail).trimEnd() : '',
   });
 
-  return assemblePriorityBudgetedContext(blocks, MAX_LIVE_ANALYST_CONTEXT_CHARS);
+  return assemblePriorityBudgetedContext(
+    blocks,
+    MAX_LIVE_ANALYST_CONTEXT_CHARS,
+    LIVE_ANALYST_SOFT_MAX_CHARS
+  );
 }
 
 /**
@@ -2567,12 +2633,15 @@ function isDiagnosticsReport(
   );
 }
 
+/**
+ * Pre-flight validation guard. Delegates to the shared placeholder vocabulary so `—`, `-`,
+ * `N/A` and the rest of the app's empty markers are all treated as "no data" here too.
+ */
 function isPlaceholderString(value: string): boolean {
   const trimmed = value.trim();
-  if (!trimmed) return true;
-  if (trimmed === '--' || trimmed === '-- · --') return true;
-  if (/^(?:missing|null|undefined|n\/a|tbd|unknown)$/i.test(trimmed)) return true;
-  if (/^awaiting\b/i.test(trimmed)) return true;
+  if (isPlaceholderValue(trimmed)) return true;
+  if (trimmed === '-- · --') return true;
+  if (/^(?:missing|awaiting)\b/i.test(trimmed)) return true;
   return false;
 }
 

@@ -1562,71 +1562,6 @@ export function hydrateAppFromDecodedFmSave(
   // 4. Build Rich Ground-Truth Context for Tactical Analyst (ZERO raw CA/PA or raw hidden numbers!)
   const nextFixtureCompetition = decoded.upcomingFixtures[0]?.competition || null;
 
-  const topPlayersSummary = decoded.players
-    .slice(0, 28)
-    .map((p) => {
-      const a = p.attributes;
-      const attrStr = a
-        ? `Pac ${a.pace}/Acc ${a.acceleration}/Sta ${a.stamina}/JR ${a.jumpingReach}/Det ${a.determination}/Pas ${a.passing}/Fin ${a.finishing}/Tck ${a.tackling}`
-        : '';
-      const { abilityStars, potentialStars } = getPlayerStars(p);
-      const badges = resolveScoutBadges(p);
-      const badgeStr = badges.length > 0 ? ` | Badges: [${badges.join(', ')}]` : '';
-      const traitStr =
-        p.traits && p.traits.length > 0
-          ? ` | Traits: [${p.traits.slice(0, 4).join(', ')}]`
-          : '';
-      const pRatings =
-        p.last5Ratings || lookupUidRecord(decoded.playerMatchStats, p.uid);
-      const form = pRatings && pRatings.length > 0 ? calculateLast5Form(pRatings) : null;
-      const formStr = form
-        ? ` | L5 Form: ${form.averageRating} (${form.trend})`
-        : '';
-      const pBans = bansByUid.get(p.uid) || [];
-      const banStr =
-        pBans.length > 0
-          ? ` | [${pBans
-              .map((b) =>
-                isSuspensionActiveForCompetition(b, nextFixtureCompetition)
-                  ? `BANNED NEXT ${b.matchesRemaining}m ${b.scope}`
-                  : `${b.scope === 'cup' ? 'CUP-BAN-ONLY' : 'OTHER-COMP-BAN-ONLY'} ${b.matchesRemaining}m ${b.competitionName}`
-              )
-              .join(', ')}]`
-          : '';
-      const posEntries = p.positionRatings
-        ? Object.entries(p.positionRatings)
-            .filter(([, v]) => typeof v === 'number' && Number.isFinite(v) && v > 0)
-            .map(([k, v]) => [k.toUpperCase(), Math.round(v as number)] as [string, number])
-        : [];
-      const posUpper = new Map<string, number>(posEntries);
-      const notablePos = posEntries
-        .filter(([, v]) => v >= 12)
-        .sort((x, y) => y[1] - x[1]);
-      if ((posUpper.get('AMC') ?? 0) >= 15 && typeof posUpper.get('MC') === 'number' && (posUpper.get('MC') as number) < 12) {
-        notablePos.push(['MC', posUpper.get('MC') as number]);
-      }
-      const posFamStr =
-        notablePos.length > 0
-          ? ` | PosFam[${notablePos.slice(0, 5).map(([k, v]) => `${k}:${v}`).join(',')}]`
-          : '';
-      const cd = p.contractDetails;
-      const clauseParts: string[] = [];
-      if (cd?.promisedPlayingTime) clauseParts.push(`PT: ${cd.promisedPlayingTime}`);
-      if (cd?.optionalExtensionYears && cd.optionalExtensionYears > 0) {
-        clauseParts.push(`Club Opt +${cd.optionalExtensionYears}y`);
-      }
-      if (cd?.releaseClauses && cd.releaseClauses.length > 0) {
-        clauseParts.push(
-          cd.releaseClauses
-            .map((rc) => `${rc.type} ${formatMoney(rc.amount)}`)
-            .join(', ')
-        );
-      }
-      const clauseStr = clauseParts.length > 0 ? ` | Contract: ${clauseParts.join(' · ')}` : '';
-      return `- ${p.name} (${p.position}, Age ${p.age}, ${abilityStars.toFixed(1)}★/${potentialStars.toFixed(1)}★, £${p.wagePw}/wk exp ${p.expires}): Apps ${p.apps}, ${p.minutes}m, Rat ${p.rating ?? '-'}, ${p.goals}G (${p.xG} xG), ${p.assists}A (${p.xA} xA), Tck ${p.tckPct}%, Hdr ${p.hdrPct}%${posFamStr} | ${attrStr}${formStr}${banStr}${clauseStr}${badgeStr}${traitStr}`;
-    })
-    .join('\n');
-
   const playedLines = decoded.playedMatches
     .map(
       (m) =>
@@ -1820,6 +1755,31 @@ export function hydrateAppFromDecodedFmSave(
       ...sponsorshipWarnings,
     ])
   );
+
+  // Contract clauses are not part of the canonical squad profile line, so they travel here — only
+  // for players that actually carry one, which keeps this a clause appendix rather than a second
+  // squad table.
+  const contractClauseLines = decoded.players
+    .map((p) => {
+      const cd = p.contractDetails;
+      if (!cd) return null;
+      const parts: string[] = [];
+      if (cd.promisedPlayingTime) parts.push(`PT: ${cd.promisedPlayingTime}`);
+      if (cd.optionalExtensionYears && cd.optionalExtensionYears > 0) {
+        parts.push(`Club Opt +${cd.optionalExtensionYears}y`);
+      }
+      for (const rc of cd.releaseClauses || []) {
+        parts.push(`${rc.type} ${formatMoney(rc.amount)}`);
+      }
+      return parts.length > 0 ? `- ${p.name}: ${parts.join(' · ')}` : null;
+    })
+    .filter((line): line is string => Boolean(line));
+
+  const contractClauseBlock =
+    contractClauseLines.length > 0
+      ? `=== CONTRACT CLAUSES IN SAVE (${contractClauseLines.length} PLAYERS) ===\n${contractClauseLines.join('\n')}\n\n`
+      : '';
+
   const usedFastSync = Boolean(decoded.fastSync ?? decoded.meta?.fastSync ?? false);
 
   const analystPromptContext = `[LIVE FULL .FM SAVE DECODED VIA FMSAVE ${decoded.meta.fmsaveVersion} — PASS 0 & PASS 1 TIER-1 REAL IN-GAME DATA${usedFastSync ? ' · FAST SYNC MODE' : ''}]
@@ -1852,9 +1812,14 @@ ${suspensionLines}
 === LIVE MENTORING GROUPS IN SAVE ===
 ${mentoringLines}
 ${fullTableLines}
-=== FULL MANAGED SQUAD (${decoded.players.length} PLAYERS WITH STAR RATINGS, SCOUT BADGES, CONTRACT CLAUSES, TRAITS, LAST-5 FORM & ATTRIBUTES) ===
-${topPlayersSummary}
-${targetsSummary}${mergedWarnings.length > 0 ? `\n=== READER NOTES (NON-FATAL) ===\n${mergedWarnings.map((w) => `- ${w}`).join('\n')}\n` : ''}
+=== SQUAD DATA — SEE THE CANONICAL SQUAD PROFILES BLOCK ===
+Per-player squad detail is NOT repeated here. It is carried once, by the live app context block
+"SQUAD PROFILES & SEASON STATS (X OF N FULL POOL)" — the same pool the Squad tab renders, with star
+ratings, contract/wage, Best Fit %, season stats, attributes, badges, traits, Last-5 form, suspensions
+and injuries. Always quote squad counts from that block (Full Pool + First Team), never from an
+earlier import summary.
+
+${contractClauseBlock}${targetsSummary}${mergedWarnings.length > 0 ? `\n=== READER NOTES (NON-FATAL) ===\n${mergedWarnings.map((w) => `- ${w}`).join('\n')}\n` : ''}
 ANALYST MISSION FOR THIS .FM SAVE DROP:
 1. Acknowledge the exact in-game date (${saveDateLabel}), league position, recent results (never fabricate match-level xG or possession if not present in the save — cite the exact player season xG/xA and fixture scorelines), financial runway, and finances directly from the .fm file.
 2. Audit player performance, attribute changes, Last-5 form trends, Scout Report Badges, traits, fatigue/minutes load, contract clauses/extensions, injuries, and active suspensions. NEVER select a BANNED player as a starter, and NEVER cite raw hidden CA/PA or raw hidden attribute numbers.

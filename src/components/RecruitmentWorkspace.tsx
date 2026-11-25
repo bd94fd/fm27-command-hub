@@ -21,6 +21,7 @@ import {
   TransferActionVerdict,
 } from '../utils/transferAudit';
 import { evaluateInGameShortlist } from '../utils/shortlistAdviceEngine';
+import { formatWeeklyWage } from '../utils/squadViewHelpers';
 import { ScoutTargetDetailModal } from './ScoutTargetDetailModal';
 import {
   buildTargetVsStarterComparison,
@@ -422,9 +423,9 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
     const summaryLines = shortlistAudit.items.slice(0, 10).map((item) => {
       const t = item.target;
       const inc = item.targetIncumbent
-        ? `${item.targetIncumbent.name} (${item.targetIncumbent.ability.toFixed(1)}★, £${item.targetIncumbent.wagePw}/wk)`
+        ? `${item.targetIncumbent.name} (${item.targetIncumbent.ability.toFixed(1)}★, ${formatWeeklyWage(item.targetIncumbent.wagePw)})`
         : 'Open Gap';
-      return `- ${t.name} (${t.primaryPosition}, Age ${t.age}, ${t.currentClub || 'Free Agent'}) | ${item.tierLabel} | ${item.bestIpRole}/${item.bestOopRole} (${item.ipRoleFitPct}%) | ${item.budget.feeLabel} · £${item.budget.expectedWagePw}/wk | ${item.character.personalityLabel} | vs ${inc}`;
+      return `- ${t.name} (${t.primaryPosition}, Age ${t.age}, ${t.currentClub || 'Free Agent'}) | ${item.tierLabel} | ${item.bestIpRole}/${item.bestOopRole} (${item.ipRoleFitPct}%) | ${item.budget.feeLabel} · ${formatWeeklyWage(item.budget.expectedWagePw)} | ${item.character.personalityLabel} | vs ${inc}`;
     });
     const prompt = `Review my In-Game FM27 Shortlist (${shortlistAudit.items.length} players, ${shortlistAudit.actionableCount} passing our Strict Club Budget Gate). Rank the top moves to sign or loan first — covering Direct First-Team Upgrades, Immediate Gap Fillers, and Future U23 Successors — and tell me who to remove from my shortlist:\n${summaryLines.join('\n')}`;
     onAskAnalyst(prompt);
