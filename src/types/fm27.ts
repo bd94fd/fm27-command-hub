@@ -164,7 +164,8 @@ export interface StaffRecord {
   age: number;
   nation: string;
   club: string;
-  wagePw: number;
+  /** Null when no staff contract was decoded; never 0, which reads as a real £0 earner. */
+  wagePw: number | null;
   expires: string;
   attributes: StaffAttributes;
   /** FM27 secondary job on the current contract (fmsave 0.14.4+); display-only. */

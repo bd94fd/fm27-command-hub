@@ -12,6 +12,7 @@ import {
   shouldDefaultFastSync,
   formatStepTimingLabel,
 } from './fmSaveHydrator';
+import { computeWeeklyStaffPayroll, formatWeeklyStaffPayroll } from './staffRatings';
 import {
   FmImportScope,
   HydratedSquadPlayer,
@@ -520,8 +521,49 @@ test('fmsave 0.14.4 sponsorship dates_reordered raises an extraction warning', (
   assert.match(warning, /1 ended FM27 contract/);
 });
 
-test('Worker cache-buster is bumped to ?v=23 and FmImportScope supports club_and_division with clamping', () => {
-  assert.equal(WORKER_CACHE_BUSTER, '?v=23');
+test('an undecoded staff wage stays null so the payroll total reads -- instead of a silent £0', () => {
+  const payload = {
+    meta: {
+      game: 'FM27',
+      build: '27.1.0',
+      knownBuild: true,
+      saveName: 'staff-wages.fm',
+      gameDateIso: '2027-09-19',
+      gameDateDmy: '19/09/2027',
+      clubUid: 4165,
+      clubName: 'KVV Zelzate',
+      managerName: 'Bobby Dean',
+      balance: -700000,
+      fmsaveVersion: '0.14.4',
+    },
+    players: [],
+    staff: [
+      { uid: 77, name: 'Kris De Vos', role: 'Coach', age: 41, nation: 'Belgium', club: 'KVV Zelzate', wagePw: 1250, expires: '30/06/2027' },
+      { uid: 78, name: 'No Contract Coach', role: 'Coach', age: 38, nation: 'Belgium', club: 'KVV Zelzate', wagePw: null, expires: 'N/A' },
+    ],
+    playedMatches: [],
+    upcomingFixtures: [],
+    leagueStanding: null,
+    finances: null,
+    activeInjuries: [],
+    tactics: [],
+    mentoring: [],
+  } as unknown as DecodedFmSavePayload;
+
+  const hydrated = hydrateAppFromDecodedFmSave(payload, [], []);
+  const staff = hydrated.updatedStaff || [];
+  assert.equal(staff.length, 2);
+  assert.equal(staff[0].wagePw, 1250);
+  assert.equal(staff[1].wagePw, null);
+  // One missing wage makes the shared total unknown (-- plus a count), never a partial sum read as complete.
+  const payroll = computeWeeklyStaffPayroll(staff);
+  assert.equal(payroll.totalWeekly, null);
+  assert.equal(payroll.missingWageCount, 1);
+  assert.equal(formatWeeklyStaffPayroll(payroll), '-- (1 of 2 wages unreadable)');
+});
+
+test('Worker cache-buster is bumped to ?v=24 and FmImportScope supports club_and_division with clamping', () => {
+  assert.equal(WORKER_CACHE_BUSTER, '?v=24');
 
   const scope: FmImportScope = 'club_and_division';
   assert.equal(scope, 'club_and_division');
@@ -1382,7 +1424,7 @@ test('Step 4/6 & Step 3/6 Watchdogs: 150s inactivity + 480s hard ceiling, detail
   assert.doesNotMatch(hydrated.analystPromptContext, /\bCA\s*\d+|\bPA\s*\d+/i);
 });
 
-test('Single-Pass game_db 4-Stage Pipeline & ?v=23 Static Guardrails: all game_db reads finish before releasing game_db for Fixtures/League/SeasonStats/CareerHistory, and Checkpoints emitted', () => {
+test('Single-Pass game_db 4-Stage Pipeline & ?v=24 Static Guardrails: all game_db reads finish before releasing game_db for Fixtures/League/SeasonStats/CareerHistory, and Checkpoints emitted', () => {
   const workerSrc = fs.readFileSync(
     path.resolve(process.cwd(), 'public/fm-save-worker.js'),
     'utf8'
@@ -1400,10 +1442,10 @@ test('Single-Pass game_db 4-Stage Pipeline & ?v=23 Static Guardrails: all game_d
     'utf8'
   );
 
-  // Worker, mapper, and client cache-buster synced to ?v=23
-  assert.equal(WORKER_CACHE_BUSTER, '?v=23');
-  assert.match(workerSrc, /\/fm-save-mapper\.py\?v=23/);
-  assert.match(mapperSrc, /MAPPER_CACHE_BUSTER\s*=\s*"\?v=23"/);
+  // Worker, mapper, and client cache-buster synced to ?v=24
+  assert.equal(WORKER_CACHE_BUSTER, '?v=24');
+  assert.match(workerSrc, /\/fm-save-mapper\.py\?v=24/);
+  assert.match(mapperSrc, /MAPPER_CACHE_BUSTER\s*=\s*"\?v=24"/);
   assert.match(clientSrc, /WORKER_CACHE_BUSTER/);
   assert.match(clientSrc, /WORKER_INACTIVITY_TIMEOUT_MS\s*=\s*150_000/);
   assert.match(clientSrc, /WORKER_HARD_CEILING_MS\s*=\s*480_000/);
@@ -1685,7 +1727,7 @@ test('Progressive Checkpoint Recovery: resolves with latest valid squad checkpoi
     new ArrayBuffer(8)
   )) as DecodedFmSavePayload;
 
-  assert.equal(capturedWorkerUrl, '/fm-save-worker.js?v=23');
+  assert.equal(capturedWorkerUrl, '/fm-save-worker.js?v=24');
   assert.equal(terminatedAfterStage3, true);
   assert.equal(recovered.players.length, 1);
   assert.equal(recovered.players[0].name, 'Quinten Boudry');

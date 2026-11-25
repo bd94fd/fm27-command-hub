@@ -575,6 +575,25 @@ class TestFmsave0144Adoption(unittest.TestCase):
         )
         self.assertIsNone(mapper._decode_fm27_native_role("ip", [{"secondHigh": 0x400000}], 0))
 
+    def test_staff_contract_fields_read_flat_fmsave_staff_row(self) -> None:
+        # fmsave's Staff row carries the contract flat (has_contract/wage/contract_end);
+        # reading s.contract returned None for every row and zeroed the whole staff payroll.
+        row = types.SimpleNamespace(has_contract=True, wage=1250, contract_end=date(2027, 6, 30))
+        self.assertEqual(mapper._staff_contract_fields(row), (1250, "30/06/2027"))
+
+        expired = types.SimpleNamespace(has_contract=False, wage=900, contract_end=date(2026, 1, 1))
+        self.assertEqual(mapper._staff_contract_fields(expired), (None, None))
+
+        unreadable = types.SimpleNamespace(has_contract=True)
+        self.assertEqual(mapper._staff_contract_fields(unreadable), (None, None))
+
+    def test_staff_contract_fields_fall_back_to_nested_contract(self) -> None:
+        nested = types.SimpleNamespace(
+            has_contract=True,
+            contract=types.SimpleNamespace(wage=800, end=date(2028, 1, 15)),
+        )
+        self.assertEqual(mapper._staff_contract_fields(nested), (800, "15/01/2028"))
+
     def test_sponsorship_dataclass_serializes_dates_reordered(self) -> None:
         from dataclasses import dataclass
 

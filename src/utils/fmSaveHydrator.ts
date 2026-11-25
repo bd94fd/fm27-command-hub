@@ -48,7 +48,7 @@ import {
   deriveFootballSeasonLabel,
 } from './matchScopeHelpers';
 
-export const WORKER_CACHE_BUSTER = '?v=23';
+export const WORKER_CACHE_BUSTER = '?v=24';
 
 export function resolveSquadUnit(
   teamSlot?: number | null
@@ -1528,7 +1528,8 @@ export function hydrateAppFromDecodedFmSave(
     age: Number(s.age) || 35,
     nation: s.nation || 'FM',
     club: s.club || decoded.meta.clubName || '',
-    wagePw: Number(s.wagePw) || 0,
+    wagePw:
+      typeof s.wagePw === 'number' && Number.isFinite(s.wagePw) ? s.wagePw : null,
     expires: s.expires || 'N/A',
     secondaryJob: s.secondaryJob ?? null,
     jobRatings: s.jobRatings ?? null,

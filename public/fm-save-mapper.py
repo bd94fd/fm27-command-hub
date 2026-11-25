@@ -49,7 +49,7 @@ try:
 except Exception:
     _layout_patcher = None  # type: ignore[assignment]
 
-MAPPER_CACHE_BUSTER = "?v=23"
+MAPPER_CACHE_BUSTER = "?v=24"
 
 # FM27 27.1.0 native 64-bit in/out-of-possession role bit tables. Bits already claimed by
 # _FM27_ROLE_DUTY_MASK are duty bits, not role bits, and are masked out before decoding.
@@ -153,6 +153,27 @@ def _resolve_tactic_slot_roles(
     else:
         source = "native"
     return slot_ip, slot_oop, source
+
+
+def _staff_contract_fields(s_obj: Any) -> tuple[int | None, str | None]:
+    """Weekly wage and contract end for one staff row, or (None, None) when unreadable.
+
+    fmsave's `Staff` model carries the contract flat on the row (`has_contract`, `wage`,
+    `contract_end`); only Player has a nested `contract` object. Reading `s.contract`
+    returned None for every row, which zeroed all wages and blanked all expiries.
+    """
+    if getattr(s_obj, "has_contract", None) is False:
+        return None, None
+    wage = getattr(s_obj, "wage", None)
+    end = getattr(s_obj, "contract_end", None)
+    if end is None:
+        end = getattr(s_obj, "contract_expiry", None)
+    if wage is None and end is None:
+        nested = getattr(s_obj, "contract", None)
+        if nested is not None:
+            wage = getattr(nested, "wage", None)
+            end = getattr(nested, "end", None)
+    return _int(wage, None), _dmy(end)
 
 
 def _resolve_staff_secondary_job(s_obj: Any) -> str | None:
@@ -4057,6 +4078,10 @@ def _extract_club_staff_fast(save: Any, club_uid: int | None) -> list[Any] | Non
             locate_listed_header,
             read_staff_lists,
         )
+        try:
+            from fmsave.readers.staff import _read_job_ratings
+        except ImportError:  # fmsave < 0.14.4
+            _read_job_ratings = None  # type: ignore[assignment]
 
         save_info = ctx.info
         clock = save_info.game_date
@@ -4117,6 +4142,12 @@ def _extract_club_staff_fast(save: Any, club_uid: int | None) -> list[Any] | Non
             records_by_person: dict[int, list[tuple[int, Any]]] = {}
             header_by_person: dict[int, int] = {}
             offer_marker_offset = staff_layout.offer_marker_offset
+            contract_fields_end = max(
+                layouts.contracts.wage_offset + _UINT32.size,
+                layouts.contracts.selector_offset
+                + (offer_marker_offset or 0)
+                + len(layouts.contracts.tag),
+            )
 
             if gap >= 0:
                 contract_pat = re.compile(
@@ -4264,6 +4295,7 @@ def _extract_club_staff_fast(save: Any, club_uid: int | None) -> list[Any] | Non
             row_persons = {person_id for _c_uid, person_id in rows_by_club_and_person}
             objects: dict[int, Any] = {}
             hdr_reader = _header_reader(staff_layout)
+            person_object_fields = {f.name for f in _dc_fields(_PersonObject)}
             for person_id in sorted(row_persons):
                 header = header_by_person[person_id]
                 header_values = _header_values(game_db, header, hdr_reader, staff_layout)
@@ -4295,20 +4327,51 @@ def _extract_club_staff_fast(save: Any, club_uid: int | None) -> list[Any] | Non
                 person = person_decoder.decode(game_db, window_start, window_end)
                 if person is None and is_human_manager and human_floor is not None:
                     person = person_decoder.decode(game_db, window_start, window_end, human_floor)
-                objects[person_id] = _PersonObject(
-                    header=header,
-                    uid=uid,
-                    unique_id=unique_id,
-                    is_human_manager=is_human_manager,
-                    person=person,
-                    block=block,
-                )
+                object_kwargs: dict[str, Any] = {
+                    "header": header,
+                    "uid": uid,
+                    "unique_id": unique_id,
+                    "is_human_manager": is_human_manager,
+                    "person": person,
+                    "block": block,
+                }
+                # fmsave 0.14.4 grew `end` (secondary-job bound) and `job_ratings`.
+                if "end" in person_object_fields:
+                    object_kwargs["end"] = min(
+                        closing_offset or len(game_db), next_header or len(game_db)
+                    )
+                if "job_ratings" in person_object_fields:
+                    object_kwargs["job_ratings"] = (
+                        None
+                        if is_human_manager or _read_job_ratings is None
+                        else _read_job_ratings(
+                            game_db,
+                            header if tag_offset is None else tag_offset + contract_fields_end,
+                            person_decoder.last_block_start,
+                            layouts,
+                        )
+                    )
+                objects[person_id] = _PersonObject(**object_kwargs)
 
             rows_by_club_and_person = {
                 k: v for k, v in rows_by_club_and_person.items() if k[1] in objects
             }
             roles = _row_roles(game_db, rows_by_club_and_person, no_contract_roles, layouts)
-            return list(_build_rows(rows_by_club_and_person, objects, ci, roles))
+            # fmsave 0.14.4 needs the game_db, contract decoder and staff layout to read
+            # wages, contract ends and secondary jobs; 0.14.3 took four arguments.
+            if len(inspect.signature(_build_rows).parameters) >= 7:
+                rows = _build_rows(
+                    rows_by_club_and_person,
+                    objects,
+                    ci,
+                    roles,
+                    game_db,
+                    contract_decoder,
+                    staff_layout,
+                )
+            else:
+                rows = _build_rows(rows_by_club_and_person, objects, ci, roles)
+            return list(rows)
     except Exception as exc:
         _record_fast_fallback("staff", exc)
         return None
@@ -4492,7 +4555,7 @@ def step_3_2_staff() -> str:
                             s_attrs = scaled_attrs
                     except Exception:
                         pass
-                s_contract = getattr(s, "contract", None)
+                s_wage, s_expires = _staff_contract_fields(s)
                 s_def = _clamp_attr(_first_attr(s_attrs, ("defending", "coaching_defending")) if s_attrs else _first_attr(s, ("coaching_defending", "defending")), 10)
                 s_att = _clamp_attr(_first_attr(s_attrs, ("attacking", "coaching_attacking")) if s_attrs else _first_attr(s, ("coaching_attacking", "attacking")), 10)
                 s_tac = _clamp_attr(_first_attr(s_attrs, ("tactical", "coaching_tactical")) if s_attrs else _first_attr(s, ("coaching_tactical", "tactical")), 10)
@@ -4505,8 +4568,8 @@ def step_3_2_staff() -> str:
                     "age": _int(getattr(s, "age", None), 35),
                     "nation": _resolve_player_nationality(s, staff_nation_lookup, default="N/A"),
                     "club": club_name,
-                    "wagePw": _int(getattr(s_contract, "wage", None), 0) if s_contract else 0,
-                    "expires": (_dmy(getattr(s_contract, "end", None)) or "N/A") if s_contract else "N/A",
+                    "wagePw": s_wage,
+                    "expires": s_expires,
                     "secondaryJob": _resolve_staff_secondary_job(s),
                     "jobRatings": _resolve_staff_job_ratings(s),
                     "coachingDefending": s_def,
