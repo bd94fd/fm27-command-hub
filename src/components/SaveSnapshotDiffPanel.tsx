@@ -628,7 +628,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                           ? 'text-emerald-400'
                           : diff.kpiDeltas.squadCountDelta < 0
                             ? 'text-rose-400'
-                            : 'text-slate-500'
+                            : 'text-slate-400'
                       }
                     >
                       {diff.kpiDeltas.squadCountDelta >= 0 ? '+' : ''}
@@ -651,7 +651,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                           ? 'text-emerald-400'
                           : diff.kpiDeltas.avgAbilityDelta < 0
                             ? 'text-rose-400'
-                            : 'text-slate-500'
+                            : 'text-slate-400'
                       }
                     >
                       {diff.kpiDeltas.avgAbilityDelta >= 0 ? '+' : ''}
@@ -1054,7 +1054,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                       Improved ({journey.improved.length})
                     </div>
                     {journey.improved.length === 0 ? (
-                      <p className="text-slate-500">No major upward shifts between these two saves.</p>
+                      <p className="text-slate-400">No major upward shifts between these two saves.</p>
                     ) : (
                       journey.improved.map((item, idx) => (
                         <div key={idx} className="space-y-0.5 border-t border-slate-800/70 pt-2 first:border-t-0 first:pt-0">
@@ -1077,7 +1077,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                       Worsened ({journey.worsened.length})
                     </div>
                     {journey.worsened.length === 0 ? (
-                      <p className="text-slate-500">No downward regressions detected.</p>
+                      <p className="text-slate-400">No downward regressions detected.</p>
                     ) : (
                       journey.worsened.map((item, idx) => (
                         <div key={idx} className="space-y-0.5 border-t border-slate-800/70 pt-2 first:border-t-0 first:pt-0">
@@ -1100,7 +1100,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                       Things To Note ({journey.thingsToNote.length})
                     </div>
                     {journey.thingsToNote.length === 0 ? (
-                      <p className="text-slate-500">No structural or governance alerts.</p>
+                      <p className="text-slate-400">No structural or governance alerts.</p>
                     ) : (
                       journey.thingsToNote.map((item, idx) => (
                         <div key={idx} className="space-y-0.5 border-t border-slate-800/70 pt-2 first:border-t-0 first:pt-0">
@@ -1122,7 +1122,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                 <div className="rounded-xl border border-slate-800 bg-slate-950/60 divide-y divide-slate-800/70 max-h-64 overflow-y-auto text-xs">
                   {activeTab === 'stats' &&
                     (journey.playerStatDeltas.length === 0 ? (
-                      <div className="p-4 text-slate-500">
+                      <div className="p-4 text-slate-400">
                         No match-stat changes recorded between {diff.fromDate} and {diff.toDate}.
                       </div>
                     ) : (
@@ -1171,7 +1171,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
 
                   {activeTab === 'risers' &&
                     (diff.risers.length === 0 ? (
-                      <div className="p-4 text-slate-500">
+                      <div className="p-4 text-slate-400">
                         No star-rating risers detected between {diff.fromDate} and {diff.toDate}.
                       </div>
                     ) : (
@@ -1201,7 +1201,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
 
                   {activeTab === 'fallers' &&
                     (diff.fallers.length === 0 ? (
-                      <div className="p-4 text-slate-500">
+                      <div className="p-4 text-slate-400">
                         No star-rating declines detected between {diff.fromDate} and {diff.toDate}.
                       </div>
                     ) : (
@@ -1225,7 +1225,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
 
                   {activeTab === 'contracts' &&
                     (diff.contractChanges.length === 0 ? (
-                      <div className="p-4 text-slate-500">
+                      <div className="p-4 text-slate-400">
                         No contract expiry or wage changes detected.
                       </div>
                     ) : (
@@ -1261,7 +1261,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
 
                   {activeTab === 'arrivals' &&
                     (diff.newgens.length === 0 ? (
-                      <div className="p-4 text-slate-500">
+                      <div className="p-4 text-slate-400">
                         No new arrivals or youth intake players detected.
                       </div>
                     ) : (
@@ -1285,7 +1285,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
 
                   {activeTab === 'departed' &&
                     (diff.departed.length === 0 ? (
-                      <div className="p-4 text-slate-500">No squad departures detected.</div>
+                      <div className="p-4 text-slate-400">No squad departures detected.</div>
                     ) : (
                       diff.departed.map((p) => (
                         <div
