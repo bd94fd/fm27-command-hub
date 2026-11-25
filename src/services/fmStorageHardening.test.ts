@@ -668,6 +668,9 @@ test('a state save enqueued while a clear is draining still reaches IndexedDB', 
   const committedDates: string[] = [];
   const hubStore = new Map<string, unknown>();
   const prevWindow = (globalThis as unknown as { window?: unknown }).window;
+  // The first put stays open until the test releases it, so the "write in
+  // flight, clear already issued" window is explicit rather than timer-based.
+  let releaseFirstWrite: (() => void) | null = null;
 
   const indexedDB = {
     open: () => {
@@ -680,12 +683,17 @@ test('a state save enqueued while a clear is draining still reaches IndexedDB', 
             const tx: Record<string, unknown> = {
               objectStore: () => ({
                 put: (val: unknown, _key: string) => {
-                  setTimeout(() => {
-                    const record = val as { saveDate?: string };
+                  const record = val as { saveDate?: string };
+                  const commit = () => {
                     hubStore.set('fm27_command_hub_state_v1', val);
                     if (record.saveDate) committedDates.push(record.saveDate);
                     (tx.oncomplete as (() => void) | null)?.();
-                  }, 40);
+                  };
+                  if (releaseFirstWrite === null) {
+                    releaseFirstWrite = commit;
+                  } else {
+                    setTimeout(commit, 0);
+                  }
                 },
                 delete: () => {
                   setTimeout(() => {
@@ -738,11 +746,15 @@ test('a state save enqueued while a clear is draining still reaches IndexedDB', 
 
   try {
     const inFlight = savePersistedFmState(buildState('01/05/2028'));
+    while (releaseFirstWrite === null) {
+      await new Promise((r) => setTimeout(r, 1));
+    }
 
-    // Land the next save inside the first write's in-flight window.
-    await new Promise((r) => setTimeout(r, 10));
     const clearing = clearPersistedFmState();
     const freshSave = savePersistedFmState(buildState('02/05/2028'));
+    const release = releaseFirstWrite as (() => void) | null;
+    assert.ok(release, 'first write should be waiting to commit');
+    release();
 
     await Promise.all([inFlight, freshSave]);
     await clearing;
@@ -754,6 +766,10 @@ test('a state save enqueued while a clear is draining still reaches IndexedDB', 
     assert.ok(
       committedDates.includes('02/05/2028'),
       'a save enqueued after the clear began must still reach IndexedDB'
+    );
+    assert.ok(
+      committedDates.indexOf('01/05/2028') < committedDates.indexOf('02/05/2028'),
+      'queued writes must stay serialised in arrival order'
     );
   } finally {
     if (prevWindow === undefined) {
