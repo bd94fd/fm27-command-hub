@@ -3127,8 +3127,8 @@ def _build_shortlist_target_dict(
     pos_ratings: dict[str, int] = {}
     if raw_pos_map is not None:
         for pos_key in (
-            "gk", "dl", "dc", "dr", "wbl", "dm", "wbr", "ml", "mc", "mr",
-            "aml", "amc", "amr", "st", "stc", "GK", "DL", "DC", "DR", "WBL",
+            "gk", "sw", "dl", "dc", "dr", "wbl", "dm", "wbr", "ml", "mc", "mr",
+            "aml", "amc", "amr", "st", "stc", "GK", "SW", "DL", "DC", "DR", "WBL",
             "DM", "WBR", "ML", "MC", "MR", "AML", "AMC", "AMR", "ST", "STC",
         ):
             pv = (
@@ -3175,7 +3175,7 @@ def _build_shortlist_target_dict(
     if contract_months is None:
         contract_months = 0 if is_unattached else 12
 
-    is_free_agent = is_unattached or (contract is None and not club_name_raw) or (is_unattached and contract_months == 0)
+    is_free_agent = is_unattached or (contract is None and not club_name_raw)
     is_already_on_loan = bool(getattr(p, "on_loan", False))
     p_wage = _int(
         (getattr(contract, "wage", None) if contract else None)

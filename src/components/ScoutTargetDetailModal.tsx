@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   AlertTriangle,
   Bookmark,
@@ -151,6 +151,10 @@ export const ScoutTargetDetailModal: React.FC<ScoutTargetDetailModalProps> = ({
   onClose,
 }) => {
   const [activeTab, setActiveTab] = useState<DossierTab>('fit');
+
+  useEffect(() => {
+    setActiveTab('fit');
+  }, [target?.uid]);
 
   if (!target) return null;
 

@@ -354,13 +354,14 @@ function evaluateBudgetGate(
       ? target.transferValue
       : null;
 
-  const estimatedFee = target.isFreeAgent
-    ? 0
-    : target.contractExpiryMonths > 0 && target.contractExpiryMonths <= 6
-      ? 0
-      : minReleaseClause && (!rawTransferVal || minReleaseClause < rawTransferVal)
-        ? minReleaseClause
-        : rawTransferVal;
+  let estimatedFee: number | null;
+  if (target.isFreeAgent || (target.contractExpiryMonths > 0 && target.contractExpiryMonths <= 6)) {
+    estimatedFee = 0;
+  } else if (minReleaseClause && (!rawTransferVal || minReleaseClause < rawTransferVal)) {
+    estimatedFee = minReleaseClause;
+  } else {
+    estimatedFee = rawTransferVal;
+  }
 
   const currentWage = Math.max(
     0,
@@ -412,12 +413,13 @@ function evaluateBudgetGate(
     feeLabel = `£0 Loan Path (Val ${estimatedFee ? formatCompactMoney(estimatedFee) : 'Parent Club'})`;
   } else {
     dealRoute = 'cash_fee';
-    feeLabel =
-      minReleaseClause && estimatedFee === minReleaseClause
-        ? `Clause ${formatCompactMoney(minReleaseClause)}`
-        : estimatedFee !== null && estimatedFee > 0
-          ? `Est. Fee ${formatCompactMoney(estimatedFee)}`
-          : 'Transfer Fee Required';
+    if (minReleaseClause && estimatedFee === minReleaseClause) {
+      feeLabel = `Clause ${formatCompactMoney(minReleaseClause)}`;
+    } else if (estimatedFee !== null && estimatedFee > 0) {
+      feeLabel = `Est. Fee ${formatCompactMoney(estimatedFee)}`;
+    } else {
+      feeLabel = 'Transfer Fee Required';
+    }
   }
 
   const netWeeklyWageDelta = incumbent ? expectedWagePw - incumbentWage : null;
@@ -721,11 +723,11 @@ export function evaluateInGameShortlist(
       footballDelta = bestExitOrBackup.delta;
     }
 
-    const comparison = targetIncumbent
+    let comparison = targetIncumbent
       ? buildTargetVsStarterComparison(target, targetIncumbent)
       : null;
 
-    const budget = evaluateBudgetGate(
+    let budget = evaluateBudgetGate(
       target,
       targetIncumbent,
       audit,
@@ -739,6 +741,7 @@ export function evaluateInGameShortlist(
       target.age <= 23 &&
       !character.hasSeriousRedFlag &&
       (dna.overallDnaScore >= 52 || ipRoleFitPct >= 55 || (footballDelta ?? -99) >= -4);
+    const hasLetExpireExit = exitCandidates.some((e) => e.verdict === 'Let Expire');
 
     // Classify into exact tier
     let tier: ShortlistRecommendationTier = 'below_squad_level';
@@ -764,7 +767,7 @@ export function evaluateInGameShortlist(
       (isGenuineSigningGap && meetsStarterBaseline) ||
       (hasReplaceBeforeSelling && meetsStarterBaseline) ||
       cheaperBackupUpgrade ||
-      (isSuccessionGap && isYoungSuccessorProfile);
+      ((isSuccessionGap || hasLetExpireExit) && isYoungSuccessorProfile);
 
     if (!budget.passesBudgetGate) {
       if (isFootballUpgradeOrGapFit) {
@@ -785,17 +788,26 @@ export function evaluateInGameShortlist(
       tierLabel = 'Fills Gap Now';
       badgeTone = 'sky';
     } else if (cheaperBackupUpgrade && bestExitOrBackup) {
+      const switchedIncumbent = targetIncumbent?.id !== bestExitOrBackup.player.id;
       targetIncumbent = bestExitOrBackup.player;
       incumbentRoleLabel = bestExitOrBackup.isExitSlot
         ? 'Expiring/Exit Slot'
         : 'Senior Rotation/Backup';
       footballDelta = bestExitOrBackup.delta;
+      if (switchedIncumbent) {
+        comparison = buildTargetVsStarterComparison(target, targetIncumbent);
+        budget = evaluateBudgetGate(
+          target,
+          targetIncumbent,
+          audit,
+          transferBudgetRemaining
+        );
+      }
       tier = 'cheaper_squad_upgrade';
       tierLabel = 'Cheaper Squad Upgrade';
       badgeTone = 'teal';
     } else if (
-      (isSuccessionGap ||
-        exitCandidates.some((e) => e.verdict === 'Let Expire')) &&
+      (isSuccessionGap || hasLetExpireExit) &&
       isYoungSuccessorProfile
     ) {
       tier = 'future_succession';

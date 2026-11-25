@@ -468,7 +468,12 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
         thinPositions={thinPositions}
         successionGapPositions={successionGapPositions}
         view={view}
-        setView={setView}
+        setView={(nextView) => {
+          if (nextView === 'shortlist') {
+            setShortlistInitialFilter('ALL');
+          }
+          setView(nextView);
+        }}
         scopedPlayerAdvice={scopedPlayerAdvice}
         contractHorizonSummary={contractHorizonSummary}
         scoutedTargets={scoutedTargets}
