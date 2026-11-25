@@ -8,6 +8,7 @@ import {
   SquadViewPreset,
 } from '../../utils/squadViewHelpers';
 import { renderColumnValue } from './squadBadges';
+import { CompareTrayToggle } from '../CompareTrayToggle';
 
 interface SquadDataTableProps {
   activePreset: SquadViewPreset;
@@ -201,6 +202,7 @@ export const SquadDataTable: React.FC<SquadDataTableProps> = ({
                             LOAN
                           </span>
                         )}
+                        <CompareTrayToggle player={p} iconOnly className="ml-auto" />
                       </div>
                       {showRolesSubline && (p.ipRole || p.oopRole) && (
                         <div className="text-[11px] leading-snug text-slate-500 dark:text-slate-400 truncate mt-0.5 pb-0.5">

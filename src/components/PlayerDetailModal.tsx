@@ -52,6 +52,7 @@ import {
   loadProgressionArchive,
 } from '../utils/progressionDiff';
 import { evaluatePlayerMetaScore } from '../utils/metaScoreEngine';
+import { MetaRatingBadge } from './meta/MetaRatingBadge';
 import { evaluateDualPhaseRoles } from '../utils/dualPhaseRoleEngine';
 
 interface PlayerDetailModalProps {
@@ -653,17 +654,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     const dual = evaluateDualPhaseRoles(player, 1);
                     return (
                       <>
-                        {meta.metaScore !== null && (
-                          <span
-                            className="rounded-md bg-emerald-500/15 border border-emerald-500/35 px-2 py-0.5 text-xs font-semibold text-emerald-300"
-                            title={`FM-Arena Meta Score (${meta.tier})${meta.paMetaScore !== null ? ` · Projected Pot Meta ${meta.paMetaScore.toFixed(1)}` : ''}`}
-                          >
-                            Meta {meta.metaScore.toFixed(1)}
-                            {meta.paMetaScore !== null && meta.paMetaScore > meta.metaScore
-                              ? ` → ${meta.paMetaScore.toFixed(1)} Pot`
-                              : ''}
-                          </span>
-                        )}
+                        <MetaRatingBadge player={player} />
                         {(dual.bestInPossession || dual.bestOutOfPossession) && (
                           <span
                             className="rounded-md bg-cyan-500/15 border border-cyan-500/30 px-2 py-0.5 text-[11px] font-medium text-cyan-200"
@@ -786,12 +777,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
               {(() => {
                 const meta = evaluatePlayerMetaScore(player);
                 return meta.metaScore !== null ? (
-                  <span className="rounded-md bg-emerald-500/15 border border-emerald-500/35 px-2 py-0.5 text-[11px] font-semibold text-emerald-300">
-                    Meta {meta.metaScore.toFixed(1)}
-                    {meta.paMetaScore !== null && meta.paMetaScore > meta.metaScore
-                      ? ` → ${meta.paMetaScore.toFixed(1)} Pot`
-                      : ''}
-                  </span>
+                  <MetaRatingBadge player={player} className="text-[11px]" />
                 ) : null;
               })()}
               {player.squadUnit && player.squadUnit !== 'First Team' && (

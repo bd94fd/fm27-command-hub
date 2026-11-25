@@ -46,6 +46,7 @@ import {
 import { STATS_SORT_KEYS } from './squad/squadTableConfig';
 import type { ListDisplayMode, SquadViewMode } from './squad/squadTableConfig';
 import { SquadListView } from './squad/SquadListView';
+import { SelectionCompareDock } from './recruitment/SelectionCompareDock';
 import { SquadSubViewSkeleton } from './WorkspaceSkeletons';
 
 const SquadAnalyticsView = lazy(() =>
@@ -523,6 +524,8 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
           />
         )}
       </div>
+      {/* Same shared tray as Transfers, so squad members can be compared with scouted targets. */}
+      <SelectionCompareDock auditPlayers={players} />
     </div>
   );
 };

@@ -253,6 +253,60 @@ export function getPositionRelevantAttributes(
   ];
 }
 
+/**
+ * Stable identifier for a squad member in the compare tray. Real FM uids are
+ * positive, so the fallback is negative to keep the two pools apart.
+ */
+export function resolveSquadPlayerUid(player: PlayerRecord): number {
+  if (typeof player.uid === 'number' && Number.isFinite(player.uid) && player.uid > 0) {
+    return player.uid;
+  }
+  let hash = 0;
+  for (let i = 0; i < player.id.length; i += 1) {
+    hash = (hash * 31 + player.id.charCodeAt(i)) | 0;
+  }
+  return -Math.abs(hash || 1);
+}
+
+/**
+ * Wraps a current squad member as a RecruitmentTarget so the shared compare
+ * tray, capacity rules and comparison chart handle it exactly like a scouted
+ * target.
+ */
+export function buildCompareTargetFromSquadPlayer(
+  player: PlayerRecord,
+  clubName?: string | null
+): RecruitmentTarget {
+  const trimmedClub = typeof clubName === 'string' ? clubName.trim() : '';
+  return {
+    uid: resolveSquadPlayerUid(player),
+    name: player.name,
+    age: player.age,
+    nationality: player.nation || 'Unknown',
+    primaryPosition: player.position,
+    secondaryPositions: Array.isArray(player.secondaryPositions)
+      ? [...player.secondaryPositions]
+      : undefined,
+    positionRatings: player.positionRatings ?? null,
+    currentClub: trimmedClub || 'Current squad',
+    personality: player.personality ?? null,
+    preferredFoot: player.preferredFoot ?? null,
+    heightCm: typeof player.heightCm === 'number' ? player.heightCm : null,
+    currentWagePw: player.wagePw,
+    transferValue: typeof player.marketValue === 'number' ? player.marketValue : null,
+    transferValueState: player.marketValueState,
+    contractDetails: player.contractDetails ?? null,
+    isFreeAgent: false,
+    contractExpiryMonths:
+      typeof player.contractExpiryMonths === 'number' ? player.contractExpiryMonths : 0,
+    expires: player.expires,
+    demandedWageEur: player.wagePw,
+    scoutBadges: Array.isArray(player.scoutBadges) ? [...player.scoutBadges] : undefined,
+    traits: Array.isArray(player.traits) ? [...player.traits] : undefined,
+    attributes: { ...player.attributes },
+  };
+}
+
 export function buildScoutTargetPlayerRecord(target: RecruitmentTarget): PlayerRecord {
   const a = target.attributes || {};
   const attr = (key: keyof RecruitmentTarget['attributes'], fallback = 10): number => {

@@ -17,6 +17,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { EMPTY_CLUB_META, SQUAD_PLAYERS } from './data/squadData';
+import { CompareTrayProvider } from './context/CompareTrayContext';
 import { COMPETITIVE_MATCH_LOGS } from './data/matchAndTacticsData';
 import {
   MatchLogEntry,
@@ -1148,7 +1149,8 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col">
+    <CompareTrayProvider>
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col">
       {/* Top Navigation Shell (mobile header ~56.6px + BottomNav ~55.8px = ~112.4px <= 15% of 800px) */}
       <header
         className="sticky top-0 z-30 flex items-center justify-between gap-x-2.5 sm:gap-x-4 px-3.5 sm:px-6 pb-1.5 sm:pb-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800"
@@ -2044,6 +2046,7 @@ export default function App() {
           />
         </Suspense>
       )}
-    </div>
+      </div>
+    </CompareTrayProvider>
   );
 }
