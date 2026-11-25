@@ -265,10 +265,16 @@ comparison saves are `auto_save_v03_.fm` and `auto_save.fm`.
    `club`/`role`, so all 25 feed rows became “Staff · Club” placeholders and were filtered
    out. `normalizeJobVacancy` now maps the confirmed fmsave `StaffJob` codes (for example
    20 = Assistant Manager, 14 = Scout, 2 = Coach) and the snake_case club/league fields at
-   the hydrator, Staff tab, and Analyst boundary. The live context also carries the feed
-   as a P2 block labelled “feed may include filled roles”. Verified on both saves:
+   the hydrator, Staff tab, and Analyst boundary. The live club snapshot carries the
+   count and first two roles, labelled “may include filled”. Verified on both saves:
    `Assistant Manager @ Clube Náutico Capibaribe`, `Coach @ Leicester City`,
    `Fitness Coach @ Tottenham Hotspur`.
+4. **Sponsorship rows reached the Hub but not the live Analyst.** The Hub rendered
+   `£227K/yr` and `£2K/yr`, while the live prompt only mentioned the date-order reader
+   note. `buildSponsorshipPanelRows` is now the one row formatter for the Hub panel and
+   the Analyst, and the live club snapshot carries `Sponsors: £227K/yr, £2K/yr` plus the
+   first two job-centre roles. The import prompt also reports the same deals. The
+   `dates_reordered` warning travels with the row instead of living only in reader notes.
 
 ### Confirmed unchanged / expected
 

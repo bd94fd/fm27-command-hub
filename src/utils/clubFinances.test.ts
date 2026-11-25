@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildClubFinancesPanel,
+  buildSponsorshipPanelRows,
   classifyWageCompliance,
   computeSquadWageSubtotal,
+  filterUsableSponsorshipDeals,
   formatClubMoney,
   formatWageComplianceSummary,
   parseSignedMoneyValue,
@@ -229,6 +231,42 @@ test('buildClubFinancesPanel reads fmsave snake_case sponsorship fields', () => 
   assert.equal(panel.sponsorships[0].annualValueLabel, '£227K');
   assert.equal(panel.sponsorships[0].expires, '2030-05-23');
   assert.equal(panel.sponsorships[0].datesReordered, false);
+});
+
+test('buildSponsorshipPanelRows is the shared UI/Analyst row formatter', () => {
+  const rows = buildSponsorshipPanelRows(
+    filterUsableSponsorshipDeals([
+      {
+        club_name: 'KVV Zelzate',
+        annual_value: 227145,
+        end: '2030-05-23',
+        dates_reordered: false,
+      },
+      {
+        club_name: 'KVV Zelzate',
+        annual_value: 2248,
+        end: '2032-08-31',
+        dates_reordered: true,
+      },
+    ]) ?? []
+  );
+
+  assert.deepEqual(rows, [
+    {
+      name: 'Sponsorship 1',
+      type: 'Sponsorship',
+      annualValueLabel: '£227K',
+      expires: '2030-05-23',
+      datesReordered: false,
+    },
+    {
+      name: 'Sponsorship 2',
+      type: 'Sponsorship',
+      annualValueLabel: '£2K',
+      expires: '2032-08-31',
+      datesReordered: true,
+    },
+  ]);
 });
 
 test('buildClubFinancesPanel degrades to explicit gaps when the save has no finances', () => {

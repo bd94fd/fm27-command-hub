@@ -344,6 +344,14 @@ export interface ClubFinancesPanelInput extends CanonicalClubFinancesInput {
   sponsorships?: SponsorshipDeal[] | null;
 }
 
+export interface SponsorshipPanelRow {
+  name: string;
+  type: string;
+  annualValueLabel: string;
+  expires: string;
+  datesReordered: boolean;
+}
+
 export interface ClubFinancesPanelData {
   cash: {
     balanceLabel: string;
@@ -366,13 +374,7 @@ export interface ClubFinancesPanelData {
     squadWageSubtotalLabel: string;
     squadWageMissingCount: number;
   };
-  sponsorships: Array<{
-    name: string;
-    type: string;
-    annualValueLabel: string;
-    expires: string;
-    datesReordered: boolean;
-  }>;
+  sponsorships: SponsorshipPanelRow[];
 }
 
 function formatWeeklyMoney(amount: number | null, currencySymbol: string): string {
@@ -435,6 +437,51 @@ export function normalizeSponsorshipDeal(
   };
 }
 
+const UNREADABLE_SPONSOR_DATE = new Set(['', '--', 'unknown', 'n/a', 'none']);
+
+/**
+ * Keeps a sponsorship row only when it carries a real annual value or a real expiry.
+ * Decoded saves often contain placeholder rows with neither, which used to render as
+ * empty "Sponsorship 1 — exp --" cards.
+ */
+export function isUsableSponsorshipDeal(deal: SponsorshipDeal): boolean {
+  const normalized = normalizeSponsorshipDeal(deal);
+  const amount = normalized.annualValue;
+  const hasAmount =
+    typeof amount === 'number' && Number.isFinite(amount) && amount > 0;
+  const expires = (normalized.expires ?? '').trim().toLowerCase();
+  return hasAmount || !UNREADABLE_SPONSOR_DATE.has(expires);
+}
+
+export function filterUsableSponsorshipDeals(
+  deals: readonly SponsorshipDeal[] | null | undefined
+): SponsorshipDeal[] | null {
+  if (!deals) return null;
+  return deals
+    .map((deal, index) => normalizeSponsorshipDeal(deal, index))
+    .filter(isUsableSponsorshipDeal);
+}
+
+/**
+ * One row shape for the Hub Finances panel and the Analyst context, so a sponsorship
+ * question gets the same names, amounts, expiry dates, and date-order warning.
+ */
+export function buildSponsorshipPanelRows(
+  deals: readonly SponsorshipDeal[] | null | undefined,
+  currencySymbol = '£'
+): SponsorshipPanelRow[] {
+  return (deals ?? []).map((deal, index) => {
+    const normalized = normalizeSponsorshipDeal(deal, index);
+    return {
+      name: normalized.name || `Sponsorship ${index + 1}`,
+      type: normalized.type || 'Sponsorship',
+      annualValueLabel: formatClubMoney(normalized.annualValue ?? null, currencySymbol),
+      expires: normalized.expires || '--',
+      datesReordered: Boolean(normalized.dates_reordered),
+    };
+  });
+}
+
 /**
  * Builds every number the Hub Finances panel shows. Both the UI and the Analyst read the
  * same `resolveCanonicalClubFinances` and `staffRatings` payroll selectors, so a wage or
@@ -483,16 +530,7 @@ export function buildClubFinancesPanel(
         ? `${currencySymbol}${canonical.wageHeadroomWeekly.toLocaleString()}/wk under cap`
         : `${currencySymbol}${Math.abs(canonical.wageHeadroomWeekly).toLocaleString()}/wk over cap`;
 
-  const sponsorships = (input.sponsorships ?? []).map((deal, index) => {
-    const normalized = normalizeSponsorshipDeal(deal, index);
-    return {
-      name: normalized.name || `Sponsorship ${index + 1}`,
-      type: normalized.type || 'Sponsorship',
-      annualValueLabel: formatClubMoney(normalized.annualValue ?? null, currencySymbol),
-      expires: normalized.expires || '--',
-      datesReordered: Boolean(normalized.dates_reordered),
-    };
-  });
+  const sponsorships = buildSponsorshipPanelRows(input.sponsorships, currencySymbol);
 
   return {
     cash: {

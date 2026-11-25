@@ -185,9 +185,48 @@ test('buildLiveTacticalAnalystContext includes decoded job vacancies with real r
     } as never,
   });
 
-  assert.ok(ctx.includes('JOB CENTRE VACANCIES (1)'));
-  assert.ok(ctx.includes('Assistant Manager at Leicester City'));
+  assert.ok(
+    ctx.includes('Job Centre: 1 roles (Assistant Manager @ Leicester City; may include filled)')
+  );
   assert.ok(!ctx.includes('Staff at Unknown'));
+});
+
+test('buildLiveTacticalAnalystContext quotes the same sponsorship rows as the Hub panel', () => {
+  const ctx = buildLiveTacticalAnalystContext({
+    clubName: 'KVV Zelzate',
+    managerName: 'Bobby Dean',
+    saveDate: '15/09/2027',
+    nextFixture: '--',
+    leagueStandingSub: '--',
+    wageSpend: '--',
+    balance: '--',
+    players: [],
+    matches: [],
+    hydratedFmSave: {
+      decodedPayload: {
+        sponsorships: [
+          {
+            club_name: 'KVV Zelzate',
+            annual_value: 227145,
+            end: '2030-05-23',
+            dates_reordered: false,
+          },
+          {
+            club_name: 'KVV Zelzate',
+            annual_value: 2248,
+            end: '2032-08-31',
+            dates_reordered: true,
+          },
+        ],
+      },
+    } as never,
+  });
+
+  assert.ok(
+    ctx.includes(
+      'Sponsors: £227K/yr (to 2030-05-23), £2K/yr (to 2032-08-31) (dates reordered)'
+    )
+  );
 });
 
 test('buildLiveTacticalAnalystContext compiles full squad, War Room XI, set-piece rankings, and match log when populated', () => {

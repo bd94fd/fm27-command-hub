@@ -1,5 +1,7 @@
 import { MatchLogEntry, PlayerRecord, StaffJobRatings, StaffRecord } from '../types/fm27';
 import {
+  buildSponsorshipPanelRows,
+  filterUsableSponsorshipDeals,
   formatClubMoney,
   formatWageComplianceSummary,
   normalizeSponsorshipDeal,
@@ -1693,15 +1695,29 @@ export function hydrateAppFromDecodedFmSave(
     : '';
 
   const facilitiesLine = decoded.facilities
-    ? `Club Facilities: Training=${String(decoded.facilities.training ?? 'Unknown')}, Youth=${String(decoded.facilities.youth ?? 'Unknown')}`
+    ? `Club Facilities: Training=${String(decoded.facilities.training ?? 'Unknown')}, Youth=${String(decoded.facilities.youth ?? 'Unknown')}, Corporate=${String(decoded.facilities.corporate ?? 'Unknown')}`
     : '';
 
   const vacanciesLine =
     decoded.jobVacancies && decoded.jobVacancies.length > 0
-      ? `Active Job Vacancies (${decoded.jobVacancies.length}): ${decoded.jobVacancies
+      ? `Job Centre Vacancies (${decoded.jobVacancies.length}; feed may include filled roles): ${decoded.jobVacancies
           .slice(0, 8)
           .map((v, index) => normalizeJobVacancy(v, index))
           .map((v) => `${v.role || 'Staff'} at ${v.club || 'Club'}`)
+          .join(', ')}`
+      : '';
+
+  const sponsorshipRows = buildSponsorshipPanelRows(
+    filterUsableSponsorshipDeals(decoded.sponsorships) ?? []
+  );
+  const sponsorshipLine =
+    sponsorshipRows.length > 0
+      ? `Sponsorship Deals (${sponsorshipRows.length}): ${sponsorshipRows
+          .slice(0, 8)
+          .map(
+            (row) =>
+              `${row.name} ${row.annualValueLabel === '--' ? '--' : `${row.annualValueLabel}/yr`}`
+          )
           .join(', ')}`
       : '';
 
@@ -1803,6 +1819,7 @@ ${decoded.leagueStanding?.nextOpponentStanding ? `Next Opponent Table Standing: 
 ${wageComplianceLabel ? `Live Finances: Balance ${balanceLabel} | Wages ${wageComplianceLabel}` : balanceLabel ? `Live Balance: ${balanceLabel}` : ''}
 ${runwayLine}
 ${facilitiesLine}
+${sponsorshipLine}
 ${rulesLine}
 ${vacanciesLine}
 
