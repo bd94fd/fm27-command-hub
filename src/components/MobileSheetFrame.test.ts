@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   acquireBodyScrollLock,
+  getFocusableElements,
   getMobileSheetFrameClasses,
   releaseBodyScrollLock,
   resetBodyScrollLockForTests,
@@ -56,4 +57,24 @@ test('body scroll lock uses reference counting across stacked modals', () => {
   // Extra release calls stay safe no-ops
   releaseBodyScrollLock(fakeDoc);
   assert.equal(fakeDoc.body.style.overflow, 'auto');
+});
+
+
+test('getFocusableElements keeps only tabbable controls for the focus trap', () => {
+  const fakeContainer = {
+    querySelectorAll: () =>
+      [
+        { tag: 'button', tabIndex: 0 },
+        { tag: 'surface', tabIndex: -1 },
+        { tag: 'input', tabIndex: 2 },
+      ] as unknown as HTMLElement[],
+  };
+  const focusable = getFocusableElements(
+    fakeContainer as unknown as Pick<HTMLElement, 'querySelectorAll'>
+  );
+  assert.equal(focusable.length, 2);
+  assert.deepEqual(
+    focusable.map((el) => (el as unknown as { tag: string }).tag),
+    ['button', 'input']
+  );
 });

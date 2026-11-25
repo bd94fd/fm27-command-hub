@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  buildClubFinancesPanel,
   classifyWageCompliance,
+  computeSquadWageSubtotal,
   formatClubMoney,
   formatWageComplianceSummary,
   parseSignedMoneyValue,
@@ -125,4 +127,92 @@ test('resolveCanonicalClubFinances produces unified balance, wage compliance, an
   assert.equal(resolved.monthlyBurnRate, 30_000);
   assert.equal(resolved.monthlyBurnLabel, '£30,000/mo');
   assert.equal(resolved.runwayStatus, 'Warning');
+});
+
+test('computeSquadWageSubtotal labels a partial sum and never claims club payroll', () => {
+  const complete = computeSquadWageSubtotal([1200, 800, 500]);
+  assert.equal(complete.count, 3);
+  assert.equal(complete.knownWeekly, 2500);
+  assert.equal(complete.missingWageCount, 0);
+  assert.equal(complete.label, '£2,500/wk');
+
+  const partial = computeSquadWageSubtotal([1200, null, undefined]);
+  assert.equal(partial.knownWeekly, 1200);
+  assert.equal(partial.missingWageCount, 2);
+  assert.equal(partial.label, '£1,200/wk known (2 of 3 unreadable)');
+
+  assert.equal(computeSquadWageSubtotal([]).label, '--');
+  assert.equal(computeSquadWageSubtotal(null).label, '--');
+});
+
+test('buildClubFinancesPanel assembles cash, payroll, and sponsorship rows', () => {
+  const panel = buildClubFinancesPanel({
+    financesBalance: -749_000,
+    monthlyFinances: [
+      { month: '2027-08', balance: 300_000, wageSpend: 42_000, netCashflow: -100_000 },
+      { month: '2027-09', balance: 200_000, wageSpend: 42_000, netCashflow: -100_000 },
+    ],
+    wagePayrollWeekly: 10_257,
+    wageBudgetWeekly: 10_203,
+    transferBudgetRemaining: 250_000,
+    financialRunway: {
+      currentBalance: -749_000,
+      monthlyBurnRate: 100_000,
+      runwayMonths: 1,
+      status: 'Critical',
+    },
+    staff: [{ wagePw: 400 }, { wagePw: null }],
+    playerWages: [1_200, 800, null],
+    sponsorships: [
+      {
+        name: 'Kit Deal',
+        type: 'Main',
+        annualValue: 1_500_000,
+        expires: '30/06/2028',
+      },
+      {
+        name: 'Ended Deal',
+        type: 'Secondary',
+        annualValue: null,
+        expires: '--',
+        dates_reordered: true,
+      },
+    ],
+  });
+
+  assert.equal(panel.cash.balanceLabel, '-£749K');
+  assert.equal(panel.cash.isInDebt, true);
+  assert.equal(panel.cash.monthlyNetAmount, -100_000);
+  assert.equal(panel.cash.monthlyNetLabel, '-£100K/mo');
+  assert.equal(panel.cash.runwayStatus, 'Critical');
+  assert.match(panel.cash.runwayWarning ?? '', /Critical runway/);
+
+  assert.equal(panel.payroll.clubPayrollLabel, '£10,257/wk');
+  assert.equal(panel.payroll.wageBudgetLabel, '£10,203/wk');
+  assert.equal(panel.payroll.wageSeverity, 'minor_over');
+  assert.equal(panel.payroll.staffPayrollLabel, '-- (1 of 2 wages unreadable)');
+  assert.equal(panel.payroll.staffMissingWageCount, 1);
+  assert.equal(
+    panel.payroll.squadWageSubtotalLabel,
+    '£2,000/wk known (1 of 3 unreadable)'
+  );
+  assert.equal(panel.payroll.squadWageMissingCount, 1);
+
+  assert.equal(panel.sponsorships.length, 2);
+  assert.equal(panel.sponsorships[0].name, 'Kit Deal');
+  assert.equal(panel.sponsorships[0].annualValueLabel, '£1.50M');
+  assert.equal(panel.sponsorships[1].datesReordered, true);
+  assert.equal(panel.sponsorships[1].annualValueLabel, '--');
+});
+
+test('buildClubFinancesPanel degrades to explicit gaps when the save has no finances', () => {
+  const panel = buildClubFinancesPanel({});
+  assert.equal(panel.cash.balanceLabel, '--');
+  assert.equal(panel.cash.monthlyNetLabel, '--');
+  assert.equal(panel.cash.runwayStatus, null);
+  assert.equal(panel.cash.runwayWarning, null);
+  assert.equal(panel.payroll.clubPayrollLabel, '--');
+  assert.equal(panel.payroll.staffPayrollLabel, '--');
+  assert.equal(panel.payroll.squadWageSubtotalLabel, '--');
+  assert.deepEqual(panel.sponsorships, []);
 });

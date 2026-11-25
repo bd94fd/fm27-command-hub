@@ -452,7 +452,7 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                     <span className="font-mono text-slate-300">{card.rec.played} GP</span>
                   </div>
                   {card.rec.played === 0 ? (
-                    <div className="mt-1 text-[11px] text-slate-500">0 matches</div>
+                    <div className="mt-1 text-[11px] text-slate-400">0 matches</div>
                   ) : (
                     <div className="mt-1 flex items-baseline justify-between gap-2 font-mono tabular-nums text-[11px]">
                       <span className="text-white font-semibold">
@@ -525,7 +525,7 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                     </div>
                   </>
                 ) : (
-                  <div className="mt-1 text-[11px] text-slate-500">No xG tracked</div>
+                  <div className="mt-1 text-[11px] text-slate-400">No xG tracked</div>
                 )}
               </div>
               <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">

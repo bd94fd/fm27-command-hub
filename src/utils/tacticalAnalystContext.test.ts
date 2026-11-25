@@ -8,6 +8,7 @@ import {
 import { PlayerRecord, MatchLogEntry } from '../types/fm27';
 import { analyzePlayerCard } from './playerCardAnalysis';
 import { countSquadPool, MISSING_VALUE } from './squadViewHelpers';
+import { PREFERRED_JOB_AFFINITY_CAPTION } from './staffRatings';
 
 const samplePlayers: PlayerRecord[] = [
   {
@@ -1072,10 +1073,79 @@ test('staff Preferred Jobs carry the specialist-only guardrail so a 1/20 scout i
   });
 
   assert.ok(
-    ctx.includes(
-      'Specialist Job Ratings ONLY (Fit/GK/Set/Loan/Phy/Sci — does NOT measure Scouting, Management, Coaching, or HoYD ability; 1/20 on a Scout/Manager is expected and NOT a low rating)'
-    ),
-    'staff block must label Preferred Jobs as specialist-only'
+    ctx.includes(PREFERRED_JOB_AFFINITY_CAPTION),
+    'staff block must use the shared Preferred Job Affinity caption'
   );
   assert.ok(ctx.includes('Bram Scout(Fit 1/GK 2/Set 1/Loan 3/Phy 1/Sci 2)'), 'job ratings missing');
+});
+
+test('Analyst staff ratings match the Staff tab department-first headline', () => {
+  const attributes = {
+    attacking: 17,
+    defending: 11,
+    fitness: 9,
+    goalkeeping: 4,
+    mental: 14,
+    possession: 15,
+    set_pieces: 12,
+    tactical: 16,
+    technical: 16,
+    working_with_youngsters: 15,
+    adaptability: 18,
+    authority: 15,
+    determination: 16,
+    judging_player_ability: 19,
+    judging_player_potential: 19,
+    judging_staff_ability: 12,
+    man_management: 15,
+    motivating: 16,
+    negotiating: 10,
+    physiotherapy: 3,
+    sports_science: 5,
+    tactical_knowledge: 16,
+    analysing_data: 14,
+  };
+
+  const ctx = buildLiveTacticalAnalystContext({
+    clubName: 'KVV Zelzate',
+    managerName: 'Bobby Dean',
+    saveDate: '15/09/2027',
+    nextFixture: '18/09/2027 vs Jong Cercle (Away)',
+    leagueStandingSub: '#3 of 16 (6 Pts)',
+    wageSpend: '£4,200 / £4,800 p/w',
+    balance: '£210K',
+    players: samplePlayers,
+    matches: [],
+    hydratedFmSave: null,
+    staff: [
+      {
+        id: 'st-scout-rated',
+        name: 'Sam Scout',
+        role: 'Chief Scout',
+        age: 45,
+        nation: 'BEL',
+        club: 'KVV Zelzate',
+        wagePw: 300,
+        expires: '30/06/2031',
+        attributes,
+        jobRatings: null,
+      },
+    ],
+  });
+
+  assert.ok(
+    ctx.includes(
+      'Department Ratings (shared with Staff tab): Sam Scout(scouting — Player Scouting & Recruitment 4.5★)'
+    ),
+    'Analyst must quote the same department-first headline as the Staff card'
+  );
+  assert.ok(ctx.includes('Department Leads:'), 'Analyst must see the unified matrix leads');
+  assert.ok(
+    ctx.includes('Scouting & Recruitment: Sam Scout (4.5★)'),
+    'Chief Scout must lead the scouting unit'
+  );
+  assert.ok(
+    !ctx.includes('Attacking Coaching: Sam Scout'),
+    'a Chief Scout must never lead Attacking training'
+  );
 });

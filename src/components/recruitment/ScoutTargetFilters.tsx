@@ -264,7 +264,7 @@ export const ScoutTargetFilters: React.FC<ScoutTargetFiltersProps> = ({
               setExactPosFilter(e.target.value);
               setVisibleTargetCount(24);
             }}
-            className="min-h-[44px] sm:min-h-[30px] rounded-lg bg-slate-950 border border-slate-700 px-2.5 sm:px-2 py-1 text-base sm:text-[11px] font-semibold text-slate-200 focus:border-emerald-500 focus:outline-none"
+            className="min-h-[44px] sm:min-h-[30px] rounded-lg bg-slate-950 border border-slate-700 px-2.5 sm:px-2 py-1 text-base sm:text-[11px] font-semibold text-slate-200 focus-visible:border-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
           >
             <option value="ALL">All Exact Slots</option>
             {(['GK', 'DC', 'DL', 'DR', 'DM', 'MC', 'AMC', 'AML', 'AMR', 'STC'] as const).map((slot) => (
@@ -289,7 +289,7 @@ export const ScoutTargetFilters: React.FC<ScoutTargetFiltersProps> = ({
               );
               setVisibleTargetCount(24);
             }}
-            className="min-h-[44px] sm:min-h-[30px] rounded-lg bg-slate-950 border border-slate-700 px-2.5 sm:px-2 py-1 text-base sm:text-[11px] font-semibold text-slate-200 focus:border-emerald-500 focus:outline-none"
+            className="min-h-[44px] sm:min-h-[30px] rounded-lg bg-slate-950 border border-slate-700 px-2.5 sm:px-2 py-1 text-base sm:text-[11px] font-semibold text-slate-200 focus-visible:border-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
           >
             <option value="GAP_FIT">Sort: Gap &amp; Role Fit</option>
             <option value="CLUB_DNA">Sort: Club DNA Score (0–100)</option>
