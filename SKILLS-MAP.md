@@ -130,7 +130,7 @@ Use them in this order:
 
 `ui-ux-audit` is useful, but its source repository is small. Keep it as a supporting rubric, not the only audit. For automated checks, use Playwright with axe-core or Pa11y when those tools are added.
 
-Impeccable is pinned to skill v4.11.0 and engine 0.1.30. The launcher verifies the engine SHA-256 against `scripts/engine-checksums.txt`. Do not run its live mode or installer hooks without explicit approval.
+Impeccable is pinned to skill v4.11.0 and engine 0.1.30. The launcher verifies the engine SHA-256 against `scripts/engine-checksums.txt`. Do not run its live mode or installer hooks without explicit approval. A first trial on the loaded Staff and Hub screens found real small-text and contrast problems, but the detector repeats findings once per card. Use `--json` and dedupe; do not make it a blocking CI gate yet.
 
 ## Skills deliberately not added
 
