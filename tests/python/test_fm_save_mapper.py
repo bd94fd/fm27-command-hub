@@ -23,6 +23,12 @@ def _install_stub_fmsave() -> types.ModuleType:
     """Install a minimal stub fmsave module tree if fmsave is not installed."""
     if "fmsave" in sys.modules:
         return sys.modules["fmsave"]
+    if importlib.util.find_spec("fmsave") is not None:
+        # A stub in sys.modules would shadow the real wheel for every later test in the
+        # same process, silently turning the private-surface guard into a skip.
+        import fmsave
+
+        return fmsave
     mod = types.ModuleType("fmsave")
     mod.__version__ = "0.14.4"
     mod.open = lambda *_a, **_kw: None  # type: ignore[attr-defined]

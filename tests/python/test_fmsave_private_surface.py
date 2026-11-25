@@ -66,7 +66,8 @@ def _parse_imports(source: str) -> list[tuple[str, list[str]]]:
 class TestFmsavePrivateSurface(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        source = open(MAPPER, encoding="utf-8").read()
+        with open(MAPPER, encoding="utf-8") as handle:
+            source = handle.read()
         cls.imports = _parse_imports(source)
         cls.source = source
 
