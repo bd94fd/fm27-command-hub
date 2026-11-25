@@ -625,7 +625,7 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                       className={`px-2 py-0.5 rounded-md transition cursor-pointer ${
                         chronicleScope === opt.id
                           ? 'bg-emerald-500/20 text-emerald-300'
-                          : 'text-slate-500 hover:text-slate-200'
+                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-200'
                       }`}
                     >
                       {opt.label}

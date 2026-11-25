@@ -417,7 +417,7 @@ export const SquadProgressionView: React.FC<SquadProgressionViewProps> = ({
               </span>
             </div>
             {progressionDiff.newgenRadar.length === 0 ? (
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 No new player UIDs added since {progressionDiff.baselineSaveDate}.
               </p>
             ) : (
