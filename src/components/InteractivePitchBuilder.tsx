@@ -550,7 +550,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
               <button
                 type="button"
                 onClick={() => setLineupMode('save')}
-                className={`px-2.5 py-1.5 rounded-md text-xs font-semibold transition cursor-pointer ${
+                className={`min-h-[36px] px-2.5 py-1.5 rounded-md text-xs font-semibold transition cursor-pointer ${
                   effectiveLineupMode === 'save'
                     ? 'bg-emerald-600 text-white'
                     : 'text-slate-400 hover:text-slate-200'
@@ -562,7 +562,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
             <button
               type="button"
               onClick={handleAutoPick}
-              className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-semibold transition cursor-pointer ${
+              className={`inline-flex items-center gap-1 min-h-[36px] px-2.5 py-1.5 rounded-md text-xs font-semibold transition cursor-pointer ${
                 effectiveLineupMode === 'best'
                   ? 'bg-emerald-600 text-white'
                   : 'text-slate-400 hover:text-slate-200'
@@ -574,7 +574,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
             <button
               type="button"
               onClick={() => setLineupMode('bteam')}
-              className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-semibold transition cursor-pointer ${
+              className={`inline-flex items-center gap-1 min-h-[36px] px-2.5 py-1.5 rounded-md text-xs font-semibold transition cursor-pointer ${
                 effectiveLineupMode === 'bteam'
                   ? 'bg-amber-600 text-white'
                   : 'text-slate-400 hover:text-slate-200'
@@ -595,7 +595,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
               onChangeCustomSlots([]);
               setSelectedSlotId(FORMATION_PRESETS[nextShape][10]?.slotId || 'GK');
             }}
-            className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100"
+            className="min-h-[36px] px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100"
           >
             {PRESET_KEYS.map((key) => (
               <option key={key} value={key}>
@@ -608,7 +608,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
             <button
               type="button"
               onClick={() => setSharpnessFilter((v) => !v)}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+              className={`min-h-[36px] px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${
                 sharpnessFilter
                   ? 'bg-sky-500/15 border-sky-500/40 text-sky-700 dark:text-sky-300'
                   : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400'
@@ -620,7 +620,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
 
           <label
             title="Test role or player changes with the AI Analyst without changing your saved club roles"
-            className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 ml-1 cursor-pointer"
+            className="inline-flex min-h-[36px] items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 ml-1 cursor-pointer"
           >
             <input
               type="checkbox"
@@ -659,7 +659,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
           <button
             type="button"
             onClick={() => setShowRestDefenseGuide((v) => !v)}
-            className="inline-flex items-center gap-1 rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-emerald-300 transition cursor-pointer"
+            className="inline-flex min-h-[36px] items-center gap-1 rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-emerald-300 transition cursor-pointer"
           >
             <HelpCircle className="w-3 h-3 shrink-0" />
             <span>{showRestDefenseGuide ? 'Hide Guide' : 'What is Rest Defence?'}</span>

@@ -186,7 +186,7 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
                 key={tab.id}
                 type="button"
                 onClick={() => setSubTab(tab.id)}
-                className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-semibold border transition cursor-pointer ${
+                className={`inline-flex items-center justify-center gap-1.5 min-h-[36px] rounded-lg px-2.5 py-2 text-xs font-semibold border transition cursor-pointer ${
                   active
                     ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
                     : 'bg-slate-50 dark:bg-slate-950/70 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-slate-200'
