@@ -189,7 +189,7 @@ export const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
           <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
             FM27 Preferred Jobs (fmsave)
           </h4>
-          <p className="text-[11px] text-slate-400 mb-2">
+          <p className="text-xs text-slate-400 mb-2">
             {PREFERRED_JOB_AFFINITY_CAPTION}
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-xs">

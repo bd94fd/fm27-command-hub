@@ -145,11 +145,11 @@ test('sponsorship filter drops placeholders but keeps amount-only and expiry-onl
   assert.equal(filterUsableSponsorshipDeals(undefined), null);
 });
 
-test('matrix is one column on mobile and no longer ellipsizes unit or lead text', () => {
+test('matrix is a compact two-column grid on mobile and no longer ellipsizes unit or lead text', () => {
   const src = readSrc('src/components/StaffDirectory.tsx');
-  assert.match(src, /grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4/);
+  assert.match(src, /grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2/);
   assert.doesNotMatch(src, /text-xs font-bold text-white truncate/);
-  assert.doesNotMatch(src, /text-\[11px\] text-slate-300 truncate/);
+  assert.match(src, /text-xs text-slate-300 break-words/);
   assert.doesNotMatch(src, /text-\[10px\] text-slate-400 truncate/);
   assert.match(src, /Board \/\s+Executive staff are excluded/);
 });

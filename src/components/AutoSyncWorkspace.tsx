@@ -120,7 +120,7 @@ const FinancesStat: React.FC<{
   valueClassName?: string;
 }> = ({ label, value, hint, valueClassName }) => (
   <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 p-2.5 min-w-0">
-    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">
+    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 leading-tight">
       {label}
     </div>
     <div
@@ -131,7 +131,7 @@ const FinancesStat: React.FC<{
       {value}
     </div>
     {hint && (
-      <div className="text-[10px] text-slate-500 dark:text-slate-400 break-words">
+      <div className="text-xs text-slate-500 dark:text-slate-400 break-words">
         {hint}
       </div>
     )}
@@ -2536,7 +2536,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                   <Wallet className="h-4 w-4 text-amber-500 dark:text-amber-400 shrink-0" />
                   Club Finances
                 </h3>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                   Cash, payroll &amp; sponsorship decoded from the save — the same
                   selectors the Analyst uses.
                 </p>
@@ -2637,7 +2637,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                 Sponsorship Deals
               </h4>
               {financesPanel.sponsorships.length === 0 ? (
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   No decoded sponsorship amounts in this save.
                 </p>
               ) : (
@@ -2645,7 +2645,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                   {financesPanel.sponsorships.map((deal, idx) => (
                     <li
                       key={`${deal.name}-${idx}`}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 px-2.5 py-1.5 text-[11px]"
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 px-2.5 py-1.5 text-xs"
                     >
                       <div className="min-w-0">
                         <div className="font-semibold text-slate-900 dark:text-white truncate">
@@ -2662,7 +2662,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                         {deal.datesReordered && (
                           <span
                             title="fmsave reversed the stored dates of this ended contract — start and end are swapped"
-                            className="inline-flex items-center gap-0.5 rounded border border-amber-500/40 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300"
+                            className="inline-flex items-center gap-0.5 rounded border border-amber-500/40 bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300"
                           >
                             <AlertTriangle className="h-2.5 w-2.5" />
                             Dates reordered
