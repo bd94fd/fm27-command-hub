@@ -40,6 +40,15 @@ export interface Fm27HandoffVerdict {
   needsAttention: boolean;
 }
 
+export interface Fm27BuildMemorySnapshot {
+  seenCount: number;
+  firstSeenIso: string;
+  lastSeenIso: string;
+  layoutBase: string | null;
+  fallbackCount: number;
+  unavailableCount: number;
+}
+
 export interface Fm27AgentHandoffSection {
   id: string;
   label: string;
@@ -70,6 +79,7 @@ export interface Fm27AgentHandoff {
     advisory: string | null;
   } | null;
   verdict: Fm27HandoffVerdict;
+  memory: Fm27BuildMemorySnapshot | null;
   counts: Record<PatchCompatibilitySectionStatus, number>;
   sections: Fm27AgentHandoffSection[];
   needsAttention: Fm27AgentHandoffSection[];
@@ -107,7 +117,8 @@ function uniqueStrings(values: readonly string[]): string[] {
 }
 
 export function describeFm27HandoffVerdict(
-  compat?: PatchCompatibilitySummary | null
+  compat?: PatchCompatibilitySummary | null,
+  memory?: Fm27BuildMemorySnapshot | null
 ): Fm27HandoffVerdict {
   if (!compat) {
     return {
@@ -129,45 +140,53 @@ export function describeFm27HandoffVerdict(
   const unavailableCount = compat.sections.filter(
     (section) => section.status === 'unavailable'
   ).length;
+  const previousRuns = Math.max(0, (memory?.seenCount ?? 0) - 1);
+  const seenNote =
+    previousRuns > 0
+      ? ` This build was seen on ${previousRuns} previous import${previousRuns === 1 ? '' : 's'}.`
+      : '';
 
   if (unavailableCount > 0) {
     return {
-      headline: 'Decoded with gaps',
-      detail: `${unavailableCount} section${unavailableCount === 1 ? '' : 's'} returned no rows. Check the handoff packet before trusting the affected screens.`,
+      headline: previousRuns > 0 ? 'Seen before — still has gaps' : 'Decoded with gaps',
+      detail: `${unavailableCount} section${unavailableCount === 1 ? '' : 's'} returned no rows.${seenNote} Check the handoff packet before trusting the affected screens.`,
       needsAttention: true,
     };
   }
 
   if (fallbackCount > 0) {
     return {
-      headline: 'Decoded with fallbacks',
-      detail: `${fallbackCount} section${fallbackCount === 1 ? '' : 's'} needed a runtime fallback. The save is usable, but review those sections before trusting edge-case fields.`,
+      headline: previousRuns > 0 ? 'Seen before — still has fallbacks' : 'Decoded with fallbacks',
+      detail: `${fallbackCount} section${fallbackCount === 1 ? '' : 's'} needed a runtime fallback.${seenNote} The save is usable, but review those sections before trusting edge-case fields.`,
       needsAttention: true,
     };
   }
 
   if (compat.isUntestedBuild || compat.layoutStatus === 'dynamic') {
     return {
-      headline: 'New FM27 build — decoded cleanly',
-      detail:
-        'The app inherited the closest 27.x layout and no section needed a fallback. Spot-check new fields before relying on them.',
+      headline:
+        previousRuns > 0
+          ? 'Seen before — decoded cleanly'
+          : 'New FM27 build — decoded cleanly',
+      detail: `The app inherited the closest 27.x layout and no section needed a fallback.${seenNote} Spot-check new fields before relying on them.`,
       needsAttention: false,
     };
   }
 
   return {
-    headline: 'Decoded normally',
-    detail: 'No fallback or missing section was reported for this build.',
+    headline: previousRuns > 0 ? 'Seen before — decoded normally' : 'Decoded normally',
+    detail: `No fallback or missing section was reported for this build.${seenNote}`,
     needsAttention: false,
   };
 }
 
 export function buildFm27AgentHandoff(
-  payload: PatchDiagnosticPayload | null | undefined
+  payload: PatchDiagnosticPayload | null | undefined,
+  memory: Fm27BuildMemorySnapshot | null = null
 ): Fm27AgentHandoff {
   const meta = payload?.meta ?? {};
   const compat = meta.patchCompatibility ?? null;
-  const verdict = describeFm27HandoffVerdict(compat);
+  const verdict = describeFm27HandoffVerdict(compat, memory);
   const sections: Fm27AgentHandoffSection[] = (compat?.sections ?? []).map((section) => ({
     id: section.id,
     label: section.label,
@@ -224,6 +243,7 @@ export function buildFm27AgentHandoff(
         }
       : null,
     verdict,
+    memory,
     counts,
     sections,
     needsAttention,
@@ -265,6 +285,19 @@ export function formatFm27AgentHandoff(handoff: Fm27AgentHandoff): string {
       `Layout: ${handoff.layout.status}${handoff.layout.base ? ` (${handoff.layout.base} base)` : ''} · runtime patches ${handoff.layout.runtimePatchesApplied ? 'applied' : 'inactive'}`
     );
     if (handoff.layout.advisory) lines.push(`Advisory: ${handoff.layout.advisory}`);
+  }
+
+  if (handoff.memory) {
+    lines.push(
+      '',
+      '## Build history',
+      handoff.memory.seenCount === 1
+        ? '- First run for this build'
+        : `- Seen ${handoff.memory.seenCount} times`,
+      `- First seen: ${handoff.memory.firstSeenIso}`,
+      `- Last seen: ${handoff.memory.lastSeenIso}`,
+      `- Last layout base: ${handoff.memory.layoutBase ?? 'unknown'}`
+    );
   }
 
   if (handoff.needsAttention.length > 0) {

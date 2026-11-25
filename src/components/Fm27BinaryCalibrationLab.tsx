@@ -66,6 +66,7 @@ import {
   formatFm27AgentHandoff,
   isNewFm27BuildDetected,
 } from '../utils/fm27PatchDiagnostics';
+import { getFm27BuildProfile } from '../utils/fm27BuildMemory';
 
 export type CalibrationLabTab = 'roles' | 'instructions' | 'diff' | 'governance';
 
@@ -191,10 +192,19 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
   const forensics = decodedPayload?.binaryForensics || null;
   const mappingCounts = useMemo(() => countDictionaryMappings(dict), [dict]);
   const patchCompat = decodedPayload?.meta?.patchCompatibility ?? null;
-  const newBuildDetected = isNewFm27BuildDetected(patchCompat);
+  const buildProfile = useMemo(() => {
+    if (!decodedPayload) return null;
+    return getFm27BuildProfile(
+      decodedPayload.meta.build,
+      decodedPayload.meta.fmsaveVersion
+    );
+  }, [decodedPayload]);
+  const priorBuildRuns = Math.max(0, (buildProfile?.seenCount ?? 0) - 1);
+  const newBuildDetected =
+    isNewFm27BuildDetected(patchCompat) && priorBuildRuns === 0;
   const handoffVerdict = useMemo(
-    () => describeFm27HandoffVerdict(patchCompat),
-    [patchCompat]
+    () => describeFm27HandoffVerdict(patchCompat, buildProfile),
+    [patchCompat, buildProfile]
   );
 
   const notifySaved = (nextDict: Fm27BinaryDictionary, msg: string) => {
@@ -210,7 +220,9 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
   };
 
   const handleCopyAgentHandoff = () => {
-    copyTextToClipboard(formatFm27AgentHandoff(buildFm27AgentHandoff(decodedPayload)))
+    copyTextToClipboard(
+      formatFm27AgentHandoff(buildFm27AgentHandoff(decodedPayload, buildProfile))
+    )
       .then(() => setStatusNotice('Agent handoff packet copied to clipboard.'))
       .catch(() => setStatusNotice('Could not copy the agent handoff packet automatically.'));
   };
@@ -1470,6 +1482,15 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                     <p className="text-xs font-mono tabular-nums text-slate-400">
                       {patchCompat.summary}
                     </p>
+                    {buildProfile && (
+                      <p className="text-[11px] text-slate-400">
+                        {priorBuildRuns > 0
+                          ? `Seen ${buildProfile.seenCount} times`
+                          : 'First run for this build'}
+                        {' · '}first {buildProfile.firstSeenIso.slice(0, 10)}
+                        {' · '}last {buildProfile.lastSeenIso.slice(0, 10)}
+                      </p>
+                    )}
                     <div className="flex flex-wrap gap-1.5">
                       {patchCompat.sections.map((section) => (
                         <span

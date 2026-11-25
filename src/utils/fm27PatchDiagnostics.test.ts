@@ -274,3 +274,43 @@ test('buildFm27AgentHandoff degrades without crashing when diagnostics are missi
   assert.equal(handoff.verdict.headline, 'No build diagnostics available');
   assert.match(formatFm27AgentHandoff(handoff), /No build diagnostics available/);
 });
+
+
+test('handoff includes build history and says when a build was seen before', () => {
+  const memory = {
+    seenCount: 3,
+    firstSeenIso: '2027-01-02T10:00:00.000Z',
+    lastSeenIso: '2027-02-03T11:00:00.000Z',
+    layoutBase: '27.1',
+    fallbackCount: 1,
+    unavailableCount: 0,
+  };
+
+  const verdict = describeFm27HandoffVerdict(
+    makeCompat({
+      sections: [
+        { id: 'tactics_set_piece', label: 'Tactics', status: 'fallback', fallbacks: 2 },
+      ],
+    }),
+    memory
+  );
+  assert.match(verdict.headline, /Seen before — still has fallbacks/);
+  assert.match(verdict.detail, /2 previous imports/);
+
+  const markdown = formatFm27AgentHandoff(
+    buildFm27AgentHandoff(
+      {
+        meta: {
+          build: '27.2.0+2506012',
+          fmsaveVersion: '0.14.4',
+          patchCompatibility: makeCompat(),
+        },
+      },
+      memory
+    )
+  );
+  assert.match(markdown, /## Build history/);
+  assert.match(markdown, /Seen 3 times/);
+  assert.match(markdown, /Last layout base: 27\.1/);
+  assert.match(markdown, /This build was seen on 2 previous imports/);
+});
