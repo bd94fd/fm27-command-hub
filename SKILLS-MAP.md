@@ -29,7 +29,7 @@ This map links each roadmap item to the skills that should be used. Every skill 
 | `core-web-vitals` | Covers LCP, INP and CLS diagnosis and fixes. | R05, R18, R45 |
 | `best-practices` | Covers security, modern APIs and code quality patterns. | R38, R39, R44 |
 | `seo` | Covers crawlability, metadata and structured data. | R37, R43 |
-| `ui-ux-audit` | Measures contrast, tap targets, spacing, alignment, motion and focus, then ranks findings. | R25, R26, R27, R30 |
+| `ui-ux-audit` | Optional measured rubric for contrast, tap targets, spacing, alignment, motion and focus. It is not the primary audit engine. | R25, R26, R27, R30 |
 
 ### Custom project skills
 
@@ -78,12 +78,12 @@ Existing skills that also support the roadmap:
 | 22 | R22 First-run onboarding | `fm27-ui-ux-review` | `web-design-guidelines`, `plain-english-content` | None. |
 | 23 | R23 Loading, empty and error states | `fm27-ui-ux-review` | `qa-changes` | None. |
 | 24 | R24 Search, filters and saved views | `fm27-ui-ux-review` | `code-simplifier` | None. |
-| 25 | R25 Mobile touch, contrast and focus audit | `ui-ux-audit` | `fm27-ui-ux-review`, `accessibility` | None. |
+| 25 | R25 Mobile touch, contrast and focus audit | `fm27-ui-ux-review` | `accessibility`, `ui-ux-audit` | None. |
 | 26 | R26 Design system and visual consistency | `fm27-ui-ux-review` | `web-design-guidelines`, `ui-ux-audit` | None. |
 | 27 | R27 Motion, feedback and undo | `fm27-ui-ux-review` | `ui-ux-audit`, `web-design-guidelines` | None. |
 | 28 | R28 Browser and device matrix | `playwright-skill` | `qa-changes`, `fm27-ui-ux-review` | None. |
 | 29 | R29 End-to-end smoke tests | `playwright-skill` | `qa-changes`, `github-actions` | None. |
-| 30 | R30 Accessibility audit | `accessibility` | `ui-ux-audit`, `web-design-guidelines`, `qa-changes` | None. |
+| 30 | R30 Accessibility audit | `accessibility` | `web-quality-audit`, `ui-ux-audit`, `qa-changes` | None. |
 | 31 | R31 Offline behaviour | `qa-changes` | `fm27-data-parity`, `playwright-skill` | None. |
 | 32 | R32 Security and privacy review | `security` | `github`, `qa-changes` | None. |
 | 33 | R33 Finance forecasting and what-if | `fm27-data-parity` | `prd`, `show-me` | None. |
@@ -116,9 +116,25 @@ Existing skills that also support the roadmap:
 
 The `ui-ux-audit` text was edited to use Playwright or the available browser tools. The measurement script is unchanged.
 
+## Which UI/UX audit is best
+
+Use them in this order:
+
+1. `fm27-ui-ux-review` for the project's mobile layout, touch, overlay and flow rules.
+2. `accessibility` for WCAG 2.2, keyboard, screen reader and focus checks.
+3. `web-quality-audit` for Lighthouse evidence and page quality.
+4. `ui-ux-audit` as an optional measured rubric for contrast, spacing and alignment.
+
+`ui-ux-audit` is useful, but its source repository is small. Keep it as a supporting rubric, not the only audit. For automated checks, use Playwright with axe-core or Pa11y when those tools are added.
+
 ## Skills deliberately not added
 
 - `code-review` — the existing `fm27-data-parity` skill already owns `/codereview` and the parity review workflow.
 - `iterate` — it requires draft pull requests, which conflicts with the project ready-PR and auto-merge rules.
 - `frontend-design` — it would compete with the FM27 design language and existing UI rules.
 - `datadog`, `vercel` and `docker` — the project does not use these as primary workflows today. Add them only when that changes.
+- `pbakaus/impeccable` — very capable and popular, but it downloads a binary on first use and is much heavier than this project needs.
+- `plugin87/ux-ui-agent-skills` — strong design QA and accessibility gates, but they need its full kit installed; the copied skill alone runs in guidance-only mode.
+- `nextlevelbuilder/ui-ux-pro-max-skill` — a design-generation skill, not an audit skill.
+- `Nutlope/hallmark` — an anti-AI-slop design skill, not a measured audit.
+- `emilkowalski/skills` — strong motion and interaction guidance. Worth adding later for R27, not needed for a general audit.

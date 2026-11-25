@@ -19,7 +19,7 @@
 - Backup, restore, fixture or re-sync work: use `fm27-save-safety`.
 - Save-load speed, memory, bundle or performance-budget work: use `fm27-performance-audit`.
 - Any screen, layout, or mobile change: use `fm27-ui-ux-review` and `web-design-guidelines`.
-- Measured UI audit for contrast, tap targets, spacing or alignment: use `ui-ux-audit`.
+- Measured UI audit for contrast, tap targets, spacing or alignment: use `ui-ux-audit` as a supporting rubric after `fm27-ui-ux-review` and `accessibility`.
 - Accessibility or WCAG work: use `accessibility`.
 - Lighthouse, Core Web Vitals or page quality work: use `web-quality-audit`, `performance` and `core-web-vitals`.
 - Browser automation, screenshots or end-to-end checks: use `playwright-skill`.
