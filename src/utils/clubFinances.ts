@@ -105,17 +105,10 @@ export function formatClubMoney(
   return amount < 0 ? `-${formatted}` : formatted;
 }
 
-export function formatWeeklyWage(
-  amount: number | null | undefined,
-  currencySymbol = '£'
-): string {
-  if (amount === null || amount === undefined || !Number.isFinite(amount)) {
-    return '--';
-  }
-  const rounded = Math.round(amount);
-  const sign = rounded < 0 ? '-' : '';
-  return `${sign}${currencySymbol}${Math.abs(rounded).toLocaleString()}/wk`;
-}
+/**
+ * Weekly wage formatting lives in `squadViewHelpers.formatWeeklyWage` (single source for UI and
+ * Analyst). Do not add a second one here — that duplication is what audit §1 was about.
+ */
 
 /**
  * Resolves ONE canonical numeric balance so KPI cards, financial runway,

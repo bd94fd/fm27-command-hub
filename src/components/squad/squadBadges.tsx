@@ -1,6 +1,10 @@
 import React from 'react';
 import type { EnrichedSquadRow, SquadColumnId } from '../../utils/squadViewHelpers';
-import { formatCompactCurrency, formatWeeklyWage } from '../../utils/squadViewHelpers';
+import {
+  formatCompactCurrency,
+  formatWeeklyWage,
+  MISSING_VALUE,
+} from '../../utils/squadViewHelpers';
 
 export function durabilityBadgeClass(tier: EnrichedSquadRow['durability']['tier']): string {
   switch (tier) {
@@ -47,13 +51,13 @@ export function renderColumnValue(row: EnrichedSquadRow, colId: SquadColumnId): 
     case 'pos':
       return (
         <span className="inline-block rounded bg-slate-200/80 dark:bg-slate-800 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-slate-800 dark:text-slate-200">
-          {p.position || '—'}
+          {p.position || MISSING_VALUE}
         </span>
       );
     case 'age':
       return (
         <span className="font-mono tabular-nums text-slate-700 dark:text-slate-200">
-          {p.age > 0 ? p.age : '—'}
+          {p.age > 0 ? p.age : MISSING_VALUE}
         </span>
       );
     case 'stars':
@@ -67,7 +71,7 @@ export function renderColumnValue(row: EnrichedSquadRow, colId: SquadColumnId): 
     case 'roles':
       return (
         <span className="text-slate-600 dark:text-slate-300 truncate max-w-[200px] inline-block align-bottom">
-          {p.ipRole || '—'}
+          {p.ipRole || MISSING_VALUE}
           {p.oopRole ? ` / ${p.oopRole}` : ''}
         </span>
       );
@@ -137,12 +141,12 @@ export function renderColumnValue(row: EnrichedSquadRow, colId: SquadColumnId): 
       return (
         <span className="font-mono tabular-nums text-slate-700 dark:text-slate-200 whitespace-nowrap">
           {row.durability.stamina} /{' '}
-          {row.durability.naturalFitness !== null ? row.durability.naturalFitness : '—'}
+          {row.durability.naturalFitness !== null ? row.durability.naturalFitness : MISSING_VALUE}
         </span>
       );
     case 'badges': {
       const badges = p.scoutBadges || [];
-      if (badges.length === 0) return <span className="text-slate-500">—</span>;
+      if (badges.length === 0) return <span className="text-slate-500">{MISSING_VALUE}</span>;
       return (
         <div className="flex flex-wrap gap-1 max-w-[190px]">
           {badges.slice(0, 2).map((b) => (
@@ -163,13 +167,13 @@ export function renderColumnValue(row: EnrichedSquadRow, colId: SquadColumnId): 
     case 'foot':
       return (
         <span className="text-slate-600 dark:text-slate-300 whitespace-nowrap">
-          {p.preferredFoot || '—'}
+          {p.preferredFoot || MISSING_VALUE}
         </span>
       );
     case 'condSharp': {
-      const cond = typeof p.condition === 'number' && Number.isFinite(p.condition) ? `${Math.round(p.condition)}%` : '—';
-      const sharp = typeof p.sharpness === 'number' && Number.isFinite(p.sharpness) ? `${Math.round(p.sharpness)}%` : '—';
-      if (cond === '—' && sharp === '—') return <span className="text-slate-500">—</span>;
+      const cond = typeof p.condition === 'number' && Number.isFinite(p.condition) ? `${Math.round(p.condition)}%` : MISSING_VALUE;
+      const sharp = typeof p.sharpness === 'number' && Number.isFinite(p.sharpness) ? `${Math.round(p.sharpness)}%` : MISSING_VALUE;
+      if (cond === MISSING_VALUE && sharp === MISSING_VALUE) return <span className="text-slate-500">{MISSING_VALUE}</span>;
       return (
         <span className="font-mono tabular-nums text-slate-700 dark:text-slate-200 whitespace-nowrap">
           {cond} / {sharp}
@@ -179,31 +183,31 @@ export function renderColumnValue(row: EnrichedSquadRow, colId: SquadColumnId): 
     case 'morale':
       return (
         <span className="text-slate-600 dark:text-slate-300 whitespace-nowrap">
-          {p.morale || '—'}
+          {p.morale || MISSING_VALUE}
         </span>
       );
     case 'apps':
       return (
         <span className="font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
-          {row.hasPlayed ? `${p.apps} (${p.minutes}m)` : '—'}
+          {row.hasPlayed ? `${p.apps} (${p.minutes}m)` : MISSING_VALUE}
         </span>
       );
     case 'rating':
       return (
         <span className="font-mono font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
-          {typeof p.rating === 'number' && p.rating > 0 ? p.rating.toFixed(2) : '—'}
+          {typeof p.rating === 'number' && p.rating > 0 ? p.rating.toFixed(2) : MISSING_VALUE}
         </span>
       );
     case 'goalsXg':
       return (
         <span className="font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
-          {row.hasPlayed ? `${p.goals ?? 0} (${(p.xG ?? 0).toFixed(2)})` : '—'}
+          {row.hasPlayed ? `${p.goals ?? 0} (${(p.xG ?? 0).toFixed(2)})` : MISSING_VALUE}
         </span>
       );
     case 'assistsXa':
       return (
         <span className="font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
-          {row.hasPlayed ? `${p.assists ?? 0} (${(p.xA ?? 0).toFixed(2)})` : '—'}
+          {row.hasPlayed ? `${p.assists ?? 0} (${(p.xA ?? 0).toFixed(2)})` : MISSING_VALUE}
         </span>
       );
     case 'prPasses':
@@ -211,7 +215,7 @@ export function renderColumnValue(row: EnrichedSquadRow, colId: SquadColumnId): 
         <span className="font-mono tabular-nums text-slate-700 dark:text-slate-300">
           {row.hasPlayed && (p.prPassesPer90 ?? 0) > 0
             ? (p.prPassesPer90 ?? 0).toFixed(2)
-            : '—'}
+            : MISSING_VALUE}
         </span>
       );
     case 'duels':
@@ -219,12 +223,12 @@ export function renderColumnValue(row: EnrichedSquadRow, colId: SquadColumnId): 
         <span className="font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
           {row.hasPlayed && ((p.hdrPct ?? 0) > 0 || (p.tckPct ?? 0) > 0)
             ? `${p.hdrPct ?? 0}% / ${p.tckPct ?? 0}%`
-            : '—'}
+            : MISSING_VALUE}
         </span>
       );
     case 'last5': {
       const avg = p.last5Form?.averageRating;
-      if (!avg || avg <= 0) return <span className="text-slate-500">—</span>;
+      if (!avg || avg <= 0) return <span className="text-slate-500">{MISSING_VALUE}</span>;
       const arrow =
         p.last5Form?.trend === 'improving'
           ? '↗'
@@ -266,8 +270,8 @@ export function renderColumnValue(row: EnrichedSquadRow, colId: SquadColumnId): 
     case 'heightFoot':
       return (
         <span className="font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
-          {p.heightCm ? `${p.heightCm}cm` : '—'} ·{' '}
-          {p.preferredFoot ? p.preferredFoot.slice(0, 1) : '—'}
+          {p.heightCm ? `${p.heightCm}cm` : MISSING_VALUE} ·{' '}
+          {p.preferredFoot ? p.preferredFoot.slice(0, 1) : MISSING_VALUE}
         </span>
       );
     case 'mentalKey':
@@ -307,7 +311,7 @@ export function renderColumnValue(row: EnrichedSquadRow, colId: SquadColumnId): 
     case 'expiry':
       return (
         <span className="font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
-          {row.expiryYear || '—'}
+          {row.expiryYear || MISSING_VALUE}
           {row.optYears > 0 ? (
             <span className="ml-1 text-[10px] text-sky-400">+{row.optYears}y</span>
           ) : null}

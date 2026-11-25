@@ -34,6 +34,7 @@ import {
   getPlaybookContractNotes,
   partitionContractClausesAndBonuses,
 } from '../utils/recruitmentHelpers';
+import { formatContractExpiry, formatWeeklyWage } from '../utils/squadViewHelpers';
 import {
   analyzePlayerCard,
   getPrimaryPositionCode,
@@ -467,7 +468,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
     ctx.fillStyle = '#94a3b8';
     ctx.font = '13px sans-serif';
     ctx.fillText(
-      `Age ${player.age} · ${player.nation} · ${player.preferredFoot || 'Right'} Foot · ${player.personality} · £${player.wagePw.toLocaleString()}/wk (exp ${player.expires})`,
+      `Age ${player.age} · ${player.nation} · ${player.preferredFoot || 'Right'} Foot · ${player.personality} · ${formatWeeklyWage(player.wagePw)} (exp ${formatContractExpiry(player.expires)})`,
       28,
       144
     );
@@ -705,8 +706,11 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                 {formatFootLabel(player)}
                 {player.heightCm ? ` · ${player.heightCm} cm` : ''}
                 <span className="hidden sm:inline"> · {player.personality}</span> ·{' '}
-                £{player.wagePw.toLocaleString()}/wk
-                <span className="hidden sm:inline"> (exp {player.expires})</span>
+                {formatWeeklyWage(player.wagePw)}
+                <span className="hidden sm:inline">
+                  {' '}
+                  (exp {formatContractExpiry(player.expires)})
+                </span>
                 {player.marketValueCapped || player.marketValueState === 'capped'
                   ? ' · £300m cap'
                   : typeof player.marketValue === 'number' && player.marketValue > 0
@@ -796,7 +800,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                 </span>
               )}
               <span className="rounded-md bg-slate-900 border border-slate-800 px-2 py-0.5 text-[11px] text-slate-400">
-                {player.personality} · exp {player.expires}
+                {player.personality} · exp {formatContractExpiry(player.expires)}
               </span>
             </div>
             <PlayerQuickActionBar
@@ -1765,14 +1769,14 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="text-slate-400">Weekly / Annual:</span>
                     <span className="font-mono text-slate-200 text-right tabular-nums">
-                      £{player.wagePw.toLocaleString()}/wk (£
+                      {formatWeeklyWage(player.wagePw)} (£
                       {analysis.contractStanding.annualWage.toLocaleString()}/yr)
                     </span>
                   </div>
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="text-slate-400">Contract Expires:</span>
                     <span className="font-mono text-amber-300 text-right tabular-nums">
-                      {player.expires}
+                      {formatContractExpiry(player.expires)}
                       {analysis.contractStanding.monthsRemaining !== null
                         ? ` (${analysis.contractStanding.monthsRemaining}m left)`
                         : ''}

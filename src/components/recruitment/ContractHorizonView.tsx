@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { PlayerRecord } from '../../types/fm27';
 import { verdictBadgeClass } from './recruitmentBadges';
 import type { ContractHorizonSummary, ContractHorizonTier } from './recruitmentTypes';
+import { formatContractExpiry, formatWeeklyWage } from '../../utils/squadViewHelpers';
 
 interface ContractHorizonViewProps {
   contractHorizonSummary: ContractHorizonSummary;
@@ -174,7 +175,7 @@ export const ContractHorizonView: React.FC<ContractHorizonViewProps> = ({
                     Expires
                   </div>
                   <div className="mt-0.5 font-mono text-xs font-bold text-amber-300 tabular-nums truncate">
-                    {p.expires} ({item.monthsLeft ?? '--'}m)
+                    {formatContractExpiry(p.expires)} ({item.monthsLeft ?? '--'}m)
                   </div>
                 </div>
                 <div className="rounded-lg border border-slate-800 bg-slate-950/75 px-2.5 py-1.5 min-w-0">
@@ -182,7 +183,7 @@ export const ContractHorizonView: React.FC<ContractHorizonViewProps> = ({
                     Wage
                   </div>
                   <div className="mt-0.5 font-mono text-xs font-bold text-slate-100 tabular-nums truncate">
-                    £{p.wagePw.toLocaleString()}/wk
+                    {formatWeeklyWage(p.wagePw)}
                   </div>
                 </div>
                 <div className="rounded-lg border border-slate-800 bg-slate-950/75 px-2.5 py-1.5 min-w-0">

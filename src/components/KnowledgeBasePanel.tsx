@@ -18,6 +18,7 @@ import {
 } from '../data/fm27KnowledgeBase';
 import { PlayerRecord } from '../types/fm27';
 import { rankSquadForFm27Role } from '../utils/fm27RoleMatcher';
+import { formatWeeklyWage } from '../utils/squadViewHelpers';
 
 interface KnowledgeBasePanelProps {
   isOpen: boolean;
@@ -437,8 +438,8 @@ export const KnowledgeBasePanel: React.FC<KnowledgeBasePanelProps> = ({
                                   </span>
                                 </div>
                                 <div className="text-[10px] font-mono text-slate-400">
-                                  {m.player.position} · {m.player.ability.toFixed(1)}★ · £
-                                  {m.player.wagePw}/wk
+                                  {m.player.position} · {m.player.ability.toFixed(1)}★ ·{' '}
+                                  {formatWeeklyWage(m.player.wagePw)}
                                 </div>
                               </div>
                             ))}

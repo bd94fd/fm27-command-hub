@@ -15,7 +15,7 @@ Severity: **P1** = the UI and the Analyst can show different numbers for the sam
 
 ## P1 — same question, two answers
 
-### 1. Three wage formatters, two of them exported under the same name
+### 1. Three wage formatters, two of them exported under the same name — FIXED (TypeScript parity PR #31)
 
 | Where | Output for 14250 | Output for missing/0 |
 | --- | --- | --- |
@@ -27,7 +27,7 @@ Severity: **P1** = the UI and the Analyst can show different numbers for the sam
 `squadViewHelpers.test.ts:245-246` locks the other variant. Both suites pass, so the divergence
 is enshrined in tests. Pick one formatter, delete the other, and make the analyst use it.
 
-### 2. Three different squad counts
+### 2. Three different squad counts — FIXED (TypeScript parity PR #31)
 
 - `Squad` tab defaults to first team only: `SquadAnalyticsTable.tsx:111` (`'FIRST_TEAM'`), `:182`.
 - Hub header counts everyone: `AutoSyncWorkspace.tsx:1635` (`${players.length} players`).
@@ -35,7 +35,7 @@ is enshrined in tests. Pick one formatter, delete the other, and make the analys
 
 A 24-man first team inside a 31-player pool yields 24 / 31 / "26 OF 31" on three surfaces.
 
-### 3. The squad table is sent twice, with different caps and different formats
+### 3. The squad table is sent twice, with different caps and different formats — FIXED (TypeScript parity PR #31)
 
 - `fmSaveHydrator.ts:1561,1622,1840` — `=== FULL MANAGED SQUAD (N PLAYERS …) ===` built from
   `decoded.players.slice(0, 28)`, one long line per player, raw `£{wagePw}` and `exp {expires}`.
@@ -46,7 +46,7 @@ Both blocks reach the model (`AutoSyncWorkspace.tsx:574` sends `promptContext`; 
 live context). Players 27–28 appear only in the first block; players 27–31 appear in neither
 profile table. Two overlapping tables also double the context budget pressure that causes P2 #4.
 
-### 4. Two payroll numbers under near-identical labels
+### 4. Two payroll numbers under near-identical labels — FIXED (TypeScript parity PR #31)
 
 - UI/Recruitment header: canonical `wagePayrollWeekly` from the save's finance table
   (`clubFinances.ts:252-267`, rendered at `recruitment/RecruitmentHeader.tsx:242`).
@@ -77,7 +77,7 @@ A coach expiring in 200 days is invisible in the Staff tab and listed as expirin
 Fixed: the Analyst's local date parser and 12-month window are gone; both sides call
 `isStaffContractExpiringSoon` with `STAFF_CONTRACT_EXPIRY_WINDOW_DAYS` (190).
 
-### 7. Best Fit % exists only in the UI
+### 7. Best Fit % exists only in the UI — FIXED (TypeScript parity PR #31)
 
 `PlayerDetailModal.tsx:649,774` render `analysis.bestIpRole.fitPct` from
 `analyzePlayerCard` → `scorePlayerForFm27Role`. The analyst has no per-player fit percentage; it
@@ -85,7 +85,7 @@ carries `combinedFitPct` from `solveBestXi` (`tacticalAnalystContext.ts:825`) �
 on a different scale. When a user asks why a player shows "Best Fit 72%", the prompt has no such
 number.
 
-### 8. Match points/PPG include friendlies when the filter is "All"
+### 8. Match points/PPG include friendlies when the filter is "All" — FIXED (TypeScript parity PR #31)
 
 - `MatchLogArchive.tsx:337-341` compute W-D-L, points and PPG from `filteredMatches`; `:477` renders
   `{ppg} PPG · {winPct}% Win` with no scope label.
@@ -101,7 +101,7 @@ Hub and Analyst agree. Only the Matches tab drifts, and only when "All" is activ
 
 ## P2 — placeholder and default drift
 
-### 9. Five placeholder vocabularies
+### 9. Five placeholder vocabularies — FIXED (TypeScript parity PR #31)
 
 `—` (`squadBadges.tsx:310`), `-` (`tacticalAnalystContext.ts:1455`), `--` (`clubFinances.ts:113`),
 `N/A` (`fmSaveHydrator.ts:1530`), and literal `undefined` wherever a raw `${p.wagePw}` /
@@ -126,7 +126,7 @@ The `40` vs `35` pair is dormant today only because the decoder always emits an 
 is worse than a gap: it makes a £0 earner indistinguishable from an undecoded contract. The UI
 coerces the same way — `CompareTargetModal.tsx:207,209` render `£{wagePw || 0}`.
 
-### 11. Two "has played" predicates
+### 11. Two "has played" predicates — FIXED (TypeScript parity PR #31)
 
 - UI: `squadViewHelpers.ts:294-302` — minutes > 0, apps ≠ "0", goals, assists, or rating > 0.
 - Analyst: `tacticalAnalystContext.ts:1595-1599` — minutes > 0, `rating !== null`, goals, assists.
@@ -134,7 +134,7 @@ coerces the same way — `CompareTargetModal.tsx:207,209` render `£{wagePw || 0
 Disagree when `apps > 0` with 0 recorded minutes (analyst prints a zeroed stat line where the UI
 shows no stats) and when `rating` is `0` (UI: no stats, analyst: prints `0.00rt`).
 
-### 12. Meta current/potential is shared, but its ranking scope is not
+### 12. Meta current/potential is shared, but its ranking scope is not — FIXED (TypeScript parity PR #31)
 
 `evaluatePlayerMetaScore` is the single engine on both sides (good). The analyst's "Top Squad Meta
 Scores" list (`fmfShortlistExporter.ts:135-143`) ranks the 26-player profile subset and keeps 8,

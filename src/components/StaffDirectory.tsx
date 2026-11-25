@@ -8,6 +8,7 @@ import {
   UserCheck,
 } from 'lucide-react';
 import { StaffRecord } from '../types/fm27';
+import { formatContractExpiry, formatWeeklyWage } from '../utils/squadViewHelpers';
 import { JobVacancyEntry } from '../types/fmSave';
 import {
   buildCoachingCategoryMatrix,
@@ -420,7 +421,7 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                     <div className="flex flex-wrap items-center justify-between gap-1.5 text-[11px] font-mono text-slate-400">
                       <span>{keyAttrsLabel}</span>
                       <span className="inline-flex items-center gap-1">
-                        £{s.wagePw.toLocaleString()}/wk · {s.expires}
+                        {formatWeeklyWage(s.wagePw)} · {formatContractExpiry(s.expires)}
                         {expiringSoon && (
                           <span className="inline-flex items-center gap-0.5 rounded bg-amber-500/20 border border-amber-500/40 px-1.5 py-0.5 text-[10px] font-sans font-semibold text-amber-300">
                             <Clock className="h-2.5 w-2.5" />
@@ -501,7 +502,7 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                         <td className="px-4 py-3 font-mono text-slate-400 whitespace-nowrap">
                           <div className="flex items-center gap-1.5">
                             <span>
-                              £{s.wagePw.toLocaleString()}/wk · {s.expires}
+                              {formatWeeklyWage(s.wagePw)} · {formatContractExpiry(s.expires)}
                             </span>
                             {expiringSoon && (
                               <span className="inline-flex items-center gap-0.5 rounded bg-amber-500/20 border border-amber-500/40 px-1.5 py-0.5 text-[10px] font-sans font-semibold text-amber-300">

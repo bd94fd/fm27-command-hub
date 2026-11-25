@@ -4,6 +4,7 @@ import type { PlayerRecord } from '../../types/fm27';
 import type { RecruitmentTarget } from '../../types/fmSave';
 import type { ShortlistTargetAdvice } from '../../utils/shortlistAdviceEngine';
 import type { PositionBucketCode } from '../../utils/transferAudit';
+import { formatWeeklyWage } from '../../utils/squadViewHelpers';
 import type { PositionalNeed, SquadAudit } from './recruitmentTypes';
 
 interface PositionalDepthViewProps {
@@ -256,7 +257,7 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
                               <span>Age {p.age}</span>
                               <span>·</span>
                               <span className="font-mono tabular-nums">
-                                £{p.wagePw.toLocaleString()}/wk
+                                {formatWeeklyWage(p.wagePw)}
                               </span>
                               {isTeenStarter && (
                                 <span className="rounded bg-emerald-500/20 px-1 text-[9px] font-bold text-emerald-300">
@@ -316,7 +317,7 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
                                 {isStarterQual ? 'Starter Level' : 'Rotation Ready'}
                               </span>
                               <span className="text-[9px] font-mono text-slate-400">
-                                £{p.wagePw.toLocaleString()}/wk
+                                {formatWeeklyWage(p.wagePw)}
                               </span>
                             </div>
                           </div>

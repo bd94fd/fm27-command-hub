@@ -2,16 +2,24 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PlayerRecord } from '../types/fm27';
 import {
+  MISSING_VALUE,
   SQUAD_COLUMNS,
   SQUAD_VIEW_PRESETS,
   buildEnrichedSquadRows,
   cleanPlayerNote,
   computeSquadSummary,
   countActiveSecondaryFilters,
+  countSquadPool,
+  describeSquadPool,
   filterAndSortSquadRows,
   formatCompactCurrency,
+  formatContractExpiry,
+  formatShortContractExpiry,
   formatWeeklyWage,
   getSquadPositionOrder,
+  hasPlayerMatchStats,
+  isFirstTeamPlayer,
+  isPlaceholderValue,
   isSquadMissingMatchStats,
 } from './squadViewHelpers';
 
@@ -237,13 +245,16 @@ test('countActiveSecondaryFilters and currency formatters work cleanly', () => {
     4
   );
 
-  assert.equal(formatCompactCurrency(null), '—');
+  assert.equal(formatCompactCurrency(null), '--');
   assert.equal(formatCompactCurrency(0), '£0');
   assert.equal(formatCompactCurrency(850), '£850');
   assert.equal(formatCompactCurrency(125000), '£125k');
   assert.equal(formatCompactCurrency(1450000), '£1.45m');
   assert.equal(formatWeeklyWage(625), '£625/wk');
   assert.equal(formatWeeklyWage(14250), '£14.3k/wk');
+  assert.equal(formatWeeklyWage(0), '--');
+  assert.equal(formatWeeklyWage(null), '--');
+  assert.equal(formatWeeklyWage(Number.NaN), '--');
 
   const durabilityPreset = SQUAD_VIEW_PRESETS.find((p) => p.id === 'durability');
   assert.ok(durabilityPreset?.defaultColumns.includes('condSharp'));
@@ -297,3 +308,46 @@ test('Phase 3: cup-only ban stays Available for league fixtures with amber Cup B
   assert.equal(cupRows[0].hasOtherCompBan, false);
 });
 
+
+test('Placeholder contract (§9): every empty marker is recognised and renders as --', () => {
+  for (const marker of ['', ' ', '-', '--', '—', '–', 'N/A', 'n/a', 'null', 'undefined', 'Unknown', 'none', 'tbd']) {
+    assert.equal(isPlaceholderValue(marker), true, `expected ${JSON.stringify(marker)} to be a placeholder`);
+    assert.equal(formatContractExpiry(marker), MISSING_VALUE);
+    assert.equal(formatShortContractExpiry(marker), MISSING_VALUE);
+  }
+  assert.equal(isPlaceholderValue(null), true);
+  assert.equal(isPlaceholderValue(undefined), true);
+
+  assert.equal(isPlaceholderValue('30/06/2028'), false);
+  assert.equal(formatContractExpiry('30/06/2028'), '30/06/2028');
+  assert.equal(formatShortContractExpiry('30/06/2028'), '06/28');
+  assert.equal(formatShortContractExpiry('2028-06-30'), '06/28');
+  // Unknown shapes pass through rather than being invented.
+  assert.equal(formatShortContractExpiry('End of season'), 'End of season');
+});
+
+test('Squad pool counts distinguish First Team from Full Pool on every surface (§2, §3)', () => {
+  const squad = [
+    makePlayer({ id: 'a', name: 'Senior A' }),
+    makePlayer({ id: 'b', name: 'Senior B', teamSlot: 0 }),
+    makePlayer({ id: 'c', name: 'Reserve C', teamSlot: 1 }),
+    makePlayer({ id: 'd', name: 'U21 D', teamSlot: 2, squadUnit: 'U21' }),
+  ];
+  const counts = countSquadPool(squad);
+  assert.deepEqual(counts, { firstTeam: 2, youthReserves: 2, fullPool: 4 });
+  assert.equal(describeSquadPool(counts), '2 First Team · 4 Full Pool (2 Youth/Reserves)');
+  assert.equal(
+    describeSquadPool({ firstTeam: 3, youthReserves: 0, fullPool: 3 }),
+    '3 First Team · 3 Full Pool'
+  );
+  assert.deepEqual(countSquadPool([]), { firstTeam: 0, youthReserves: 0, fullPool: 0 });
+  assert.equal(isFirstTeamPlayer(makePlayer({ id: 'e' })), true);
+  assert.equal(isFirstTeamPlayer(makePlayer({ id: 'f', teamSlot: 3 })), false);
+});
+
+test('Shared "has played" predicate (§11): apps without minutes or a 0.00 rating count as no data', () => {
+  assert.equal(hasPlayerMatchStats(makePlayer({ id: 'x', apps: '4', minutes: 0 })), true);
+  assert.equal(hasPlayerMatchStats(makePlayer({ id: 'y', apps: '0', minutes: 0, rating: 0 })), false);
+  assert.equal(hasPlayerMatchStats(makePlayer({ id: 'z', apps: '0', minutes: 0, rating: 6.8 })), true);
+  assert.equal(hasPlayerMatchStats(makePlayer({ id: 'w', apps: '0', minutes: 90 })), true);
+});

@@ -27,6 +27,7 @@ import {
   SaveHistoryPoint,
 } from '../services/saveCache';
 import { clearProgressionArchive } from '../utils/progressionDiff';
+import { formatWeeklyWage } from '../utils/squadViewHelpers';
 import {
   deriveFootballSeasonLabel,
   formatSignedCurrency,
@@ -1298,7 +1299,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                             </span>
                           </div>
                           <span className="font-mono text-slate-400 tabular-nums">
-                            {p.ability.toFixed(1)}★ · £{p.wagePw.toLocaleString()}/wk
+                            {p.ability.toFixed(1)}★ · {formatWeeklyWage(p.wagePw)}
                           </span>
                         </div>
                       ))

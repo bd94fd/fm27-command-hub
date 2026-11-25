@@ -4,7 +4,11 @@ import type { PlayerRecord } from '../../types/fm27';
 import type { RecruitmentTarget } from '../../types/fmSave';
 import type { ShortlistTargetAdvice } from '../../utils/shortlistAdviceEngine';
 import type { TransferActionVerdict } from '../../utils/transferAudit';
-import { formatCompactCurrency } from '../../utils/squadViewHelpers';
+import { formatWeeklyWage } from '../../utils/squadViewHelpers';
+import {
+  formatCompactCurrency,
+  formatContractExpiry,
+} from '../../utils/squadViewHelpers';
 import { verdictBadgeClass } from './recruitmentBadges';
 import type { PlayerAdviceItem } from './recruitmentTypes';
 
@@ -180,7 +184,7 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
                     Wage
                   </div>
                   <div className="mt-0.5 font-mono text-xs font-bold text-slate-100 tabular-nums truncate">
-                    £{p.wagePw.toLocaleString()}/wk
+                    {formatWeeklyWage(p.wagePw)}
                   </div>
                 </div>
                 <div className="rounded-lg border border-slate-800 bg-slate-950/75 px-2.5 py-1.5 min-w-0">
@@ -188,7 +192,7 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
                     Contract
                   </div>
                   <div className={`mt-0.5 font-mono text-xs font-bold tabular-nums truncate ${contractUrgencyCls}`}>
-                    {p.expires}
+                    {formatContractExpiry(p.expires)}
                     {item.monthsLeft !== null ? ` (${Math.max(0, item.monthsLeft)}m)` : ''}
                   </div>
                 </div>

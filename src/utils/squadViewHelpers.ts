@@ -276,8 +276,52 @@ export function getSquadPositionOrder(pos: string): number {
   return 8;
 }
 
+/**
+ * The ONE missing-value placeholder for every squad/staff surface (UI and Analyst), so an empty
+ * value never renders as `undefined`, `N/A`, `-` or an em dash in one place and `--` in another.
+ */
+export const MISSING_VALUE = '--';
+
+const PLACEHOLDER_STRINGS = new Set([
+  '',
+  '-',
+  '--',
+  '---',
+  '—',
+  '–',
+  'n/a',
+  'na',
+  'null',
+  'undefined',
+  'unknown',
+  'none',
+  'tbd',
+]);
+
+/** True when a string carries no data (all empty markers the app emits). */
+export function isPlaceholderValue(raw?: string | null): boolean {
+  if (raw === null || raw === undefined) return true;
+  return PLACEHOLDER_STRINGS.has(String(raw).trim().toLowerCase());
+}
+
+/** Raw contract expiry string, or MISSING_VALUE — never `undefined`/`N/A` leaking through. */
+export function formatContractExpiry(expires?: string | null): string {
+  return isPlaceholderValue(expires) ? MISSING_VALUE : String(expires).trim();
+}
+
+/** Context-budget-friendly contract expiry (MM/YY), or MISSING_VALUE. */
+export function formatShortContractExpiry(expires?: string | null): string {
+  const raw = formatContractExpiry(expires);
+  if (raw === MISSING_VALUE) return MISSING_VALUE;
+  const dmy = raw.match(/(\d{1,2})\/(\d{1,2})\/20(\d{2})/);
+  if (dmy) return `${dmy[2].padStart(2, '0')}/${dmy[3]}`;
+  const iso = raw.match(/20(\d{2})-(\d{2})/);
+  if (iso) return `${iso[2]}/${iso[1]}`;
+  return raw;
+}
+
 export function extractExpiryYear(expires?: string): string | null {
-  if (!expires || expires === 'N/A' || expires === '--') return null;
+  if (!expires || isPlaceholderValue(expires)) return null;
   const m = expires.match(/\b(20\d{2})\b/);
   return m ? m[1] : null;
 }
@@ -291,6 +335,10 @@ export function cleanPlayerNote(notes?: string): string | null {
   return trimmed;
 }
 
+/**
+ * The ONE "has played" predicate. The Squad table and the Analyst squad profile both use it,
+ * so a player with 0 recorded minutes can never look "played" in one place and blank in the other.
+ */
 export function hasPlayerMatchStats(player: PlayerRecord): boolean {
   return (
     (player.minutes || 0) > 0 ||
@@ -299,6 +347,40 @@ export function hasPlayerMatchStats(player: PlayerRecord): boolean {
     (player.assists || 0) > 0 ||
     (typeof player.rating === 'number' && player.rating > 0)
   );
+}
+
+/** First team = the senior pool the War Room and pitch builder use (`teamSlot` 0/undefined). */
+export function isFirstTeamPlayer(player: PlayerRecord): boolean {
+  return player.teamSlot === undefined || player.teamSlot === 0;
+}
+
+export interface SquadPoolCounts {
+  firstTeam: number;
+  youthReserves: number;
+  fullPool: number;
+}
+
+export function countSquadPool(
+  players: ReadonlyArray<PlayerRecord> | null | undefined
+): SquadPoolCounts {
+  const list = players ?? [];
+  const firstTeam = list.filter(isFirstTeamPlayer).length;
+  return {
+    firstTeam,
+    youthReserves: list.length - firstTeam,
+    fullPool: list.length,
+  };
+}
+
+/**
+ * One label for Hub header, Squad header and the Analyst prompt: First Team vs Full Pool.
+ * Example: `24 First Team · 31 Full Pool (7 Youth/Reserves)`.
+ */
+export function describeSquadPool(counts: SquadPoolCounts): string {
+  const base = `${counts.firstTeam} First Team · ${counts.fullPool} Full Pool`;
+  return counts.youthReserves > 0
+    ? `${base} (${counts.youthReserves} Youth/Reserves)`
+    : base;
 }
 
 export function isSquadMissingMatchStats(players: PlayerRecord[]): boolean {
@@ -312,7 +394,7 @@ export function resolveDefaultSortKey(players: PlayerRecord[]): SquadSortKey {
 
 export function formatCompactCurrency(value?: number | null): string {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
-    return '—';
+    return MISSING_VALUE;
   }
   if (value === 0) {
     return '£0';
@@ -326,9 +408,13 @@ export function formatCompactCurrency(value?: number | null): string {
   return `£${Math.round(value)}`;
 }
 
+/**
+ * The ONE weekly wage formatter (squad cards, detail modals, compare views and the Analyst).
+ * `clubFinances.formatWeeklyWage` was deleted so this cannot drift again.
+ */
 export function formatWeeklyWage(wagePw?: number | null): string {
   if (typeof wagePw !== 'number' || !Number.isFinite(wagePw) || wagePw <= 0) {
-    return '—';
+    return MISSING_VALUE;
   }
   if (wagePw >= 1000) {
     return `£${(wagePw / 1000).toFixed(wagePw >= 10_000 ? 1 : 2)}k/wk`;

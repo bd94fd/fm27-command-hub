@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { PlayerRecord } from '../../types/fm27';
 import { AttributeRadarChart } from '../charts/PlayerRadarAndPizzaCharts';
 import { COMPARE_ROWS } from './squadTableConfig';
+import { formatWeeklyWage } from '../../utils/squadViewHelpers';
 
 interface SquadCompareViewProps {
   players: PlayerRecord[];
@@ -40,7 +41,7 @@ export const SquadCompareView: React.FC<SquadCompareViewProps> = ({
               >
                 {players.map((p) => (
                   <option key={`a-${p.id}`} value={p.id}>
-                    {p.name} ({p.position} · {p.ability.toFixed(1)}★ · £{p.wagePw}/wk)
+                    {p.name} ({p.position} · {p.ability.toFixed(1)}★ · {formatWeeklyWage(p.wagePw)})
                   </option>
                 ))}
               </select>
@@ -57,7 +58,7 @@ export const SquadCompareView: React.FC<SquadCompareViewProps> = ({
               >
                 {players.map((p) => (
                   <option key={`b-${p.id}`} value={p.id}>
-                    {p.name} ({p.position} · {p.ability.toFixed(1)}★ · £{p.wagePw}/wk)
+                    {p.name} ({p.position} · {p.ability.toFixed(1)}★ · {formatWeeklyWage(p.wagePw)})
                   </option>
                 ))}
               </select>

@@ -91,6 +91,7 @@ import {
   sanitizeReaderNotes,
   toApiResponseError,
 } from '../utils/apiResponse';
+import { countSquadPool, describeSquadPool } from '../utils/squadViewHelpers';
 
 const SaveSnapshotDiffPanel = lazy(() =>
   import('./SaveSnapshotDiffPanel').then((m) => ({
@@ -1632,7 +1633,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               </h2>
               <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                 {players.length > 0
-                  ? `${clubName && clubName !== '--' ? clubName : 'Club'} · ${players.length} players · ${matches.length} matches`
+                  ? `${clubName && clubName !== '--' ? clubName : 'Club'} · ${describeSquadPool(countSquadPool(players))} · ${matches.length} matches`
                   : 'Ask any FM27 tactical question'}
               </div>
             </div>
