@@ -1547,7 +1547,7 @@ export default function App() {
 
               <div>
                 <div className="text-xs text-slate-500 dark:text-slate-400">
-                  Club Payroll &amp; Wage Compliance
+                  Player Wage Bill &amp; Wage Compliance
                 </div>
                 <div className="text-lg font-bold font-mono tabular-nums text-slate-900 dark:text-slate-100 mt-0.5">
                   {wageSpend}

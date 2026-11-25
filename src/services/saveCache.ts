@@ -1073,7 +1073,7 @@ export function buildDeepJourneyReport(
       playerBasicWagesWeeklyTo: baseDiff.kpiDeltas.toTotalWagePw,
       playerBasicWagesDeltaPw: baseDiff.kpiDeltas.totalWageDeltaPw,
       strictRule:
-        'clubPayrollWeekly is FM total club wage payroll (players + staff + committed club wages) measured against clubWageBudgetWeekly. playerBasicWagesWeekly is the sum of basic weekly contracts for tracked playing squad members ONLY. Always distinguish them and NEVER call playerBasicWagesWeekly total club weekly wages.',
+        'clubPayrollWeekly is FM27\'s player wage bill from the finance table, measured against clubWageBudgetWeekly. It does NOT include staff wages, which are separate and can exceed it. playerBasicWagesWeekly is the sum of basic weekly contracts for tracked playing squad members ONLY. Always distinguish them and NEVER call either total club weekly wages.',
     },
     kpiDeltas: baseDiff.kpiDeltas,
     timeline: timeline.slice(-8),

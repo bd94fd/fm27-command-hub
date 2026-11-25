@@ -64,16 +64,26 @@ test('Hub Finances panel is driven by clubFinances and staffRatings selectors', 
     'Cash &amp; Runway',
     'Weekly Payroll Breakdown',
     'Sponsorship Deals',
-    'Club Payroll (Canonical)',
-    'Wage Budget',
+    'Player Wage Bill (Canonical)',
+    'Player Wage Budget',
     'Weekly Staff Payroll',
     'Squad Wage Subtotal',
-    'Sum of individual player contracts — not club payroll',
+    'a subset of the player wage bill, not a club total',
   ]) {
     assert.ok(src.includes(label), `Finances panel is missing ${label}`);
   }
   assert.match(src, /datesReordered/);
   assert.match(src, /Dates reordered/);
+  assert.match(src, /staff wages are separate and not included/);
+  assert.match(src, /separate from the player wage bill/);
+
+  // The old claim that the finance-table wage figure includes all staff is false.
+  const analyst = readSrc('src/utils/tacticalAnalystContext.ts');
+  assert.doesNotMatch(analyst, /all players in every squad plus all staff/);
+  assert.match(analyst, /Staff wages are separate and can exceed it/);
+  const saveCache = readSrc('src/services/saveCache.ts');
+  assert.doesNotMatch(saveCache, /players \+ staff/);
+  assert.match(saveCache, /It does NOT include staff wages/);
   // Finances stays a Hub sub-tab; it must not become a 7th top-level nav tab.
   assert.doesNotMatch(src, /id: 'finances' as const, label:/);
 });

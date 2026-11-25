@@ -2626,24 +2626,24 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <FinancesStat
-                  label="Club Payroll (Canonical)"
+                  label="Player Wage Bill (Canonical)"
                   value={financesPanel.payroll.clubPayrollLabel}
-                  hint="FM27 finance table: every player in every squad plus all staff"
+                  hint="FM27 finance table player wage spend — staff wages are separate and not included"
                 />
                 <FinancesStat
-                  label="Wage Budget"
+                  label="Player Wage Budget"
                   value={financesPanel.payroll.wageBudgetLabel}
                   hint={financesPanel.payroll.wageHeadroomLabel}
                 />
                 <FinancesStat
                   label="Weekly Staff Payroll"
                   value={financesPanel.payroll.staffPayrollLabel}
-                  hint="Backroom staff contracts only · board/executives without contracts excluded"
+                  hint="Backroom staff contracts only — separate from the player wage bill; board/executives without contracts excluded"
                 />
                 <FinancesStat
                   label="Squad Wage Subtotal"
                   value={financesPanel.payroll.squadWageSubtotalLabel}
-                  hint="Sum of individual player contracts — not club payroll"
+                  hint="Sum of individual player contracts — a subset of the player wage bill, not a club total"
                 />
               </div>
             </div>

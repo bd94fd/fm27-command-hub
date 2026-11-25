@@ -510,10 +510,10 @@ export function buildLiveTacticalAnalystContext(
     `Squad Pool: ${describeSquadPool(squadPool)}`,
     `Standing: ${hydratedFmSave?.leagueRecordLabel || `${summary.played}GP (${summary.wins}W-${summary.draws}D-${summary.losses}L, ${summary.points}Pts)`} · ${leagueStandingSub}`,
     `Next: ${nextFixture}${nextCompetitionName ? ` [${nextCompetitionName}]` : ''}`,
-    `Finances: Bal ${balance} | Club Payroll ${wageSpend}${runwayLabel}`,
+    `Finances: Bal ${balance} | Player Wage Bill ${wageSpend}${runwayLabel}`,
     payrollIsCanonical
-      ? 'Payroll Scope: "Club Payroll" is the ONLY club-wide wage total (FM27 finance table: all players in every squad plus all staff). Per-player wages quoted below are individual contracts, NOT a club total — never subtract a squad slice from Club Payroll to infer staff wages.'
-      : 'Payroll Scope: no club-wide payroll figure is decoded from this save. Per-player wages quoted below are individual contracts only — do NOT sum them and present the result as the club payroll or as staff wages.',
+      ? 'Payroll Scope: "Player Wage Bill" is FM27\'s finance-table player wage spend only. Staff wages are separate and can exceed it; never add staff wages to the player wage bill or present the player wage bill as total club payroll. Per-player wages quoted below are individual contracts, NOT a club total.'
+      : 'Payroll Scope: no player wage bill is decoded from this save. Per-player wages quoted below are individual contracts only — do NOT sum them and present the result as the club payroll or as staff wages.',
   ];
 
   if (decoded?.upcomingFixtures && decoded.upcomingFixtures.length > 0) {
@@ -1505,7 +1505,7 @@ export function buildLiveTacticalAnalystContext(
     const clubPayrollPart =
       typeof jr.baseDiff.kpiDeltas.toClubWagePayrollWeekly === 'number' &&
       jr.baseDiff.kpiDeltas.toClubWagePayrollWeekly > 0
-        ? `, Club Payroll £${jr.baseDiff.kpiDeltas.toClubWagePayrollWeekly.toLocaleString()}/wk`
+        ? `, Player Wage Bill £${jr.baseDiff.kpiDeltas.toClubWagePayrollWeekly.toLocaleString()}/wk`
         : '';
     const kpiLine = `KPI Deltas: Squad ${jr.baseDiff.kpiDeltas.toSquadCount} (${jr.baseDiff.kpiDeltas.squadCountDelta >= 0 ? '+' : ''}${jr.baseDiff.kpiDeltas.squadCountDelta}), Avg ★ ${jr.baseDiff.kpiDeltas.toAvgAbility.toFixed(2)} (${jr.baseDiff.kpiDeltas.avgAbilityDelta >= 0 ? '+' : ''}${jr.baseDiff.kpiDeltas.avgAbilityDelta.toFixed(2)}★), Player Basic Wages £${jr.baseDiff.kpiDeltas.toTotalWagePw.toLocaleString()}/wk (${formatSignedCurrency(jr.baseDiff.kpiDeltas.totalWageDeltaPw)}/wk)${clubPayrollPart}, Balance ${jr.baseDiff.kpiDeltas.fromBalance || '--'} -> ${jr.baseDiff.kpiDeltas.toBalance || '--'}`;
     const journeyHeader = `=== SAVE-TO-SAVE JOURNEY REPORT (${jr.fromDate} [${jr.fromSeason}] -> ${jr.toDate} [${jr.toSeason}], ${jr.timeline.length} saves${jr.sameSeason ? '' : ' — CROSS-SEASON'}) ===`;

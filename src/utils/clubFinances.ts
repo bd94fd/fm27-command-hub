@@ -313,8 +313,8 @@ export interface SquadWageSubtotal {
 
 /**
  * Sum of individual player contracts, labelled as a squad subtotal only. FM27's finance
- * table Club Payroll is the canonical club-wide wage figure; this helper must never be
- * rendered under a payroll label.
+ * table Player Wage Bill is the canonical player wage figure; staff wages are separate.
+ * This helper must never be rendered under a total-club-payroll label.
  */
 export function computeSquadWageSubtotal(
   wages: ReadonlyArray<number | null | undefined> | null | undefined
