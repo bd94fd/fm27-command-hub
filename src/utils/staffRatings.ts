@@ -170,13 +170,24 @@ export function calculateAllStaffRoleRatings(
     .sort((a, b) => b.score - a.score);
 }
 
-export type StaffJobEligibility = 'coaching' | 'recruitment' | 'medical';
+export type StaffJobEligibility =
+  | 'coaching'
+  | 'recruitment'
+  | 'medical'
+  | 'board';
 
 const MEDICAL_ROLE_RE = /physio|doctor|medic|sport\w*\s*scien|rehab/;
 const RECRUITMENT_ROLE_RE =
   /scout|recruit|director of football|technical director|loan manager|analyst|data/;
 const COACHING_ROLE_RE =
   /manager|assistant|coach|goalkeep|fitness|set.?piece|head of youth|hoyd|u21|u19|u18/;
+const BOARD_ROLE_RE =
+  /\b(chairperson|chairman|owner|president|managing director|board director|board member)\b/;
+
+/** Board / Executive roles are club leadership, never a coaching, scouting, or medical post. */
+export function isBoardExecutiveRole(role: string | null | undefined): boolean {
+  return BOARD_ROLE_RE.test((role || '').toLowerCase());
+}
 
 /**
  * Real FM27 job eligibility, used to stop a Chief Scout leading Attacking training or a
@@ -185,6 +196,8 @@ const COACHING_ROLE_RE =
  */
 export function resolveStaffJobEligibility(member: StaffRecord): StaffJobEligibility {
   const role = (member.role || '').toLowerCase();
+  // Board first: a Managing Director is leadership, not a Manager or a Technical Director.
+  if (isBoardExecutiveRole(role)) return 'board';
   if (MEDICAL_ROLE_RE.test(role)) return 'medical';
   if (RECRUITMENT_ROLE_RE.test(role)) return 'recruitment';
   if (COACHING_ROLE_RE.test(role)) return 'coaching';
@@ -212,6 +225,9 @@ const DEPARTMENT_RATING_KEYS: Record<StaffJobEligibility, string[]> = {
   coaching: COACHING_RATING_KEYS,
   recruitment: RECRUITMENT_RATING_KEYS,
   medical: MEDICAL_RATING_KEYS,
+  // No board-specific rating exists in FM27; board cards keep their best available fit
+  // but are labelled BOARD and are never eligible for a training or specialist unit.
+  board: [],
 };
 
 /**
@@ -228,6 +244,24 @@ export function getDepartmentStaffRoleRatings(staff: StaffRecord): StaffRoleRati
 /** Headline star rating for a staff card, scored on the member's actual department first. */
 export function getHeadlineStaffRoleRating(staff: StaffRecord): StaffRoleRating {
   return getDepartmentStaffRoleRatings(staff)[0];
+}
+
+export interface StaffHeadlineDisplay {
+  label: string;
+  /** Null for Board/Executive staff: FM27 has no board rating, so never imply a coaching score. */
+  stars: number | null;
+}
+
+/** Display headline shared by the Staff card, detail modal, and Analyst prompt. */
+export function getStaffHeadlineDisplay(staff: StaffRecord): StaffHeadlineDisplay {
+  if (classifyStaffDepartment(staff) === 'board') {
+    return {
+      label: 'Board / Executive (no coaching rating)',
+      stars: null,
+    };
+  }
+  const headline = getHeadlineStaffRoleRating(staff);
+  return { label: headline.label, stars: headline.stars };
 }
 
 /** @deprecated Use `getHeadlineStaffRoleRating`; kept so existing call sites stay department-aware. */
@@ -358,7 +392,11 @@ export function evaluateBackroomDepartmentEfficiency(
   });
 }
 
-export type StaffDepartmentGroup = 'coaching' | 'scouting' | 'medical';
+export type StaffDepartmentGroup =
+  | 'coaching'
+  | 'scouting'
+  | 'medical'
+  | 'board';
 
 export function classifyStaffDepartment(member: StaffRecord): StaffDepartmentGroup {
   const eligibility = resolveStaffJobEligibility(member);
@@ -553,14 +591,18 @@ export function computeStaffKpiSummary(
   const expiringSoonCount = list.filter((s) =>
     isStaffContractExpiringSoon(s.expires, saveDate)
   ).length;
+  // Board/Executive members have no coaching rating, so they never drag the staff average.
+  const ratedStaff = list.filter(
+    (s) => classifyStaffDepartment(s) !== 'board'
+  );
   const averageHeadlineStars =
-    list.length > 0
+    ratedStaff.length > 0
       ? Math.round(
-          (list.reduce(
+          (ratedStaff.reduce(
             (sum, s) => sum + getHeadlineStaffRoleRating(s).stars,
             0
           ) /
-            list.length) *
+            ratedStaff.length) *
             10
         ) / 10
       : null;
@@ -642,12 +684,15 @@ export function isStaffContractExpiringSoon(
 }
 
 export interface WeeklyStaffPayroll {
-  /** Total weekly staff wage; null when any wage is unreadable (never a silent 0). */
+  /** Total weekly staff wage; null when any counted wage is unreadable (never a silent 0). */
   totalWeekly: number | null;
-  /** Sum of the wages that did decode, for context only — do not present it as the total. */
+  /** Sum of the wages that did decode, so a partial total can still be shown honestly. */
   knownWeekly: number;
+  /** Salaried staff considered: excludes board/executive members with no contract at all. */
   staffCount: number;
   missingWageCount: number;
+  /** Board/Executive members with no decoded wage; not salaried staff, so not counted as missing. */
+  excludedWithoutContractCount: number;
 }
 
 /**
@@ -656,14 +701,21 @@ export interface WeeklyStaffPayroll {
  * folding an unreadable contract into the sum as £0.
  */
 export function computeWeeklyStaffPayroll(
-  staff: ReadonlyArray<{ wagePw?: number | null }> | null | undefined
+  staff: ReadonlyArray<{ wagePw?: number | null; role?: string | null }> | null | undefined
 ): WeeklyStaffPayroll {
   const list = staff ?? [];
   let knownWeekly = 0;
   let missingWageCount = 0;
+  let excludedWithoutContractCount = 0;
   for (const member of list) {
     const wage = member?.wagePw;
-    if (typeof wage === 'number' && Number.isFinite(wage) && wage > 0) {
+    const hasWage =
+      typeof wage === 'number' && Number.isFinite(wage) && wage > 0;
+    if (!hasWage && isBoardExecutiveRole(member?.role)) {
+      excludedWithoutContractCount += 1;
+      continue;
+    }
+    if (hasWage) {
       knownWeekly += wage;
     } else {
       missingWageCount += 1;
@@ -672,18 +724,23 @@ export function computeWeeklyStaffPayroll(
   return {
     totalWeekly: missingWageCount === 0 ? knownWeekly : null,
     knownWeekly,
-    staffCount: list.length,
+    staffCount: list.length - excludedWithoutContractCount,
     missingWageCount,
+    excludedWithoutContractCount,
   };
 }
 
-/** Shared label for the payroll total so the Staff tab and the Analyst print it identically. */
+/**
+ * Shared payroll label so the Staff tab and the Analyst print it identically. A partial
+ * decode still shows the known sum, matching the squad wage subtotal's honest wording;
+ * `--` is reserved for a save with zero decoded staff wages.
+ */
 export function formatWeeklyStaffPayroll(payroll: WeeklyStaffPayroll): string {
-  if (payroll.staffCount === 0) return '--';
-  if (payroll.totalWeekly === null) {
-    return `-- (${payroll.missingWageCount} of ${payroll.staffCount} wages unreadable)`;
+  if (payroll.staffCount === 0 || payroll.knownWeekly <= 0) return '--';
+  if (payroll.missingWageCount === 0) {
+    return `£${payroll.knownWeekly.toLocaleString()}/wk`;
   }
-  return `£${payroll.totalWeekly.toLocaleString()}/wk`;
+  return `£${payroll.knownWeekly.toLocaleString()}/wk known (${payroll.missingWageCount} of ${payroll.staffCount} without wage)`;
 }
 
 /**

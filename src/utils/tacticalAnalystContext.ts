@@ -50,7 +50,7 @@ import {
   formatStaffJobRatings,
   formatStars,
   formatWeeklyStaffPayroll,
-  getHeadlineStaffRoleRating,
+  getStaffHeadlineDisplay,
   isStaffContractExpiringSoon,
   PREFERRED_JOB_AFFINITY_CAPTION,
 } from './staffRatings';
@@ -1300,8 +1300,10 @@ export function buildLiveTacticalAnalystContext(
         st.attributes && typeof st.attributes.attacking === 'number'
     );
     const departmentRatings = ratedStaff.slice(0, 8).map((st) => {
-      const headline = getHeadlineStaffRoleRating(st);
-      return `${st.name}(${classifyStaffDepartment(st)} — ${headline.label} ${formatStars(headline.stars)})`;
+      const headline = getStaffHeadlineDisplay(st);
+      const rating =
+        headline.stars === null ? headline.label : `${headline.label} ${formatStars(headline.stars)}`;
+      return `${st.name}(${classifyStaffDepartment(st)} — ${rating})`;
     });
     const departmentLeads =
       ratedStaff.length > 0

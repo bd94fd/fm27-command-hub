@@ -17,7 +17,7 @@ import {
   classifyStaffDepartment,
   computeStaffKpiSummary,
   formatStars,
-  getHeadlineStaffRoleRating,
+  getStaffHeadlineDisplay,
   isStaffContractExpiringSoon,
   StaffDepartmentGroup,
   StaffKpiSummary,
@@ -39,6 +39,7 @@ const FILTER_ORDER: StaffDirectoryFilter[] = [
   'coaching',
   'scouting',
   'medical',
+  'board',
   'expiring',
 ];
 
@@ -98,20 +99,20 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
     useState<StaffDirectoryView>('directory');
 
   const counts = useMemo(() => {
-    let coaching = 0;
-    let scouting = 0;
-    let medical = 0;
-    let expiring = 0;
+    const result = {
+      coaching: 0,
+      scouting: 0,
+      medical: 0,
+      board: 0,
+      expiring: 0,
+    };
     for (const s of staff) {
-      const grp = classifyStaffDepartment(s);
-      if (grp === 'coaching') coaching += 1;
-      else if (grp === 'scouting') scouting += 1;
-      else medical += 1;
+      result[classifyStaffDepartment(s)] += 1;
       if (isStaffContractExpiringSoon(s.expires, saveDate)) {
-        expiring += 1;
+        result.expiring += 1;
       }
     }
-    return { coaching, scouting, medical, expiring };
+    return result;
   }, [staff, saveDate]);
 
   const kpi = useMemo(
@@ -136,16 +137,33 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
           s.name.toLowerCase().includes(q) || s.role.toLowerCase().includes(q)
         );
       })
-      .sort(
-        (a, b) =>
-          getHeadlineStaffRoleRating(b).score -
-          getHeadlineStaffRoleRating(a).score
-      );
+      .sort((a, b) => {
+        // Board/Executive cards have no coaching rating, so they sort after salaried staff.
+        const aStars = getStaffHeadlineDisplay(a).stars ?? -1;
+        const bStars = getStaffHeadlineDisplay(b).stars ?? -1;
+        return bStars - aStars;
+      });
   }, [staff, search, directoryFilter, saveDate]);
 
   const unifiedMatrix = useMemo(
     () => buildUnifiedStaffMatrix(staff),
     [staff]
+  );
+
+  // Decoded vacancy lists often contain generic "Staff · Club" placeholders; hide them
+  // rather than repeating the same meaningless pill for every club.
+  const realVacancies = useMemo(
+    () =>
+      (jobVacancies ?? []).filter((v) => {
+        const role = (v.role || '').trim();
+        const club = (v.club || '').trim();
+        const genericRole =
+          !role || role === '--' || role.toLowerCase() === 'staff';
+        const genericClub =
+          !club || club === '--' || club.toLowerCase() === 'club';
+        return !(genericRole && genericClub);
+      }),
+    [jobVacancies]
   );
 
   const overloadedCount = useMemo(
@@ -180,6 +198,7 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
     coaching: `Coaching (${counts.coaching})`,
     scouting: `Scouting (${counts.scouting})`,
     medical: `Medical (${counts.medical})`,
+    board: `Board (${counts.board})`,
     expiring: `Expiring Soon (${counts.expiring})`,
   };
 
@@ -271,14 +290,14 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
             </div>
           </div>
 
-          {jobVacancies.length > 0 && (
+          {realVacancies.length > 0 && (
             <div className="rounded-xl border border-sky-500/30 bg-sky-950/20 px-4 py-3 flex flex-wrap items-center gap-2 text-xs">
               <span className="inline-flex items-center gap-1.5 font-semibold text-sky-300">
                 <Briefcase className="h-3.5 w-3.5" />
-                Open Market Vacancies ({jobVacancies.length}):
+                Open Market Vacancies ({realVacancies.length}):
               </span>
               <div className="flex flex-wrap gap-1.5">
-                {jobVacancies.slice(0, 6).map((v, idx) => (
+                {realVacancies.slice(0, 6).map((v, idx) => (
                   <span
                     key={`${v.club || 'club'}-${v.role || 'role'}-${idx}`}
                     className="rounded-md bg-slate-900/90 border border-slate-700 px-2 py-0.5 text-[11px] text-slate-300"
@@ -305,7 +324,7 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                 {/* Mobile staff cards (< md) — zero horizontal scrolling at 360px */}
                 <div className="md:hidden divide-y divide-slate-800/80">
                   {filtered.map((s) => {
-                    const headline = getHeadlineStaffRoleRating(s);
+                    const headline = getStaffHeadlineDisplay(s);
                     const dept = classifyStaffDepartment(s);
                     const expiringSoon = isStaffContractExpiringSoon(
                       s.expires,
@@ -337,17 +356,23 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                               )}
                             </div>
                           </div>
-                          <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 font-mono text-xs font-bold text-amber-300 shrink-0">
-                            <Star className="h-3 w-3" />
-                            {formatStars(headline.stars)}
-                          </span>
+                          {headline.stars === null ? (
+                            <span className="inline-flex items-center rounded-md bg-slate-800 border border-slate-700 px-2 py-0.5 font-mono text-xs font-bold text-slate-400 shrink-0">
+                              --
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 font-mono text-xs font-bold text-amber-300 shrink-0">
+                              <Star className="h-3 w-3" />
+                              {formatStars(headline.stars)}
+                            </span>
+                          )}
                         </div>
                         <div className="grid grid-cols-2 gap-1.5 text-[11px]">
                           <div className="rounded-lg bg-slate-950/70 border border-slate-800/80 px-2 py-1.5 min-w-0">
                             <div className="text-[9px] uppercase text-slate-400">
                               Dept Role Rating
                             </div>
-                            <div className="text-slate-200 font-medium truncate">
+                            <div className="text-slate-200 font-medium break-words">
                               {headline.label}
                             </div>
                           </div>
@@ -391,7 +416,7 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                     </thead>
                     <tbody className="divide-y divide-slate-800/70">
                       {filtered.map((s) => {
-                        const headline = getHeadlineStaffRoleRating(s);
+                        const headline = getStaffHeadlineDisplay(s);
                         const dept = classifyStaffDepartment(s);
                         const expiringSoon = isStaffContractExpiringSoon(
                           s.expires,
@@ -424,10 +449,16 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap">
                               <div className="text-slate-300">{headline.label}</div>
-                              <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 font-mono font-bold text-amber-300">
-                                <Star className="h-3 w-3" />
-                                {formatStars(headline.stars)}
-                              </span>
+                              {headline.stars === null ? (
+                                <span className="inline-flex items-center rounded-md bg-slate-800 border border-slate-700 px-2 py-0.5 font-mono font-bold text-slate-400">
+                                  --
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 font-mono font-bold text-amber-300">
+                                  <Star className="h-3 w-3" />
+                                  {formatStars(headline.stars)}
+                                </span>
+                              )}
                             </td>
                             <td className="px-4 py-3 font-mono text-slate-400 whitespace-nowrap tabular-nums">
                               {formatWeeklyWage(s.wagePw)}
@@ -462,7 +493,8 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
               </div>
               <p className="text-[11px] text-slate-400 mt-0.5">
                 One star scale across pitch training, scouting, and medical — only
-                staff with a real FM job in each unit are eligible as lead.
+                staff with a real FM job in each unit are eligible as lead. Board /
+                Executive staff are excluded from every unit.
               </p>
             </div>
             {overloadedCount > 0 ? (
@@ -478,7 +510,7 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
             )}
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
             {unifiedMatrix.map((row) => {
               const workloadCls =
                 row.workload === 'Heavy / Overloaded'
@@ -492,11 +524,11 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                   key={row.key}
                   className="rounded-xl border border-slate-800 bg-slate-950/70 p-2.5 sm:p-3 space-y-1.5 min-w-0"
                 >
-                  <div className="text-[9px] uppercase tracking-wider text-slate-400 truncate">
+                  <div className="text-[9px] uppercase tracking-wider text-slate-400 break-words">
                     {row.group}
                   </div>
                   <div className="flex items-start justify-between gap-1.5">
-                    <span className="text-xs font-bold text-white truncate">
+                    <span className="text-xs font-bold text-white break-words min-w-0">
                       {row.label}
                     </span>
                     <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 font-mono text-[11px] font-bold text-amber-300 shrink-0">
@@ -504,12 +536,12 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                       {formatStars(row.stars)}
                     </span>
                   </div>
-                  <div className="text-[11px] text-slate-300 truncate">
+                  <div className="text-[11px] text-slate-300 break-words">
                     Lead: <strong className="text-white">{row.leadStaffName}</strong>{' '}
                     <span className="text-slate-400">({row.leadStaffRole})</span>
                   </div>
                   <div className="flex items-center justify-between gap-2 pt-0.5">
-                    <span className="text-[10px] text-slate-400 truncate">
+                    <span className="text-[10px] text-slate-400">
                       {row.qualifiedCount} qualified ≥ 2.5★
                     </span>
                     {row.workload !== 'n/a' && (
