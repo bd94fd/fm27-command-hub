@@ -37,6 +37,17 @@ A quick scan on 25 November 2026 found:
 - The repository has several very large files, including the Analyst context, save hydrator, Hub workspace and player modal.
 - Branch protection could not be checked with the current GitHub token.
 
+## Current target and constraints
+
+- Android Chrome and the installed PWA come first. Desktop still matters, but it is second.
+- The benchmark set is the three existing saves in `.agents_tmp/uploads/`:
+  - `auto_save.fm` at 264.5 MB, the latest save.
+  - `last_save_overwrite_backup.fm` at 263.4 MB.
+  - `auto_save_v03_.fm` at 253.8 MB.
+- These are the sizes supplied to the app. Compression is not confirmed, so do not assume it.
+- More save files will be added later when the game is available again.
+- The roadmap stays in this file. GitHub issues and milestones are not used for now.
+
 ## Wave 0: Protect the data
 
 | Rank | ID | Option | Why it matters | Effort |
@@ -45,7 +56,7 @@ A quick scan on 25 November 2026 found:
 | 2 | R02 | GitHub repository health audit | Check branch protection, required checks, secrets, Dependabot, issue and PR templates, and release notes. This stops bad merges before they reach main. | S |
 | 3 | R03 | Real-save regression set | Keep a small set of real saves from different clubs, sizes and FM27 patches. Run them through the decoder in CI. This catches drift that synthetic tests miss. | M |
 | 4 | R04 | Data parity contract map | Write one table showing every important field from decoder to hydrator to UI to Analyst. This is the fastest way to stop mismatched values. | M |
-| 5 | R05 | Save-load benchmark baseline | Measure upload, decode, hydrate and first render time and memory on phone and desktop. You cannot improve speed without a baseline. | S |
+| 5 | R05 | Save-load benchmark baseline | Measure upload, decode, hydrate and first render time and memory on Android Chrome and the installed PWA, using the three 250–265 MB saves. You cannot improve speed without a baseline. | S |
 | 6 | R06 | Error reporting with redaction | Capture client and server failures without sending save files, player data or API keys. This turns user reports into fixable evidence. | M |
 
 ## Wave 1: Prove the data
@@ -64,12 +75,12 @@ A quick scan on 25 November 2026 found:
 
 | Rank | ID | Option | Why it matters | Effort |
 | ---: | --- | --- | --- | --- |
-| 14 | R14 | Decode stage profiling | Time each stage separately: upload, Python decode, JSON transfer, hydration and render. This shows the real bottleneck. | S |
-| 15 | R15 | Content-fingerprint cache | Reuse a decoded save by file fingerprint instead of only save name and in-game date. This avoids decoding the same file again. | M |
-| 16 | R16 | Progressive first paint | Show squad, staff and finances as soon as each part is ready. Keep the rest loading behind skeletons. This makes a big save feel faster. | M |
-| 17 | R17 | Mobile memory and fallback tuning | Tune chunk size, worker memory and the native-to-browser fallback for phones. Large saves must not crash the tab. | M |
-| 18 | R18 | Bundle and startup audit | Review code splitting, fonts, icons and chart imports. Less JavaScript means a faster first open. | M |
-| 19 | R19 | Large-list and chart rendering | Use virtual lists, memoisation and lighter chart data for large squads and shortlists. This keeps scrolling smooth. | M |
+| 14 | R14 | Decode stage profiling on Android | Time each stage separately on Android Chrome and the installed PWA: upload, Python decode, JSON transfer, hydration and render. This shows the real bottleneck. | S |
+| 15 | R17 | Mobile memory and fallback tuning | Tune chunk size, worker memory and the native-to-browser fallback for 250–265 MB saves. Large saves must not crash the tab. | M |
+| 16 | R15 | Content-fingerprint cache | Reuse a decoded save by file fingerprint instead of only save name and in-game date. This avoids decoding the same 250–265 MB file again. | M |
+| 17 | R16 | Progressive first paint | Show squad, staff and finances as soon as each part is ready. Keep the rest loading behind skeletons. This makes a big save feel faster. | M |
+| 18 | R18 | Bundle and startup audit | Review code splitting, fonts, icons and chart imports. Less JavaScript means a faster first open on Android. | M |
+| 19 | R19 | Large-list and chart rendering | Use virtual lists, memoisation and lighter chart data for large squads and shortlists. This keeps scrolling smooth on phones. | M |
 | 20 | R20 | PWA cache freshness and offline update | Make sure an installed app updates cleanly and never serves an old decoder or old UI after a deploy. | M |
 
 ## Wave 3: Make the app easier to understand
@@ -124,12 +135,16 @@ A quick scan on 25 November 2026 found:
 2. R02 GitHub repository health audit. It is cheap and prevents avoidable merge risk.
 3. R05 Save-load benchmark baseline. It gives real numbers before any speed work starts.
 
-## Decisions that would change the order
+## Decisions already made
 
-- Whether Android phone performance or desktop depth matters more.
-- The typical save size and the slowest device you care about.
+- Android Chrome and the installed PWA are the first target.
+- The first benchmark uses the three existing saves, all between 250 MB and 265 MB.
+- More saves will be added later.
+- GitHub issues and milestones are not used. This file is the single backlog.
+
+## Decisions still open
+
 - Whether adding browser test tools and accessibility tools as development dependencies is acceptable.
-- Whether this roadmap should also become GitHub issues and milestones.
 - Whether Render's 512 MB limit is still the main deployment constraint.
 
 ## Status
