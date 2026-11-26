@@ -25,35 +25,11 @@ test('low-memory detection ignores unknown and desktop-class devices', () => {
   assert.equal(isLowMemoryDevice(8), false);
 });
 
-test('a browser fallback keeps Fast Sync on phones for any save size', () => {
-  assert.equal(
-    resolveFallbackFastSync({
-      requestedFastSync: false,
-      fileSizeBytes: 2 * 1024 * 1024,
-      isMobile: true,
-    }),
-    true
-  );
-});
-
-test('a large save on a low-memory desktop is upgraded to Fast Sync', () => {
+test('a browser fallback keeps Full Sync when the device has enough memory', () => {
   assert.equal(
     resolveFallbackFastSync({
       requestedFastSync: false,
       fileSizeBytes: 250 * 1024 * 1024,
-      isMobile: false,
-      deviceMemoryGb: 2,
-    }),
-    true
-  );
-});
-
-test('a desktop fallback keeps the requested mode when memory is adequate', () => {
-  assert.equal(
-    resolveFallbackFastSync({
-      requestedFastSync: false,
-      fileSizeBytes: 250 * 1024 * 1024,
-      isMobile: false,
       deviceMemoryGb: 8,
     }),
     false
@@ -62,9 +38,41 @@ test('a desktop fallback keeps the requested mode when memory is adequate', () =
     resolveFallbackFastSync({
       requestedFastSync: undefined,
       fileSizeBytes: 250 * 1024 * 1024,
-      isMobile: false,
-      deviceMemoryGb: 8,
+      deviceMemoryGb: undefined,
     }),
     false
+  );
+});
+
+test('a large save on a low-memory device is upgraded to Fast Sync', () => {
+  assert.equal(
+    resolveFallbackFastSync({
+      requestedFastSync: false,
+      fileSizeBytes: 250 * 1024 * 1024,
+      deviceMemoryGb: 2,
+    }),
+    true
+  );
+});
+
+test('a small save on a low-memory device keeps Full Sync', () => {
+  assert.equal(
+    resolveFallbackFastSync({
+      requestedFastSync: false,
+      fileSizeBytes: 20 * 1024 * 1024,
+      deviceMemoryGb: 2,
+    }),
+    false
+  );
+});
+
+test('an explicit Fast Sync request always stays Fast Sync', () => {
+  assert.equal(
+    resolveFallbackFastSync({
+      requestedFastSync: true,
+      fileSizeBytes: 20 * 1024 * 1024,
+      deviceMemoryGb: 8,
+    }),
+    true
   );
 });
