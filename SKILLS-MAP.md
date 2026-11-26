@@ -17,8 +17,8 @@ This map links each roadmap item to the skills that should be used. Every skill 
 | --- | --- | --- |
 | `github` | Works with GitHub issues, pull requests, branches, secrets and workflow status through the API and `gh`. | R02, R42, R44 |
 | `github-actions` | Builds, debugs and improves CI workflows. | R02, R03, R29, R42, R45 |
-| `security` | Reviews data handling, permissions, secrets, logs and input validation. | R06, R08, R32, R37, R39, R44, R46 |
-| `release-notes` | Turns merged work into a clear changelog. | R42 |
+| `security` | Reviews data handling, permissions, secrets, logs and input validation. | R02, R06, R08, R32, R37, R39, R44, R46 |
+| `release-notes` | Turns merged work into a clear changelog. | R02, R42 |
 | `technical-writing` | Keeps engineering explanations direct and useful. | R04, R11, R43 |
 | `prd` | Turns a feature idea into a short product requirements document before coding. | R33, R34, R36, R46 |
 | `agent-memory` | Keeps decisions and project knowledge in `AGENTS.md`. | R43 and roadmap upkeep |
