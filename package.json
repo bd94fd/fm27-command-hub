@@ -20,7 +20,8 @@
     "profile:decode": "node --import tsx scripts/profile-decode-stages.mjs",
     "ui:audit": "node scripts/ui-audit.mjs",
     "device:matrix": "node scripts/device-matrix.mjs",
-    "device:webkit": "node scripts/webkit-matrix.mjs"
+    "device:webkit": "node scripts/webkit-matrix.mjs",
+    "smoke:e2e": "node scripts/e2e-smoke.mjs"
   },
   "dependencies": {
     "@fontsource-variable/jetbrains-mono": "^5.3.0",

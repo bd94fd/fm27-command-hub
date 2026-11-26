@@ -12,6 +12,7 @@ coverage/
 !.agents/skills/**
 .agents_tmp/
 .playwright-cli/
+.playwright-mcp/
 public/assets/aistudio/
 *.fm
 *.zip

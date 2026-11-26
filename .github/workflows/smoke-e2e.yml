@@ -1,0 +1,89 @@
+name: E2E smoke
+
+# Manual only: the smoke test needs a real .fm save, which is never committed,
+# and a Chromium binary. Both live on the self-hosted runner identified by the
+# FM27_REAL_SAVE_RUNNER repository variable. Pull request CI is unaffected.
+on:
+  workflow_dispatch:
+    inputs:
+      profiles:
+        description: Which device profiles to run
+        required: false
+        default: both
+        type: choice
+        options: [both, desktop, mobile]
+
+concurrency:
+  group: smoke-e2e-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    if: ${{ vars.FM27_REAL_SAVE_RUNNER != '' && vars.FM27_REAL_SAVE_DIR != '' }}
+    runs-on: ${{ vars.FM27_REAL_SAVE_RUNNER }}
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+
+      - name: Install pinned fmsave so the server can decode
+        run: python -m pip install --disable-pip-version-check fmsave==0.14.5
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Start the production server
+        run: |
+          set -u
+          NODE_ENV=production PORT=12000 npm start > smoke-server.log 2>&1 &
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://localhost:12000/api/fm27/decode-status > /dev/null; then
+              echo "Server ready after ${attempt}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Server did not answer in 60s"
+          cat smoke-server.log
+          exit 1
+
+      - name: Run the smoke test
+        env:
+          FM27_REAL_SAVE_DIR: ${{ vars.FM27_REAL_SAVE_DIR }}
+        run: |
+          SAVE="$(ls -t "$FM27_REAL_SAVE_DIR"/*.fm | head -1)"
+          node scripts/e2e-smoke.mjs --save="$SAVE" --profile=${{ inputs.profiles || 'both' }}
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: smoke-e2e
+          path: |
+            .playwright-mcp/r29-smoke
+            smoke-server.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Stop the server
+        if: always()
+        run: pkill -f "node --import tsx server.ts" || true
