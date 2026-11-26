@@ -12,7 +12,10 @@ import {
   buildCheckpointRecoveryWarning,
   applyCheckpointRecoveryWarning,
 } from '../workers/fmSaveWorkerClient';
-import { markSaveLoadStage } from '../utils/saveLoadBenchmark';
+import {
+  markSaveLoadStage,
+  recordSaveLoadDetails,
+} from '../utils/saveLoadBenchmark';
 
 import {
   UploadController,
@@ -1204,10 +1207,15 @@ export async function decodeFmSaveViaServer(
         payload?: DecodedFmSavePayload;
         checkpointStage?: string;
         checkpointPayload?: DecodedFmSavePayload;
+        serverStageTimingsMs?: Record<string, number>;
         error?: string;
       };
       if (options.benchmarkId) {
         markSaveLoadStage(options.benchmarkId, 'transfer_complete', { overwrite: true });
+      }
+
+      if (options.benchmarkId && jobData.serverStageTimingsMs) {
+        recordSaveLoadDetails(options.benchmarkId, jobData.serverStageTimingsMs);
       }
 
       if (jobData.progress && jobData.progress.trim()) {

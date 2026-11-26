@@ -296,6 +296,7 @@ async function runOneSave({ browser, devices, args, savePath }) {
       wallMs: coldWallMs,
       squadCount,
       marksMs: benchmark?.marksMs ?? {},
+      detailMs: benchmark?.detailMs ?? {},
       completedAtIso: benchmark?.completedAtIso ?? null,
       failed: Boolean(benchmark?.marksMs?.failed !== undefined),
       peakJsHeapBytes: sampler.state.peakJsHeapBytes,
@@ -333,6 +334,9 @@ function printSummary(results) {
       console.log(
         `  warm reload: ${formatMs(result.warm.warmReloadMs)} | peak JS heap ${formatMb(result.warm.peakJsHeapBytes)} | squad ${result.warm.squadCount}`
       );
+    }
+    if (Object.keys(result.cold.detailMs ?? {}).length > 0) {
+      console.log(`  server detail: ${JSON.stringify(result.cold.detailMs)}`);
     }
     if (result.cold.failed) console.log('  result: FAILED (see marksMs.failed)');
     if (result.errors.length > 0) console.log(`  errors: ${result.errors.join(' | ')}`);
