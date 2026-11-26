@@ -56,6 +56,11 @@ import {
   formatStepTimingLabel,
   trimTrailingPeriod,
 } from '../utils/fmSaveUiHelpers';
+import {
+  finishSaveLoadBenchmark,
+  markSaveLoadStage,
+  startSaveLoadBenchmark,
+} from '../utils/saveLoadBenchmark';
 import type {
   FmSaveProgressStage,
   FmImportScope,
@@ -203,7 +208,7 @@ interface AutoSyncWorkspaceProps {
   ) => Promise<SquadMergeResult> | SquadMergeResult;
   onApplyDecodedFmSave?: (
     decoded: DecodedFmSavePayload,
-    options?: { isInterimCheckpoint?: boolean }
+    options?: { isInterimCheckpoint?: boolean; benchmarkId?: string }
   ) => Promise<HydratedSaveState> | HydratedSaveState;
   onBackgroundSyncStatusChange?: (
     status: {
@@ -1174,11 +1179,17 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       const lower = file.name.toLowerCase();
 
       if (lower.endsWith('.fm')) {
+        const benchmarkId = startSaveLoadBenchmark({
+          fileName: file.name,
+          fileSizeBytes: file.size,
+          mode: fastSync ? 'fast' : 'full',
+        });
         try {
           setExtractionWarnings([]);
           setLastStepTimingsMs({});
           setClubCoreReadyDuringDecode(false);
           let interimHydrated = false;
+          let markedDecodeStart = false;
           const { decodeFmSaveFile, cancelFmSaveDecode, createUploadController } =
             await import('../services/fmSaveReader');
           cancelDecodeRef.current = cancelFmSaveDecode;
@@ -1202,6 +1213,17 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           const decoded = await decodeFmSaveFile(
             file,
             (stage) => {
+              const uploadFinished =
+                stage.transport === 'server_decode' ||
+                stage.transport === 'browser_worker' ||
+                (stage.transport === 'server_upload' &&
+                  Boolean(stage.totalBytes) &&
+                  Number(stage.bytesUploaded || 0) >= Number(stage.totalBytes));
+              if (!markedDecodeStart && uploadFinished) {
+                markedDecodeStart = true;
+                markSaveLoadStage(benchmarkId, 'upload_complete');
+                markSaveLoadStage(benchmarkId, 'decode_start');
+              }
               setFmDecodeStage(stage);
               onBackgroundSyncStatusChange?.({
                 label: stage.label,
@@ -1214,12 +1236,14 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               scope: importScope,
               fastSync,
               uploadControl,
+              benchmarkId,
               onCheckpoint: (cp) => {
                 if (onApplyDecodedFmSave && cp.payload?.players?.length > 0) {
                   interimHydrated = true;
                   setClubCoreReadyDuringDecode(true);
                   void onApplyDecodedFmSave(cp.payload, {
                     isInterimCheckpoint: true,
+                    benchmarkId,
                   });
                   onBackgroundSyncStatusChange?.({
                     label:
@@ -1230,6 +1254,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               },
             }
           );
+          markSaveLoadStage(benchmarkId, 'decode_complete');
           uploadControlRef.current = null;
           setFmDecodeStage(null);
           setClubCoreReadyDuringDecode(false);
@@ -1249,9 +1274,14 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               : {}
           );
 
+          markSaveLoadStage(benchmarkId, 'hydrate_start');
           const hydrated = onApplyDecodedFmSave
-            ? await onApplyDecodedFmSave(decoded, { isInterimCheckpoint: false })
+            ? await onApplyDecodedFmSave(decoded, {
+                isInterimCheckpoint: false,
+                benchmarkId,
+              })
             : undefined;
+          markSaveLoadStage(benchmarkId, 'hydrate_complete');
           recordFm27BuildRun(decoded);
           onBackgroundSyncStatusChange?.(null);
 
@@ -1284,6 +1314,8 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             setAttachedFmFiles((prev) => [...prev, decodedEntry]);
           }
         } catch (err: unknown) {
+          markSaveLoadStage(benchmarkId, 'failed');
+          finishSaveLoadBenchmark(benchmarkId);
           uploadControlRef.current = null;
           setFmDecodeStage(null);
           setClubCoreReadyDuringDecode(false);
