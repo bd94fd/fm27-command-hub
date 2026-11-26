@@ -71,3 +71,9 @@
 - Update the item status in `ROADMAP.md` in the same PR when work starts or finishes.
 - Every PR title or body must include `Roadmap: Rxx`. Before suggesting a next step, read `ROADMAP.md` and name the next item by ID.
 - Add new ideas to the right roadmap wave instead of keeping them only in chat.
+
+## Verification on this machine
+
+- Browser gates read `dist/` from a production server on port 12000. Both harnesses now disable the HTTP cache; before that, a cached bundle could pass for a build that no longer existed.
+- `npm test` shows one failure here that CI does not see: `fm_layout_patcher classifies tested vs untested 27.x builds without fmsave` asserts no fmsave is installed, and this container has it so server decode works. Do not "fix" the assertion; check it still fails with your changes stashed.
+- `npm run smoke:e2e` is the flow gate (see `docs/e2e-smoke.md`). It needs the newest `.fm` in `.agents_tmp/uploads/` and about 40 seconds per profile.
