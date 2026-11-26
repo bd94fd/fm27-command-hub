@@ -1,3 +1,4 @@
+import { feedback } from '../utils/feedbackBus';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
@@ -23,6 +24,7 @@ import {
   deleteSaveHistoryPoint,
   getCachedJourneyBriefing,
   listSaveHistoryPoints,
+  putSaveHistoryPoint,
   putCachedJourneyBriefing,
   SaveHistoryPoint,
 } from '../services/saveCache';
@@ -269,8 +271,22 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
   }, [fromSnapshot, toSnapshot, journey, handleGenerateAiBriefing]);
 
   const handleDeleteSnapshot = async (cacheKey: string) => {
-    await deleteSaveHistoryPoint(cacheKey);
+    const removed = snapshots.find((point) => point.cacheKey === cacheKey);
+    const ok = await deleteSaveHistoryPoint(cacheKey);
     await loadSnapshots();
+    if (!ok) {
+      feedback.error('Could not delete that snapshot — storage is unavailable.');
+      return;
+    }
+    if (removed) {
+      feedback.undo(`Snapshot from ${removed.capturedAt.slice(0, 10)} deleted`, async () => {
+        const restored = await putSaveHistoryPoint(removed);
+        await loadSnapshots();
+        if (!restored) {
+          feedback.error('Could not restore that snapshot.');
+        }
+      });
+    }
   };
 
   const handleClearAllSnapshots = async () => {
@@ -280,12 +296,20 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
       return;
     }
     setConfirmClearAll(false);
+    const removedCount = snapshots.length;
     await clearAllSaveCache();
     clearProgressionArchive();
     setAiBriefing(null);
     setAiError(null);
     onJourneyReportChange?.(null);
     await loadSnapshots();
+    // No undo here: the same call also drops the cached full saves the archive
+    // depends on, so restoring the points alone would rebuild a broken history.
+    feedback.success(
+      removedCount === 1
+        ? 'Snapshot history cleared (1 snapshot)'
+        : `Snapshot history cleared (${removedCount} snapshots)`
+    );
   };
 
   if (loading) {

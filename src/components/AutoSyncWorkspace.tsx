@@ -1,3 +1,4 @@
+import { feedback } from '../utils/feedbackBus';
 import React, {
   Suspense,
   lazy,
@@ -1630,11 +1631,23 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   };
 
   const handleRemoveImage = (index: number) => {
+    const removed = uploadedImages[index];
     setUploadedImages((prev) => prev.filter((_, idx) => idx !== index));
+    if (removed) {
+      feedback.undo(`Removed ${removed.name || 'screenshot'}`, () =>
+        setUploadedImages((prev) => (prev.some((img) => img.base64 === removed.base64) ? prev : [...prev, removed]))
+      );
+    }
   };
 
   const handleRemoveFmFile = (id: string) => {
+    const removed = attachedFmFiles.find((f) => f.id === id);
     setAttachedFmFiles((prev) => prev.filter((f) => f.id !== id));
+    if (removed) {
+      feedback.undo(`Removed ${removed.name || 'save file'}`, () =>
+        setAttachedFmFiles((prev) => (prev.some((f) => f.id === removed.id) ? prev : [...prev, removed]))
+      );
+    }
   };
 
   const handleCopyText = async (id: string, text: string) => {
