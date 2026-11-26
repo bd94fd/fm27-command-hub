@@ -12,6 +12,8 @@
 - Python save-decoder files and cache busters are in scope by default. When a mapper change ships, bump every synced cache-buster reference in the same PR so phones do not keep the old decoder. A task-level instruction may exclude them; that exclusion does not carry into later tasks.
 - Open pull requests as ready for review, not drafts, unless the user asks for a draft.
 - Use the real save files already available in the workspace (`.agents_tmp/decoded/`, `.agents_tmp/uploads/`) for parity checks. Do not ask the user to decode or inspect saves manually.
+- The user cannot attach files in chat. To receive a save, run a temporary token-gated upload page on the work host (port 12001, `https://work-2-<id>.prod-runtime.all-hands.dev/u/<token>`) that writes into `.agents_tmp/uploads/`, then stop it as soon as the file lands. Keep the file out of Git and keep only the fingerprint manifest.
+- A save the user "believes" is new may be byte-identical to one already in the corpus. Compare SHA-256 against `tests/fixtures/real-saves/manifest.json` before treating it as new coverage.
 - When the user describes a problem in plain language, translate it into the technical investigation yourself. Do not require them to diagnose it first.
 
 ## Decode performance priorities
