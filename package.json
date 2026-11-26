@@ -14,6 +14,7 @@
     "test:python": "python3 -m unittest discover -s tests/python -v",
     "test:real-saves": "python3 -m unittest tests.python.test_real_save_regression -v",
     "real-saves:update": "python3 scripts/real-save-manifest.py",
+    "audit:decoder": "node --import tsx scripts/audit-decoder-fields.mjs",
     "bench:save-load": "node scripts/benchmark-save-load.mjs",
     "ui:audit": "node scripts/ui-audit.mjs"
   },
