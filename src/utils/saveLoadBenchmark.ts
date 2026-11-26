@@ -26,6 +26,7 @@ export interface SaveLoadBenchmarkRecord {
   fileName: string;
   fileSizeBytes: number;
   mode: 'full' | 'fast';
+  cacheHit: boolean;
   startedAtIso: string;
   startedAtMs: number;
   completedAtIso: string | null;
@@ -78,6 +79,7 @@ export function startSaveLoadBenchmark(
     fileName: input.fileName,
     fileSizeBytes: Math.max(0, Math.round(input.fileSizeBytes)),
     mode: input.mode,
+    cacheHit: false,
     startedAtIso: new Date().toISOString(),
     startedAtMs,
     completedAtIso: null,
@@ -106,6 +108,13 @@ export function markSaveLoadStage(
   if (stage === 'full_tab_ready' || stage === 'failed') {
     record.completedAtIso = new Date().toISOString();
   }
+  publishToWindow();
+}
+
+export function markSaveLoadCacheHit(id: string): void {
+  const record = records.get(id);
+  if (!record) return;
+  record.cacheHit = true;
   publishToWindow();
 }
 

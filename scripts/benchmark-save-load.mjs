@@ -292,6 +292,7 @@ async function runOneSave({ browser, devices, args, savePath }) {
     savePath,
     saveSizeBytes: (await fs.stat(savePath)).size,
     mode: args.mode,
+    cacheHit: Boolean(benchmark?.cacheHit),
     cold: {
       wallMs: coldWallMs,
       squadCount,
@@ -323,7 +324,7 @@ function printSummary(results) {
   console.log('===================');
   for (const result of results) {
     const marks = result.cold.marksMs;
-    console.log(`\n${result.save} (${formatMb(result.saveSizeBytes)}) · ${result.mode}`);
+    console.log(`\n${result.save} (${formatMb(result.saveSizeBytes)}) · ${result.mode}${result.cacheHit ? ' · cache hit' : ''}`);
     console.log(
       `  cold: wall ${formatMs(result.cold.wallMs)} | upload ${formatMs(marks.upload_complete)} | decode ${formatMs(marks.decode_complete)} | hydrate ${formatMs(marks.hydrate_complete)} | first useful ${formatMs(marks.first_useful_screen)} | full ${formatMs(marks.full_tab_ready)}`
     );

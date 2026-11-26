@@ -23,6 +23,7 @@ export const SAVE_CACHE_STORE = 'parsed_saves';
 export const SNAPSHOT_HISTORY_STORE = 'snapshot_history';
 export const MAX_CACHED_SAVES = 5;
 export const MAX_SNAPSHOT_POINTS = 60;
+export const DECODED_CACHE_SCHEMA_VERSION = 'r15-v1';
 
 export interface CompactPlayerSnapshot {
   uid: number;
@@ -231,6 +232,22 @@ export function buildSaveCacheKey(saveName: string, inGameDate: string): string 
   const cleanName = saveName.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '_');
   const cleanDate = inGameDate.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '_');
   return `${cleanName || 'save'}::${cleanDate || 'unknown'}`;
+}
+
+/**
+ * Cache key for a decoded payload keyed by the save file's content fingerprint.
+ * Scope and sync mode are part of the key because they change the decoded shape.
+ */
+export function buildFingerprintSaveCacheKey(
+  fingerprint: string,
+  scope: string,
+  fastSync: boolean
+): string {
+  const cleanFingerprint = fingerprint.trim().toLowerCase().replace(/[^a-z0-9._:-]+/g, '_');
+  const cleanScope = scope.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '_');
+  return `fp::${DECODED_CACHE_SCHEMA_VERSION}::${cleanScope || 'scope'}::${
+    fastSync ? 'fast' : 'full'
+  }::${cleanFingerprint || 'unknown'}`;
 }
 
 /**
@@ -1401,14 +1418,12 @@ function writeCachedSavePayloadOnce<T>(
   });
 }
 
-export async function putCachedSavePayload<T>(
-  saveName: string,
-  inGameDate: string,
+async function putCachedSavePayloadByKey<T>(
+  key: string,
   payload: T
 ): Promise<boolean> {
   const db = await openSaveCacheDb();
   if (!db) return false;
-  const key = buildSaveCacheKey(saveName, inGameDate);
   try {
     const first = await writeCachedSavePayloadOnce(db, key, payload);
     if (first.ok) return true;
@@ -1429,13 +1444,9 @@ export async function putCachedSavePayload<T>(
   }
 }
 
-export async function getCachedSavePayload<T>(
-  saveName: string,
-  inGameDate: string
-): Promise<T | null> {
+async function getCachedSavePayloadByKey<T>(key: string): Promise<T | null> {
   const db = await openSaveCacheDb();
   if (!db) return null;
-  const key = buildSaveCacheKey(saveName, inGameDate);
   return new Promise((resolve) => {
     let settled = false;
     const finish = (val: T | null) => {
@@ -1461,6 +1472,46 @@ export async function getCachedSavePayload<T>(
       finish(null);
     }
   });
+}
+
+export async function putCachedSavePayload<T>(
+  saveName: string,
+  inGameDate: string,
+  payload: T
+): Promise<boolean> {
+  return putCachedSavePayloadByKey(
+    buildSaveCacheKey(saveName, inGameDate),
+    payload
+  );
+}
+
+export async function getCachedSavePayload<T>(
+  saveName: string,
+  inGameDate: string
+): Promise<T | null> {
+  return getCachedSavePayloadByKey<T>(buildSaveCacheKey(saveName, inGameDate));
+}
+
+export async function putCachedDecodedSavePayload<T>(
+  fingerprint: string,
+  scope: string,
+  fastSync: boolean,
+  payload: T
+): Promise<boolean> {
+  return putCachedSavePayloadByKey(
+    buildFingerprintSaveCacheKey(fingerprint, scope, fastSync),
+    payload
+  );
+}
+
+export async function getCachedDecodedSavePayload<T>(
+  fingerprint: string,
+  scope: string,
+  fastSync: boolean
+): Promise<T | null> {
+  return getCachedSavePayloadByKey<T>(
+    buildFingerprintSaveCacheKey(fingerprint, scope, fastSync)
+  );
 }
 
 function writeSaveHistoryPointOnce(

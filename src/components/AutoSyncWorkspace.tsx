@@ -59,7 +59,9 @@ import {
 } from '../utils/fmSaveUiHelpers';
 import {
   finishSaveLoadBenchmark,
+  markSaveLoadCacheHit,
   markSaveLoadStage,
+  recordSaveLoadDetails,
   startSaveLoadBenchmark,
 } from '../utils/saveLoadBenchmark';
 import { assertValidDecodedFmSavePayload } from '../utils/fmSaveValidation';
@@ -334,6 +336,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   const fastSyncManuallyToggledRef = useRef<boolean>(false);
   const [fastSync, setFastSync] = useState<boolean>(false);
   const [extractionWarnings, setExtractionWarnings] = useState<string[]>([]);
+  const [cacheHitNotice, setCacheHitNotice] = useState<string | null>(null);
   const [showSyncDetails, setShowSyncDetails] = useState<boolean>(false);
   const [lastStepTimingsMs, setLastStepTimingsMs] = useState<Record<string, number>>({});
   const [preFlightDispatchValidation, setPreFlightDispatchValidation] =
@@ -1199,6 +1202,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         try {
           setExtractionWarnings([]);
           setLastStepTimingsMs({});
+          setCacheHitNotice(null);
           setClubCoreReadyDuringDecode(false);
           let interimHydrated = false;
           let markedDecodeStart = false;
@@ -1222,61 +1226,126 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             progressPct: 0,
             paused: false,
           });
-          const decoded = assertValidDecodedFmSavePayload(
-            await decodeFmSaveFile(
-              file,
-              (stage) => {
-                const uploadFinished =
-                  stage.transport === 'server_decode' ||
-                  stage.transport === 'browser_worker' ||
-                  (stage.transport === 'server_upload' &&
-                    Boolean(stage.totalBytes) &&
-                    Number(stage.bytesUploaded || 0) >= Number(stage.totalBytes));
-                if (!markedDecodeStart && uploadFinished) {
-                  markedDecodeStart = true;
-                  markSaveLoadStage(benchmarkId, 'upload_complete');
-                  markSaveLoadStage(benchmarkId, 'decode_start');
-                }
-                setFmDecodeStage(stage);
-                onBackgroundSyncStatusChange?.({
-                  label: stage.label,
-                  clubCoreReady: interimHydrated,
-                  progressPct: stage.progressPct,
-                  paused: stage.paused,
+
+          let fingerprint: string | null = null;
+          let decoded: DecodedFmSavePayload | null = null;
+          const fingerprintStartedAt = performance.now();
+          try {
+            const [{ computeSaveFileFingerprint }, { getCachedDecodedSavePayload }] =
+              await Promise.all([
+                import('../utils/saveFileFingerprint'),
+                import('../services/saveCache'),
+              ]);
+            fingerprint = await computeSaveFileFingerprint(file);
+            recordSaveLoadDetails(benchmarkId, {
+              fingerprintMs: performance.now() - fingerprintStartedAt,
+            });
+            if (fingerprint) {
+              const cached = await getCachedDecodedSavePayload<DecodedFmSavePayload>(
+                fingerprint,
+                importScope,
+                fastSync
+              );
+              if (cached) {
+                decoded = assertValidDecodedFmSavePayload(cached);
+                markSaveLoadCacheHit(benchmarkId);
+                markSaveLoadStage(benchmarkId, 'upload_complete');
+                markSaveLoadStage(benchmarkId, 'decode_start');
+                markSaveLoadStage(benchmarkId, 'decode_complete');
+                setFmDecodeStage({
+                  stage: 'read',
+                  step: 'Local cache hit',
+                  progressPct: 100,
+                  totalBytes: file.size || 0,
+                  bytesUploaded: file.size || 0,
+                  label: 'Reusing the saved decode from this device — no .fm decode needed.',
                 });
-              },
-              {
-                scope: importScope,
-                fastSync,
-                uploadControl,
-                benchmarkId,
-                onCheckpoint: (cp) => {
-                  let checkpointPayload: DecodedFmSavePayload;
-                  try {
-                    checkpointPayload = assertValidDecodedFmSavePayload(cp.payload, {
-                      mode: 'checkpoint',
-                    });
-                  } catch {
-                    return;
-                  }
-                  if (onApplyDecodedFmSave && checkpointPayload.players.length > 0) {
-                    interimHydrated = true;
-                    setClubCoreReadyDuringDecode(true);
-                    void onApplyDecodedFmSave(checkpointPayload, {
-                      isInterimCheckpoint: true,
-                      benchmarkId,
-                    });
-                    onBackgroundSyncStatusChange?.({
-                      label:
-                        'Squad, staff & tactics ready — finishing fixtures, match xG & season stats…',
-                      clubCoreReady: true,
-                    });
-                  }
-                },
+                onBackgroundSyncStatusChange?.({
+                  label: 'Reusing saved decode from this device…',
+                  clubCoreReady: true,
+                  progressPct: 100,
+                  paused: false,
+                });
+                setCacheHitNotice(
+                  `${file.name} was already decoded on this device. Skipped the .fm decode.`
+                );
               }
-            )
-          );
-          markSaveLoadStage(benchmarkId, 'decode_complete');
+            }
+          } catch (cacheErr) {
+            console.warn('Save fingerprint cache lookup skipped:', cacheErr);
+          }
+
+          if (!decoded) {
+            decoded = assertValidDecodedFmSavePayload(
+              await decodeFmSaveFile(
+                file,
+                (stage) => {
+                  const uploadFinished =
+                    stage.transport === 'server_decode' ||
+                    stage.transport === 'browser_worker' ||
+                    (stage.transport === 'server_upload' &&
+                      Boolean(stage.totalBytes) &&
+                      Number(stage.bytesUploaded || 0) >= Number(stage.totalBytes));
+                  if (!markedDecodeStart && uploadFinished) {
+                    markedDecodeStart = true;
+                    markSaveLoadStage(benchmarkId, 'upload_complete');
+                    markSaveLoadStage(benchmarkId, 'decode_start');
+                  }
+                  setFmDecodeStage(stage);
+                  onBackgroundSyncStatusChange?.({
+                    label: stage.label,
+                    clubCoreReady: interimHydrated,
+                    progressPct: stage.progressPct,
+                    paused: stage.paused,
+                  });
+                },
+                {
+                  scope: importScope,
+                  fastSync,
+                  uploadControl,
+                  benchmarkId,
+                  onCheckpoint: (cp) => {
+                    let checkpointPayload: DecodedFmSavePayload;
+                    try {
+                      checkpointPayload = assertValidDecodedFmSavePayload(cp.payload, {
+                        mode: 'checkpoint',
+                      });
+                    } catch {
+                      return;
+                    }
+                    if (onApplyDecodedFmSave && checkpointPayload.players.length > 0) {
+                      interimHydrated = true;
+                      setClubCoreReadyDuringDecode(true);
+                      void onApplyDecodedFmSave(checkpointPayload, {
+                        isInterimCheckpoint: true,
+                        benchmarkId,
+                      });
+                      onBackgroundSyncStatusChange?.({
+                        label:
+                          'Squad, staff & tactics ready — finishing fixtures, match xG & season stats…',
+                        clubCoreReady: true,
+                      });
+                    }
+                  },
+                }
+              )
+            );
+            markSaveLoadStage(benchmarkId, 'decode_complete');
+
+            if (fingerprint) {
+              void import('../services/saveCache')
+                .then(({ putCachedDecodedSavePayload }) =>
+                  putCachedDecodedSavePayload(
+                    fingerprint,
+                    importScope,
+                    fastSync,
+                    decoded
+                  )
+                )
+                .catch(() => false);
+            }
+          }
+
           uploadControlRef.current = null;
           setFmDecodeStage(null);
           setClubCoreReadyDuringDecode(false);
@@ -2098,6 +2167,23 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               }}
             />
           </Suspense>
+        </div>
+      )}
+
+      {cacheHitNotice && (
+        <div className="px-3.5 sm:px-5 pt-3">
+          <div className="flex items-start gap-2 rounded-xl border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2.5 text-xs text-emerald-800 dark:text-emerald-200">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+            <p className="min-w-0 flex-1 break-words leading-relaxed">{cacheHitNotice}</p>
+            <button
+              type="button"
+              onClick={() => setCacheHitNotice(null)}
+              className="shrink-0 rounded-md p-1 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+              aria-label="Dismiss cache notice"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
       )}
 
