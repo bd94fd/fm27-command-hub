@@ -8,6 +8,8 @@ import {
   RotateCcw,
   Upload,
 } from 'lucide-react';
+import { EmptyStatePanel } from './EmptyStatePanel';
+import { EMPTY_STATES } from '../utils/emptyStateCopy';
 import { PlayerRecord } from '../types/fm27';
 import { DecodedFmSavePayload } from '../utils/fmSaveHydrator';
 import {
@@ -73,6 +75,7 @@ interface SetPiecesAndTrainingProps {
   saveDate: string;
   upcomingFixtures: DecodedFmSavePayload['upcomingFixtures'];
   clubName: string;
+  onRequestImport?: () => void;
 }
 
 export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
@@ -80,6 +83,7 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
   saveDate,
   upcomingFixtures,
   clubName,
+  onRequestImport,
 }) => {
   const setPieceSummary = buildDynamicSetPieceRoutines(players);
   const trainingSchedule = buildDynamicTrainingSchedule(
@@ -133,45 +137,11 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
 
   if (players.length === 0) {
     return (
-      <div className="space-y-6">
-        <div className="p-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-center space-y-3">
-          <Crosshair className="w-8 h-8 text-emerald-500 mx-auto" />
-          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-            Awaiting .fm Save — Dynamic Corners &amp; Training Periodisation
-          </h2>
-          <p className="text-xs text-slate-600 dark:text-slate-400 max-w-2xl mx-auto leading-relaxed">
-            Zero pre-filled set-piece routines or fake training calendars
-            loaded. Once you import your{' '}
-            <span className="font-mono text-emerald-400">.fm</span> save file,
-            this tab automatically ranks your squad&apos;s{' '}
-            <strong>Set-Piece Aerial Threats (Jumping Reach + Heading)</strong>,{' '}
-            <strong>Left/Right-Footed Corner Takers</strong>, and{' '}
-            <strong>Fast Recovery Defenders</strong>, and generates your
-            fixture-congested Training &amp; Post-Match Rest Calendar from your
-            save&apos;s live schedule.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl mx-auto pt-2 text-xs font-mono">
-            <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
-              <div className="text-slate-500">Top Aerial Threat (JR + Hdr)</div>
-              <div className="text-base font-bold text-slate-900 dark:text-slate-100 mt-0.5">
-                --
-              </div>
-            </div>
-            <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
-              <div className="text-slate-500">Inswinging Corner Takers</div>
-              <div className="text-base font-bold text-slate-900 dark:text-slate-100 mt-0.5">
-                --
-              </div>
-            </div>
-            <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
-              <div className="text-slate-500">Recovery Speed Locks</div>
-              <div className="text-base font-bold text-slate-900 dark:text-slate-100 mt-0.5">
-                --
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <EmptyStatePanel
+        copy={EMPTY_STATES.setpieces}
+        onRequestImport={onRequestImport}
+        icon={<Crosshair className="h-5 w-5" />}
+      />
     );
   }
 

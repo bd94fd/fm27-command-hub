@@ -9,6 +9,8 @@ import {
   UserCheck,
   Wallet,
 } from 'lucide-react';
+import { EmptyStatePanel } from './EmptyStatePanel';
+import { EMPTY_STATES } from '../utils/emptyStateCopy';
 import { StaffRecord } from '../types/fm27';
 import { formatContractExpiry, formatWeeklyWage } from '../utils/squadViewHelpers';
 import { JobVacancyEntry } from '../types/fmSave';
@@ -30,6 +32,7 @@ interface StaffDirectoryProps {
   saveDate?: string;
   jobVacancies?: JobVacancyEntry[];
   onSelectStaff: (member: StaffRecord) => void;
+  onRequestImport?: () => void;
 }
 
 type StaffDirectoryView = 'directory' | 'matrix';
@@ -87,6 +90,7 @@ const StaffKpiStrip: React.FC<{ kpi: StaffKpiSummary }> = ({ kpi }) => (
 );
 
 export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
+  onRequestImport,
   staff,
   clubName,
   saveDate,
@@ -201,18 +205,11 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
     return (
       <div className="space-y-4">
         <StaffKpiStrip kpi={kpi} />
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-8 text-center space-y-2.5">
-          <UserCheck className="h-8 w-8 text-sky-400 mx-auto" />
-          <h2 className="text-base sm:text-lg font-bold text-white">
-            Awaiting .fm Save — Backroom Staff Directory
-          </h2>
-          <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
-            Import your <span className="font-mono text-emerald-400">.fm</span> save
-            in the <strong>Hub</strong> tab to audit Coaching, Scouting &amp;
-            Recruitment, and Medical/Performance staff with the FM27 rating matrix,
-            workload indicators, and expiring contract flags.
-          </p>
-        </div>
+        <EmptyStatePanel
+          copy={EMPTY_STATES.staff}
+          onRequestImport={onRequestImport}
+          icon={<UserCheck className="h-5 w-5" />}
+        />
       </div>
     );
   }

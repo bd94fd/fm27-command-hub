@@ -1754,6 +1754,7 @@ export default function App() {
           <AppErrorBoundary scopeLabel="Tactical War Room">
             <Suspense fallback={<TabWorkspaceSkeleton variant="tactics" label="Tactical War Room" />}>
               <TacticalWarRoom
+                onRequestImport={() => handleSelectTab('sync')}
                 players={players}
                 saveDate={saveDate}
                 nextFixture={nextFixture}
@@ -1781,6 +1782,7 @@ export default function App() {
           <AppErrorBoundary scopeLabel="Squad Analytics">
             <Suspense fallback={<TabWorkspaceSkeleton variant="squad" label="Squad Analytics" />}>
               <SquadAnalyticsTable
+                onRequestImport={() => handleSelectTab('sync')}
                 players={players}
                 matches={matches}
                 clubName={hydratedFmSave?.decodedPayload?.meta?.clubName}
@@ -1829,6 +1831,7 @@ export default function App() {
           <AppErrorBoundary scopeLabel="Transfers & Recruitment Audit">
             <Suspense fallback={<TabWorkspaceSkeleton variant="recruitment" label="Transfers & Audit" />}>
               <RecruitmentWorkspace
+                onRequestImport={() => handleSelectTab('sync')}
                 cases={recruitmentCases}
                 shortlists={shortlists}
                 players={players}
@@ -1914,6 +1917,7 @@ export default function App() {
           <AppErrorBoundary scopeLabel="Staff Directory">
             <Suspense fallback={<TabWorkspaceSkeleton variant="staff" label="Staff Directory" />}>
               <StaffDirectory
+                onRequestImport={() => handleSelectTab('sync')}
                 staff={staff}
                 clubName={hydratedFmSave?.decodedPayload?.meta?.clubName}
                 saveDate={saveDate}
@@ -1928,6 +1932,7 @@ export default function App() {
           <AppErrorBoundary scopeLabel="Match Log Archive">
             <Suspense fallback={<TabWorkspaceSkeleton variant="matches" label="Match Log Archive" />}>
               <MatchLogArchive
+                onRequestImport={() => handleSelectTab('sync')}
                 matches={matches}
                 liveLeagueRecord={hydratedFmSave?.leagueRecordLabel || null}
                 liveSaveFileName={

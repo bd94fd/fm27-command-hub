@@ -1541,7 +1541,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           setChatError(
             err instanceof Error
               ? err.message
-              : `Could not read ${file.name}. Make sure it is a valid FM26/FM27 .fm save file.`
+              : `Could not read ${file.name}. Check it is a Football Manager 27 (or 26) save, then try again. If the game is still saving, wait for it to finish and import the file once more.`
           );
         }
       } else if (

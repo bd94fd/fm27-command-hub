@@ -7,6 +7,8 @@ import React, {
   useEffect,
 } from 'react';
 import { BarChart3, GitCompare, Table2, TrendingUp, Users } from 'lucide-react';
+import { EmptyStatePanel } from './EmptyStatePanel';
+import { EMPTY_STATES } from '../utils/emptyStateCopy';
 import { MatchLogEntry, PlayerRecord } from '../types/fm27';
 import type {
   ClubGovernanceState,
@@ -67,6 +69,7 @@ const SquadProgressionView = lazy(() =>
 );
 
 interface SquadAnalyticsTableProps {
+  onRequestImport?: () => void;
   players: PlayerRecord[];
   matches?: MatchLogEntry[];
   clubName?: string;
@@ -83,6 +86,7 @@ interface SquadAnalyticsTableProps {
 }
 
 export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
+  onRequestImport,
   players,
   matches = [],
   clubName,
@@ -415,18 +419,13 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
     </div>
 
         {players.length === 0 ? (
-    <div className="py-12 text-center space-y-2">
-      <Users className="w-8 h-8 text-emerald-500 mx-auto" />
-      <div className="text-sm font-bold text-slate-900 dark:text-slate-100">
-        Awaiting .fm Save — 0 Players Loaded
-      </div>
-      <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xl mx-auto">
-        Zero pre-filled or fabricated players. Drop or select your{' '}
-        <span className="font-mono text-emerald-400">.fm</span> save file in the{' '}
-        <strong>Hub</strong> tab to decode your squad&apos;s star ratings,
-        attributes, durability, contracts, and season stats.
-      </p>
-    </div>
+        <div className="py-6">
+          <EmptyStatePanel
+            copy={EMPTY_STATES.squad}
+            onRequestImport={onRequestImport}
+            icon={<Users className="h-5 w-5" />}
+          />
+        </div>
         ) : viewMode === 'analytics' ? (
           <Suspense fallback={<SquadSubViewSkeleton variant="analytics" />}>
             <SquadAnalyticsView

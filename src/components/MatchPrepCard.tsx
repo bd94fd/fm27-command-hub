@@ -4,6 +4,8 @@
  */
 
 import React, { useMemo } from 'react';
+import { EmptyStatePanel } from './EmptyStatePanel';
+import { EMPTY_STATES } from '../utils/emptyStateCopy';
 import {
   AlertTriangle,
   Calendar,
@@ -28,6 +30,7 @@ export interface MatchPrepCardProps {
   hydratedFmSave: HydratedSaveState | null;
   activeSuspensions?: ActiveSuspensionRecord[];
   clubName: string;
+  onRequestImport?: () => void;
 }
 
 interface SetPieceTakers {
@@ -71,6 +74,7 @@ export const MatchPrepCard: React.FC<MatchPrepCardProps> = ({
   hydratedFmSave,
   activeSuspensions = [],
   clubName,
+  onRequestImport,
 }) => {
   const decoded = hydratedFmSave?.decodedPayload ?? null;
   const hasLiveSave = Boolean(decoded) || players.length > 0;
@@ -372,17 +376,13 @@ export const MatchPrepCard: React.FC<MatchPrepCardProps> = ({
 
   if (!hasLiveSave) {
     return (
-      <div className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-center space-y-2">
-        <Calendar className="w-7 h-7 text-emerald-500 mx-auto" />
-        <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-          Matchday Prep Card — Awaiting .fm Save
-        </h3>
-        <p className="text-xs text-slate-600 dark:text-slate-400 max-w-xl mx-auto">
-          No live fixture or league table loaded yet (--). Import your{' '}
-          <span className="font-mono text-emerald-500">.fm</span> save to
-          populate your real next opponent, standing cues, 62&apos;/75&apos;
-          substitution script, and set-piece takers.
-        </p>
+      <div className="rounded-xl border border-slate-200 bg-white p-2 dark:border-slate-800 dark:bg-slate-900">
+        <EmptyStatePanel
+          copy={EMPTY_STATES.matchPrep}
+          onRequestImport={onRequestImport}
+          icon={<Calendar className="h-5 w-5" />}
+          className="border-0 dark:bg-transparent"
+        />
       </div>
     );
   }

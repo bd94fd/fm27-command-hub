@@ -1,4 +1,6 @@
 import React, { useMemo, useState, useDeferredValue } from 'react';
+import { EmptyStatePanel } from './EmptyStatePanel';
+import { EMPTY_STATES } from '../utils/emptyStateCopy';
 import { CheckCircle2 } from 'lucide-react';
 import {
   PlayerRecord,
@@ -50,6 +52,7 @@ import { useCompareTray } from '../context/CompareTrayContext';
 import type { AuditView } from './recruitment/recruitmentTypes';
 
 interface RecruitmentWorkspaceProps {
+  onRequestImport?: () => void;
   cases: RecruitmentCase[];
   shortlists: ShortlistRecord[];
   players: PlayerRecord[];
@@ -79,6 +82,7 @@ interface RecruitmentWorkspaceProps {
 }
 
 export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
+  onRequestImport,
   cases,
   players,
   saveDate,
@@ -478,14 +482,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
       />
 
       {players.length === 0 ? (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-10 text-center space-y-2">
-      <div className="text-sm font-bold text-slate-200">
-        Awaiting .fm Save
-      </div>
-      <p className="text-xs text-slate-400 max-w-md mx-auto">
-        Load your `.fm` save in the <strong>Hub</strong> tab to generate club-aware transfer, contract, youth, and wage advice.
-      </p>
-    </div>
+        <EmptyStatePanel copy={EMPTY_STATES.recruitment} onRequestImport={onRequestImport} />
       ) : (
         <>
           {/* VIEW 1: TAILORED PLAYER-BY-PLAYER ADVICE (with inline Shortlist Upgrade callouts) */}
