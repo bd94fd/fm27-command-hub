@@ -194,6 +194,7 @@ export interface AnalystChatHistoryTurn {
   chronicleOutcomeMetric?: string;
   playerUpdatesApplied?: string[];
   followUpQuestions?: string[];
+  sourceCitations?: string[];
 }
 
 export interface ExtendedPlayerAutoUpdate {
@@ -1872,6 +1873,9 @@ export function buildConversationTranscript(
     }
     if (t.analysisMarkdown) {
       parts.push(t.analysisMarkdown);
+    }
+    if (t.sourceCitations && t.sourceCitations.length > 0) {
+      parts.push(`Sources: ${t.sourceCitations.join('; ')}`);
     }
     if (t.immediateClicks && t.immediateClicks.length > 0) {
       parts.push(

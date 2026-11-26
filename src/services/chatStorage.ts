@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { normalizeAnalystCitations } from '../utils/analystCitations';
+
 export const FM27_CHAT_STORAGE_KEY = 'fm27_command_hub_chat_history_v1';
 export const MAX_TURNS_PER_CLUB = 40;
 export const MAX_STORED_CLUBS = 8;
@@ -17,6 +19,7 @@ export interface ChatTurnPayload {
   analysisMarkdown?: string;
   immediateClicks?: string[];
   followUpQuestions?: string[];
+  sourceCitations?: string[];
   chronicleTitle?: string;
   chronicleOutcomeMetric?: string;
   eventNumber?: number;
@@ -115,6 +118,8 @@ export function sanitizePersistedTurn(raw: unknown): ChatTurnPayload | null {
   if (immediateClicks) turn.immediateClicks = immediateClicks;
   const followUpQuestions = sanitizeStringArray(obj.followUpQuestions, 8);
   if (followUpQuestions) turn.followUpQuestions = followUpQuestions;
+  const sourceCitations = normalizeAnalystCitations(obj.sourceCitations, 10);
+  if (sourceCitations.length > 0) turn.sourceCitations = sourceCitations;
   if (typeof obj.chronicleTitle === 'string') turn.chronicleTitle = obj.chronicleTitle;
   if (typeof obj.chronicleOutcomeMetric === 'string') {
     turn.chronicleOutcomeMetric = obj.chronicleOutcomeMetric;

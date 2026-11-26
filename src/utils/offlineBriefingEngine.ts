@@ -43,6 +43,7 @@ export interface OfflineBriefingResponse {
   analysisMarkdown: string;
   immediateClicks: string[];
   followUpQuestions: string[];
+  sourceCitations: string[];
   chronicleTitle: string;
   chronicleOutcomeMetric: string;
 }
@@ -77,6 +78,7 @@ export function buildOfflineTacticalBriefing(
         'Run an offline squad & contract audit after loading my save',
         'Build my FM27 IP/OOP Best XI for the next fixture',
       ],
+      sourceCitations: ['Hub · Auto-Sync'],
       chronicleTitle: 'Offline Mode — Awaiting .fm Save',
       chronicleOutcomeMetric: 'Offline',
     };
@@ -434,6 +436,12 @@ export function buildOfflineTacticalBriefing(
     followUpQuestions: [
       'Which expiring contracts should I renew vs. release?',
       'Show my strongest IP/OOP lineup without injured or suspended players',
+    ],
+    sourceCitations: [
+      'Hub · Live Club Snapshot',
+      'Squad · Roster',
+      'Squad · Best XI',
+      'Tactics & Corners · Set Pieces',
     ],
     chronicleTitle: `${club} Offline Briefing`,
     chronicleOutcomeMetric: `XI Fit ${Math.round(bestXi.averageFitPct)}/100`,

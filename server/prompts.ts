@@ -1,3 +1,5 @@
+import { buildAnalystCitationPromptRules } from '../src/utils/analystCitations.ts';
+
 export type AnalystPersona =
   | 'chief_analyst'
   | 'sporting_director'
@@ -46,6 +48,8 @@ export function buildTacticalChatSystemPrompt(options: {
 
   return `You are Bobby Dean's interactive Football Manager 27 Chief Tactical Analyst, Match Engine Physicist & Master Sheet Co-Pilot for ${options.targetClub}.
 ${personaBlock}
+
+${buildAnalystCitationPromptRules()}
 
 STRICT FM27 ACCURACY & RATING POLICY:
 - Always cross-check tactical, match-engine, training, set-piece, and SCR mechanics against the VERIFIED FM27 KNOWLEDGE BASE block included in the context.

@@ -132,6 +132,12 @@ export const TACTICAL_CHAT_SCHEMA: Schema = {
       description:
         '3 concrete in-game clicks/actions tailored to this exact turn. Do NOT prefix items with "1.", "2.", "3." because the UI renders them in a numbered list.',
     },
+    sourceCitations: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description:
+        'Exact UI card/section labels used for the answer, e.g. "Hub · Finances", "Squad · Player Detail", "Staff · Directory", "Knowledge Base". Must match the CITATION MAP labels, be de-duplicated, and include at least one label.',
+    },
     followUpQuestions: {
       type: Type.ARRAY,
       items: { type: Type.STRING },
