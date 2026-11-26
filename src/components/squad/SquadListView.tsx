@@ -202,7 +202,7 @@ export const SquadListView: React.FC<SquadListViewProps> = ({
       <button
         type="button"
         onClick={handleResetFilters}
-        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 cursor-pointer"
+        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-700 text-white dark:bg-emerald-500 dark:text-slate-950 hover:bg-emerald-600 cursor-pointer"
       >
         <RotateCcw className="w-3.5 h-3.5" />
         Clear Filters

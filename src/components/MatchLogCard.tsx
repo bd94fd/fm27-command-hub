@@ -43,7 +43,7 @@ export const MatchLogCard: React.FC<MatchLogCardProps> = ({
 
   const resultBadge =
     m.result === 'W'
-      ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
+      ? 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border-emerald-500/40'
       : m.result === 'D'
         ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/40'
         : 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40';
@@ -76,7 +76,7 @@ export const MatchLogCard: React.FC<MatchLogCardProps> = ({
             <span
               className={`font-semibold truncate max-w-[165px] sm:max-w-none ${
                 compBucket === 'league'
-                  ? 'text-emerald-700 dark:text-emerald-300'
+                  ? 'text-emerald-800 dark:text-emerald-300'
                   : compBucket === 'cup'
                     ? 'text-sky-700 dark:text-sky-300'
                     : 'text-amber-700 dark:text-amber-300'
@@ -101,7 +101,7 @@ export const MatchLogCard: React.FC<MatchLogCardProps> = ({
                 <span
                   className={`text-[11px] font-mono font-bold tabular-nums ${
                     xgDelta >= 0.35
-                      ? 'text-emerald-700 dark:text-emerald-300'
+                      ? 'text-emerald-800 dark:text-emerald-300'
                       : xgDelta <= -0.35
                         ? 'text-rose-700 dark:text-rose-300'
                         : 'text-slate-600 dark:text-slate-300'
@@ -186,7 +186,7 @@ export const MatchLogCard: React.FC<MatchLogCardProps> = ({
           onClick={onToggleDebrief}
           className={`w-full sm:w-auto min-h-[44px] sm:min-h-[34px] inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
             isDebriefOpen
-              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
+              ? 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border-emerald-500/40'
               : 'bg-slate-100 dark:bg-slate-900/80 text-slate-800 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:border-emerald-500/40'
           }`}
         >
@@ -205,7 +205,7 @@ export const MatchLogCard: React.FC<MatchLogCardProps> = ({
         <div className="rounded-xl border border-emerald-500/30 bg-slate-50 dark:bg-slate-950/90 p-3.5 space-y-2.5 text-xs">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
-              <div className="font-bold text-emerald-700 dark:text-emerald-300">{debrief.headlineVerdict}</div>
+              <div className="font-bold text-emerald-800 dark:text-emerald-300">{debrief.headlineVerdict}</div>
               <div className="text-[11px] font-mono text-slate-600 dark:text-slate-400 mt-0.5">
                 {debrief.xgAndExecutionAudit}
               </div>
@@ -257,7 +257,7 @@ export const MatchLogCard: React.FC<MatchLogCardProps> = ({
             </div>
 
             <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/70 p-2.5 space-y-1">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
                 In-Game Adjustments
               </div>
               <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-700 dark:text-slate-300">

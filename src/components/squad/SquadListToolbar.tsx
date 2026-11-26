@@ -87,7 +87,7 @@ export const SquadListToolbar: React.FC<SquadListToolbarProps> = ({
               onClick={() => setSquadUnitFilter(opt.id)}
               className={`min-h-[44px] sm:min-h-[32px] px-2.5 sm:px-2 py-1 text-xs sm:text-[11px] font-semibold rounded-md transition whitespace-nowrap cursor-pointer ${
                 squadUnitFilter === opt.id
-                  ? 'bg-emerald-600 text-white'
+                  ? 'bg-emerald-700 text-white dark:bg-emerald-500 dark:text-slate-950'
                   : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
@@ -115,7 +115,7 @@ export const SquadListToolbar: React.FC<SquadListToolbarProps> = ({
               onClick={() => setActivePresetId(preset.id)}
               className={`min-h-[44px] sm:min-h-[32px] px-3 sm:px-2.5 py-1 text-xs sm:text-[11px] font-semibold rounded-lg border transition whitespace-nowrap shrink-0 cursor-pointer ${
                 isActive
-                  ? 'bg-emerald-600/15 dark:bg-emerald-600/20 border-emerald-500/60 text-emerald-700 dark:text-emerald-300'
+                  ? 'bg-emerald-600/15 dark:bg-emerald-600/20 border-emerald-500/60 text-emerald-800 dark:text-emerald-300'
                   : 'bg-slate-100 dark:bg-slate-800/70 border-slate-200 dark:border-slate-700/80 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
@@ -186,7 +186,7 @@ export const SquadListToolbar: React.FC<SquadListToolbarProps> = ({
         aria-expanded={filtersOpen}
         className={`min-h-[44px] sm:min-h-[34px] inline-flex items-center gap-1.5 px-3 sm:px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition cursor-pointer whitespace-nowrap ${
           filtersOpen || activeSecondaryFilterCount > 0
-            ? 'bg-emerald-600/15 border-emerald-500/50 text-emerald-700 dark:text-emerald-300'
+            ? 'bg-emerald-600/15 border-emerald-500/50 text-emerald-800 dark:text-emerald-300'
             : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200'
         }`}
       >
@@ -231,7 +231,7 @@ export const SquadListToolbar: React.FC<SquadListToolbarProps> = ({
           }}
           className={`min-h-[44px] min-w-[44px] sm:min-h-[30px] sm:min-w-[30px] inline-flex items-center justify-center p-1 rounded-md transition cursor-pointer ${
             displayMode === 'cards'
-              ? 'bg-emerald-600 text-white'
+              ? 'bg-emerald-700 text-white dark:bg-emerald-500 dark:text-slate-950'
               : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
@@ -247,7 +247,7 @@ export const SquadListToolbar: React.FC<SquadListToolbarProps> = ({
           }}
           className={`min-h-[44px] min-w-[44px] sm:min-h-[30px] sm:min-w-[30px] inline-flex items-center justify-center p-1 rounded-md transition cursor-pointer ${
             displayMode === 'table'
-              ? 'bg-emerald-600 text-white'
+              ? 'bg-emerald-700 text-white dark:bg-emerald-500 dark:text-slate-950'
               : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           }`}
         >

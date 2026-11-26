@@ -1308,7 +1308,7 @@ export default function App() {
             e.preventDefault();
             handleSelectTab('sync');
           }}
-          className="min-h-[44px] md:min-h-0 flex items-center text-base sm:text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100 min-w-0 flex-1 md:flex-initial"
+          className="min-h-[44px] md:min-h-[36px] flex items-center text-base sm:text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100 min-w-0 flex-1 md:flex-initial"
         >
           <span className="truncate">{clubName}</span>
         </a>
@@ -1333,7 +1333,7 @@ export default function App() {
               key={tab.id}
               type="button"
               onClick={() => handleSelectTab(tab.id)}
-              className={`hover:text-slate-900 dark:hover:text-slate-100 transition-colors whitespace-nowrap shrink-0 cursor-pointer pb-0.5 ${
+              className={`inline-flex items-center min-h-[36px] px-1.5 hover:text-slate-900 dark:hover:text-slate-100 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 activeTab === tab.id
                   ? 'text-emerald-700 dark:text-emerald-400 underline underline-offset-4 font-semibold'
                   : ''

@@ -2162,7 +2162,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                   type="button"
                   onClick={handleCopyFullChat}
                   title="Copy the entire Analyst conversation to your clipboard"
-                  className="min-h-[44px] md:min-h-[32px] inline-flex items-center gap-1 px-2.5 md:px-2 py-1 text-xs md:text-[11px] font-medium text-emerald-700 dark:text-emerald-300 hover:text-emerald-950 dark:hover:text-white bg-emerald-500/10 dark:bg-slate-900 border border-emerald-500/35 rounded-lg cursor-pointer transition whitespace-nowrap"
+                  className="min-h-[44px] md:min-h-[32px] inline-flex items-center gap-1 px-2.5 md:px-2 py-1 text-xs md:text-[11px] font-medium text-emerald-800 dark:text-emerald-300 hover:text-emerald-950 dark:hover:text-white bg-emerald-500/10 dark:bg-slate-900 border border-emerald-500/35 rounded-lg cursor-pointer transition whitespace-nowrap"
                 >
                   {copiedId === 'full-chat' ? (
                     <>
@@ -2399,7 +2399,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             <button
               type="button"
               onClick={() => setCacheHitNotice(null)}
-              className="shrink-0 rounded-md p-1 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+              className="shrink-0 rounded-md p-1 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               aria-label="Dismiss cache notice"
             >
               <X className="h-3.5 w-3.5" />
@@ -2422,14 +2422,14 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             onClick={() => setMobileHubView('chat')}
             className={`min-h-[44px] inline-flex min-w-0 items-center justify-center gap-1 rounded-lg px-1.5 text-[11px] sm:text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
               mobileHubView === 'chat'
-                ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40 shadow-xs'
+                ? 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-500/40 shadow-xs'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
             }`}
           >
             <MessageSquare className="w-4 h-4 shrink-0" />
             <span className="truncate">Analyst Chat</span>
             {turns.length > 0 && (
-              <span className="rounded-md bg-emerald-500/20 px-1.5 py-0.5 font-mono text-[10px] leading-none text-emerald-700 dark:text-emerald-300 tabular-nums">
+              <span className="rounded-md bg-emerald-500/20 px-1.5 py-0.5 font-mono text-[10px] leading-none text-emerald-800 dark:text-emerald-300 tabular-nums">
                 {turns.length}
               </span>
             )}
@@ -2635,7 +2635,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
 
                   {turn.playerUpdatesApplied &&
                     turn.playerUpdatesApplied.length > 0 && (
-                      <div className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
+                      <div className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
                         <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                         <span className="min-w-0 break-words">
                           Updated Squad:{' '}
@@ -2765,7 +2765,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                             type="button"
                             disabled={isSending}
                             onClick={() => handleSendToAnalyst(undefined, q)}
-                            className="min-h-[44px] sm:min-h-0 px-3 py-2 sm:px-2.5 sm:py-1.5 text-[11px] font-medium text-left text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-lg transition cursor-pointer disabled:opacity-50"
+                            className="min-h-[44px] sm:min-h-0 px-3 py-2 sm:px-2.5 sm:py-1.5 text-[11px] font-medium text-left text-emerald-800 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-lg transition cursor-pointer disabled:opacity-50"
                           >
                             {q}
                           </button>
@@ -2899,6 +2899,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
 
             <button
               type="submit"
+              aria-label="Send message"
               disabled={isSending || Boolean(fmDecodeStage)}
               className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2.5 text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 rounded-xl transition cursor-pointer shrink-0 disabled:opacity-50"
             >
@@ -2995,7 +2996,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                     : financesPanel.payroll.wageSeverity === 'minor_over'
                       ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40'
                       : financesPanel.payroll.wageSeverity === 'under'
-                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
+                        ? 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border-emerald-500/40'
                         : 'bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700'
                 }`}
               >

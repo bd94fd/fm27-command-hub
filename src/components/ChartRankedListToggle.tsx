@@ -34,7 +34,7 @@ export const ChartRankedListToggle: React.FC<ChartRankedListToggleProps> = ({
         onClick={() => onChange('chart')}
         className={`min-h-[44px] sm:min-h-[32px] inline-flex items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
           mode === 'chart'
-            ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40'
+            ? 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-500/40'
             : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
         }`}
       >
@@ -48,7 +48,7 @@ export const ChartRankedListToggle: React.FC<ChartRankedListToggleProps> = ({
         onClick={() => onChange('list')}
         className={`min-h-[44px] sm:min-h-[32px] inline-flex items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
           mode === 'list'
-            ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40'
+            ? 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-500/40'
             : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
         }`}
       >

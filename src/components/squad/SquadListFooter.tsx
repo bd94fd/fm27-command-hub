@@ -31,7 +31,7 @@ export const SquadListFooter: React.FC<SquadListFooterProps> = ({
           <button
             type="button"
             onClick={() => setVisibleRowLimit(filteredRows.length)}
-            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600/25 cursor-pointer transition"
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600/25 cursor-pointer transition"
           >
             Show All ({filteredRows.length})
           </button>
