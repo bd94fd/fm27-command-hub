@@ -5,6 +5,7 @@ import {
   finishSaveLoadBenchmark,
   getSaveLoadBenchmark,
   getSaveLoadBenchmarks,
+  markSaveLoadCacheHit,
   markSaveLoadStage,
   startSaveLoadBenchmark,
 } from './saveLoadBenchmark';
@@ -53,6 +54,19 @@ describe('saveLoadBenchmark', () => {
         `${orderedStages[index]} must not precede ${orderedStages[index - 1]}`
       );
     }
+  });
+
+  it('marks a fingerprint cache hit without inventing a decode', () => {
+    clearSaveLoadBenchmarks();
+    const id = startSaveLoadBenchmark({
+      fileName: 'auto_save.fm',
+      fileSizeBytes: 1,
+      mode: 'full',
+    });
+
+    assert.equal(getSaveLoadBenchmark(id)?.cacheHit, false);
+    markSaveLoadCacheHit(id);
+    assert.equal(getSaveLoadBenchmark(id)?.cacheHit, true);
   });
 
   it('keeps the first timestamp when a stage is marked twice', () => {

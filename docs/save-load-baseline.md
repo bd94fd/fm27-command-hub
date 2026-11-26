@@ -83,4 +83,4 @@ The script resolves Playwright from the project first, then from `.agents/skills
 
 ## Next step
 
-R14 is complete: see `docs/decode-stage-profiling.md`. The slow save's extra time is the native decoder's `--auto-try-layout` trial, which costs about 27 s outside the decoder's own stage timers. Transfer, hydration and render are negligible. R17 should confirm the memory ceiling on the real deployment target and on a physical Android device. R05 itself is a baseline only.
+R14 is complete: see `docs/decode-stage-profiling.md`. The slow save's extra time is the native decoder's `--auto-try-layout` trial, which costs about 27 s outside the decoder's own stage timers. Transfer, hydration and render are negligible. R15 is complete too: a repeat import of the same file hits a content-fingerprint cache in about 1 s instead of decoding again; see `docs/save-cache-fingerprint.md`. R17 should confirm the memory ceiling on the real deployment target and on a physical Android device. R05 itself is a baseline only.

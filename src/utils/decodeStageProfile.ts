@@ -12,6 +12,7 @@ export interface SaveLoadStageProfile {
   fileName: string;
   fileSizeMb: number;
   mode: 'full' | 'fast';
+  cacheHit: boolean;
   uploadMs: number;
   decodeMs: number;
   firstUsefulMs: number;
@@ -99,6 +100,7 @@ export function buildSaveLoadStageProfile(
     fileName: record.fileName,
     fileSizeMb: Math.round((record.fileSizeBytes / (1024 * 1024)) * 10) / 10,
     mode: record.mode,
+    cacheHit: record.cacheHit,
     uploadMs: positive(record.marksMs.upload_complete),
     decodeMs,
     firstUsefulMs: positive(record.marksMs.first_useful_screen),

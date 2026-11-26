@@ -11,6 +11,7 @@ const record: SaveLoadBenchmarkRecord = {
   fileName: 'slow.fm',
   fileSizeBytes: 250 * 1024 * 1024,
   mode: 'full',
+  cacheHit: false,
   startedAtIso: '2026-11-26T10:00:00.000Z',
   startedAtMs: 0,
   completedAtIso: '2026-11-26T10:01:00.000Z',
@@ -68,6 +69,7 @@ test('decode steps are sorted and carry a share of measured decoder time', () =>
 test('stage profile separates upload, decode, transfer, hydrate and render', () => {
   const profile = buildSaveLoadStageProfile(record, stepTimingsMs);
   assert.equal(profile.fileSizeMb, 250);
+  assert.equal(profile.cacheHit, false);
   assert.equal(profile.uploadMs, 2500);
   assert.equal(profile.decodeMs, 47510);
   assert.equal(profile.firstUsefulMs, 15000);
