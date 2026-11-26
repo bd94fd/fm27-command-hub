@@ -534,6 +534,26 @@ describe('server routes & JSON 404', () => {
     assert.equal(healthRes.status, 200);
     assert.equal(healthRes.headers.get('x-content-type-options'), 'nosniff');
     assert.equal(healthRes.headers.get('x-powered-by'), null);
+
+    // Production must send a policy that can actually stop exfiltration, and it
+    // must still allow the Pyodide decoder the phone route depends on.
+    const prodConfig = loadServerConfig({
+      GEMINI_API_KEY: 'test-key',
+      NODE_ENV: 'production',
+      PORT: '8080',
+      NGINX_PORT: '8080',
+    } as NodeJS.ProcessEnv);
+    const prodApp = await createApp({ config: prodConfig, serveFrontend: false });
+    const prodSrv = await startTestServer(prodApp);
+    const prodHealth = await fetch(`${prodSrv.baseUrl}/api/health`);
+    const policy = prodHealth.headers.get('content-security-policy') ?? '';
+    prodSrv.close();
+    assert.match(policy, /default-src 'self'/);
+    assert.match(policy, /object-src 'none'/);
+    assert.match(policy, /frame-ancestors 'self'/);
+    assert.match(policy, /'wasm-unsafe-eval'/);
+    assert.match(policy, /https:\/\/cdn\.jsdelivr\.net/);
+    assert.doesNotMatch(policy, /'unsafe-eval'/);
   });
 
   it('supports parallel out-of-order chunk uploads on /api/fm27/decode-save when totalBytes is provided and preserves legacy sequential 409 enforcement', async () => {

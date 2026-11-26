@@ -1,3 +1,4 @@
+import { hubAuthFetch } from '../utils/hubAuth';
 import { FmImportScope } from '../types/fmSave';
 import {
   DecodedFmSavePayload,
@@ -116,7 +117,7 @@ export function warmBrowserDecoder(): void {
  * Checks whether the Express backend has native Python fmsave available for fast Full Sync decoding.
  */
 export async function checkServerDecodeStatus(
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = hubAuthFetch,
   signal?: AbortSignal
 ): Promise<ServerDecodeStatus> {
   if (signal?.aborted) {
@@ -344,7 +345,7 @@ export async function decodeFmSaveViaServer(
     benchmarkId?: string;
   } = {},
   onProgress?: (progress: FmSaveProgressStage) => void,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = hubAuthFetch,
   signal?: AbortSignal
 ): Promise<DecodedFmSavePayload> {
   const fileName =
