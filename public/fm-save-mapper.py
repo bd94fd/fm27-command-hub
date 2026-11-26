@@ -9478,11 +9478,32 @@ def _layout_compat_penalty(compat: Any) -> tuple[int, int, int]:
     return (unavailable, fallback, -clean)
 
 
+ALTERNATE_LAYOUT_CRITICAL_SECTIONS = frozenset(
+    {"players", "staff", "finances", "tactics", "fixtures"}
+)
+
+
 def should_try_alternate_layout(compat: Any) -> bool:
+    """Decide whether an untested build justifies a second full decode.
+
+    A second pass costs about 25s. Bounded fallbacks are already surfaced to the
+    user, and on the 27.0.1 save the 27.1 pass produced the same 3 fallbacks and
+    the same unavailable league table. Retry only for a missing critical section
+    or a clearly worse compatibility summary.
+    """
     if not isinstance(compat, dict) or not compat.get("isUntestedBuild"):
         return False
+    sections = compat.get("sections")
+    if not isinstance(sections, list):
+        return True
+    for section in sections:
+        if (
+            section.get("id") in ALTERNATE_LAYOUT_CRITICAL_SECTIONS
+            and section.get("status") == "unavailable"
+        ):
+            return True
     unavailable, fallback, _ = _layout_compat_penalty(compat)
-    return unavailable > 0 or fallback > 0
+    return unavailable > 1 or fallback > 3
 
 
 def choose_better_layout_compat(first: Any, second: Any) -> bool:
