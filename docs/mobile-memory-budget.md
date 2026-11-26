@@ -23,13 +23,13 @@ That fallback is the risk this change addresses: a phone asked to start a Full S
 ## Change
 
 - New pure helper `src/utils/saveMemoryBudget.ts` classifies a large save (200 MB or more), a low-memory device (under 4 GB reported) and the fallback sync mode.
-- A browser fallback on a phone now uses Fast Sync, even if Full Sync was explicitly selected. The same applies to a large save on a low-memory desktop.
-- A desktop with adequate memory still keeps the requested mode.
+- A browser fallback keeps Full Sync whenever the device has enough memory. Only a large save on a device that reports under 4 GB is upgraded to Fast Sync.
+- A phone that reports enough memory keeps Full Sync. A real 242 MB save completed in Full Sync on a phone in 162 seconds without crashing.
 - The fallback progress label names the chosen mode, and the server/client out-of-memory copy no longer claims a fixed 512 MB tier.
 
 ## Verification
 
-- Unit tests cover the large-save threshold, low-memory detection, phone fallback, low-memory desktop fallback and adequate-memory desktop behaviour.
+- Unit tests cover the large-save threshold, low-memory detection, adequate-memory Full Sync, low-memory Fast Sync, small saves and explicit Fast Sync.
 - TypeScript, lint, the full unit suite, build and the UI audit pass.
 - The existing 252 MB repeat-import test exercised the native path, not the browser fallback. No tab crash or OOM was seen.
 

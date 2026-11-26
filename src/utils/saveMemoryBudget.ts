@@ -25,23 +25,19 @@ export function isLowMemoryDevice(deviceMemoryGb: number | undefined): boolean {
 
 /**
  * Decides the sync mode for a browser fallback after the native server path has
- * failed. An explicit Fast Sync choice is always kept; a large save on a phone
- * or low-memory device is upgraded to Fast Sync so the fallback is not more
+ * failed. An explicit Fast Sync choice is always kept. Full Sync is also kept
+ * whenever the device can handle it; only a large save on a device that reports
+ * low memory is upgraded to Fast Sync, so the fallback is not more
  * memory-hungry than the failed path.
  */
 export function resolveFallbackFastSync(params: {
   requestedFastSync?: boolean;
   fileSizeBytes: number;
-  isMobile: boolean;
   deviceMemoryGb?: number;
 }): boolean {
   if (params.requestedFastSync === true) return true;
-  if (params.isMobile) return true;
-  if (
+  return (
     isLargeSaveFile(params.fileSizeBytes) &&
     isLowMemoryDevice(params.deviceMemoryGb)
-  ) {
-    return true;
-  }
-  return false;
+  );
 }

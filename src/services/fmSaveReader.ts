@@ -1627,7 +1627,6 @@ export async function decodeFmSaveWithServerFirst(
     resolveFallbackFastSync({
       requestedFastSync: options.fastSync,
       fileSizeBytes: file.size || 0,
-      isMobile: isMobileBrowser(),
       deviceMemoryGb,
     }) ||
     (options.fastSync === undefined &&
