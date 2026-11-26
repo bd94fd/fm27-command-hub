@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { MatchLogEntry } from "../../types/fm27";
+import { nextWindowLimit, takeLeadingWindow, takeTrailingWindow } from "../../utils/listWindow";
 import {
   classifyMatchEntryBucket,
   deriveFootballSeasonLabel,
@@ -111,9 +112,29 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
     [filtered]
   );
 
+  // Hundreds of plotted markers in a 350 px wide SVG overlap into noise and cost
+  // thousands of nodes, so the chart draws a recent window. The list view and the
+  // totals above still cover every match in scope.
+  const plotLimit = isMobile ? 30 : 60;
+  const plotMatches = useMemo(
+    () => takeTrailingWindow(xgMatches, plotLimit),
+    [xgMatches, plotLimit]
+  );
+
   const rankedRows = useMemo(
     () => buildXgMomentumRankedRows(xgMatches),
     [xgMatches]
+  );
+
+  // The list view renders one card per match inside a fixed-height scroller, so a
+  // long career would build hundreds of hidden rows. Show a page at a time.
+  const [visibleRowLimit, setVisibleRowLimit] = useState(30);
+  useEffect(() => {
+    setVisibleRowLimit(30);
+  }, [activeSeason, activeScope]);
+  const visibleRankedRows = useMemo(
+    () => takeLeadingWindow(rankedRows, visibleRowLimit),
+    [rankedRows, visibleRowLimit]
   );
 
   const totals = useMemo(() => {
@@ -144,12 +165,12 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
   }, [filtered]);
 
   const selectedIndex = useMemo(() => {
-    if (xgMatches.length === 0) return -1;
-    const found = xgMatches.findIndex((m) => m.id === selectedId);
-    return found >= 0 ? found : xgMatches.length - 1;
-  }, [xgMatches, selectedId]);
+    if (plotMatches.length === 0) return -1;
+    const found = plotMatches.findIndex((m) => m.id === selectedId);
+    return found >= 0 ? found : plotMatches.length - 1;
+  }, [plotMatches, selectedId]);
 
-  const selectedMatch = selectedIndex >= 0 ? xgMatches[selectedIndex] : null;
+  const selectedMatch = selectedIndex >= 0 ? plotMatches[selectedIndex] : null;
 
   if (matches.length === 0) {
     return null;
@@ -160,7 +181,7 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
 
   const maxXg = Math.max(
     2.5,
-    ...xgMatches.map((m) => Math.max(m.xGFor || 0, m.xGAgainst || 0))
+    ...plotMatches.map((m) => Math.max(m.xGFor || 0, m.xGAgainst || 0))
   );
   const yCeiling = Math.ceil(maxXg * 2) / 2;
 
@@ -169,16 +190,16 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
   const mapY = (val: number) =>
     padT + plotH - (Math.min(yCeiling, Math.max(0, val)) / yCeiling) * plotH;
 
-  const xgForLine = xgMatches
-    .map((m, idx) => `${mapX(idx, xgMatches.length).toFixed(1)},${mapY(m.xGFor || 0).toFixed(1)}`)
+  const xgForLine = plotMatches
+    .map((m, idx) => `${mapX(idx, plotMatches.length).toFixed(1)},${mapY(m.xGFor || 0).toFixed(1)}`)
     .join(' ');
-  const xgAgLine = xgMatches
-    .map((m, idx) => `${mapX(idx, xgMatches.length).toFixed(1)},${mapY(m.xGAgainst || 0).toFixed(1)}`)
+  const xgAgLine = plotMatches
+    .map((m, idx) => `${mapX(idx, plotMatches.length).toFixed(1)},${mapY(m.xGAgainst || 0).toFixed(1)}`)
     .join(' ');
 
   const hitColWidth =
-    xgMatches.length > 1
-      ? Math.max(14, plotW / (xgMatches.length - 1))
+    plotMatches.length > 1
+      ? Math.max(14, plotW / (plotMatches.length - 1))
       : plotW;
 
   const scopeTabs: Array<{ id: MatchCompetitionFilter; label: string; count: number }> = [
@@ -313,7 +334,7 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
         </div>
       ) : viewMode === 'list' ? (
         <div className="space-y-1.5 max-h-[400px] overflow-y-auto pr-0.5">
-          {rankedRows.map((row) => {
+          {visibleRankedRows.map((row) => {
             const bucket = classifyMatchEntryBucket(row.match, matches);
             const resClass =
               row.match.result === 'W'
@@ -365,6 +386,31 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
               </div>
             );
           })}
+          {rankedRows.length > visibleRankedRows.length && (
+            <div className="flex items-center justify-between gap-2 pt-1.5">
+              <span className="text-[11px] text-slate-400">
+                Showing {visibleRankedRows.length} of {rankedRows.length} matches in this chart list
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setVisibleRowLimit((prev) => nextWindowLimit(prev, 30, rankedRows.length))
+                  }
+                  className="min-h-[44px] sm:min-h-[30px] px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-800 text-slate-200 hover:bg-slate-700 cursor-pointer transition"
+                >
+                  Show 30 More
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVisibleRowLimit(rankedRows.length)}
+                  className="min-h-[44px] sm:min-h-[30px] px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-600/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600/25 cursor-pointer transition"
+                >
+                  Show All ({rankedRows.length})
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <>
@@ -417,8 +463,8 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
               points={xgAgLine}
             />
 
-            {xgMatches.map((m, idx) => {
-              const x = mapX(idx, xgMatches.length);
+            {plotMatches.map((m, idx) => {
+              const x = mapX(idx, plotMatches.length);
               const yFor = mapY(m.xGFor || 0);
               const yAg = mapY(m.xGAgainst || 0);
               const isSel = selectedMatch?.id === m.id;
@@ -430,7 +476,7 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
                     : '#f43f5e';
               const labelStep = Math.max(
                 1,
-                Math.floor(xgMatches.length / (isMobile ? 4 : 5))
+                Math.floor(plotMatches.length / (isMobile ? 4 : 5))
               );
               return (
                 <g
@@ -474,7 +520,7 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
                   />
                   <circle cx={x} cy={height - 18} r={isSel ? 4.2 : 3.5} fill={resultColor} />
                   {(idx === 0 ||
-                    idx === xgMatches.length - 1 ||
+                    idx === plotMatches.length - 1 ||
                     idx % labelStep === 0) && (
                     <text
                       x={x}
@@ -489,6 +535,12 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
               );
             })}
           </svg>
+
+          {plotMatches.length < xgMatches.length && (
+            <p className="pt-1 text-[11px] text-slate-400">
+              Chart plots the latest {plotMatches.length} of {xgMatches.length} matches in scope. Totals above and the Match List cover all of them.
+            </p>
+          )}
 
           {selectedMatch && (() => {
             const selBucket = classifyMatchEntryBucket(selectedMatch, matches);
@@ -521,7 +573,7 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
                       aria-label="Previous match"
                       disabled={selectedIndex <= 0}
                       onClick={() => {
-                        if (selectedIndex > 0) setSelectedId(xgMatches[selectedIndex - 1].id);
+                        if (selectedIndex > 0) setSelectedId(plotMatches[selectedIndex - 1].id);
                       }}
                       className="min-h-[44px] min-w-[44px] sm:min-h-[30px] sm:min-w-[30px] inline-flex items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-300 disabled:opacity-35 cursor-pointer"
                     >
@@ -530,10 +582,10 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
                     <button
                       type="button"
                       aria-label="Next match"
-                      disabled={selectedIndex >= xgMatches.length - 1}
+                      disabled={selectedIndex >= plotMatches.length - 1}
                       onClick={() => {
-                        if (selectedIndex < xgMatches.length - 1) {
-                          setSelectedId(xgMatches[selectedIndex + 1].id);
+                        if (selectedIndex < plotMatches.length - 1) {
+                          setSelectedId(plotMatches[selectedIndex + 1].id);
                         }
                       }}
                       className="min-h-[44px] min-w-[44px] sm:min-h-[30px] sm:min-w-[30px] inline-flex items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-300 disabled:opacity-35 cursor-pointer"

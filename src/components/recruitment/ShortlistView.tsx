@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Bookmark,
   BookmarkCheck,
@@ -16,6 +16,7 @@ import type {
 import { isScoutTargetTracked } from '../../services/fmStorage';
 import { getPositionRelevantAttributes } from '../../utils/recruitmentHelpers';
 import { formatAge, formatNation } from '../../utils/squadViewHelpers';
+import { nextWindowLimit, takeLeadingWindow } from '../../utils/listWindow';
 
 type ShortlistFilterKey =
   | 'ALL'
@@ -23,6 +24,8 @@ type ShortlistFilterKey =
   | ShortlistRecommendationTier
   | 'LOAN'
   | 'PINNED';
+
+const SHORTLIST_PAGE_SIZE = 30;
 
 interface ShortlistViewProps {
   shortlistAudit: ShortlistAuditSummary;
@@ -90,6 +93,17 @@ export const ShortlistView: React.FC<ShortlistViewProps> = ({
       return true;
     });
   }, [shortlistAudit.items, tierFilter, posFilter, search, trackedTargets]);
+
+  // A save can carry hundreds of shortlisted players, and each card is heavy, so
+  // render a page at a time instead of the whole shortlist at once.
+  const [visibleLimit, setVisibleLimit] = useState(SHORTLIST_PAGE_SIZE);
+  useEffect(() => {
+    setVisibleLimit(SHORTLIST_PAGE_SIZE);
+  }, [tierFilter, posFilter, search]);
+  const visibleItems = useMemo(
+    () => takeLeadingWindow(filteredItems, visibleLimit),
+    [filteredItems, visibleLimit]
+  );
 
   return (
     <div className="space-y-3">
@@ -196,7 +210,7 @@ export const ShortlistView: React.FC<ShortlistViewProps> = ({
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filteredItems.map((item) => {
+          {visibleItems.map((item) => {
             const { target } = item;
             const isPinned = isScoutTargetTracked(trackedTargets, target);
             const inCompareTray = compareTrayTargets.some((t) => t.uid === target.uid);
@@ -371,6 +385,34 @@ export const ShortlistView: React.FC<ShortlistViewProps> = ({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {filteredItems.length > visibleItems.length && (
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+          <span className="text-[11px] text-slate-400">
+            Showing {visibleItems.length} of {filteredItems.length} shortlisted players
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                setVisibleLimit((prev) =>
+                  nextWindowLimit(prev, SHORTLIST_PAGE_SIZE, filteredItems.length)
+                )
+              }
+              className="min-h-[44px] sm:min-h-[32px] px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-200 hover:bg-slate-700 cursor-pointer transition"
+            >
+              Show {SHORTLIST_PAGE_SIZE} More
+            </button>
+            <button
+              type="button"
+              onClick={() => setVisibleLimit(filteredItems.length)}
+              className="min-h-[44px] sm:min-h-[32px] px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600/15 text-emerald-200 border border-emerald-500/30 hover:bg-emerald-600/25 cursor-pointer transition"
+            >
+              Show All ({filteredItems.length})
+            </button>
+          </div>
         </div>
       )}
     </div>

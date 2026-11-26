@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Calendar, Filter, Trophy } from 'lucide-react';
 import { MatchLogEntry } from '../types/fm27';
 import {
@@ -16,6 +16,7 @@ import {
 } from '../utils/matchScopeHelpers';
 import { MatchXgMomentumChart } from './charts/MatchXgMomentumChart';
 import { MatchLogCard } from './MatchLogCard';
+import { nextWindowLimit, takeLeadingWindow } from '../utils/listWindow';
 
 export interface PostMatchDebriefData {
   headlineVerdict: string;
@@ -110,6 +111,8 @@ export function buildDeterministicPostMatchDebrief(
     source: 'Playbook v2.0 Engine',
   };
 }
+
+const MATCH_ROW_PAGE_SIZE = 30;
 
 interface MatchLogArchiveProps {
   matches: MatchLogEntry[];
@@ -279,6 +282,17 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
       matchesEntryCompetitionFilter(m, activeCompFilter, seasonScopedMatches)
     );
   }, [seasonScopedMatches, activeCompFilter]);
+
+  // A long career holds hundreds of matches. Rendering every card at once puts
+  // thousands of nodes in the DOM and blocks the main thread on a phone.
+  const [visibleMatchLimit, setVisibleMatchLimit] = useState(MATCH_ROW_PAGE_SIZE);
+  useEffect(() => {
+    setVisibleMatchLimit(MATCH_ROW_PAGE_SIZE);
+  }, [activeSeason, activeCompFilter]);
+  const visibleMatches = useMemo(
+    () => takeLeadingWindow(filteredMatches, visibleMatchLimit),
+    [filteredMatches, visibleMatchLimit]
+  );
 
   const filteredXgStats = useMemo(() => {
     const xgMatches = filteredMatches.filter(
@@ -785,7 +799,7 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
           </div>
         ) : (
           <div className="space-y-2.5">
-            {filteredMatches.map((m) => {
+            {visibleMatches.map((m) => {
               const seasonLabel = getFootballSeasonLabel(m.date);
               const compBucket = classifyMatchEntryBucket(m, seasonScopedMatches);
               const isDebriefOpen = openDebriefMatchId === m.id;
@@ -811,6 +825,33 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                 />
               );
             })}
+            {filteredMatches.length > visibleMatches.length && (
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Showing {visibleMatches.length} of {filteredMatches.length} matches
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setVisibleMatchLimit((prev) =>
+                        nextWindowLimit(prev, MATCH_ROW_PAGE_SIZE, filteredMatches.length)
+                      )
+                    }
+                    className="min-h-[44px] sm:min-h-[32px] px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer transition"
+                  >
+                    Show {MATCH_ROW_PAGE_SIZE} More
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVisibleMatchLimit(filteredMatches.length)}
+                    className="min-h-[44px] sm:min-h-[32px] px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600/25 cursor-pointer transition"
+                  >
+                    Show All ({filteredMatches.length})
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
