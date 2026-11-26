@@ -1,3 +1,4 @@
+import { feedback } from '../utils/feedbackBus';
 import React, {
   Suspense,
   lazy,
@@ -317,6 +318,7 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
     await clearAllSaveCache();
     setBaselineIdx(0);
     setProgressionRefreshNonce((n) => n + 1);
+    feedback.success('Progression archive cleared');
   };
 
   const progressionArchive = useMemo(

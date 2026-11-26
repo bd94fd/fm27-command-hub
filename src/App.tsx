@@ -17,6 +17,8 @@ import {
   Upload,
 } from 'lucide-react';
 import { EMPTY_CLUB_META, SQUAD_PLAYERS } from './data/squadData';
+import { FeedbackToast } from './components/FeedbackToast';
+import { emitFeedback, feedback, subscribeFeedback, type FeedbackMessage } from './utils/feedbackBus';
 import { CompareTrayProvider } from './context/CompareTrayContext';
 import { COMPETITIVE_MATCH_LOGS } from './data/matchAndTacticsData';
 import {
@@ -233,7 +235,7 @@ export default function App() {
   const [calibrationLabOpen, setCalibrationLabOpen] = useState<boolean>(false);
   const [calibrationLabTab, setCalibrationLabTab] = useState<CalibrationLabTab>('roles');
   const [dictionaryVersion, setDictionaryVersion] = useState<number>(0);
-  const [appToast, setAppToast] = useState<string | null>(null);
+  const [feedbackMessage, setFeedbackMessage] = useState<FeedbackMessage | null>(null);
   const { isKeyboardOpen } = useMobileKeyboard();
 
   const handleOpenCalibrationLab = useCallback((tab: CalibrationLabTab = 'roles') => {
@@ -326,22 +328,18 @@ export default function App() {
   const latestJourneyPromiseRef = useRef<Promise<DeepJourneyReport | null> | null>(
     null
   );
-  const toastTimeoutRef = useRef<number | null>(null);
   const resetConfirmTimeoutRef = useRef<number | null>(null);
   const idbRestoreCancelledRef = useRef<boolean>(false);
   const isResettingRef = useRef<boolean>(false);
   const skipNextAutosaveRef = useRef<boolean>(true);
 
   const showGlobalToast = useCallback((msg: string) => {
-    if (toastTimeoutRef.current !== null) {
-      window.clearTimeout(toastTimeoutRef.current);
-    }
-    setAppToast(msg);
-    toastTimeoutRef.current = window.setTimeout(() => {
-      toastTimeoutRef.current = null;
-      setAppToast((prev) => (prev === msg ? null : prev));
-    }, 3200);
+    emitFeedback({ text: msg, tone: 'success' });
   }, []);
+
+  // Everything that reports progress posts to the feedback bus, so a toast can be
+  // raised from a deep component without threading a callback through every layer.
+  useEffect(() => subscribeFeedback(setFeedbackMessage), []);
 
   // Handle Android home-screen shortcut URLs (?tab=tactics, ?tab=squad, ?action=sync).
   // The active tab is seeded from the launch URL above, so this only handles the toast.
@@ -362,10 +360,6 @@ export default function App() {
 
   useEffect(
     () => () => {
-      if (toastTimeoutRef.current !== null) {
-        window.clearTimeout(toastTimeoutRef.current);
-        toastTimeoutRef.current = null;
-      }
       if (resetConfirmTimeoutRef.current !== null) {
         window.clearTimeout(resetConfirmTimeoutRef.current);
         resetConfirmTimeoutRef.current = null;
@@ -502,16 +496,14 @@ export default function App() {
   useSheetHistory(calibrationLabOpen, () => setCalibrationLabOpen(false));
 
   const handleToggleTrackTarget = (target: RecruitmentTarget): boolean => {
-    const { targets: next, tracked } = toggleTrackedScoutTarget(
-      target,
-      trackedTargets
-    );
+    const previous = trackedTargets;
+    const { targets: next, tracked } = toggleTrackedScoutTarget(target, previous);
     setTrackedTargets(next);
-    showGlobalToast(
-      tracked
-        ? `Added ${target.name} to Shortlist`
-        : `Removed ${target.name} from Shortlist`
-    );
+    if (tracked) {
+      feedback.success(`Added ${target.name} to Shortlist`);
+    } else {
+      feedback.undo(`Removed ${target.name} from Shortlist`, () => setTrackedTargets(previous));
+    }
     return tracked;
   };
 
@@ -858,7 +850,7 @@ export default function App() {
       );
     }
     if (!json) {
-      showGlobalToast('No loaded save data to back up yet');
+      emitFeedback({ text: 'No loaded save data to back up yet', tone: 'info' });
       return;
     }
     const blob = new Blob([json], { type: 'application/json' });
@@ -901,11 +893,11 @@ export default function App() {
             `Restored campaign snapshot (${imported.players.length} players)`
           );
         } else {
-          showGlobalToast('Invalid FM27 backup file format.');
+          emitFeedback({ text: 'Invalid FM27 backup file format.', tone: 'error' });
         }
       } catch (err) {
         console.warn('Failed to import FM27 backup:', err);
-        showGlobalToast('Invalid FM27 backup file format.');
+        emitFeedback({ text: 'Invalid FM27 backup file format.', tone: 'error' });
       }
     };
     reader.readAsText(file);
@@ -1109,9 +1101,10 @@ export default function App() {
         })
         .catch((err) => {
           console.warn('Failed to persist FM27 save history point:', err);
-          showGlobalToast(
-            'Save history could not be stored on this device (storage may be full) — live analytics are unaffected'
-          );
+          emitFeedback({
+            text: 'Save history could not be stored on this device (storage may be full) — live analytics are unaffected',
+            tone: 'error',
+          });
           return null;
         });
     }
@@ -2096,16 +2089,12 @@ export default function App() {
       )}
 
       {/* Global Floating Toast Notification */}
-      {appToast && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] md:bottom-6 right-4 z-50 flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-slate-900/95 px-4 py-2.5 text-xs font-semibold text-emerald-200 shadow-2xl backdrop-blur"
-        >
-          <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-          <span>{appToast}</span>
-        </div>
-      )}
+      <FeedbackToast
+        message={feedbackMessage}
+        onDismiss={(id) =>
+          setFeedbackMessage((prev) => (prev && prev.id === id ? null : prev))
+        }
+      />
 
       {/* Global Modals & Drawers */}
       {selectedPlayer && (
