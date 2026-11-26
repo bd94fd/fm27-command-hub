@@ -17,6 +17,7 @@ Roadmap: R__
 - [ ] `npm run build`
 - [ ] `npm run ui:audit` (required for UI changes)
 - [ ] Real-save regression run when the decoder changes (`npm run test:real-saves` with fmsave installed)
+- [ ] `docs/data-parity-contract-map.md` updated for every changed decoder, hydrator, selector, UI, or Analyst field
 - [ ] `git diff --check`
 - [ ] No save files, secrets, or personal data are included
 
