@@ -6696,6 +6696,142 @@ def step_club_extras_and_release_gamedb(fast_sync: bool | None = None) -> str:
     })
 
 
+def _walk_season_stats_for_keys(
+    body: bytes, layout: Any, file_name: str, wanted_keys: set[int]
+) -> list[Any]:
+    """Walk the season-statistics records but keep only the squad's player keys.
+
+    The section can hold 160k+ records. The old reader built a RawSeasonRecord for every
+    one of them, which dominates phone time. Keys are stored in order, so the walk stops at
+    the highest wanted key; only the ~50 wanted records allocate tuples.
+    """
+    from fmsave.readers.season_stats import (
+        RawSeasonRecord,
+        _LIST_END,
+        _RECORD_PRESENT,
+        _SECTION_HEADER_BYTES,
+        _SECTION_MAGIC,
+        _U32,
+    )
+
+    if not body.startswith(_SECTION_MAGIC + struct.pack("<H", layout.section_schema)):
+        raise ValueError("season stats header mismatch")
+    end = len(body)
+    line_bytes = layout.line_bytes
+    line_marker = layout.line_marker
+    header_bytes = layout.header_bytes
+    own_slot_count = layout.own_slots
+    other_slot_count = layout.other_team_slots
+    lead_bytes = layout.other_team_lead_bytes
+
+    def read_slots(position: int, count: int, keep: bool) -> tuple[tuple[int | None, ...] | None, int]:
+        lines: list[int | None] | None = [] if keep else None
+        for _ in range(count):
+            if position >= end:
+                raise ValueError("season stats slot past frame")
+            if body[position] == 0:
+                if lines is not None:
+                    lines.append(None)
+                position += 1
+            elif body.startswith(line_marker, position) and position + line_bytes <= end:
+                if lines is not None:
+                    lines.append(position)
+                position += line_bytes
+            else:
+                raise ValueError(f"{file_name}: season stats slot is invalid")
+        return (tuple(lines) if lines is not None else None), position
+
+    def read_count(position: int, maximum: int) -> int:
+        if position + 4 > end:
+            raise ValueError("season stats count past frame")
+        count = _U32.unpack_from(body, position)[0]
+        if count > maximum:
+            raise ValueError("season stats count above maximum")
+        return count
+
+    max_wanted = max(wanted_keys) if wanted_keys else -1
+    records: list[Any] = []
+    position = _SECTION_HEADER_BYTES
+    while True:
+        if position >= end:
+            raise ValueError("season stats records past frame")
+        marker = body[position]
+        if marker == _LIST_END:
+            break
+        if marker != _RECORD_PRESENT or position + 1 + 4 + header_bytes > end:
+            raise ValueError(f"{file_name}: season stats record header invalid")
+        key = _U32.unpack_from(body, position + 1)[0]
+        if key > max_wanted:
+            return records
+        keep = key in wanted_keys
+        position += 1 + 4 + header_bytes
+        own_lines, position = read_slots(position, own_slot_count, keep)
+        position += layout.block_bytes
+        other_count = read_count(position, layout.maximum_other_teams)
+        position += 4
+        other_teams: list[tuple[int, tuple[int | None, ...]]] = []
+        for _ in range(other_count):
+            team_at = position + lead_bytes
+            if team_at + 4 > end:
+                raise ValueError("season stats team id past frame")
+            team_id = _U32.unpack_from(body, team_at)[0] if keep else 0
+            team_lines, position = read_slots(team_at + 4, other_slot_count, keep)
+            if keep:
+                other_teams.append((team_id, team_lines or ()))
+        item_count = read_count(position, layout.maximum_rating_items)
+        position += 4 + item_count * layout.rating_item_bytes
+        if position >= end:
+            raise ValueError("season stats form list past frame")
+        form_entries = body[position]
+        if form_entries > layout.maximum_form_entries:
+            raise ValueError("season stats form list too long")
+        position += 1 + form_entries * layout.form_entry_bytes
+        if keep:
+            records.append(RawSeasonRecord(key, own_lines or (), tuple(other_teams)))
+            if len(records) >= len(wanted_keys):
+                return records
+    footer_end = position + 1 + layout.footer_bytes
+    if footer_end != end:
+        raise ValueError(f"{file_name}: season stats footer mismatch")
+    return records
+
+
+def _read_season_stats_records_for_keys(
+    container_index: Any, layout: Any, wanted_keys: set[int]
+) -> tuple[bytes, list[Any]]:
+    from fmsave._container import read_chosen_region_frames, region_frame_heads
+    from fmsave.readers._common import SPAN_REGION
+    from fmsave.readers.season_stats import _SECTION_MAGIC
+
+    header = _SECTION_MAGIC + struct.pack("<H", layout.section_schema)
+    candidates = [
+        span
+        for span, head in region_frame_heads(container_index, SPAN_REGION, len(header))
+        if head == header
+    ]
+    if not candidates:
+        raise ValueError("no season stats frame found")
+    accepted: tuple[bytes, list[Any]] | None = None
+    first_error: Exception | None = None
+    for body in read_chosen_region_frames(container_index, SPAN_REGION, candidates):
+        try:
+            parsed = _walk_season_stats_for_keys(
+                body, layout, container_index.file_name, wanted_keys
+            )
+        except Exception as exc:
+            if first_error is None:
+                first_error = exc
+            continue
+        if accepted is not None:
+            raise ValueError("2 frames each walk as season stats")
+        accepted = (body, parsed)
+    if accepted is None:
+        if first_error is not None:
+            raise first_error
+        raise ValueError("no season stats frame walked")
+    return accepted
+
+
 def _extract_club_season_stats_fast(save: Any) -> list[Any] | None:
     """Club-scoped direct season_stats reader: decodes ONLY our ~47 managed squad players
     from the season_stats section without re-opening game_db, re-parsing 100k global players,
@@ -6715,11 +6851,13 @@ def _extract_club_season_stats_fast(save: Any) -> list[Any] | None:
             _decode,
             _line_readers,
             find_season_stats_layout,
-            read_season_stats_section,
         )
 
         layout = find_season_stats_layout(ctx.info.build)
-        body, walk = read_season_stats_section(container_index, layout)
+        wanted_keys = {int(pidx) + 1 for pidx in pindex_map}
+        body, records = _read_season_stats_records_for_keys(
+            container_index, layout, wanted_keys
+        )
         outfield_reader, goalkeeper_reader = _line_readers(layout)
         slot_kinds = tuple(SeasonStatsKind(kind) for kind in layout.slot_kinds)
         rating_scale = layout.rating_scale
@@ -6727,7 +6865,7 @@ def _extract_club_season_stats_fast(save: Any) -> list[Any] | None:
 
         rows: list[Any] = []
         keys_seen: set[int] = set()
-        for record in walk.records:
+        for record in records:
             pidx = record.key - 1
             player = pindex_map.get(pidx)
             if player is None or record.key in keys_seen:
@@ -7025,6 +7163,126 @@ def _aggregate_competitive_season_history(
     ]
 
 
+def _parse_history_index_for_selectors(
+    body: bytes, layout: Any, wanted_selectors: set[int]
+) -> tuple[dict[int, tuple[int, ...]], int]:
+    """Walk the history index but materialise only the selectors the squad uses.
+
+    The full index holds ~165k lists and ~435k offsets on a 242 MB save. Parsing every
+    offset costs tens of seconds inside Pyodide even though only about 50 lists are needed.
+    Lists are read in selector order, so the walk stops after the highest wanted selector.
+    """
+    if not body.startswith(layout.index_header):
+        raise ValueError("history index header mismatch")
+    from fmsave.readers.season_history import _ABSENT
+
+    position = len(layout.index_header)
+    end = len(body)
+
+    def u32() -> int:
+        nonlocal position
+        if position + 4 > end:
+            raise ValueError("history index word past frame")
+        value = struct.unpack_from("<I", body, position)[0]
+        position += 4
+        return value
+
+    singles_count = u32()
+    if singles_count > (end - position) // 4:
+        raise ValueError("history index singles past frame")
+    position += singles_count * 4
+
+    list_count = u32()
+    if list_count > (end - position) // 4:
+        raise ValueError("history index list count past frame")
+    wanted = sorted(wanted_selectors)
+    max_selector = wanted[-1] if wanted else -1
+    lists: dict[int, tuple[int, ...]] = {}
+    for selector in range(list_count):
+        if selector > max_selector:
+            return lists, list_count
+        count = u32()
+        if count > (end - position) // 4:
+            raise ValueError("history index list past frame")
+        if selector in wanted_selectors:
+            values: list[int] = []
+            previous = 0
+            for _ in range(count):
+                value = u32()
+                values.append((value + previous) & _ABSENT)
+                previous = value
+            lists[selector] = tuple(values)
+        else:
+            position += count * 4
+
+    free_count = u32()
+    if free_count > (end - position) // 4:
+        raise ValueError("history index free list past frame")
+    position += free_count * 4
+    if u32() != layout.unit_bytes:
+        raise ValueError("history index unit size mismatch")
+    if body[position:] != layout.footer:
+        raise ValueError("history index footer mismatch")
+    return lists, list_count
+
+
+def _read_section_prefix(container_index: Any, name: str, min_bytes: int) -> bytes | None:
+    """Decompress only the front of a listed section, up to `min_bytes`.
+
+    A zstd frame cannot be random-accessed, but the decoder can stop after the bytes we
+    actually need. The season-history archive is 73 MB on a 242 MB save while the squad's
+    last history line sits near 59 MB, so reading the whole section wastes phone CPU.
+    """
+    entry = container_index.sections.get(name)
+    if entry is None or min_bytes <= 0:
+        return None
+    try:
+        from fmsave._container import open_verified, read_exact, zstd
+
+        with open_verified(container_index) as save_file:
+            compressed = read_exact(
+                save_file,
+                entry.frame_offset,
+                entry.compressed_size,
+                container_index.file_name,
+            )
+        decompressor = zstd.ZstdDecompressor()
+        return decompressor.decompress(compressed, max_length=min_bytes)
+    except Exception:
+        return None
+
+
+def _read_history_index_for_selectors(
+    container_index: Any, layout: Any, wanted_selectors: set[int]
+) -> tuple[dict[int, tuple[int, ...]], int]:
+    from fmsave._container import read_chosen_region_frames, region_frame_heads
+    from fmsave._save import SPAN_REGION
+
+    header = layout.index_header
+    candidates = [
+        span
+        for span, head in region_frame_heads(container_index, SPAN_REGION, len(header))
+        if head == header
+    ]
+    accepted: tuple[dict[int, tuple[int, ...]], int] | None = None
+    first_error: Exception | None = None
+    for body in read_chosen_region_frames(container_index, SPAN_REGION, candidates):
+        try:
+            parsed = _parse_history_index_for_selectors(body, layout, wanted_selectors)
+        except Exception as exc:
+            if first_error is None:
+                first_error = exc
+            continue
+        if accepted is not None:
+            raise ValueError("2 frames each walk as the history index")
+        accepted = parsed
+    if accepted is None:
+        if first_error is not None:
+            raise first_error
+        raise ValueError("no history index frame found")
+    return accepted
+
+
 def _extract_club_season_history_fast(save: Any) -> dict[str, list[dict[str, Any]]] | None:
     """Club-scoped direct player_season_history reader: decodes ONLY our ~47 managed squad
     players' history lists from the archive section without re-opening game_db or validating
@@ -7050,7 +7308,6 @@ def _extract_club_season_history_fast(save: Any) -> dict[str, list[dict[str, Any
             _ABSENT,
             _METADATA,
             find_history_layout,
-            read_history_index,
         )
         from fmsave.readers.season_stats import (
             _club_fields as season_club_fields,
@@ -7062,73 +7319,86 @@ def _extract_club_season_history_fast(save: Any) -> dict[str, list[dict[str, Any
             return {}
         layout = find_history_layout(ctx.info.build)
         stat_layout = find_season_stats_layout(ctx.info.build)
-        index = read_history_index(container_index, layout)
+        wanted_selectors = {
+            int(selector)
+            for selector in selectors.values()
+            if isinstance(selector, int) and selector >= 0
+        }
+        lists_by_selector, list_count = _read_history_index_for_selectors(
+            container_index, layout, wanted_selectors
+        )
         header_bytes = len(layout.archive_header)
         kinds = tuple(SeasonStatsKind(name) for name in layout.kind_names)
         team_to_club, club_by_uid = club_refs
 
         out: dict[str, list[dict[str, Any]]] = {}
-        with ctx.section(ARCHIVE_SECTION) as archive:
-            if not archive.startswith(layout.archive_header):
-                return None
-            arch_len = len(archive)
-            for uid, player in players_by_uid.items():
-                selector = selectors.get(uid, _ABSENT)
-                if (
-                    selector == _ABSENT
-                    or selector in omitted_selectors
-                    or not (0 <= selector < len(index.lists))
-                ):
+        prefix_bytes = header_bytes + max(
+            (max(offsets) for offsets in lists_by_selector.values() if offsets), default=0
+        ) + 152
+        archive = _read_section_prefix(container_index, ARCHIVE_SECTION, prefix_bytes)
+        if archive is None or len(archive) < prefix_bytes:
+            with ctx.section(ARCHIVE_SECTION) as full_archive:
+                archive = full_archive
+        if not archive.startswith(layout.archive_header):
+            return None
+        arch_len = len(archive)
+        for uid, player in players_by_uid.items():
+            selector = selectors.get(uid, _ABSENT)
+            if (
+                selector == _ABSENT
+                or selector in omitted_selectors
+                or not (0 <= selector < list_count)
+            ):
+                continue
+            offsets = lists_by_selector.get(selector)
+            if not offsets:
+                continue
+            uid_key = str(uid)
+            raw_rows: list[tuple[int, str, str, int, int, int, int, float]] = []
+            for offset in offsets:
+                at = header_bytes + offset
+                if at + 152 > arch_len:
                     continue
-                offsets = index.lists[selector]
-                if not offsets:
-                    continue
-                uid_key = str(uid)
-                raw_rows: list[tuple[int, str, str, int, int, int, int, float]] = []
-                for offset in offsets:
-                    at = header_bytes + offset
-                    if at + 152 > arch_len:
-                        continue
-                    kind_idx = archive[at + 31]
-                    kind_val = (
-                        _normalize_stat_kind(kinds[kind_idx])
-                        if kind_idx < len(kinds)
-                        else ""
-                    )
-                    team_id, _comp, _unk, year = _METADATA.unpack_from(archive, at + 1)
-                    team_id = None if team_id == _ABSENT else team_id
-                    _c_uid, c_name, _c_short, _t_slot = season_club_fields(
-                        team_id, team_to_club, club_by_uid
-                    )
-                    line = bytearray(stat_layout.line_bytes)
-                    line[:2] = stat_layout.line_marker
-                    line[2:6] = archive[at + 13 : at + 17]
-                    line[6:11] = archive[at + 24 : at + 29]
-                    line[11:14] = archive[at + 17 : at + 20]
-                    line[14] = archive[at + 29]
-                    line[15:19] = archive[at + 20 : at + 24]
-                    line[19:139] = archive[at + 32 : at + 152]
-                    decoded = decode_season_line(bytes(line), 0, player.goalkeeper, stat_layout)
-                    # decoded tuple starts with: starts, substitute_appearances, minutes, rated_appearances, average_rating, potm, goals, assists, ...
-                    starts = _int(decoded[0], 0) or 0
-                    subs = _int(decoded[1], 0) or 0
-                    rated_apps = _int(decoded[3], 0) or 0
-                    avg_rat = _float(decoded[4], 0.0) or 0.0
-                    goals = _int(decoded[6], 0) or 0
-                    assists = _int(decoded[7], 0) or 0
-                    raw_rows.append((
-                        _int(year, 0) or 0,
-                        str(c_name or "Club"),
-                        kind_val,
-                        starts + subs,
-                        rated_apps,
-                        goals,
-                        assists,
-                        avg_rat,
-                    ))
-                merged = _aggregate_competitive_season_history(raw_rows)
-                if merged:
-                    out[uid_key] = merged
+                kind_idx = archive[at + 31]
+                kind_val = (
+                    _normalize_stat_kind(kinds[kind_idx])
+                    if kind_idx < len(kinds)
+                    else ""
+                )
+                team_id, _comp, _unk, year = _METADATA.unpack_from(archive, at + 1)
+                team_id = None if team_id == _ABSENT else team_id
+                _c_uid, c_name, _c_short, _t_slot = season_club_fields(
+                    team_id, team_to_club, club_by_uid
+                )
+                line = bytearray(stat_layout.line_bytes)
+                line[:2] = stat_layout.line_marker
+                line[2:6] = archive[at + 13 : at + 17]
+                line[6:11] = archive[at + 24 : at + 29]
+                line[11:14] = archive[at + 17 : at + 20]
+                line[14] = archive[at + 29]
+                line[15:19] = archive[at + 20 : at + 24]
+                line[19:139] = archive[at + 32 : at + 152]
+                decoded = decode_season_line(bytes(line), 0, player.goalkeeper, stat_layout)
+                # decoded tuple starts with: starts, substitute_appearances, minutes, rated_appearances, average_rating, potm, goals, assists, ...
+                starts = _int(decoded[0], 0) or 0
+                subs = _int(decoded[1], 0) or 0
+                rated_apps = _int(decoded[3], 0) or 0
+                avg_rat = _float(decoded[4], 0.0) or 0.0
+                goals = _int(decoded[6], 0) or 0
+                assists = _int(decoded[7], 0) or 0
+                raw_rows.append((
+                    _int(year, 0) or 0,
+                    str(c_name or "Club"),
+                    kind_val,
+                    starts + subs,
+                    rated_apps,
+                    goals,
+                    assists,
+                    avg_rat,
+                ))
+            merged = _aggregate_competitive_season_history(raw_rows)
+            if merged:
+                out[uid_key] = merged
         return out
     except Exception as exc:
         _record_fast_fallback("season_history", exc)
@@ -8772,6 +9042,7 @@ def _extract_club_league_table_and_rules_fast(
     deduplicates & groups span_records.table_blocks ONCE, builds rows ONLY for the group(s)
     containing our managed club's first team, votes competition from span_kept_fixtures ONLY
     for those ~16 clubs, and resolves our club's exact CompetitionRules preamble in ~0.08s."""
+    _STATE["league_table_fast_miss"] = False
     ctx = getattr(save, "_context", None)
     if ctx is None or club_uid is None:
         return None, None, None
@@ -8807,6 +9078,13 @@ def _extract_club_league_table_and_rules_fast(
         if not first_team_ids:
             return None, None, None
 
+        _STATE["league_table_fast_miss"] = False
+        # If no stored table block belongs to this club, no group can contain it.
+        # Skip de-duplicating and grouping thousands of other divisions' blocks.
+        if not any(block.team_id in first_team_ids for block in span_records.table_blocks):
+            _STATE["league_table_fast_miss"] = True
+            return None, None, None
+
         kept_blocks, _dups = distinct_blocks(span_records.table_blocks)
         groups, _sup = drop_superseded_groups(group_blocks(kept_blocks, layout), layout)
 
@@ -8815,6 +9093,7 @@ def _extract_club_league_table_and_rules_fast(
             g for g in groups if any(block.team_id in first_team_ids for block in g)
         ]
         if not candidate_groups:
+            _STATE["league_table_fast_miss"] = True
             return None, None, None
 
         # Vote competition ID from kept span fixtures ONLY for teams inside our candidate groups
@@ -8934,6 +9213,8 @@ def _extract_club_league_table_and_rules_fast(
             }
             _STATE["defer_competition_rules"] = False
 
+        if best_lt is None:
+            _STATE["league_table_fast_miss"] = True
         return best_lt, best_row, resolved_rules
     except Exception as exc:
         _record_fast_fallback("league_table", exc)
@@ -8955,10 +9236,11 @@ def step_league_table() -> str:
     deferred_rules = None
     if club_uid is not None and save is not None:
         fast_lt, fast_row, deferred_rules = _extract_club_league_table_and_rules_fast(save, club_uid)
+        fast_miss = bool(_STATE.pop("league_table_fast_miss", False))
         if fast_lt is not None and fast_row is not None:
             best_lt = fast_lt
             best_row = fast_row
-        else:
+        elif not fast_miss:
             try:
                 for lt in save.league_tables():
                     my_row = next((r for r in lt.rows if r.club_uid == club_uid and r.team_slot in (None, 0)), None)

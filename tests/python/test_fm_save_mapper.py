@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import struct
 import sys
 import types
 import unittest
@@ -616,6 +617,115 @@ class TestFmsave0144Adoption(unittest.TestCase):
                 "dates_reordered": True,
             },
         )
+
+
+class _FakeSeasonModules:
+    """Install lightweight fmsave season modules for parser-only tests."""
+
+    def __init__(self) -> None:
+        self._saved: dict[str, types.ModuleType] = {}
+
+    def __enter__(self) -> None:
+        import fmsave
+
+        history = types.ModuleType("fmsave.readers.season_history")
+        history._ABSENT = 0xFFFFFFFF  # type: ignore[attr-defined]
+        stats = types.ModuleType("fmsave.readers.season_stats")
+        stats.RawSeasonRecord = lambda key, own, other: (key, own, other)  # type: ignore[attr-defined]
+        stats._LIST_END = 0  # type: ignore[attr-defined]
+        stats._RECORD_PRESENT = 1  # type: ignore[attr-defined]
+        stats._SECTION_MAGIC = b"STAT"  # type: ignore[attr-defined]
+        stats._SECTION_HEADER_BYTES = 6  # type: ignore[attr-defined]
+        stats._U32 = struct.Struct("<I")  # type: ignore[attr-defined]
+        readers = types.ModuleType("fmsave.readers")
+        readers.season_history = history  # type: ignore[attr-defined]
+        readers.season_stats = stats  # type: ignore[attr-defined]
+        for name, module in (
+            ("fmsave.readers", readers),
+            ("fmsave.readers.season_history", history),
+            ("fmsave.readers.season_stats", stats),
+        ):
+            self._saved[name] = sys.modules.get(name)  # type: ignore[assignment]
+            sys.modules[name] = module
+        self._fmsave = fmsave
+
+    def __exit__(self, *exc: object) -> None:
+        for name, module in self._saved.items():
+            if module is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = module
+
+
+class SelectiveParserTests(unittest.TestCase):
+    def test_history_index_materialises_only_wanted_selectors(self) -> None:
+        layout = types.SimpleNamespace(
+            index_header=b"IDX", footer=b"END", unit_bytes=4
+        )
+        body = b"".join(
+            [
+                b"IDX",
+                struct.pack("<I", 0),  # singles
+                struct.pack("<I", 3),  # lists
+                struct.pack("<I", 0),  # selector 0, empty
+                struct.pack("<I", 2) + struct.pack("<I", 10) + struct.pack("<I", 5),
+                struct.pack("<I", 1) + struct.pack("<I", 7),
+                struct.pack("<I", 0),  # free list
+                struct.pack("<I", 4),  # unit bytes
+                b"END",
+            ]
+        )
+        with _FakeSeasonModules():
+            lists, count = mapper._parse_history_index_for_selectors(body, layout, {1})
+        self.assertEqual(count, 3)
+        self.assertEqual(lists, {1: (10, 15)})
+
+    def test_season_stats_walk_keeps_only_wanted_players(self) -> None:
+        layout = types.SimpleNamespace(
+            section_schema=7,
+            line_bytes=2,
+            line_marker=b"L",
+            header_bytes=2,
+            own_slots=2,
+            block_bytes=2,
+            maximum_other_teams=0,
+            other_team_lead_bytes=0,
+            other_team_slots=0,
+            maximum_rating_items=0,
+            rating_item_bytes=0,
+            maximum_form_entries=0,
+            form_entry_bytes=0,
+            footer_bytes=2,
+        )
+
+        def record(key: int) -> bytes:
+            return b"".join(
+                [
+                    b"\x01",
+                    struct.pack("<I", key),
+                    b"HH",  # header_bytes
+                    b"Lx",  # slot 0: a line
+                    b"\x00",  # slot 1: absent
+                    b"bb",  # block_bytes
+                    struct.pack("<I", 0),  # other teams
+                    struct.pack("<I", 0),  # rating items
+                    b"\x00",  # form entries
+                ]
+            )
+
+        body = (
+            b"STAT"
+            + struct.pack("<H", 7)
+            + record(5)
+            + record(9)
+            + b"\x00"
+            + b"FF"
+        )
+        with _FakeSeasonModules():
+            rows = mapper._walk_season_stats_for_keys(body, layout, "fake.fm", {9})
+            both = mapper._walk_season_stats_for_keys(body, layout, "fake.fm", {5, 9})
+        self.assertEqual([row[0] for row in rows], [9])
+        self.assertEqual([row[0] for row in both], [5, 9])
 
 
 if __name__ == "__main__":
