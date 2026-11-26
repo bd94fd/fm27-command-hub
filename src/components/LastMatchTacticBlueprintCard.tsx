@@ -208,7 +208,7 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
                     setSelectedTacticIdx(idx);
                     setSelectedSlotIdx(null);
                   }}
-                  className={`min-h-[34px] px-2.5 rounded-md font-semibold transition-colors ${
+                  className={`min-h-[44px] sm:min-h-[34px] px-2.5 rounded-md font-semibold transition-colors ${
                     selectedTacticIdx === idx
                       ? 'bg-emerald-500/20 text-emerald-300'
                       : 'text-slate-400 hover:text-slate-200'
@@ -265,7 +265,7 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
             <button
               type="button"
               onClick={() => setPhaseView('ip')}
-              className={`min-h-[30px] px-2.5 rounded-md text-micro font-semibold transition-colors ${
+              className={`min-h-[44px] sm:min-h-[30px] px-2.5 rounded-md text-micro font-semibold transition-colors ${
                 phaseView === 'ip'
                   ? 'bg-emerald-500/20 text-emerald-300'
                   : 'text-slate-400 hover:text-slate-200'
@@ -276,7 +276,7 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
             <button
               type="button"
               onClick={() => setPhaseView('oop')}
-              className={`min-h-[30px] px-2.5 rounded-md text-micro font-semibold transition-colors ${
+              className={`min-h-[44px] sm:min-h-[30px] px-2.5 rounded-md text-micro font-semibold transition-colors ${
                 phaseView === 'oop'
                   ? 'bg-sky-500/20 text-sky-300'
                   : 'text-slate-400 hover:text-slate-200'
