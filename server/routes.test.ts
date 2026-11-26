@@ -55,6 +55,41 @@ describe('server routes & JSON 404', () => {
     assert.match(String(notFoundJson.error), /API endpoint not found/i);
   });
 
+  it('accepts redacted client error reports and returns a request id', async () => {
+    const config = loadServerConfig({ GEMINI_API_KEY: 'test-key' } as NodeJS.ProcessEnv);
+    const app = await createApp({ config, serveFrontend: false });
+    const srv = await startTestServer(app);
+    activeClose = srv.close;
+
+    const reportRes = await fetch(`${srv.baseUrl}/api/fm27/client-error`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        report: {
+          reportVersion: 1,
+          app: { name: 'fm27-command-hub', version: '1.0.0' },
+          scope: 'window.error',
+          route: '/staff?player=John%20Smith',
+          userAgent: 'UnitTest/1.0',
+          error: { name: 'Error', message: 'GEMINI_API_KEY=secret-value' },
+          context: { stage: 'hydrate', players: [{ name: 'John Smith' }] },
+        },
+      }),
+    });
+    assert.equal(reportRes.status, 202);
+    const reportJson = (await reportRes.json()) as Record<string, unknown>;
+    assert.equal(reportJson.ok, true);
+    assert.match(String(reportJson.requestId), /^[0-9a-f-]{36}$/i);
+    assert.equal(reportRes.headers.get('x-request-id'), reportJson.requestId);
+
+    const invalidRes = await fetch(`${srv.baseUrl}/api/fm27/client-error`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report: 'not-an-object' }),
+    });
+    assert.equal(invalidRes.status, 400);
+  });
+
   it('returns structured JSON (never HTML) for /api root, malformed JSON, and rate limits', async () => {
     const config = loadServerConfig({
       GEMINI_API_KEY: 'test-key',
@@ -94,6 +129,8 @@ describe('server routes & JSON 404', () => {
     assert.match(malformedRes.headers.get('content-type') || '', /application\/json/i);
     const malformedJson = (await malformedRes.json()) as Record<string, unknown>;
     assert.match(String(malformedJson.error), /Malformed JSON/i);
+    assert.match(String(malformedJson.requestId), /^[0-9a-f-]{36}$/i);
+    assert.equal(malformedRes.headers.get('x-request-id'), malformedJson.requestId);
 
     const debriefBody = JSON.stringify({
       clubName: 'KVV Zelzate',

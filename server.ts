@@ -3,6 +3,7 @@ import compression from 'compression';
 import helmet from 'helmet';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { loadServerConfig, type ServerConfig } from './server/config.ts';
@@ -13,6 +14,11 @@ import {
   createFmDecodeRouter,
 } from './server/routes/fmDecodeRoutes.ts';
 import { createSecurityGuard } from './server/middleware/securityGuard.ts';
+import {
+  buildServerErrorEvent,
+  logServerError,
+} from './server/errorReporting.ts';
+import { redactSensitiveText } from './src/utils/errorRedaction.ts';
 
 dotenv.config();
 
@@ -54,6 +60,13 @@ export async function createApp(
     })
   );
   app.use(compression());
+  app.use((req, res, next) => {
+    const requestId = randomUUID();
+    res.locals.requestId = requestId;
+    res.locals.requestStartedAtMs = Date.now();
+    res.setHeader('X-Request-Id', requestId);
+    next();
+  });
   app.use(express.json({ limit: '100mb' }));
   app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
@@ -93,6 +106,7 @@ export async function createApp(
         status?: number;
         name?: string;
         message?: string;
+        stack?: string;
         statusCode?: number;
       },
       req: express.Request,
@@ -106,6 +120,7 @@ export async function createApp(
       if (res.headersSent) {
         return next(err);
       }
+      const requestId = (res.locals.requestId as string | undefined) || randomUUID();
       if (
         err &&
         (err.type === 'entity.too.large' ||
@@ -116,11 +131,13 @@ export async function createApp(
         return res.status(413).json({
           error:
             'Request payload was too large (upload chunks are limited to 8 MB each; total .fm save limit is 1024 MB / 1 GB; attached screenshots are automatically compressed).',
+          requestId,
         });
       }
       if (err && err.type === 'entity.parse.failed') {
         return res.status(400).json({
           error: 'Malformed JSON request body. Please retry the request.',
+          requestId,
         });
       }
       const status =
@@ -131,9 +148,25 @@ export async function createApp(
               err.statusCode < 600
             ? err.statusCode
             : 500;
+      const startedAt = res.locals.requestStartedAtMs as number | undefined;
+      if (status >= 500) {
+        logServerError(
+          buildServerErrorEvent({
+            requestId,
+            method: req.method,
+            path: req.path,
+            status,
+            durationMs: startedAt ? Date.now() - startedAt : undefined,
+            error: err,
+          })
+        );
+      }
       return res.status(status).json({
-        error: err?.message || 'Unexpected server API error.',
+        error:
+          redactSensitiveText(err?.message || 'Unexpected server API error.', 1200) ||
+          'Unexpected server API error.',
         status,
+        requestId,
       });
     }
   );

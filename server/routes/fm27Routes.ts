@@ -25,6 +25,11 @@ import {
 } from '../schemas.ts';
 import { createSecurityGuard } from '../middleware/securityGuard.ts';
 import {
+  buildClientErrorEvent,
+  buildServerErrorEvent,
+  logServerError,
+} from '../errorReporting.ts';
+import {
   extractStructuredJsonObject,
   normalizeTacticalChatHistory,
 } from '../jsonExtractor.ts';
@@ -48,6 +53,48 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
       rateLimitMaxRequests: config.rateLimitMaxRequests,
     });
 
+  const logFailure = (
+    req: express.Request,
+    res: express.Response,
+    error: unknown,
+    status: number
+  ): void => {
+    if (status < 500) return;
+    logServerError(
+      buildServerErrorEvent({
+        requestId: res.locals.requestId as string | undefined,
+        method: req.method,
+        path: req.originalUrl,
+        status,
+        error,
+        context: { scope: 'fm27Routes' },
+      })
+    );
+  };
+
+  const respondFailure = (
+    req: express.Request,
+    res: express.Response,
+    error: unknown
+  ): express.Response => {
+    if (error instanceof AnalystTimeoutError) {
+      logFailure(req, res, error, 504);
+      return res.status(504).json({ error: error.message });
+    }
+    if (error instanceof AnalystOverloadError || isTransientOverloadError(error)) {
+      const status =
+        error instanceof AnalystOverloadError
+          ? error.status
+          : isQuotaRateLimitError(error)
+            ? 429
+            : 503;
+      logFailure(req, res, error, status);
+      return res.status(status).json({ error: formatFriendlyGeminiError(error) });
+    }
+    logFailure(req, res, error, 500);
+    return res.status(500).json({ error: formatFriendlyGeminiError(error) });
+  };
+
   router.get('/health', (_req, res) => {
     const activeModel =
       config.geminiModelOverride && !isRetiredGeminiModel(config.geminiModelOverride)
@@ -66,6 +113,29 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
     });
   });
 
+  router.post('/fm27/client-error', guard, (req, res) => {
+    const report = (req.body as { report?: unknown } | undefined)?.report;
+    if (!report || typeof report !== 'object' || Array.isArray(report)) {
+      return res.status(400).json({ error: 'A structured error report is required.' });
+    }
+    let serialized = '';
+    try {
+      serialized = JSON.stringify(report);
+    } catch {
+      return res.status(400).json({ error: 'The error report could not be read.' });
+    }
+    if (serialized.length > 64_000) {
+      return res.status(413).json({ error: 'The error report is too large.' });
+    }
+    const event = buildClientErrorEvent(report, {
+      requestId: res.locals.requestId as string | undefined,
+      method: req.method,
+      path: req.path,
+    });
+    logServerError(event);
+    return res.status(202).json({ ok: true, requestId: event.requestId });
+  });
+
   router.post('/fm27/analyze-screenshot', guard, async (req, res) => {
     try {
       const { imageBase64, mimeType, notes, nextEventNumber, clubName } =
@@ -78,6 +148,7 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
         };
 
       if (!gemini.hasApiKey()) {
+        logFailure(req, res, 'GEMINI_API_KEY is missing.', 500);
         return res.status(500).json({
           error:
             'GEMINI_API_KEY is missing. Set GEMINI_API_KEY in your .env file or cloud environment variables.',
@@ -122,33 +193,14 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
 
       const extracted = extractStructuredJsonObject(response.text ?? '');
       if (!extracted.ok) {
+        logFailure(req, res, 'The Tactical Analyst returned malformed JSON.', 502);
         return res.status(502).json({
           error: 'The Tactical Analyst returned malformed JSON. Please retry.',
         });
       }
       return res.json(extracted.value);
     } catch (error: unknown) {
-      if (error instanceof AnalystTimeoutError) {
-        return res.status(504).json({ error: error.message });
-      }
-      if (
-        error instanceof AnalystOverloadError ||
-        isTransientOverloadError(error)
-      ) {
-        const status =
-          error instanceof AnalystOverloadError
-            ? error.status
-            : isQuotaRateLimitError(error)
-              ? 429
-              : 503;
-        return res.status(status).json({
-          error:
-            error instanceof AnalystOverloadError
-              ? error.message
-              : formatFriendlyGeminiError(error),
-        });
-      }
-      return res.status(500).json({ error: formatFriendlyGeminiError(error) });
+      return respondFailure(req, res, error);
     }
   });
 
@@ -179,6 +231,7 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
       };
 
       if (!gemini.hasApiKey()) {
+        logFailure(req, res, 'GEMINI_API_KEY is missing.', 500);
         return res.status(500).json({
           error:
             'GEMINI_API_KEY is missing. Set GEMINI_API_KEY in your .env file or cloud environment variables.',
@@ -260,25 +313,14 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
 
       const extracted = extractStructuredJsonObject(response.text ?? '');
       if (!extracted.ok) {
+        logFailure(req, res, 'The Tactical Analyst returned malformed JSON.', 502);
         return res.status(502).json({
           error: 'The Tactical Analyst returned malformed JSON. Please retry.',
         });
       }
       return res.json(extracted.value);
     } catch (error: unknown) {
-      if (error instanceof AnalystTimeoutError) {
-        return res.status(504).json({ error: error.message });
-      }
-      if (error instanceof AnalystOverloadError || isTransientOverloadError(error)) {
-        const status =
-          error instanceof AnalystOverloadError
-            ? error.status
-            : isQuotaRateLimitError(error)
-              ? 429
-              : 503;
-        return res.status(status).json({ error: formatFriendlyGeminiError(error) });
-      }
-      return res.status(500).json({ error: formatFriendlyGeminiError(error) });
+      return respondFailure(req, res, error);
     }
   });
 
@@ -292,6 +334,7 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
       };
 
       if (!gemini.hasApiKey()) {
+        logFailure(req, res, 'GEMINI_API_KEY is missing.', 500);
         return res.status(500).json({
           error:
             'GEMINI_API_KEY is missing. Set GEMINI_API_KEY in your environment variables.',
@@ -337,25 +380,14 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
 
       const extracted = extractStructuredJsonObject(response.text ?? '');
       if (!extracted.ok) {
+        logFailure(req, res, 'The Tactical Analyst returned malformed debrief JSON.', 502);
         return res.status(502).json({
           error: 'The Tactical Analyst returned malformed debrief JSON.',
         });
       }
       return res.json(extracted.value);
     } catch (error: unknown) {
-      if (error instanceof AnalystTimeoutError) {
-        return res.status(504).json({ error: error.message });
-      }
-      if (error instanceof AnalystOverloadError || isTransientOverloadError(error)) {
-        const status =
-          error instanceof AnalystOverloadError
-            ? error.status
-            : isQuotaRateLimitError(error)
-              ? 429
-              : 503;
-        return res.status(status).json({ error: formatFriendlyGeminiError(error) });
-      }
-      return res.status(500).json({ error: formatFriendlyGeminiError(error) });
+      return respondFailure(req, res, error);
     }
   });
 
@@ -374,6 +406,7 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
           : undefined);
 
       if (!gemini.hasApiKey()) {
+        logFailure(req, res, 'GEMINI_API_KEY is missing.', 500);
         return res.status(500).json({
           error:
             'GEMINI_API_KEY is missing. Set GEMINI_API_KEY in your environment variables.',
@@ -416,6 +449,12 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
 
       const extracted = extractStructuredJsonObject(response.text ?? '');
       if (!extracted.ok) {
+        logFailure(
+          req,
+          res,
+          'The Tactical Analyst returned malformed Journey Briefing JSON.',
+          502
+        );
         return res.status(502).json({
           error: 'The Tactical Analyst returned malformed Journey Briefing JSON.',
         });
@@ -425,19 +464,7 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
         briefing: extracted.value,
       });
     } catch (error: unknown) {
-      if (error instanceof AnalystTimeoutError) {
-        return res.status(504).json({ error: error.message });
-      }
-      if (error instanceof AnalystOverloadError || isTransientOverloadError(error)) {
-        const status =
-          error instanceof AnalystOverloadError
-            ? error.status
-            : isQuotaRateLimitError(error)
-              ? 429
-              : 503;
-        return res.status(status).json({ error: formatFriendlyGeminiError(error) });
-      }
-      return res.status(500).json({ error: formatFriendlyGeminiError(error) });
+      return respondFailure(req, res, error);
     }
   });
 
