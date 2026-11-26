@@ -156,6 +156,7 @@ flowchart LR
 | `computeStaffKpiSummary` | `src/components/StaffDirectory.tsx` | `src/utils/tacticalAnalystContext.ts` uses `formatWeeklyStaffPayroll` |
 | `buildClubFinancesPanel` | `src/components/AutoSyncWorkspace.tsx` | `src/utils/tacticalAnalystContext.ts` uses `buildSponsorshipPanelRows` |
 | `buildSponsorshipPanelRows` | `src/components/AutoSyncWorkspace.tsx` through the panel | `src/utils/tacticalAnalystContext.ts` |
+| `resolveSaveCompatibility` | `src/components/AutoSyncWorkspace.tsx` → `SaveCompatibilityPanel` | `src/utils/tacticalAnalystContext.ts` `save_compatibility` |
 
 ## Known gaps
 
@@ -163,10 +164,11 @@ These are real mismatches or unused fields. They are not fixed in R04 because R0
 
 R10 closed the journey-report wage gap: `diffSaveHistoryPoints` now uses `computeSquadWageSubtotal`, records missing-wage counts, and both the Journey panel and the Analyst line say when the total covers known wages only.
 
+R11 closed the build-compatibility gap: `resolveSaveCompatibility` gives the Hub Data tab and the Analyst the same verified, supported, untested or unsupported answer, with the changed fields and the behavior for that save.
+
 | Gap | Current state | User-visible consequence | Owner |
 | --- | --- | --- | --- |
 | Scouting budget | `meta.scoutingBudget` and `meta.scoutingBudgetRemaining` are decoded and typed, but no selector or surface reads them. | The user cannot see the scouting budget in the Hub or ask the Analyst about it. | R09 follow-up |
-| Build and patch compatibility in the live Analyst | The UI shows the detected build and patch sections; `club_snapshot` does not carry them. | The Analyst cannot warn that a save came from an untested FM27 build unless the user mentions it. | R11 |
 | Full match detail in the live Analyst | `recent_matches` carries result and xG; possession, shots, CCC, and pass completion stay in the Matches tab and the import prompt. | A question about a match's possession or chance creation can get a shallower answer than the Matches tab shows. | R13 |
 | Training plan in the live Analyst | The decoder returns `training`, but the live context has no training block. | The Analyst cannot quote the save's current training schedule; it can only recommend one. | R13 |
 
@@ -198,5 +200,5 @@ These are UI-only by design. They are not gaps, and the Analyst should not inven
 ## Verification
 
 - `src/utils/dataParityContract.test.ts` checks the shared-selector tripwires, the required table sections, and the roadmap link.
-- Existing parity tests cover the individual domains: `financesStaffOverhaul.test.ts`, `phase5AnalystAndConsistency.test.ts`, `staffRatings.test.ts`, `clubFinances.test.ts`, and `fmSaveHydrator.test.ts`. `crossTabConsistency.test.ts` checks staff ratings, staff payroll, finance totals, squad pool counts, expiry windows and journey wage totals across Hub, Squad, Staff and Analyst.
+- Existing parity tests cover the individual domains: `financesStaffOverhaul.test.ts`, `phase5AnalystAndConsistency.test.ts`, `staffRatings.test.ts`, `clubFinances.test.ts`, and `fmSaveHydrator.test.ts`. `crossTabConsistency.test.ts` checks staff ratings, staff payroll, finance totals, squad pool counts, expiry windows and journey wage totals across Hub, Squad, Staff and Analyst. `fm27SaveCompatibility.test.ts` checks the matrix, the UI panel, the Analyst block and the unsupported-save message.
 - R03's real-save regression suite covers the decoder fingerprint separately.
