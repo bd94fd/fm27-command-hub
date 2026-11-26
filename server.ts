@@ -15,6 +15,7 @@ import {
   warmServerPythonRuntime,
 } from './server/routes/fmDecodeRoutes.ts';
 import { createSecurityGuard } from './server/middleware/securityGuard.ts';
+import { buildContentSecurityPolicy } from './server/contentSecurityPolicy.ts';
 import {
   buildServerErrorEvent,
   logServerError,
@@ -53,9 +54,12 @@ export async function createApp(
 
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
+  const csp = buildContentSecurityPolicy(config.nodeEnv);
   app.use(
     helmet({
-      contentSecurityPolicy: false,
+      contentSecurityPolicy: csp.enabled
+        ? { useDefaults: false, directives: csp.directives }
+        : false,
       crossOriginEmbedderPolicy: false,
       crossOriginOpenerPolicy: false,
     })

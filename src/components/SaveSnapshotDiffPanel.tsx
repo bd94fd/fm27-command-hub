@@ -1,4 +1,5 @@
 import { feedback } from '../utils/feedbackBus';
+import { hubAuthFetch } from '../utils/hubAuth';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
@@ -169,7 +170,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
       setAiLoading(true);
       setAiError(null);
       try {
-        const res = await fetch('/api/fm27/journey-report', {
+        const res = await hubAuthFetch('/api/fm27/journey-report', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

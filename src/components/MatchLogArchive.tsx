@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Calendar, Filter, Trophy } from 'lucide-react';
+import { hubAuthFetch } from '../utils/hubAuth';
 import { EmptyStatePanel } from './EmptyStatePanel';
 import { EMPTY_STATES } from '../utils/emptyStateCopy';
 import { MatchLogEntry } from '../types/fm27';
@@ -192,7 +193,7 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
       return next;
     });
     try {
-      const res = await fetch('/api/fm27/match-debrief', {
+      const res = await hubAuthFetch('/api/fm27/match-debrief', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

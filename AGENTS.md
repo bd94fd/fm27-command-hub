@@ -79,5 +79,7 @@
 - `npm run smoke:e2e` is the flow gate (see `docs/e2e-smoke.md`). It needs the newest `.fm` in `.agents_tmp/uploads/` and about 40 seconds per profile.
 - `npm run a11y:audit` is the accessibility gate (see `docs/accessibility.md`). Run it with `-- --save=<newest .fm>`: without a save it only sees the first-run screen.
 - `npm run offline:check` cuts the network in Chromium and proves the shell, the sections, the Analyst, backup and a phone decode still work. Needs the production build served and a real save; see `docs/offline-behaviour.md`.
+- Production sends a strict Content-Security-Policy (`server/contentSecurityPolicy.ts`). Any new external fetch must be added there too, or the phone decoder stops working silently. `npm run offline:check` is the proof it is complete: it decodes a real save on the emulated phone.
+- `HUB_ACCESS_TOKEN` is optional and off unless set. The browser sends it through `src/utils/hubAuth.ts`, which asks once per device and stores it in localStorage. Never build it into the bundle.
 - `npm run verify:precache` guards the service worker: it fails when `dist/sw.js` precaches nothing or misses the shell. CI runs it after the build. The reason it exists is in `docs/dependency-security.md`.
 - Run one browser gate at a time. They all drive the same Chromium on port 9222, so parallel runs produce fake failures (tabs that "could not be opened", targets that vanish).

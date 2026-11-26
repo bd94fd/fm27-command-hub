@@ -1,4 +1,5 @@
 import { feedback } from '../utils/feedbackBus';
+import { hubAuthFetch } from '../utils/hubAuth';
 import React, {
   Suspense,
   lazy,
@@ -185,7 +186,7 @@ async function probeServerDecodeAvailability(): Promise<boolean> {
     typeof AbortController !== 'undefined' ? new AbortController() : null;
   const timeout = controller ? setTimeout(() => controller.abort(), 8_000) : null;
   try {
-    const res = await fetch('/api/fm27/decode-status', {
+    const res = await hubAuthFetch('/api/fm27/decode-status', {
       method: 'GET',
       cache: 'no-store',
       signal: controller?.signal,
@@ -976,7 +977,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
 
       const postTacticalChat = async (mode: AnalystReasoningMode) => {
         try {
-          const response = await fetch('/api/fm27/tactical-chat', {
+          const response = await hubAuthFetch('/api/fm27/tactical-chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ...requestPayload, reasoningMode: mode }),

@@ -7,6 +7,7 @@
  * API keys. The same redaction is applied again on the server before logging.
  */
 
+import { hubAuthFetch } from './hubAuth';
 import { redactSensitiveText } from './errorRedaction.ts';
 
 export const ERROR_REPORT_VERSION = 1;
@@ -216,12 +217,16 @@ export async function sendErrorReport(report: ErrorReport): Promise<boolean> {
     return false;
   }
   try {
-    const response = await window.fetch('/api/fm27/client-error', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ report }),
-      keepalive: true,
-    });
+    const response = await hubAuthFetch(
+      '/api/fm27/client-error',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ report }),
+        keepalive: true,
+      },
+      { fetchImpl: window.fetch.bind(window), promptOnUnauthorized: false }
+    );
     return response.ok;
   } catch {
     return false;
