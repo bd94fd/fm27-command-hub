@@ -164,7 +164,7 @@ These are real mismatches or unused fields. They are not fixed in R04 because R0
 | Gap | Current state | User-visible consequence | Owner |
 | --- | --- | --- | --- |
 | Journey report squad wage total | `src/services/saveCache.ts` sums `p.wagePw || 0`, while the Hub uses `computeSquadWageSubtotal`, which counts missing wages. | A save with a missing youth or amateur wage can show a lower journey wage delta than the Hub subtotal, and the Analyst's journey line does not say how many wages were missing. | R10 |
-| Scouting budget | `meta.scoutingBudget` and `meta.scoutingBudgetRemaining` are decoded and typed, but no selector or surface reads them. | The user cannot see the scouting budget in the Hub or ask the Analyst about it. | R07 |
+| Scouting budget | `meta.scoutingBudget` and `meta.scoutingBudgetRemaining` are decoded and typed, but no selector or surface reads them. | The user cannot see the scouting budget in the Hub or ask the Analyst about it. | R09 |
 | Build and patch compatibility in the live Analyst | The UI shows the detected build and patch sections; `club_snapshot` does not carry them. | The Analyst cannot warn that a save came from an untested FM27 build unless the user mentions it. | R11 |
 | Full match detail in the live Analyst | `recent_matches` carries result and xG; possession, shots, CCC, and pass completion stay in the Matches tab and the import prompt. | A question about a match's possession or chance creation can get a shallower answer than the Matches tab shows. | R13 |
 | Training plan in the live Analyst | The decoder returns `training`, but the live context has no training block. | The Analyst cannot quote the save's current training schedule; it can only recommend one. | R13 |
