@@ -12,6 +12,7 @@ import { createFm27Router } from './server/routes/fm27Routes.ts';
 import {
   cleanupAllPendingUploadsAndJobs,
   createFmDecodeRouter,
+  warmServerPythonRuntime,
 } from './server/routes/fmDecodeRoutes.ts';
 import { createSecurityGuard } from './server/middleware/securityGuard.ts';
 import {
@@ -217,6 +218,8 @@ async function startServer() {
   const server = app.listen(config.port, '0.0.0.0', () => {
     console.log(`FM27 Command Hub running on http://localhost:${config.port}`);
   });
+
+  warmServerPythonRuntime();
 
   let shuttingDown = false;
   const handleShutdown = (signal: string) => {

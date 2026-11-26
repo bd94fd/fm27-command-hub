@@ -16,7 +16,8 @@ interface ServerPythonRuntime {
   checkedAtMs: number;
 }
 
-const PYTHON_PROBE_TTL_MS = 60_000;
+const PYTHON_PROBE_SUCCESS_TTL_MS = 10 * 60_000;
+const PYTHON_PROBE_FAILURE_TTL_MS = 60_000;
 const SERVER_DECODE_TIMEOUT_MS = 480_000; // 480s (8 min) for large multi-season saves
 const SERVER_DECODE_MAX_STDOUT_BYTES = 100 * 1024 * 1024;
 const SMALL_JSON_STRICT_VALIDATE_BYTES = 2 * 1024 * 1024; // Strict JSON.parse up to 2 MB; streaming O(1)-RAM validator above
@@ -441,10 +442,13 @@ async function detectServerPythonFmsave(
   forceRefresh = false
 ): Promise<ServerPythonRuntime> {
   const now = Date.now();
+  const cacheTtlMs = cachedPythonRuntime?.available
+    ? PYTHON_PROBE_SUCCESS_TTL_MS
+    : PYTHON_PROBE_FAILURE_TTL_MS;
   if (
     !forceRefresh &&
     cachedPythonRuntime &&
-    now - cachedPythonRuntime.checkedAtMs < PYTHON_PROBE_TTL_MS
+    now - cachedPythonRuntime.checkedAtMs < cacheTtlMs
   ) {
     return cachedPythonRuntime;
   }
@@ -469,7 +473,7 @@ async function detectServerPythonFmsave(
           '-c',
           'import sys, json, fmsave; print(json.dumps({"py": sys.version.split()[0], "fm": getattr(fmsave, "__version__", "installed")}))',
         ],
-        { timeout: 5_000, maxBuffer: 64 * 1024 }
+        { timeout: 20_000, maxBuffer: 64 * 1024 }
       );
       const parsed = JSON.parse((stdout || '').trim()) as {
         py?: string;
@@ -496,6 +500,15 @@ async function detectServerPythonFmsave(
     checkedAtMs: now,
   };
   return cachedPythonRuntime;
+}
+
+/**
+ * Warm the Python/fmsave probe at server startup. A cold Render free instance
+ * can take ~8s to import fmsave at 0.1 CPU, so probing only on the first user
+ * request makes the native decoder look unavailable.
+ */
+export function warmServerPythonRuntime(): void {
+  void detectServerPythonFmsave(true).catch(() => {});
 }
 
 function normalizeServerScope(raw: unknown): 'club_only' | 'club_and_division' {
