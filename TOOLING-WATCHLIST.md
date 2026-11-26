@@ -11,6 +11,8 @@ Purpose: remember tools and skills worth adding later, so we do not search for t
 - Keep the roadmap item and the reason for the timing.
 - Add new candidates with a source, licence and risk note.
 - Do not add a tool just because it is popular. Add it when a roadmap item needs it.
+- When the roadmap item needs a repo-level tool, install it and test it in the same PR or a small prep PR. A watchlist entry alone is not completion.
+- For host-level tools such as MCP servers, record the exact setup and tell the user once if the environment does not provide it.
 
 ## In use
 
