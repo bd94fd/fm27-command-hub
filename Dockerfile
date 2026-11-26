@@ -1,5 +1,5 @@
 # Production 2-Stage Dockerfile for FM27 Command Hub
-# Uses Debian slim (glibc) for full Vite 8 / Rolldown, tsx, and native Python 3.14 fmsave 0.14.4 decoding
+# Uses Debian slim (glibc) for full Vite 8 / Rolldown, tsx, and native Python 3.14 fmsave 0.14.5 decoding
 FROM ghcr.io/astral-sh/uv:0.13.9 AS uv-bin
 
 # Stage 1: Build Frontend & Prune Dev Dependencies
@@ -12,7 +12,7 @@ RUN npm install --include=dev --legacy-peer-deps
 COPY . .
 RUN npm run build
 
-# Stage 2: Slim Runtime Image (Non-Root + Python 3.14 fmsave 0.14.4)
+# Stage 2: Slim Runtime Image (Non-Root + Python 3.14 fmsave 0.14.5)
 FROM node:26-slim AS runtime
 WORKDIR /app
 
@@ -22,7 +22,7 @@ COPY --from=uv-bin /uv /usr/local/bin/uv
 ENV UV_PYTHON_INSTALL_DIR=/opt/uv-python
 RUN mkdir -p /opt/uv-python && \
     uv venv /opt/fmsave-venv --python 3.14 && \
-    uv pip install --python /opt/fmsave-venv/bin/python fmsave==0.14.4 && \
+    uv pip install --python /opt/fmsave-venv/bin/python fmsave==0.14.5 && \
     chmod -R a+rX /opt/uv-python /opt/fmsave-venv && \
     rm -rf /root/.cache/uv
 

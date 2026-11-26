@@ -16,6 +16,7 @@
     "real-saves:update": "python3 scripts/real-save-manifest.py",
     "audit:decoder": "node --import tsx scripts/audit-decoder-fields.mjs",
     "bench:save-load": "node scripts/benchmark-save-load.mjs",
+    "check:fmsave": "node scripts/check-fmsave-upstream.mjs",
     "ui:audit": "node scripts/ui-audit.mjs"
   },
   "dependencies": {

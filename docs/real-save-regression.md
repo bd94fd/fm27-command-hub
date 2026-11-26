@@ -21,7 +21,7 @@ Install the pinned decoder dependency in a throwaway environment:
 
 ```bash
 python3 -m venv /tmp/fm27-fmsave
-/tmp/fm27-fmsave/bin/pip install fmsave==0.14.4
+/tmp/fm27-fmsave/bin/pip install fmsave==0.14.5
 ```
 
 Run the guard against the default local folder:
@@ -43,7 +43,7 @@ Set `FM27_REAL_SAVE_REQUIRED=1` to turn a missing folder, missing file, or missi
 
 ## Update the manifest
 
-Only update the manifest after an intentional decoder change. Run the generator with an interpreter that has fmsave 0.14.4 installed:
+Only update the manifest after an intentional decoder change. Run the generator with an interpreter that has fmsave 0.14.5 installed:
 
 ```bash
 /tmp/fm27-fmsave/bin/python scripts/real-save-manifest.py \
