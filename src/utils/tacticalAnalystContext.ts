@@ -1566,7 +1566,11 @@ export function buildLiveTacticalAnalystContext(
       jr.baseDiff.kpiDeltas.toClubWagePayrollWeekly > 0
         ? `, Player Wage Bill £${jr.baseDiff.kpiDeltas.toClubWagePayrollWeekly.toLocaleString()}/wk`
         : '';
-    const kpiLine = `KPI Deltas: Squad ${jr.baseDiff.kpiDeltas.toSquadCount} (${jr.baseDiff.kpiDeltas.squadCountDelta >= 0 ? '+' : ''}${jr.baseDiff.kpiDeltas.squadCountDelta}), Avg ★ ${jr.baseDiff.kpiDeltas.toAvgAbility.toFixed(2)} (${jr.baseDiff.kpiDeltas.avgAbilityDelta >= 0 ? '+' : ''}${jr.baseDiff.kpiDeltas.avgAbilityDelta.toFixed(2)}★), Player Basic Wages £${jr.baseDiff.kpiDeltas.toTotalWagePw.toLocaleString()}/wk (${formatSignedCurrency(jr.baseDiff.kpiDeltas.totalWageDeltaPw)}/wk)${clubPayrollPart}, Balance ${jr.baseDiff.kpiDeltas.fromBalance || '--'} -> ${jr.baseDiff.kpiDeltas.toBalance || '--'}`;
+    const wageMissingPart =
+      (jr.baseDiff.kpiDeltas.toWageMissingCount ?? 0) > 0
+        ? `, ${jr.baseDiff.kpiDeltas.toWageMissingCount} players without decoded wage`
+        : '';
+    const kpiLine = `KPI Deltas: Squad ${jr.baseDiff.kpiDeltas.toSquadCount} (${jr.baseDiff.kpiDeltas.squadCountDelta >= 0 ? '+' : ''}${jr.baseDiff.kpiDeltas.squadCountDelta}), Avg ★ ${jr.baseDiff.kpiDeltas.toAvgAbility.toFixed(2)} (${jr.baseDiff.kpiDeltas.avgAbilityDelta >= 0 ? '+' : ''}${jr.baseDiff.kpiDeltas.avgAbilityDelta.toFixed(2)}★), Player Basic Wages £${jr.baseDiff.kpiDeltas.toTotalWagePw.toLocaleString()}/wk (${formatSignedCurrency(jr.baseDiff.kpiDeltas.totalWageDeltaPw)}/wk)${wageMissingPart}${clubPayrollPart}, Balance ${jr.baseDiff.kpiDeltas.fromBalance || '--'} -> ${jr.baseDiff.kpiDeltas.toBalance || '--'}`;
     const journeyHeader = `=== SAVE-TO-SAVE JOURNEY REPORT (${jr.fromDate} [${jr.fromSeason}] -> ${jr.toDate} [${jr.toSeason}], ${jr.timeline.length} saves${jr.sameSeason ? '' : ' — CROSS-SEASON'}) ===`;
     blocks.push({
       id: 'journey_report',

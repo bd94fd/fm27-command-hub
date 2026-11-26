@@ -6,6 +6,7 @@
  * Inspired by aitester2025tgl-collab/fm27-explorer (MIT) and mavarobli/FMSuperScout (MIT).
  */
 import { formatAge } from '../utils/squadViewHelpers';
+import { computeSquadWageSubtotal } from '../utils/clubFinances';
 
 import { MatchLogEntry, PlayerRecord } from '../types/fm27';
 import type { CompactBinaryDiffSnapshot } from '../utils/fm27BinaryDictionary';
@@ -198,6 +199,9 @@ export interface SnapshotKpiDeltas {
   totalWageDeltaPw: number;
   fromTotalWagePw: number;
   toTotalWagePw: number;
+  /** Players whose weekly wage did not decode; the totals above are known-wage sums only. */
+  fromWageMissingCount?: number;
+  toWageMissingCount?: number;
   fromClubWagePayrollWeekly?: number | null;
   toClubWagePayrollWeekly?: number | null;
   clubWagePayrollDeltaPw?: number | null;
@@ -469,8 +473,14 @@ export function diffSaveHistoryPoints(
           ).toFixed(2)
         )
       : 0;
-  const fromTotalWagePw = previous.players.reduce((sum, p) => sum + (p.wagePw || 0), 0);
-  const toTotalWagePw = current.players.reduce((sum, p) => sum + (p.wagePw || 0), 0);
+  const fromWageSubtotal = computeSquadWageSubtotal(
+    previous.players.map((p) => p.wagePw)
+  );
+  const toWageSubtotal = computeSquadWageSubtotal(
+    current.players.map((p) => p.wagePw)
+  );
+  const fromTotalWagePw = fromWageSubtotal.knownWeekly;
+  const toTotalWagePw = toWageSubtotal.knownWeekly;
   const fromClubWagePayrollWeekly =
     typeof previous.wagePayrollWeekly === 'number' && Number.isFinite(previous.wagePayrollWeekly)
       ? previous.wagePayrollWeekly
@@ -503,6 +513,8 @@ export function diffSaveHistoryPoints(
       totalWageDeltaPw: toTotalWagePw - fromTotalWagePw,
       fromTotalWagePw,
       toTotalWagePw,
+      fromWageMissingCount: fromWageSubtotal.missingWageCount,
+      toWageMissingCount: toWageSubtotal.missingWageCount,
       fromClubWagePayrollWeekly,
       toClubWagePayrollWeekly,
       clubWagePayrollDeltaPw,
@@ -655,7 +667,9 @@ export function buildDeepJourneyReport(
       squadCount > 0
         ? Number((s.players.reduce((sum, p) => sum + p.age, 0) / squadCount).toFixed(1))
         : 0;
-    const totalWagePw = s.players.reduce((sum, p) => sum + (p.wagePw || 0), 0);
+    const totalWagePw = computeSquadWageSubtotal(
+      s.players.map((p) => p.wagePw)
+    ).knownWeekly;
     const ppg =
       typeof s.played === 'number' && s.played > 0 && typeof s.points === 'number'
         ? Number((s.points / s.played).toFixed(2))
@@ -1076,6 +1090,8 @@ export function buildDeepJourneyReport(
       playerBasicWagesWeeklyFrom: baseDiff.kpiDeltas.fromTotalWagePw,
       playerBasicWagesWeeklyTo: baseDiff.kpiDeltas.toTotalWagePw,
       playerBasicWagesDeltaPw: baseDiff.kpiDeltas.totalWageDeltaPw,
+      playerBasicWagesMissingFrom: baseDiff.kpiDeltas.fromWageMissingCount ?? 0,
+      playerBasicWagesMissingTo: baseDiff.kpiDeltas.toWageMissingCount ?? 0,
       strictRule:
         'clubPayrollWeekly is FM27\'s player wage bill from the finance table, measured against clubWageBudgetWeekly. It does NOT include staff wages, which are separate and can exceed it. playerBasicWagesWeekly is the sum of basic weekly contracts for tracked playing squad members ONLY. Always distinguish them and NEVER call either total club weekly wages.',
     },
