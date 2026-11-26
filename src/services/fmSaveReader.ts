@@ -12,6 +12,7 @@ import {
   buildCheckpointRecoveryWarning,
   applyCheckpointRecoveryWarning,
 } from '../workers/fmSaveWorkerClient';
+import { markSaveLoadStage } from '../utils/saveLoadBenchmark';
 
 import {
   UploadController,
@@ -61,6 +62,8 @@ export interface DecodeFmSaveOptions {
     stage: string;
     payload: DecodedFmSavePayload;
   }) => void;
+  /** Optional local-only timing record used by the save-load benchmark harness */
+  benchmarkId?: string;
 }
 
 export interface ServerDecodeStatus {
@@ -321,6 +324,7 @@ export async function decodeFmSaveViaServer(
       stage: string;
       payload: DecodedFmSavePayload;
     }) => void;
+    benchmarkId?: string;
   } = {},
   onProgress?: (progress: FmSaveProgressStage) => void,
   fetchImpl: typeof fetch = fetch,
@@ -1191,6 +1195,9 @@ export async function decodeFmSaveViaServer(
         );
       }
 
+      if (options.benchmarkId) {
+        markSaveLoadStage(options.benchmarkId, 'transfer_start', { overwrite: true });
+      }
       const jobData = (await jobRes.json()) as {
         status?: 'running' | 'done' | 'error';
         progress?: string;
@@ -1199,6 +1206,9 @@ export async function decodeFmSaveViaServer(
         checkpointPayload?: DecodedFmSavePayload;
         error?: string;
       };
+      if (options.benchmarkId) {
+        markSaveLoadStage(options.benchmarkId, 'transfer_complete', { overwrite: true });
+      }
 
       if (jobData.progress && jobData.progress.trim()) {
         lastProgress = jobData.progress.trim();
@@ -1303,6 +1313,7 @@ export function decodeFmSaveInBrowserWorker(
       stage: string;
       payload: DecodedFmSavePayload;
     }) => void;
+    benchmarkId?: string;
   } = {}
 ): Promise<DecodedFmSavePayload> {
   const clubHint = options.clubHint || '';
@@ -1494,6 +1505,10 @@ export function decodeFmSaveInBrowserWorker(
         if (settled) return;
         settled = true;
         cleanup();
+        if (options.benchmarkId) {
+          markSaveLoadStage(options.benchmarkId, 'transfer_start', { overwrite: true });
+          markSaveLoadStage(options.benchmarkId, 'transfer_complete', { overwrite: true });
+        }
         resolve((msg.data || msg.payload) as DecodedFmSavePayload);
       } else if (msg.type === 'error') {
         recoverOrReject(
@@ -1581,6 +1596,7 @@ export async function decodeFmSaveWithServerFirst(
           stage: string;
           payload: DecodedFmSavePayload;
         }) => void;
+        benchmarkId?: string;
       }
     ) => Promise<DecodedFmSavePayload>;
     signal?: AbortSignal;
@@ -1633,6 +1649,7 @@ export async function decodeFmSaveWithServerFirst(
             isOffline: options.isOffline,
             networkEvents: options.networkEvents,
             onCheckpoint: options.onCheckpoint,
+            benchmarkId: options.benchmarkId,
           },
           onProgress,
           fetchImpl,
@@ -1671,6 +1688,7 @@ export async function decodeFmSaveWithServerFirst(
     scope,
     fastSync: fallbackFastSync,
     onCheckpoint: options.onCheckpoint,
+    benchmarkId: options.benchmarkId,
   });
 }
 

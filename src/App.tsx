@@ -37,6 +37,10 @@ import { PwaStatusBanners } from './components/PwaStatusBanners';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { computeCompetitiveSummary } from './utils/fmSyncEngine';
 import { formatNation } from './utils/squadViewHelpers';
+import {
+  finishSaveLoadBenchmark,
+  markSaveLoadStage,
+} from './utils/saveLoadBenchmark';
 import type {
   ParsedPlayerDelta,
   SquadMergeResult,
@@ -860,7 +864,7 @@ export default function App() {
 
   const handleApplyDecodedFmSave = async (
     decoded: DecodedFmSavePayload,
-    options?: { isInterimCheckpoint?: boolean }
+    options?: { isInterimCheckpoint?: boolean; benchmarkId?: string }
   ): Promise<HydratedSaveState> => {
     const isInterim = Boolean(options?.isInterimCheckpoint);
 
@@ -907,6 +911,9 @@ export default function App() {
       baseline.players,
       baseline.matches
     );
+    if (options?.benchmarkId && !isInterim) {
+      markSaveLoadStage(options.benchmarkId, 'hydrate_complete');
+    }
 
     if (!isInterim && saveCacheMod) {
       const {
@@ -1041,6 +1048,25 @@ export default function App() {
     if (hydrated.balanceLabel) {
       setBalance(hydrated.balanceLabel);
     }
+
+    if (options?.benchmarkId) {
+      const benchmarkId = options.benchmarkId;
+      if (typeof window !== 'undefined') {
+        window.requestAnimationFrame(() => {
+          if (isInterim) {
+            markSaveLoadStage(benchmarkId, 'first_useful_screen');
+            return;
+          }
+          markSaveLoadStage(benchmarkId, 'state_applied');
+          window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
+              finishSaveLoadBenchmark(benchmarkId);
+            });
+          });
+        });
+      }
+    }
+
     if (isInterim) {
       showGlobalToast(
         `${decoded.meta.clubName || 'Club'} squad, staff & tactics ready — finishing fixtures & stats in background…`
