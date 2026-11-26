@@ -101,10 +101,10 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             aria-current={isHighlighted && !isMoreButton ? 'page' : undefined}
             aria-expanded={isMoreButton ? isMoreOpen : undefined}
             aria-controls={isMoreButton ? 'mobile-more-sheet' : undefined}
-            className={`relative min-w-0 min-h-[46px] flex flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1 text-[11px] leading-tight font-medium transition-colors cursor-pointer select-none whitespace-nowrap ${
+            className={`relative min-w-0 min-h-[46px] flex flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1 text-micro leading-tight font-medium transition-colors cursor-pointer select-none whitespace-nowrap ${
               isHighlighted
                 ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-500/15 font-semibold'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 active:bg-slate-200/70 dark:active:bg-slate-800/80'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 active:bg-slate-200/70 dark:active:bg-slate-800/70'
             }`}
           >
             <span className="relative inline-flex items-center justify-center">

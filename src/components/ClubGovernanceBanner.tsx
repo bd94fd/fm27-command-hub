@@ -49,7 +49,7 @@ export const ClubGovernanceBanner: React.FC<ClubGovernanceBannerProps> = ({
   return (
     <section
       aria-label="Manager Contract, Club Governance and Promises"
-      className="rounded-xl border border-slate-800 bg-slate-900/75 p-4 space-y-3.5"
+      className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-3.5"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
@@ -57,7 +57,7 @@ export const ClubGovernanceBanner: React.FC<ClubGovernanceBannerProps> = ({
           <h2 className="text-sm font-semibold text-white">
             Manager Mandate, Board Standing &amp; Promises
           </h2>
-          <span className="text-[11px] text-slate-400">Auto-extracted from .fm save</span>
+          <span className="text-micro text-slate-400">Auto-extracted from .fm save</span>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -65,7 +65,7 @@ export const ClubGovernanceBanner: React.FC<ClubGovernanceBannerProps> = ({
             <button
               type="button"
               onClick={() => onOpenCalibrationLab('governance')}
-              className="min-h-[36px] rounded-lg border border-slate-700 bg-slate-950 px-2.5 text-[11px] font-medium text-slate-400 hover:border-slate-600 hover:text-slate-200 transition-colors whitespace-nowrap"
+              className="min-h-[36px] rounded-lg border border-slate-700 bg-slate-950 px-2.5 text-micro font-medium text-slate-400 hover:border-slate-600 hover:text-slate-200 transition-colors whitespace-nowrap"
               title="Optional advanced binary probe inspector"
             >
               Binary Inspector
@@ -79,7 +79,7 @@ export const ClubGovernanceBanner: React.FC<ClubGovernanceBannerProps> = ({
                   'Audit my manager contract, board/supporter expectations, and every At-Risk squad playing-time promise in the current save. Give me an exact rotation and contract plan so I satisfy board targets and prevent dressing-room unrest.'
                 )
               }
-              className="min-h-[36px] rounded-lg border border-slate-700 bg-slate-950 px-3 text-[11px] font-semibold text-emerald-300 hover:border-emerald-500/40 transition-colors"
+              className="min-h-[36px] rounded-lg border border-slate-700 bg-slate-950 px-3 text-micro font-semibold text-emerald-300 hover:border-emerald-500/40 transition-colors"
             >
               Audit Governance in Analyst
             </button>
@@ -90,15 +90,15 @@ export const ClubGovernanceBanner: React.FC<ClubGovernanceBannerProps> = ({
       {/* 4-column flat governance KPI strip */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
         {/* Manager Contract */}
-        <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3 space-y-1">
-          <div className="text-[10px] uppercase tracking-wider text-slate-400">
+        <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 space-y-1">
+          <div className="text-2xs uppercase tracking-wider text-slate-400">
             Manager Contract
           </div>
           <div className="font-semibold text-white truncate">
             {managerContract.managerName}
           </div>
           {managerContract.available ? (
-            <div className="font-mono text-[11px] tabular-nums text-emerald-300">
+            <div className="font-mono text-micro tabular-nums text-emerald-300">
               {managerContract.wagePw != null
                 ? formatWeeklyWage(managerContract.wagePw)
                 : 'Wage N/A'}
@@ -114,15 +114,15 @@ export const ClubGovernanceBanner: React.FC<ClubGovernanceBannerProps> = ({
               )}
             </div>
           ) : (
-            <div className="text-[11px] text-slate-500">
+            <div className="text-micro text-slate-500">
               Contract wage/expiry not exposed in this FM27 save
             </div>
           )}
         </div>
 
         {/* Board Rating */}
-        <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3 space-y-1">
-          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-400">
+        <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 space-y-1">
+          <div className="flex items-center gap-1.5 text-2xs uppercase tracking-wider text-slate-400">
             <ShieldCheck className="h-3.5 w-3.5 text-sky-400" /> Board Rating
           </div>
           {boardConfidence.available ? (
@@ -132,7 +132,7 @@ export const ClubGovernanceBanner: React.FC<ClubGovernanceBannerProps> = ({
                   (boardConfidence.score != null ? `${boardConfidence.score}/100` : 'Active')}
               </div>
               {boardConfidence.summary && (
-                <div className="text-[11px] text-slate-400 truncate">
+                <div className="text-micro text-slate-400 truncate">
                   {boardConfidence.summary}
                 </div>
               )}
@@ -142,7 +142,7 @@ export const ClubGovernanceBanner: React.FC<ClubGovernanceBannerProps> = ({
               <div className="text-xs font-medium text-slate-400">
                 Not exposed in this FM27 save
               </div>
-              <div className="text-[10px] text-slate-500">
+              <div className="text-2xs text-slate-500">
                 Strict auto-extract mode (no manual override)
               </div>
             </>
@@ -150,8 +150,8 @@ export const ClubGovernanceBanner: React.FC<ClubGovernanceBannerProps> = ({
         </div>
 
         {/* Supporter Rating */}
-        <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3 space-y-1">
-          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-400">
+        <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 space-y-1">
+          <div className="flex items-center gap-1.5 text-2xs uppercase tracking-wider text-slate-400">
             <Users className="h-3.5 w-3.5 text-amber-400" /> Supporter Rating
           </div>
           {supporterConfidence.available ? (
@@ -163,7 +163,7 @@ export const ClubGovernanceBanner: React.FC<ClubGovernanceBannerProps> = ({
                     : 'Active')}
               </div>
               {supporterConfidence.summary && (
-                <div className="text-[11px] text-slate-400 truncate">
+                <div className="text-micro text-slate-400 truncate">
                   {supporterConfidence.summary}
                 </div>
               )}
@@ -173,7 +173,7 @@ export const ClubGovernanceBanner: React.FC<ClubGovernanceBannerProps> = ({
               <div className="text-xs font-medium text-slate-400">
                 Not exposed in this FM27 save
               </div>
-              <div className="text-[10px] text-slate-500">
+              <div className="text-2xs text-slate-500">
                 Strict auto-extract mode (no manual override)
               </div>
             </>
@@ -181,8 +181,8 @@ export const ClubGovernanceBanner: React.FC<ClubGovernanceBannerProps> = ({
         </div>
 
         {/* Playing-Time & Club Promises */}
-        <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3 space-y-1">
-          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-400">
+        <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 space-y-1">
+          <div className="flex items-center gap-1.5 text-2xs uppercase tracking-wider text-slate-400">
             <AlertTriangle
               className={`h-3.5 w-3.5 ${
                 atRiskAudits.length > 0 ? 'text-rose-400' : 'text-emerald-400'
@@ -199,7 +199,7 @@ export const ClubGovernanceBanner: React.FC<ClubGovernanceBannerProps> = ({
               · {onTrackAudits.length} On Track · {playerPromiseAudits.length} Audited
             </span>
           </div>
-          <div className="text-[11px] text-slate-400 truncate">
+          <div className="text-micro text-slate-400 truncate">
             {atRiskAudits.length > 0
               ? `Flagged: ${atRiskAudits.slice(0, 2).map((a) => a.playerName).join(', ')}`
               : 'All tracked squad promises currently on track'}
@@ -212,7 +212,7 @@ export const ClubGovernanceBanner: React.FC<ClubGovernanceBannerProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-xs">
           {boardObjectives.length > 0 && (
             <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 space-y-1.5">
-              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
+              <div className="flex items-center gap-1.5 text-2xs uppercase tracking-wider text-slate-400 font-semibold">
                 <Target className="h-3.5 w-3.5 text-emerald-400" /> Board Targets &amp; Rules ({boardObjectives.length})
               </div>
               <ul className="space-y-1.5 text-slate-200">
@@ -228,7 +228,7 @@ export const ClubGovernanceBanner: React.FC<ClubGovernanceBannerProps> = ({
                       ) : null}
                     </span>
                     {obj.importance && (
-                      <span className="text-[10px] font-mono text-slate-400 shrink-0 self-start sm:self-auto">
+                      <span className="text-2xs font-mono text-slate-400 shrink-0 self-start sm:self-auto">
                         {obj.importance}
                       </span>
                     )}
@@ -240,7 +240,7 @@ export const ClubGovernanceBanner: React.FC<ClubGovernanceBannerProps> = ({
 
           {clubPromises.length > 0 && (
             <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 space-y-1.5">
-              <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
+              <div className="text-2xs uppercase tracking-wider text-slate-400 font-semibold">
                 Active Promises ({clubPromises.length})
               </div>
               <ul className="space-y-1 text-slate-200">
@@ -251,7 +251,7 @@ export const ClubGovernanceBanner: React.FC<ClubGovernanceBannerProps> = ({
                       {pr.targetName ? ` · ${pr.targetName}` : ''}
                     </span>
                     {pr.dueDate && (
-                      <span className="text-[10px] font-mono text-amber-300 shrink-0">
+                      <span className="text-2xs font-mono text-amber-300 shrink-0">
                         {pr.dueDate}
                       </span>
                     )}
@@ -269,7 +269,7 @@ export const ClubGovernanceBanner: React.FC<ClubGovernanceBannerProps> = ({
           <button
             type="button"
             onClick={() => setShowPromises((v) => !v)}
-            className="min-h-[36px] inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950 px-3 text-[11px] font-semibold text-slate-300 hover:text-white transition-colors"
+            className="min-h-[36px] inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950 px-3 text-micro font-semibold text-slate-300 hover:text-white transition-colors"
           >
             {showPromises ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
             Squad Playing-Time Audits ({playerPromiseAudits.length})
@@ -280,7 +280,7 @@ export const ClubGovernanceBanner: React.FC<ClubGovernanceBannerProps> = ({
           <button
             type="button"
             onClick={() => setShowAudit((v) => !v)}
-            className="min-h-[36px] inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950 px-3 text-[11px] font-semibold text-slate-400 hover:text-slate-200 transition-colors"
+            className="min-h-[36px] inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950 px-3 text-micro font-semibold text-slate-400 hover:text-slate-200 transition-colors"
           >
             <Database className="h-3.5 w-3.5 text-sky-400" />
             {showAudit ? 'Hide' : 'Show'} .fm Extraction Coverage
@@ -289,7 +289,7 @@ export const ClubGovernanceBanner: React.FC<ClubGovernanceBannerProps> = ({
       </div>
 
       {showPromises && playerPromiseAudits.length > 0 && (
-        <div className="rounded-lg border border-slate-800 bg-slate-950/70 divide-y divide-slate-800/70 max-h-56 overflow-y-auto text-xs">
+        <div className="rounded-lg border border-slate-800 bg-slate-950/60 divide-y divide-slate-800/70 max-h-56 overflow-y-auto text-xs">
           {playerPromiseAudits.map((a) => (
             <div
               key={a.playerId}
@@ -301,7 +301,7 @@ export const ClubGovernanceBanner: React.FC<ClubGovernanceBannerProps> = ({
                   Promised: {a.promisedPlayingTime}
                 </span>
               </div>
-              <div className="flex items-center gap-3 font-mono text-[11px] tabular-nums">
+              <div className="flex items-center gap-3 font-mono text-micro tabular-nums">
                 <span className="text-slate-300">
                   {a.minutesPlayed}m ({a.actualMinutesSharePct}% share)
                 </span>
@@ -323,7 +323,7 @@ export const ClubGovernanceBanner: React.FC<ClubGovernanceBannerProps> = ({
       )}
 
       {showAudit && extractionManifest && (
-        <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3 text-[11px] font-mono text-slate-300 grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-micro font-mono text-slate-300 grid grid-cols-2 sm:grid-cols-4 gap-2">
           <div>Squad: {extractionManifest.totalPlayers}</div>
           <div>Matches: {extractionManifest.playedMatches}</div>
           <div>Tactics: {extractionManifest.tactics} ({extractionManifest.tacticInstructionsCount ?? 0} instr)</div>

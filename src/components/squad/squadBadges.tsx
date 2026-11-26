@@ -51,7 +51,7 @@ export function renderColumnValue(row: EnrichedSquadRow, colId: SquadColumnId): 
   switch (colId) {
     case 'pos':
       return (
-        <span className="inline-block rounded bg-slate-200/80 dark:bg-slate-800 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-slate-800 dark:text-slate-200">
+        <span className="inline-block rounded-md bg-slate-200/80 dark:bg-slate-800 px-1.5 py-0.5 font-mono text-micro font-semibold text-slate-800 dark:text-slate-200">
           {p.position || MISSING_VALUE}
         </span>
       );
@@ -80,7 +80,7 @@ export function renderColumnValue(row: EnrichedSquadRow, colId: SquadColumnId): 
       return (
         <span
           title={row.durability.headline}
-          className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${durabilityBadgeClass(
+          className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-2xs font-semibold whitespace-nowrap ${durabilityBadgeClass(
             row.durability.tier
           )}`}
         >
@@ -107,7 +107,7 @@ export function renderColumnValue(row: EnrichedSquadRow, colId: SquadColumnId): 
         return (
           <span
             title={row.activeBanTooltip || 'Suspended'}
-            className="inline-flex rounded bg-rose-500/20 border border-rose-500/40 px-1.5 py-0.5 text-[10px] font-bold text-rose-300"
+            className="inline-flex rounded-md bg-rose-500/20 border border-rose-500/40 px-1.5 py-0.5 text-2xs font-bold text-rose-300"
           >
             Banned ({row.activeBanMatches}m)
           </span>
@@ -117,7 +117,7 @@ export function renderColumnValue(row: EnrichedSquadRow, colId: SquadColumnId): 
         return (
           <span
             title={row.activeBanTooltip || 'Other-competition ban only — eligible for next match'}
-            className="inline-flex rounded bg-amber-500/15 border border-amber-500/40 px-1.5 py-0.5 text-[10px] font-bold text-amber-300 whitespace-nowrap"
+            className="inline-flex rounded-md bg-amber-500/15 border border-amber-500/40 px-1.5 py-0.5 text-2xs font-bold text-amber-300 whitespace-nowrap"
           >
             {row.otherCompBanLabel || 'Cup Ban'} ({row.activeBanMatches}m)
           </span>
@@ -125,14 +125,14 @@ export function renderColumnValue(row: EnrichedSquadRow, colId: SquadColumnId): 
       }
       if (row.isInjured) {
         return (
-          <span className="inline-flex rounded bg-amber-500/20 border border-amber-500/40 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">
+          <span className="inline-flex rounded-md bg-amber-500/20 border border-amber-500/40 px-1.5 py-0.5 text-2xs font-bold text-amber-300">
             Injured
           </span>
         );
       }
       if (p.onLoan) {
         return (
-          <span className="inline-flex rounded bg-indigo-500/20 border border-indigo-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-300">
+          <span className="inline-flex rounded-md bg-indigo-500/20 border border-indigo-500/40 px-1.5 py-0.5 text-2xs font-semibold text-indigo-300">
             On Loan
           </span>
         );
@@ -153,7 +153,7 @@ export function renderColumnValue(row: EnrichedSquadRow, colId: SquadColumnId): 
           {badges.slice(0, 2).map((b) => (
             <span
               key={b}
-              className={`rounded px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap border ${
+              className={`rounded-md px-1.5 py-0.5 text-2xs font-medium whitespace-nowrap border ${
                 b === 'Injury-Prone'
                   ? 'bg-rose-500/15 text-rose-300 border-rose-500/35'
                   : 'bg-slate-800 text-slate-300 border-slate-700'
@@ -250,7 +250,7 @@ export function renderColumnValue(row: EnrichedSquadRow, colId: SquadColumnId): 
           )}`}
         >
           {row.physical.score}/100{' '}
-          <span className="text-[10px] font-sans font-semibold opacity-80">
+          <span className="text-2xs font-sans font-semibold opacity-80">
             {row.physical.tier}
           </span>
         </span>
@@ -314,14 +314,14 @@ export function renderColumnValue(row: EnrichedSquadRow, colId: SquadColumnId): 
         <span className="font-mono tabular-nums text-slate-700 dark:text-slate-300 whitespace-nowrap">
           {row.expiryYear || MISSING_VALUE}
           {row.optYears > 0 ? (
-            <span className="ml-1 text-[10px] text-sky-400">+{row.optYears}y</span>
+            <span className="ml-1 text-2xs text-sky-400">+{row.optYears}y</span>
           ) : null}
         </span>
       );
     case 'renewalRisk':
       return (
         <span
-          className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${renewalBadgeClass(
+          className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-2xs font-semibold whitespace-nowrap ${renewalBadgeClass(
             row.contract.renewalRisk
           )}`}
         >
@@ -332,7 +332,7 @@ export function renderColumnValue(row: EnrichedSquadRow, colId: SquadColumnId): 
       if (p.marketValueCapped || p.marketValueState === 'capped') {
         return (
           <span
-            className="font-mono text-[11px] text-amber-600 dark:text-amber-300 whitespace-nowrap"
+            className="font-mono text-micro text-amber-600 dark:text-amber-300 whitespace-nowrap"
             title="Stored at FM27's £300m ceiling (Not for sale / placeholder valuation)"
           >
             Not for sale

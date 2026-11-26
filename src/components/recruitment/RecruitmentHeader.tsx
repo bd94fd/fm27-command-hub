@@ -72,7 +72,7 @@ export const RecruitmentHeader: React.FC<RecruitmentHeaderProps> = ({
   const { clubProfile } = audit;
 
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/75 p-4 sm:p-5 space-y-4">
+    <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 sm:p-5 space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
@@ -91,7 +91,7 @@ export const RecruitmentHeader: React.FC<RecruitmentHeaderProps> = ({
               <button
                 type="button"
                 onClick={() => setIncludeYouthInAudit(false)}
-                className={`min-h-[44px] sm:min-h-[32px] px-2.5 sm:px-2 py-1 rounded-md text-xs sm:text-[11px] font-semibold transition cursor-pointer whitespace-nowrap ${
+                className={`min-h-[44px] sm:min-h-[32px] px-2.5 sm:px-2 py-1 rounded-md text-xs sm:text-micro font-semibold transition cursor-pointer whitespace-nowrap ${
                   !includeYouthInAudit
                     ? 'bg-emerald-700 text-white dark:bg-emerald-500 dark:text-slate-950'
                     : 'text-slate-400 hover:text-slate-200'
@@ -102,7 +102,7 @@ export const RecruitmentHeader: React.FC<RecruitmentHeaderProps> = ({
               <button
                 type="button"
                 onClick={() => setIncludeYouthInAudit(true)}
-                className={`min-h-[44px] sm:min-h-[32px] px-2.5 sm:px-2 py-1 rounded-md text-xs sm:text-[11px] font-semibold transition cursor-pointer whitespace-nowrap ${
+                className={`min-h-[44px] sm:min-h-[32px] px-2.5 sm:px-2 py-1 rounded-md text-xs sm:text-micro font-semibold transition cursor-pointer whitespace-nowrap ${
                   includeYouthInAudit
                     ? 'bg-emerald-700 text-white dark:bg-emerald-500 dark:text-slate-950'
                     : 'text-slate-400 hover:text-slate-200'
@@ -114,7 +114,7 @@ export const RecruitmentHeader: React.FC<RecruitmentHeaderProps> = ({
           )}
           {transferWindows && typeof transferWindows.isOpen === 'boolean' && (
             <span
-              className={`rounded-md border px-2 py-0.5 text-[11px] font-mono font-semibold ${
+              className={`rounded-md border px-2 py-0.5 text-micro font-mono font-semibold ${
                 transferWindows.isOpen
                   ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
                   : 'bg-slate-800 text-slate-400 border-slate-700'
@@ -125,7 +125,7 @@ export const RecruitmentHeader: React.FC<RecruitmentHeaderProps> = ({
           )}
           {financialRunway && (
             <span
-              className={`rounded-md border px-2 py-0.5 text-[11px] font-mono font-semibold tabular-nums ${
+              className={`rounded-md border px-2 py-0.5 text-micro font-mono font-semibold tabular-nums ${
                 financialRunway.status === 'Critical'
                   ? 'bg-rose-500/15 text-rose-300 border-rose-500/40'
                   : financialRunway.status === 'Warning'
@@ -166,7 +166,7 @@ export const RecruitmentHeader: React.FC<RecruitmentHeaderProps> = ({
               {clubProfile.strategyHeadline}
             </span>
           </div>
-          <ul className="space-y-0.5 text-[11px] text-slate-300">
+          <ul className="space-y-0.5 text-micro text-slate-300">
             {clubProfile.strategyBullets.map((b, idx) => (
               <li key={idx} className="flex items-start gap-1.5">
                 <span className="text-slate-500">•</span>
@@ -193,7 +193,7 @@ export const RecruitmentHeader: React.FC<RecruitmentHeaderProps> = ({
           }`}
         >
           <div className="flex flex-wrap items-center gap-2 font-semibold">
-            <span className="uppercase tracking-wider text-[10px] px-1.5 py-0.5 rounded bg-slate-900/70 border border-slate-700 text-slate-200">
+            <span className="uppercase tracking-wider text-2xs px-1.5 py-0.5 rounded-md bg-slate-900/70 border border-slate-700 text-slate-200">
               Registration Compliance · {competitionRules.competitionName || 'League'}
             </span>
             {competitionRules.maxSquadSize !== null && (
@@ -210,7 +210,7 @@ export const RecruitmentHeader: React.FC<RecruitmentHeaderProps> = ({
               </span>
             )}
           </div>
-          <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-slate-300">
+          <div className="flex flex-wrap items-center gap-2 text-micro font-mono text-slate-300">
             {competitionRules.minHomegrownClub !== null && (
               <span>Min HGC: {competitionRules.minHomegrownClub}</span>
             )}
@@ -229,8 +229,8 @@ export const RecruitmentHeader: React.FC<RecruitmentHeaderProps> = ({
 
       {/* 4 Compact Financial & Action KPIs (Single Canonical Financial Source of Truth) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-        <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 min-w-0">
-          <div className="text-[11px] text-slate-400">Bank Balance &amp; Wage Cap</div>
+        <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 min-w-0">
+          <div className="text-micro text-slate-400">Bank Balance &amp; Wage Cap</div>
           <div
             className={`text-sm sm:text-base font-bold font-mono tabular-nums mt-0.5 ${
               clubProfile.isInDebt ? 'text-rose-400' : 'text-emerald-400'
@@ -238,38 +238,38 @@ export const RecruitmentHeader: React.FC<RecruitmentHeaderProps> = ({
           >
             {clubProfile.balanceLabel}
           </div>
-          <div className="text-[11px] font-mono tabular-nums text-slate-300 mt-0.5 break-words">
+          <div className="text-micro font-mono tabular-nums text-slate-300 mt-0.5 break-words">
             {clubProfile.wageComplianceLabel}
           </div>
         </div>
-        <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 min-w-0">
-          <div className="text-[11px] text-slate-400">Renew / Youth Protection</div>
+        <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 min-w-0">
+          <div className="text-micro text-slate-400">Renew / Youth Protection</div>
           <div className="text-sm sm:text-base font-bold font-mono tabular-nums text-emerald-400 mt-0.5">
             {players.length > 0
               ? `${audit.countsByVerdict['Renew Now'] + audit.countsByVerdict['Protect Youth Asset']} Players`
               : '--'}
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">
+          <div className="text-micro text-slate-400 mt-0.5">
             {audit.countsByVerdict['Protect Youth Asset']} U21 protected ·{' '}
             {audit.expiringWithin12mCount} exp &le;12m
           </div>
         </div>
-        <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 min-w-0">
-          <div className="text-[11px] text-slate-400">Projected Savings (Unbanked)</div>
+        <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 min-w-0">
+          <div className="text-micro text-slate-400">Projected Savings (Unbanked)</div>
           <div className="text-sm sm:text-base font-bold font-mono tabular-nums text-amber-300 mt-0.5">
             {players.length > 0
               ? `£${audit.projectedWeeklySavings.toLocaleString()}/wk`
               : '--'}
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">
+          <div className="text-micro text-slate-400 mt-0.5">
             Banked: £{audit.actualBankedWeeklySavings.toLocaleString()}/wk ·{' '}
             {audit.countsByVerdict['Sell / Transfer List'] +
               audit.countsByVerdict['Replace Before Selling']}{' '}
             sell · {audit.countsByVerdict['Let Expire']} exit
           </div>
         </div>
-        <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 min-w-0">
-          <div className="text-[11px] text-slate-400">Senior Depth &amp; Succession</div>
+        <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 min-w-0">
+          <div className="text-micro text-slate-400">Senior Depth &amp; Succession</div>
           <div className="text-sm sm:text-base font-bold font-mono text-sky-300 mt-0.5 break-words">
             {players.length > 0
               ? thinPositions.length > 0
@@ -279,7 +279,7 @@ export const RecruitmentHeader: React.FC<RecruitmentHeaderProps> = ({
                   : 'Balanced'
               : '--'}
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">
+          <div className="text-micro text-slate-400 mt-0.5">
             {audit.squadTierCounts.senior} Senior · {audit.squadTierCounts.youthReserve} U21/Res
             {audit.squadTierCounts.onLoan > 0 ? ` · ${audit.squadTierCounts.onLoan} Loan` : ''}
           </div>
@@ -334,7 +334,7 @@ export const RecruitmentHeader: React.FC<RecruitmentHeaderProps> = ({
               className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-2.5 min-h-[44px] text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
                 view === t.id
                   ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                  : 'bg-slate-950/70 text-slate-400 border border-slate-800 hover:text-slate-200'
+                  : 'bg-slate-950/60 text-slate-400 border border-slate-800 hover:text-slate-200'
               }`}
             >
               <Icon className="h-3.5 w-3.5 shrink-0" />

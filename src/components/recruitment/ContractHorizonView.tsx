@@ -72,11 +72,11 @@ export const ContractHorizonView: React.FC<ContractHorizonViewProps> = ({
           >
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold">{tier.title}</span>
-              <span className="font-mono text-base font-extrabold">
+              <span className="font-mono text-base font-bold">
                 {tier.count}
               </span>
             </div>
-            <div className="text-[11px] opacity-80 mt-1">
+            <div className="text-micro opacity-80 mt-1">
               {tier.desc}
             </div>
           </button>
@@ -84,7 +84,7 @@ export const ContractHorizonView: React.FC<ContractHorizonViewProps> = ({
       </div>
 
       {/* Wage Budget Risk & Free-Transfer Loss Summary Strip */}
-      <div className="rounded-xl border border-slate-800 bg-slate-900/75 px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+      <div className="rounded-xl border border-slate-800 bg-slate-900/70 px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs">
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-slate-300">
             12m Wage at Risk:{' '}
@@ -109,7 +109,7 @@ export const ContractHorizonView: React.FC<ContractHorizonViewProps> = ({
           <button
             type="button"
             onClick={() => setContractHorizonTier('ALL')}
-            className="rounded-lg bg-slate-800 hover:bg-slate-700 px-2.5 py-1 text-[11px] font-semibold text-slate-200 cursor-pointer"
+            className="rounded-lg bg-slate-800 hover:bg-slate-700 px-2.5 py-1 text-micro font-semibold text-slate-200 cursor-pointer"
           >
             Show All ≤18m ({contractHorizonSummary.critical6m.length + contractHorizonSummary.warning12m.length + contractHorizonSummary.watch18m.length})
           </button>
@@ -117,7 +117,7 @@ export const ContractHorizonView: React.FC<ContractHorizonViewProps> = ({
       </div>
 
       {contractHorizonSummary.activeList.length === 0 ? (
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 text-center text-xs text-slate-400">
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-8 text-center text-xs text-slate-400">
           No players in the selected contract horizon tier.
         </div>
       ) : (
@@ -144,27 +144,27 @@ export const ContractHorizonView: React.FC<ContractHorizonViewProps> = ({
                     <span className="text-sm font-bold text-white hover:text-emerald-300">
                       {p.name}
                     </span>
-                    <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-mono text-slate-300">
+                    <span className="rounded-md bg-slate-800 px-1.5 py-0.5 text-2xs font-mono text-slate-300">
                       {p.position}
                     </span>
-                    <span className="text-[11px] font-mono text-slate-400">
+                    <span className="text-micro font-mono text-slate-400">
                       {formatAge(p.age)}y
                     </span>
-                    <span className="text-[11px] font-mono font-bold text-amber-300 tabular-nums">
+                    <span className="text-micro font-mono font-bold text-amber-300 tabular-nums">
                       {p.ability.toFixed(1)}★/{p.potential.toFixed(1)}★
                     </span>
                   </div>
                 </button>
                 <div className="flex flex-wrap items-center gap-1.5 shrink-0">
                   <span
-                    className={`rounded-md border px-2 py-0.5 text-[10px] font-mono font-bold ${horizonBadge}`}
+                    className={`rounded-md border px-2 py-0.5 text-2xs font-mono font-bold ${horizonBadge}`}
                   >
                     {item.monthsLeft !== null
                       ? `${item.monthsLeft}m Horizon`
                       : '18m+'}
                   </span>
                   <span
-                    className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${verdictBadgeClass(
+                    className={`rounded-full border px-2.5 py-0.5 text-micro font-bold ${verdictBadgeClass(
                       item.verdict
                     )}`}
                   >
@@ -174,32 +174,32 @@ export const ContractHorizonView: React.FC<ContractHorizonViewProps> = ({
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                <div className="rounded-lg border border-slate-800 bg-slate-950/75 px-2.5 py-1.5 min-w-0">
-                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-2.5 py-1.5 min-w-0">
+                  <div className="text-2xs uppercase tracking-wider text-slate-400">
                     Expires
                   </div>
                   <div className="mt-0.5 font-mono text-xs font-bold text-amber-300 tabular-nums truncate">
                     {formatContractExpiry(p.expires)} ({item.monthsLeft ?? '--'}m)
                   </div>
                 </div>
-                <div className="rounded-lg border border-slate-800 bg-slate-950/75 px-2.5 py-1.5 min-w-0">
-                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-2.5 py-1.5 min-w-0">
+                  <div className="text-2xs uppercase tracking-wider text-slate-400">
                     Wage
                   </div>
                   <div className="mt-0.5 font-mono text-xs font-bold text-slate-100 tabular-nums truncate">
                     {formatWeeklyWage(p.wagePw)}
                   </div>
                 </div>
-                <div className="rounded-lg border border-slate-800 bg-slate-950/75 px-2.5 py-1.5 min-w-0">
-                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-2.5 py-1.5 min-w-0">
+                  <div className="text-2xs uppercase tracking-wider text-slate-400">
                     Season Mins
                   </div>
                   <div className="mt-0.5 font-mono text-xs font-bold text-slate-100 tabular-nums truncate">
                     {p.minutes}m ({p.apps || 0} apps)
                   </div>
                 </div>
-                <div className="rounded-lg border border-slate-800 bg-slate-950/75 px-2.5 py-1.5 min-w-0">
-                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-2.5 py-1.5 min-w-0">
+                  <div className="text-2xs uppercase tracking-wider text-slate-400">
                     Personality
                   </div>
                   <div className="mt-0.5 text-xs font-semibold text-slate-200 truncate">

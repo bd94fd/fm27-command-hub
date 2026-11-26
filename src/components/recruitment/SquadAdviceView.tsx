@@ -81,7 +81,7 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
               key={pill.id}
               type="button"
               onClick={() => setVerdictFilter(pill.id)}
-              className={`min-h-[36px] sm:min-h-[30px] rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition cursor-pointer ${
+              className={`min-h-[36px] sm:min-h-[30px] rounded-lg px-2.5 py-1 text-micro font-semibold border transition cursor-pointer ${
                 verdictFilter === pill.id
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                   : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
@@ -133,17 +133,17 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
                     <span className="text-sm font-bold text-white group-hover:text-emerald-300 transition">
                       {p.name}
                     </span>
-                    <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-mono text-slate-300">
+                    <span className="rounded-md bg-slate-800 px-1.5 py-0.5 text-2xs font-mono text-slate-300">
                       {p.position}
                     </span>
-                    <span className="text-[11px] font-mono text-slate-400">
+                    <span className="text-micro font-mono text-slate-400">
                       {formatAge(p.age)}y
                     </span>
-                    <span className="text-[11px] font-mono font-bold text-amber-300 tabular-nums">
+                    <span className="text-micro font-mono font-bold text-amber-300 tabular-nums">
                       {p.ability.toFixed(1)}★/{p.potential.toFixed(1)}★
                     </span>
                   </div>
-                  <div className="text-[11px] text-emerald-400/80 mt-0.5">
+                  <div className="text-micro text-emerald-400/80 mt-0.5">
                     Tap for full Player Card →
                   </div>
                 </button>
@@ -155,7 +155,7 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
                     )) && (
                     <span
                       title="Player is marked Surplus To Requirements in your FM27 save"
-                      className="rounded-full border border-rose-500/60 bg-rose-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rose-200"
+                      className="rounded-full border border-rose-500/60 bg-rose-500/20 px-2 py-0.5 text-2xs font-bold uppercase tracking-wide text-rose-200"
                     >
                       In-Game: Surplus
                     </span>
@@ -166,7 +166,7 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
                         ? 'App recommendation based on squad depth, wages, and age'
                         : undefined
                     }
-                    className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${verdictBadgeClass(
+                    className={`rounded-full border px-2.5 py-0.5 text-micro font-bold ${verdictBadgeClass(
                       item.verdict
                     )}`}
                   >
@@ -179,16 +179,16 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
 
               {/* Complete 4-KPI Block (2×2 on phones, 4-across on sm+) */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                <div className="rounded-lg border border-slate-800 bg-slate-950/75 px-2.5 py-1.5 min-w-0">
-                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-2.5 py-1.5 min-w-0">
+                  <div className="text-2xs uppercase tracking-wider text-slate-400">
                     Wage
                   </div>
                   <div className="mt-0.5 font-mono text-xs font-bold text-slate-100 tabular-nums truncate">
                     {formatWeeklyWage(p.wagePw)}
                   </div>
                 </div>
-                <div className="rounded-lg border border-slate-800 bg-slate-950/75 px-2.5 py-1.5 min-w-0">
-                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-2.5 py-1.5 min-w-0">
+                  <div className="text-2xs uppercase tracking-wider text-slate-400">
                     Contract
                   </div>
                   <div className={`mt-0.5 font-mono text-xs font-bold tabular-nums truncate ${contractUrgencyCls}`}>
@@ -196,8 +196,8 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
                     {item.monthsLeft !== null ? ` (${Math.max(0, item.monthsLeft)}m)` : ''}
                   </div>
                 </div>
-                <div className="rounded-lg border border-slate-800 bg-slate-950/75 px-2.5 py-1.5 min-w-0">
-                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-2.5 py-1.5 min-w-0">
+                  <div className="text-2xs uppercase tracking-wider text-slate-400">
                     Season Mins
                   </div>
                   <div className="mt-0.5 font-mono text-xs font-bold text-slate-100 tabular-nums truncate">
@@ -207,8 +207,8 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
                       : ''}
                   </div>
                 </div>
-                <div className="rounded-lg border border-slate-800 bg-slate-950/75 px-2.5 py-1.5 min-w-0">
-                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-2.5 py-1.5 min-w-0">
+                  <div className="text-2xs uppercase tracking-wider text-slate-400">
                     Market Value
                   </div>
                   <div className="mt-0.5 font-mono text-xs font-bold text-emerald-300 tabular-nums truncate">
@@ -219,7 +219,7 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
 
               <div className="flex flex-wrap items-center gap-1">
                 <span
-                  className={`rounded-md border px-2 py-0.5 text-[10px] font-bold ${
+                  className={`rounded-md border px-2 py-0.5 text-2xs font-bold ${
                     item.abilityReadinessTier === 'squad_star'
                       ? 'bg-amber-500/20 border-amber-500/50 text-amber-200'
                       : item.abilityReadinessTier === 'starter_level'
@@ -244,7 +244,7 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
                   return (
                     <span
                       key={idx}
-                      className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${
+                      className={`rounded-md border px-2 py-0.5 text-2xs font-medium ${
                         isBannedTag
                           ? 'bg-rose-500/20 border-rose-500/50 text-rose-300 font-bold'
                           : isPromoteTag
@@ -253,7 +253,7 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
                               ? 'bg-sky-500/15 border-sky-500/40 text-sky-300'
                               : isClauseTag
                                 ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
-                                : 'bg-slate-800/90 border-slate-700/80 text-slate-300'
+                                : 'bg-slate-800/70 border-slate-700/80 text-slate-300'
                       }`}
                     >
                       {tag}
@@ -269,7 +269,7 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
                 <strong className="text-slate-300">Why:</strong>{' '}
                 {item.rationale}
               </p>
-              <div className="rounded-lg border border-slate-800/90 bg-slate-950/70 px-3 py-2 text-xs text-emerald-300/95 flex items-start gap-2">
+              <div className="rounded-lg border border-slate-800/90 bg-slate-950/60 px-3 py-2 text-xs text-emerald-300/95 flex items-start gap-2">
                 <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-emerald-400" />
                 <span>
                   <strong className="text-emerald-300">Action:</strong>{' '}
@@ -290,16 +290,16 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
                         <span>
                           In-Game Shortlist {best.tier === 'direct_xi_upgrade' ? 'Direct Upgrade' : 'Replacement'}:{' '}
                           <span className="text-white">{best.target.name}</span>{' '}
-                          <span className="font-mono text-[11px] text-emerald-300">
+                          <span className="font-mono text-micro text-emerald-300">
                             ({best.target.primaryPosition}, {formatAge(best.target.age)}y)
                           </span>
                         </span>
                       </div>
-                      <span className="rounded bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-200">
+                      <span className="rounded-md bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.5 text-2xs font-semibold text-emerald-200">
                         {best.budget.feeLabel}
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-300 leading-snug">
+                    <p className="text-micro text-slate-300 leading-snug">
                       {best.whyUpgradeOrHold}
                     </p>
                     <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
@@ -307,7 +307,7 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
                         <button
                           type="button"
                           onClick={() => onOpenShortlistTarget(best.target)}
-                          className="min-h-[32px] rounded-lg border border-emerald-500/40 bg-emerald-500/15 hover:bg-emerald-500/25 px-2.5 py-1 text-[11px] font-semibold text-emerald-200 transition cursor-pointer"
+                          className="min-h-[32px] rounded-lg border border-emerald-500/40 bg-emerald-500/15 hover:bg-emerald-500/25 px-2.5 py-1 text-micro font-semibold text-emerald-200 transition cursor-pointer"
                         >
                           Open Shortlist Profile →
                         </button>
@@ -316,7 +316,7 @@ export const SquadAdviceView: React.FC<SquadAdviceViewProps> = ({
                         <button
                           type="button"
                           onClick={() => onCompareShortlistTarget(best.target)}
-                          className="min-h-[32px] inline-flex items-center gap-1 rounded-lg border border-sky-500/35 bg-sky-500/15 hover:bg-sky-500/25 px-2.5 py-1 text-[11px] font-semibold text-sky-200 transition cursor-pointer"
+                          className="min-h-[32px] inline-flex items-center gap-1 rounded-lg border border-sky-500/35 bg-sky-500/15 hover:bg-sky-500/25 px-2.5 py-1 text-micro font-semibold text-sky-200 transition cursor-pointer"
                         >
                           <GitCompare className="h-3 w-3" />
                           Compare vs {p.name.split(' ').slice(-1)[0]}

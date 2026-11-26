@@ -195,7 +195,7 @@ export const SquadListView: React.FC<SquadListViewProps> = ({
       />
 
       {filteredRows.length === 0 ? (
-    <div className="py-10 text-center space-y-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/40">
+    <div className="py-10 text-center space-y-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60">
       <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
         No players match your current filters.
       </p>

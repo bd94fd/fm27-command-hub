@@ -170,7 +170,7 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
   return (
     <section
       aria-label="Last Game and Active FM27 Save Tactic Blueprint"
-      className="rounded-xl border border-slate-800 bg-slate-900/75 p-4 sm:p-5 space-y-4"
+      className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 sm:p-5 space-y-4"
     >
       {/* Header + Slot Switcher */}
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -199,7 +199,7 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
 
         <div className="flex flex-wrap items-center gap-2">
           {savedTactics.length > 1 && (
-            <div className="inline-flex rounded-lg border border-slate-800 bg-slate-950 p-0.5 text-[11px]">
+            <div className="inline-flex rounded-lg border border-slate-800 bg-slate-950 p-0.5 text-micro">
               {savedTactics.slice(0, 3).map((tac, idx) => (
                 <button
                   key={`${tac.name}-${idx}`}
@@ -224,7 +224,7 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
             <button
               type="button"
               onClick={handleResetOverrides}
-              className="min-h-[36px] inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-950 px-2.5 text-[11px] font-medium text-slate-300 hover:text-white transition-colors"
+              className="min-h-[36px] inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-950 px-2.5 text-micro font-medium text-slate-300 hover:text-white transition-colors"
               title="Reset confirmed IP & OOP role locks for this tactic"
             >
               <RotateCcw className="h-3 w-3" /> Reset ({confirmedSlotsCount})
@@ -235,7 +235,7 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
             <button
               type="button"
               onClick={() => onOpenCalibrationLab('roles')}
-              className="min-h-[36px] inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-950 px-2.5 text-[11px] font-medium text-slate-400 hover:border-slate-600 hover:text-slate-200 transition-colors whitespace-nowrap"
+              className="min-h-[36px] inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-950 px-2.5 text-micro font-medium text-slate-400 hover:border-slate-600 hover:text-slate-200 transition-colors whitespace-nowrap"
               title="Optional advanced binary inspector for raw .fm tactic bytes & save diffs"
             >
               <Sliders className="h-3.5 w-3.5" /> Inspector
@@ -246,7 +246,7 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
             <button
               type="button"
               onClick={handleAuditTactic}
-              className="min-h-[36px] inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+              className="min-h-[36px] inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 text-micro font-semibold text-emerald-300 hover:bg-emerald-500/20 transition-colors"
             >
               <MessageSquare className="h-3.5 w-3.5" /> Audit Tactic in Analyst
             </button>
@@ -256,7 +256,7 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
 
       {/* 3-Lane Team Instructions Matrix (In Possession / In Transition / Out of Possession) */}
       <div className="space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-micro">
           <span className="inline-flex items-center gap-1.5 font-semibold uppercase tracking-wider text-slate-400">
             <Sliders className="h-3.5 w-3.5 text-sky-400" />
             Decoded Team Instructions ({totalTeamInstr > 0 ? `${totalTeamInstr} active` : 'Standard defaults'})
@@ -265,7 +265,7 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
             <button
               type="button"
               onClick={() => setPhaseView('ip')}
-              className={`min-h-[30px] px-2.5 rounded text-[11px] font-semibold transition-colors ${
+              className={`min-h-[30px] px-2.5 rounded-md text-micro font-semibold transition-colors ${
                 phaseView === 'ip'
                   ? 'bg-emerald-500/20 text-emerald-300'
                   : 'text-slate-400 hover:text-slate-200'
@@ -276,7 +276,7 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
             <button
               type="button"
               onClick={() => setPhaseView('oop')}
-              className={`min-h-[30px] px-2.5 rounded text-[11px] font-semibold transition-colors ${
+              className={`min-h-[30px] px-2.5 rounded-md text-micro font-semibold transition-colors ${
                 phaseView === 'oop'
                   ? 'bg-sky-500/20 text-sky-300'
                   : 'text-slate-400 hover:text-slate-200'
@@ -289,56 +289,56 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs">
           {/* In Possession */}
-          <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3 space-y-1.5">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400">
+          <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 space-y-1.5">
+            <div className="text-2xs font-semibold uppercase tracking-wider text-emerald-400">
               In Possession ({ti.inPossession.length})
             </div>
             {ti.inPossession.length > 0 ? (
               <ul className="space-y-1">
                 {ti.inPossession.map((label, idx) => (
-                  <li key={`${label}-${idx}`} className="text-[11px] text-slate-200">
+                  <li key={`${label}-${idx}`} className="text-micro text-slate-200">
                     {label}
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-[11px] text-slate-500">Balanced / Standard in-possession defaults</p>
+              <p className="text-micro text-slate-500">Balanced / Standard in-possession defaults</p>
             )}
           </div>
 
           {/* In Transition */}
-          <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3 space-y-1.5">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-amber-300">
+          <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 space-y-1.5">
+            <div className="text-2xs font-semibold uppercase tracking-wider text-amber-300">
               In Transition ({ti.inTransition.length})
             </div>
             {ti.inTransition.length > 0 ? (
               <ul className="space-y-1">
                 {ti.inTransition.map((label, idx) => (
-                  <li key={`${label}-${idx}`} className="text-[11px] text-slate-200">
+                  <li key={`${label}-${idx}`} className="text-micro text-slate-200">
                     {label}
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-[11px] text-slate-500">Standard transition &amp; distribution defaults</p>
+              <p className="text-micro text-slate-500">Standard transition &amp; distribution defaults</p>
             )}
           </div>
 
           {/* Out of Possession */}
-          <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3 space-y-1.5">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-sky-400">
+          <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 space-y-1.5">
+            <div className="text-2xs font-semibold uppercase tracking-wider text-sky-400">
               Out of Possession ({ti.outOfPossession.length})
             </div>
             {ti.outOfPossession.length > 0 ? (
               <ul className="space-y-1">
                 {ti.outOfPossession.map((label, idx) => (
-                  <li key={`${label}-${idx}`} className="text-[11px] text-slate-200">
+                  <li key={`${label}-${idx}`} className="text-micro text-slate-200">
                     {label}
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-[11px] text-slate-500">Standard mid-block pressing defaults</p>
+              <p className="text-micro text-slate-500">Standard mid-block pressing defaults</p>
             )}
           </div>
         </div>
@@ -347,7 +347,7 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
       {/* Interactive Starting XI Role + Instruction Roster */}
       {blueprint.starters.length > 0 && (
         <div className="space-y-2">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-micro text-slate-400">
             <span className="font-semibold uppercase tracking-wider">
               Starting XI Used ({blueprint.starters.length} slots) — Tap any player to inspect or confirm IP/OOP roles
             </span>
@@ -385,16 +385,16 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
                   className={`text-left rounded-lg border p-2.5 transition-colors space-y-1 ${
                     isSelected
                       ? 'border-emerald-500/60 bg-emerald-500/10'
-                      : 'border-slate-800 bg-slate-950/70 hover:border-slate-700'
+                      : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2 text-xs">
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="font-mono text-[11px] font-bold text-emerald-300 shrink-0">
+                      <span className="font-mono text-micro font-bold text-emerald-300 shrink-0">
                         {phaseView === 'ip' ? slot.position : oopPos}
                       </span>
                       {shiftsShape && (
-                        <span className="inline-flex items-center gap-0.5 font-mono text-[10px] text-slate-500">
+                        <span className="inline-flex items-center gap-0.5 font-mono text-2xs text-slate-500">
                           <ArrowRight className="h-2.5 w-2.5" />
                           {phaseView === 'ip' ? oopPos : slot.position}
                         </span>
@@ -411,14 +411,14 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
                         />
                       )}
                       {slot.lastMatchRating != null && (
-                        <span className="font-mono text-[11px] font-semibold text-amber-300 tabular-nums">
+                        <span className="font-mono text-micro font-semibold text-amber-300 tabular-nums">
                           {slot.lastMatchRating.toFixed(1)}
                         </span>
                       )}
                     </div>
                   </div>
 
-                  <div className="text-[11px] text-slate-300 truncate">
+                  <div className="text-micro text-slate-300 truncate">
                     {phaseView === 'ip' ? (
                       <>
                         <span className="text-emerald-300 font-medium">{ipRoleLabel}</span>
@@ -432,7 +432,7 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
                     )}
                   </div>
 
-                  <div className="flex items-center justify-between text-[10px] font-mono text-slate-500">
+                  <div className="flex items-center justify-between text-2xs font-mono text-slate-500">
                     <span>
                       {decodedPiCount > 0
                         ? `${decodedPiCount} decoded PI${decodedPiCount === 1 ? '' : 's'}`
@@ -469,7 +469,7 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
             const validOopRoles = getValidFm27RolesForSlot(oopPos, 'oop').map((r) => r.name);
 
             return (
-              <div className="rounded-lg border border-emerald-500/35 bg-slate-950/90 p-3.5 space-y-3 text-xs">
+              <div className="rounded-lg border border-emerald-500/35 bg-slate-950/85 p-3.5 space-y-3 text-xs">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="font-semibold text-white">
                     {activeStarter.playerName || 'Selected Slot'}{' '}
@@ -487,15 +487,15 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 text-[11px]">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 text-micro">
                   {/* IN POSSESSION CARD */}
                   <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/5 p-3 space-y-2">
                     <div className="flex flex-wrap items-center justify-between gap-1.5">
-                      <div className="text-[10px] uppercase tracking-wider font-semibold text-emerald-400">
+                      <div className="text-2xs uppercase tracking-wider font-semibold text-emerald-400">
                         In Possession · {ipPos}
                       </div>
                       <span
-                        className={`rounded border px-1.5 py-0.5 font-mono text-[9px] font-semibold ${ipBadge.className}`}
+                        className={`rounded-md border px-1.5 py-0.5 font-mono text-3xs font-semibold ${ipBadge.className}`}
                       >
                         {ipBadge.label}
                       </span>
@@ -503,7 +503,7 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
 
                     <div className="text-sm font-semibold text-white">{ipRole}</div>
                     {activeStarter.ipRoleReasoning && (
-                      <p className="text-[10px] text-slate-400 leading-snug">
+                      <p className="text-2xs text-slate-400 leading-snug">
                         {activeStarter.ipRoleReasoning}
                       </p>
                     )}
@@ -516,7 +516,7 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
                         {ipTendencies.map((t) => (
                           <span
                             key={t}
-                            className="rounded border border-emerald-500/20 bg-slate-950/70 px-1.5 py-0.5 text-[10px] text-emerald-200"
+                            className="rounded-md border border-emerald-500/20 bg-slate-950/60 px-1.5 py-0.5 text-2xs text-emerald-200"
                           >
                             {t}
                           </span>
@@ -526,12 +526,12 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
 
                     {/* Quick-Pick Worked-Out Candidates + Full Position Role Selector */}
                     <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
-                      <div className="flex items-center justify-between text-[10px] text-slate-400">
+                      <div className="flex items-center justify-between text-2xs text-slate-400">
                         <span className="uppercase tracking-wider font-semibold">
                           Confirm / Change IP Role ({ipPos})
                         </span>
                         {activeStarter.ipBinaryFingerprint && (
-                          <span className="font-mono text-[9px] text-slate-500">
+                          <span className="font-mono text-3xs text-slate-500">
                             FP {activeStarter.ipBinaryFingerprint}
                           </span>
                         )}
@@ -545,10 +545,10 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
                                 key={cand.name}
                                 type="button"
                                 onClick={() => handleConfirmRole(activeStarter, 'ip', cand.name)}
-                                className={`rounded border px-2 py-1 text-[10px] font-medium transition-colors ${
+                                className={`rounded-md border px-2 py-1 text-2xs font-medium transition-colors ${
                                   active
                                     ? 'border-emerald-400 bg-emerald-500/20 text-emerald-200'
-                                    : 'border-slate-700 bg-slate-900/80 text-slate-300 hover:border-emerald-500/50 hover:text-white'
+                                    : 'border-slate-700 bg-slate-900/70 text-slate-300 hover:border-emerald-500/50 hover:text-white'
                                 }`}
                               >
                                 {cand.name}{' '}
@@ -563,7 +563,7 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
                           aria-label={`Select In-Possession role for ${activeStarter.playerName || ipPos}`}
                           value={validIpRoles.includes(ipRole) ? ipRole : ''}
                           onChange={(e) => handleConfirmRole(activeStarter, 'ip', e.target.value)}
-                          className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px] text-slate-200 focus-visible:border-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
+                          className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-micro text-slate-200 focus-visible:border-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
                         >
                           {!validIpRoles.includes(ipRole) && (
                             <option value="">{ipRole} (select FM27 role...)</option>
@@ -579,13 +579,13 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
 
                     {ipDecoded.length > 0 ? (
                       <div className="pt-1.5 border-t border-slate-800/80 text-emerald-200 leading-relaxed">
-                        <span className="text-[10px] uppercase tracking-wider text-slate-400 mr-1.5">
+                        <span className="text-2xs uppercase tracking-wider text-slate-400 mr-1.5">
                           Save PIs:
                         </span>
                         {ipDecoded.join(' · ')}
                       </div>
                     ) : (
-                      <div className="pt-1.5 border-t border-slate-800/80 text-[10px] text-slate-500 leading-relaxed">
+                      <div className="pt-1.5 border-t border-slate-800/80 text-2xs text-slate-500 leading-relaxed">
                         {ipFlagCount > 0
                           ? `${ipFlagCount} binary IP setting unit${ipFlagCount === 1 ? '' : 's'} detected in save (confirming a role calibrates matching slots automatically).`
                           : 'Standard in-possession role defaults active.'}
@@ -596,11 +596,11 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
                   {/* OUT OF POSSESSION CARD */}
                   <div className="rounded-lg border border-sky-500/25 bg-sky-500/5 p-3 space-y-2">
                     <div className="flex flex-wrap items-center justify-between gap-1.5">
-                      <div className="text-[10px] uppercase tracking-wider font-semibold text-sky-400">
+                      <div className="text-2xs uppercase tracking-wider font-semibold text-sky-400">
                         Out of Possession · {oopPos}
                       </div>
                       <span
-                        className={`rounded border px-1.5 py-0.5 font-mono text-[9px] font-semibold ${oopBadge.className}`}
+                        className={`rounded-md border px-1.5 py-0.5 font-mono text-3xs font-semibold ${oopBadge.className}`}
                       >
                         {oopBadge.label}
                       </span>
@@ -608,7 +608,7 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
 
                     <div className="text-sm font-semibold text-white">{oopRole}</div>
                     {activeStarter.oopRoleReasoning && (
-                      <p className="text-[10px] text-slate-400 leading-snug">
+                      <p className="text-2xs text-slate-400 leading-snug">
                         {activeStarter.oopRoleReasoning}
                       </p>
                     )}
@@ -621,7 +621,7 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
                         {oopTendencies.map((t) => (
                           <span
                             key={t}
-                            className="rounded border border-sky-500/20 bg-slate-950/70 px-1.5 py-0.5 text-[10px] text-sky-200"
+                            className="rounded-md border border-sky-500/20 bg-slate-950/60 px-1.5 py-0.5 text-2xs text-sky-200"
                           >
                             {t}
                           </span>
@@ -631,12 +631,12 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
 
                     {/* Quick-Pick Worked-Out Candidates + Full Position Role Selector */}
                     <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
-                      <div className="flex items-center justify-between text-[10px] text-slate-400">
+                      <div className="flex items-center justify-between text-2xs text-slate-400">
                         <span className="uppercase tracking-wider font-semibold">
                           Confirm / Change OOP Role ({oopPos})
                         </span>
                         {activeStarter.oopBinaryFingerprint && (
-                          <span className="font-mono text-[9px] text-slate-500">
+                          <span className="font-mono text-3xs text-slate-500">
                             FP {activeStarter.oopBinaryFingerprint}
                           </span>
                         )}
@@ -650,10 +650,10 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
                                 key={cand.name}
                                 type="button"
                                 onClick={() => handleConfirmRole(activeStarter, 'oop', cand.name)}
-                                className={`rounded border px-2 py-1 text-[10px] font-medium transition-colors ${
+                                className={`rounded-md border px-2 py-1 text-2xs font-medium transition-colors ${
                                   active
                                     ? 'border-sky-400 bg-sky-500/20 text-sky-200'
-                                    : 'border-slate-700 bg-slate-900/80 text-slate-300 hover:border-sky-500/50 hover:text-white'
+                                    : 'border-slate-700 bg-slate-900/70 text-slate-300 hover:border-sky-500/50 hover:text-white'
                                 }`}
                               >
                                 {cand.name}{' '}
@@ -668,7 +668,7 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
                           aria-label={`Select Out-of-Possession role for ${activeStarter.playerName || oopPos}`}
                           value={validOopRoles.includes(oopRole) ? oopRole : ''}
                           onChange={(e) => handleConfirmRole(activeStarter, 'oop', e.target.value)}
-                          className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px] text-slate-200 focus-visible:border-sky-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/60"
+                          className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-micro text-slate-200 focus-visible:border-sky-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/60"
                         >
                           {!validOopRoles.includes(oopRole) && (
                             <option value="">{oopRole} (select FM27 role...)</option>
@@ -684,13 +684,13 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
 
                     {oopDecoded.length > 0 ? (
                       <div className="pt-1.5 border-t border-slate-800/80 text-sky-200 leading-relaxed">
-                        <span className="text-[10px] uppercase tracking-wider text-slate-400 mr-1.5">
+                        <span className="text-2xs uppercase tracking-wider text-slate-400 mr-1.5">
                           Save PIs:
                         </span>
                         {oopDecoded.join(' · ')}
                       </div>
                     ) : (
-                      <div className="pt-1.5 border-t border-slate-800/80 text-[10px] text-slate-500 leading-relaxed">
+                      <div className="pt-1.5 border-t border-slate-800/80 text-2xs text-slate-500 leading-relaxed">
                         {oopFlagCount > 0
                           ? `${oopFlagCount} binary OOP setting unit${oopFlagCount === 1 ? '' : 's'} detected in save (confirming a role calibrates matching slots automatically).`
                           : 'Standard out-of-possession role defaults active.'}
@@ -708,10 +708,10 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 text-xs pt-1 border-t border-slate-800">
         {blueprint.substitutes.length > 0 && (
           <div className="space-y-1.5">
-            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            <div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wider text-slate-400">
               <Users className="h-3.5 w-3.5 text-slate-400" /> Matchday Bench / Substitutes ({blueprint.substitutes.length})
             </div>
-            <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-300">
+            <div className="flex flex-wrap gap-x-3 gap-y-1 text-micro text-slate-300">
               {blueprint.substitutes.slice(0, 9).map((sub) => (
                 <span key={`${sub.playerUid ?? sub.playerName}`} className="font-mono">
                   <span className="text-white font-sans font-medium">{sub.playerName}</span>{' '}
@@ -727,10 +727,10 @@ export const LastMatchTacticBlueprintCard: React.FC<LastMatchTacticBlueprintCard
 
         {blueprint.tacticalEffectivenessNotes.length > 0 && (
           <div className="space-y-1.5">
-            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-400">
+            <div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wider text-emerald-400">
               <Sparkles className="h-3.5 w-3.5" /> FM27 Patch 27.1.0 Engine Audit
             </div>
-            <ul className="space-y-1 text-[11px] text-slate-300">
+            <ul className="space-y-1 text-micro text-slate-300">
               {blueprint.tacticalEffectivenessNotes.map((note, idx) => (
                 <li key={idx} className="flex items-start gap-1.5">
                   <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0 mt-0.5" />

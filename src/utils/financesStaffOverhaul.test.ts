@@ -118,39 +118,39 @@ test('MobileSheetFrame adds initial focus, a focus trap, and focus restore', () 
 
 test('muted informational labels were bumped off text-slate-500', () => {
   const positional = readSrc('src/components/recruitment/PositionalDepthView.tsx');
-  assert.match(positional, /text-\[11px\] text-slate-400 italic/);
+  assert.match(positional, /text-micro text-slate-400 italic/);
 
   const progression = readSrc('src/components/squad/SquadProgressionView.tsx');
   assert.equal(
-    (progression.match(/text-\[10px\] text-slate-500 dark:text-slate-400 mt-0\.5/g) ?? [])
+    (progression.match(/text-2xs text-slate-500 dark:text-slate-400 mt-0\.5/g) ?? [])
       .length,
     4
   );
 
   const diff = readSrc('src/components/SaveSnapshotDiffPanel.tsx');
-  assert.match(diff, /text-\[10px\] text-slate-400/);
-  assert.match(diff, /text-\[11px\] text-slate-400 py-0\.5/);
-  assert.match(diff, /text-\[10px\] text-slate-400 pt-0\.5/);
+  assert.match(diff, /text-2xs text-slate-400/);
+  assert.match(diff, /text-micro text-slate-400 py-0\.5/);
+  assert.match(diff, /text-2xs text-slate-400 pt-0\.5/);
 
   const archive = readSrc('src/components/MatchLogArchive.tsx');
   assert.equal(
-    (archive.match(/className="mt-1 text-\[11px\] text-slate-400"/g) ?? []).length,
+    (archive.match(/className="mt-1 text-micro text-slate-400"/g) ?? []).length,
     2
   );
 });
 
 test('Staff and Finances functional labels stay at 11px or above', () => {
   const staff = readSrc('src/components/StaffDirectory.tsx');
-  assert.doesNotMatch(staff, /text-\[9px\]/);
-  assert.doesNotMatch(staff, /text-\[10px\]/);
+  assert.doesNotMatch(staff, /text-\[9px\]|text-3xs/);
+  assert.doesNotMatch(staff, /text-2xs|text-2xs/);
   assert.match(staff, /placeholder:text-slate-400/);
-  assert.match(staff, /text-\[11px\] font-bold uppercase tracking-wider text-slate-400 leading-tight/);
+  assert.match(staff, /text-micro font-bold uppercase tracking-wider text-slate-400 leading-tight/);
   assert.match(staff, /grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2/);
 
   const hub = readSrc('src/components/AutoSyncWorkspace.tsx');
   assert.match(
     hub,
-    /text-\[11px\] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 leading-tight/
+    /text-micro font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 leading-tight/
   );
   assert.match(
     hub,

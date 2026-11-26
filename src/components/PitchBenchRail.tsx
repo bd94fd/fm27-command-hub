@@ -34,22 +34,22 @@ export const PitchBenchRail: React.FC<PitchBenchRailProps> = ({
   return (
     <div
       data-testid="pitch-bench-rail"
-      className="rounded-xl border border-slate-800 bg-slate-950/75 p-2.5 space-y-2"
+      className="rounded-xl border border-slate-800 bg-slate-950/60 p-2.5 space-y-2"
     >
       <div className="flex items-center justify-between gap-2 px-0.5">
-        <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-200 min-w-0">
+        <div className="flex items-center gap-1.5 text-micro font-bold text-slate-200 min-w-0">
           <Users className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
           <span className="truncate">
             Matchday Bench ({benchEntries.length})
           </span>
           {selectedSlot && !readOnly && (
-            <span className="hidden xs:inline text-[10px] font-normal text-slate-400 truncate">
+            <span className="hidden xs:inline text-2xs font-normal text-slate-400 truncate">
               · Tap to sub into {selectedSlot.label}
             </span>
           )}
         </div>
         {benchEntries.length > 4 && (
-          <span className="text-[10px] font-mono text-slate-400 shrink-0 md:hidden">
+          <span className="text-2xs font-mono text-slate-400 shrink-0 md:hidden">
             ← Swipe →
           </span>
         )}
@@ -92,9 +92,9 @@ export const PitchBenchRail: React.FC<PitchBenchRailProps> = ({
               }
               className={`snap-start min-h-[54px] rounded-lg border px-2.5 py-1.5 text-left transition flex flex-col justify-between gap-1 ${
                 readOnly
-                  ? 'border-slate-800 bg-slate-900/60 opacity-75 cursor-default'
+                  ? 'border-slate-800 bg-slate-900/70 opacity-75 cursor-default'
                   : isNaturalFit
-                    ? 'border-emerald-500/30 bg-slate-900/90 hover:border-emerald-400/70 active:scale-[0.98] cursor-pointer'
+                    ? 'border-emerald-500/30 bg-slate-900/95 hover:border-emerald-400/70 active:scale-[0.98] cursor-pointer'
                     : 'border-slate-800 bg-slate-900/70 hover:border-slate-600 active:scale-[0.98] cursor-pointer'
               }`}
             >
@@ -104,7 +104,7 @@ export const PitchBenchRail: React.FC<PitchBenchRailProps> = ({
                 </span>
                 {selectedSlot && (
                   <span
-                    className={`shrink-0 inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 font-mono text-[10px] font-bold tabular-nums ${fitBadgeCls}`}
+                    className={`shrink-0 inline-flex items-center gap-0.5 rounded-md border px-1.5 py-0.5 font-mono text-2xs font-bold tabular-nums ${fitBadgeCls}`}
                   >
                     {!readOnly && <ArrowLeftRight className="w-2.5 h-2.5 opacity-80" />}
                     {fitPct}%
@@ -112,9 +112,9 @@ export const PitchBenchRail: React.FC<PitchBenchRailProps> = ({
                 )}
               </div>
 
-              <div className="flex items-center justify-between gap-1 text-[10px] font-mono">
+              <div className="flex items-center justify-between gap-1 text-2xs font-mono">
                 <div className="flex items-center gap-1 min-w-0">
-                  <span className="rounded bg-slate-800 px-1 py-0.5 text-slate-300 truncate max-w-[60px]">
+                  <span className="rounded-md bg-slate-800 px-1 py-0.5 text-slate-300 truncate max-w-[60px]">
                     {p.position}
                   </span>
                   <span className="text-amber-400 font-semibold tabular-nums">
@@ -123,7 +123,7 @@ export const PitchBenchRail: React.FC<PitchBenchRailProps> = ({
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   {entry.cupBanOnly && (
-                    <span className="rounded bg-amber-500/15 border border-amber-500/40 px-1 text-[9px] text-amber-300">
+                    <span className="rounded-md bg-amber-500/15 border border-amber-500/40 px-1 text-3xs text-amber-300">
                       CUP
                     </span>
                   )}

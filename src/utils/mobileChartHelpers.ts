@@ -52,8 +52,8 @@ export function getResponsiveChartBox(
       dotRadius: isMobile ? 4.2 : 3.5,
       selectedDotRadius: isMobile ? 6 : 5,
       hitRadius: isMobile ? 16 : 10,
-      axisFontClass: isMobile ? 'text-[10px]' : 'text-[9px]',
-      labelFontClass: isMobile ? 'text-[9.5px]' : 'text-[8.5px]',
+      axisFontClass: isMobile ? 'text-2xs' : 'text-3xs',
+      labelFontClass: 'text-3xs',
     };
   }
 
@@ -76,8 +76,8 @@ export function getResponsiveChartBox(
       dotRadius: isMobile ? 4.5 : 3.5,
       selectedDotRadius: isMobile ? 6.5 : 5,
       hitRadius: isMobile ? 16 : 11,
-      axisFontClass: isMobile ? 'text-[10px]' : 'text-[9px]',
-      labelFontClass: isMobile ? 'text-[9.5px]' : 'text-[8.5px]',
+      axisFontClass: isMobile ? 'text-2xs' : 'text-3xs',
+      labelFontClass: 'text-3xs',
     };
   }
 
@@ -100,8 +100,8 @@ export function getResponsiveChartBox(
     dotRadius: isMobile ? 5.5 : 4.5,
     selectedDotRadius: isMobile ? 7.5 : 6.5,
     hitRadius: isMobile ? 16 : 11,
-    axisFontClass: isMobile ? 'text-[10px]' : 'text-[9px]',
-    labelFontClass: isMobile ? 'text-[9.5px]' : 'text-[8.5px]',
+    axisFontClass: isMobile ? 'text-2xs' : 'text-3xs',
+    labelFontClass: 'text-3xs',
   };
 }
 

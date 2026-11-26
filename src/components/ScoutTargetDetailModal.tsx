@@ -205,11 +205,11 @@ export const ScoutTargetDetailModal: React.FC<ScoutTargetDetailModalProps> = ({
             <h2 className="text-base sm:text-lg font-bold text-white leading-tight break-words">
               {target.name}
             </h2>
-            <span className="rounded bg-emerald-500/15 border border-emerald-500/35 px-1.5 py-0.5 font-mono text-xs text-emerald-300 font-semibold">
+            <span className="rounded-md bg-emerald-500/15 border border-emerald-500/35 px-1.5 py-0.5 font-mono text-xs text-emerald-300 font-semibold">
               {target.primaryPosition}
             </span>
             {target.shortlistOrigin === 'in_game_shortlist' && (
-              <span className="rounded bg-sky-500/15 border border-sky-500/35 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sky-300">
+              <span className="rounded-md bg-sky-500/15 border border-sky-500/35 px-1.5 py-0.5 text-2xs font-bold uppercase tracking-wide text-sky-300">
                 In-Game Shortlist
               </span>
             )}
@@ -267,7 +267,7 @@ export const ScoutTargetDetailModal: React.FC<ScoutTargetDetailModalProps> = ({
       }
     >
       {/* 3-Tab Dossier Switcher */}
-      <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-slate-950/80 border border-slate-800 p-1">
+      <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-slate-950/85 border border-slate-800 p-1">
         {(
           [
             { id: 'fit', label: 'Fit & Verdict' },
@@ -313,14 +313,14 @@ export const ScoutTargetDetailModal: React.FC<ScoutTargetDetailModalProps> = ({
           {shortlistAdvice && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
               <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-3.5 space-y-1.5">
-                <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-300">
+                <div className="flex items-center gap-1.5 text-2xs font-bold uppercase tracking-wider text-emerald-300">
                   <Sparkles className="h-3.5 w-3.5 shrink-0" />
                   How He Helps Right Now
                 </div>
                 <p className="text-slate-200 leading-relaxed">{shortlistAdvice.howFitsNow}</p>
               </div>
               <div className="rounded-xl border border-sky-500/30 bg-sky-950/20 p-3.5 space-y-1.5">
-                <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-300">
+                <div className="flex items-center gap-1.5 text-2xs font-bold uppercase tracking-wider text-sky-300">
                   <Clock className="h-3.5 w-3.5 shrink-0" />
                   1–3 Year Future Outlook
                 </div>
@@ -331,8 +331,8 @@ export const ScoutTargetDetailModal: React.FC<ScoutTargetDetailModalProps> = ({
 
           {/* Deal Economics & Strict Budget Gate Strip */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
-            <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 space-y-1">
-              <div className="text-[10px] uppercase tracking-wider text-slate-400">
+            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-1">
+              <div className="text-2xs uppercase tracking-wider text-slate-400">
                 FM27 Dual-Phase Roles
               </div>
               <div className="font-semibold text-emerald-300">
@@ -344,15 +344,15 @@ export const ScoutTargetDetailModal: React.FC<ScoutTargetDetailModalProps> = ({
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 space-y-1">
-              <div className="text-[10px] uppercase tracking-wider text-slate-400">
+            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-1">
+              <div className="text-2xs uppercase tracking-wider text-slate-400">
                 vs. {shortlistAdvice?.incumbentRoleLabel || 'Current Starter'}
               </div>
               <div className="font-semibold text-white truncate">
                 {incumbentName || 'Fills open depth slot'}
               </div>
               <div
-                className={`font-mono text-[11px] tabular-nums ${
+                className={`font-mono text-micro tabular-nums ${
                   (shortlistAdvice?.footballDelta ?? intel.starterDnaDelta ?? 0) >= 0
                     ? 'text-emerald-400'
                     : 'text-amber-300'
@@ -366,8 +366,8 @@ export const ScoutTargetDetailModal: React.FC<ScoutTargetDetailModalProps> = ({
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 space-y-1">
-              <div className="text-[10px] uppercase tracking-wider text-slate-400 flex items-center gap-1">
+            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-1">
+              <div className="text-2xs uppercase tracking-wider text-slate-400 flex items-center gap-1">
                 {shortlistAdvice?.budget.passesBudgetGate === false ? (
                   <AlertTriangle className="h-3 w-3 text-amber-400" />
                 ) : (
@@ -378,7 +378,7 @@ export const ScoutTargetDetailModal: React.FC<ScoutTargetDetailModalProps> = ({
               <div className="font-semibold text-slate-100">
                 {shortlistAdvice?.budget.feeLabel || intel.valueTag}
               </div>
-              <div className="text-[11px] text-slate-400 leading-snug">
+              <div className="text-micro text-slate-400 leading-snug">
                 {shortlistAdvice?.dealStructureAdvice || intel.promiseTag || 'Within club guidelines'}
               </div>
             </div>
@@ -387,10 +387,10 @@ export const ScoutTargetDetailModal: React.FC<ScoutTargetDetailModalProps> = ({
           {/* Personality, Scout Badges & Traits */}
           <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 space-y-2 text-xs">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              <span className="text-2xs font-bold uppercase tracking-wider text-slate-400">
                 Personality, Reliability &amp; Player Traits
               </span>
-              <span className="font-mono text-[11px] text-slate-200">
+              <span className="font-mono text-micro text-slate-200">
                 {personality} · Det {intel.syntheticPlayerRecord.attributes.determination}/20
               </span>
             </div>
@@ -398,7 +398,7 @@ export const ScoutTargetDetailModal: React.FC<ScoutTargetDetailModalProps> = ({
               {(target.scoutBadges || []).map((badge) => (
                 <span
                   key={badge}
-                  className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold ${
+                  className={`rounded-md border px-2 py-0.5 text-2xs font-semibold ${
                     badge === 'Injury-Prone'
                       ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
                       : 'bg-emerald-500/15 border-emerald-500/35 text-emerald-300'
@@ -410,7 +410,7 @@ export const ScoutTargetDetailModal: React.FC<ScoutTargetDetailModalProps> = ({
               {(shortlistAdvice?.character.traitNotes || []).map((note, idx) => (
                 <span
                   key={idx}
-                  className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${
+                  className={`rounded-md border px-2 py-0.5 text-2xs font-medium ${
                     note.startsWith('!')
                       ? 'bg-amber-500/15 border-amber-500/40 text-amber-200'
                       : 'bg-sky-500/15 border-sky-500/35 text-sky-200'
@@ -421,7 +421,7 @@ export const ScoutTargetDetailModal: React.FC<ScoutTargetDetailModalProps> = ({
               ))}
               {(!target.traits || target.traits.length === 0) &&
                 (!target.scoutBadges || target.scoutBadges.length === 0) && (
-                  <span className="text-[11px] text-slate-400">
+                  <span className="text-micro text-slate-400">
                     No special traits or reliability flags recorded in save.
                   </span>
                 )}
@@ -431,13 +431,13 @@ export const ScoutTargetDetailModal: React.FC<ScoutTargetDetailModalProps> = ({
           {/* Tactical Fit, Strengths & Risks */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
             <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-1">
-              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-emerald-400 font-semibold">
+              <div className="flex items-center gap-1.5 text-2xs uppercase tracking-wider text-emerald-400 font-semibold">
                 <TrendingUp className="h-3.5 w-3.5" /> Top Strength
               </div>
               <p className="text-slate-200">{intel.topStrength}</p>
             </div>
             <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-1">
-              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-amber-400 font-semibold">
+              <div className="flex items-center gap-1.5 text-2xs uppercase tracking-wider text-amber-400 font-semibold">
                 <ShieldCheck className="h-3.5 w-3.5" /> Primary Risk
               </div>
               <p className="text-slate-200">
@@ -447,7 +447,7 @@ export const ScoutTargetDetailModal: React.FC<ScoutTargetDetailModalProps> = ({
               </p>
             </div>
             <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-1">
-              <div className="text-[10px] uppercase tracking-wider text-sky-400 font-semibold">
+              <div className="text-2xs uppercase tracking-wider text-sky-400 font-semibold">
                 Active Tactic Fit
               </div>
               <p className="text-slate-200">{intel.tacticalFitNote}</p>
@@ -461,7 +461,7 @@ export const ScoutTargetDetailModal: React.FC<ScoutTargetDetailModalProps> = ({
         <div className="space-y-4">
           {posEntries.length > 0 && (
             <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 space-y-2">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              <div className="text-2xs font-bold uppercase tracking-wider text-slate-400">
                 Positional Familiarity (1–20)
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -494,9 +494,9 @@ export const ScoutTargetDetailModal: React.FC<ScoutTargetDetailModalProps> = ({
             ).map((group) => (
               <div
                 key={group.title}
-                className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 space-y-1.5"
+                className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-1.5"
               >
-                <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 pb-1 border-b border-slate-800">
+                <div className="text-2xs font-bold uppercase tracking-wider text-emerald-400 pb-1 border-b border-slate-800">
                   {group.title}
                 </div>
                 {group.items.map((item) => {
@@ -547,7 +547,7 @@ export const ScoutTargetDetailModal: React.FC<ScoutTargetDetailModalProps> = ({
               {shortlistAdvice.comparison.radarAxes.map((ax) => (
                 <div
                   key={ax.label}
-                  className="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2 flex items-center justify-between text-xs font-mono"
+                  className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 flex items-center justify-between text-xs font-mono"
                 >
                   <span className="text-slate-300 font-semibold">{ax.label}</span>
                   <div className="flex items-center gap-1.5">
@@ -555,7 +555,7 @@ export const ScoutTargetDetailModal: React.FC<ScoutTargetDetailModalProps> = ({
                     <span className="text-slate-500">/</span>
                     <span className="text-sky-300">{ax.starterVal}</span>
                     <span
-                      className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                      className={`rounded-md px-1.5 py-0.5 text-2xs font-bold ${
                         ax.delta > 0
                           ? 'bg-emerald-500/20 text-emerald-300'
                           : ax.delta < 0

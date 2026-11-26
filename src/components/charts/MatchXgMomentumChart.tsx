@@ -225,12 +225,12 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-sm font-semibold text-white">{title}</h3>
               {activeSeason && activeSeason !== 'ALL' && (
-                <span className="rounded border border-slate-700 bg-slate-950 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-emerald-300">
+                <span className="rounded-md border border-slate-700 bg-slate-950 px-1.5 py-0.5 font-mono text-2xs font-semibold text-emerald-300">
                   {activeSeason}
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">
+            <p className="text-micro text-slate-400 mt-0.5">
               {totals.gp} matches · {totals.ppg.toFixed(2)} PPG · xG{' '}
               <span className="font-mono tabular-nums text-emerald-300">
                 {totals.xgf.toFixed(2)}
@@ -266,7 +266,7 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
         </div>
 
         {seasons.length > 1 && (
-          <div className="flex flex-wrap items-center gap-1 text-[11px]">
+          <div className="flex flex-wrap items-center gap-1 text-micro">
             {seasons.map((s) => (
               <button
                 key={s}
@@ -296,7 +296,7 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
         )}
 
         {/* Separate Competition Scope Tabs + Clear Legend */}
-        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-micro">
           <div className="flex flex-wrap gap-1">
             {scopeTabs.map((tab) => (
               <button
@@ -306,16 +306,16 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
                 className={`min-h-[44px] sm:min-h-[32px] px-2.5 rounded-lg border font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                   activeScope === tab.id
                     ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                    : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
+                    : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:text-slate-200'
                 }`}
               >
                 {tab.label}{' '}
-                <span className="font-mono text-[10px] opacity-75">({tab.count})</span>
+                <span className="font-mono text-2xs opacity-75">({tab.count})</span>
               </button>
             ))}
           </div>
           {viewMode === 'chart' && (
-            <div className="flex items-center gap-3 text-[10px] text-slate-400">
+            <div className="flex items-center gap-3 text-2xs text-slate-400">
               <span className="inline-flex items-center gap-1.5">
                 <span className="h-0.5 w-3.5 bg-emerald-400 inline-block" /> xG For
               </span>
@@ -345,11 +345,11 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
             return (
               <div
                 key={row.match.id}
-                className="rounded-xl border border-slate-800 bg-slate-950/75 p-2.5 space-y-1.5"
+                className="rounded-xl border border-slate-800 bg-slate-950/60 p-2.5 space-y-1.5"
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0 flex items-center gap-1.5">
-                    <span className="font-mono text-[10px] text-slate-400 shrink-0">
+                    <span className="font-mono text-2xs text-slate-400 shrink-0">
                       {row.match.date}
                     </span>
                     <span className="text-xs font-semibold text-white truncate">
@@ -357,18 +357,18 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
                     </span>
                   </div>
                   <span
-                    className={`rounded-md border px-2 py-0.5 font-mono text-[11px] font-bold shrink-0 tabular-nums ${resClass}`}
+                    className={`rounded-md border px-2 py-0.5 font-mono text-micro font-bold shrink-0 tabular-nums ${resClass}`}
                   >
                     {row.match.result} {row.match.score}
                   </span>
                 </div>
-                <div className="flex flex-wrap items-center justify-between gap-1.5 text-[11px]">
+                <div className="flex flex-wrap items-center justify-between gap-1.5 text-micro">
                   <div className="flex flex-wrap items-center gap-1.5 font-mono tabular-nums">
                     <span className="text-emerald-300">
                       xG {row.xgFor.toFixed(2)}–{row.xgAgainst.toFixed(2)}
                     </span>
                     <span className="text-slate-500">·</span>
-                    <span className="text-[10px] text-slate-400 font-sans">
+                    <span className="text-2xs text-slate-400 font-sans">
                       {formatCompetitionBucketTag(bucket)}
                     </span>
                     {row.match.possession != null && (
@@ -376,7 +376,7 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
                     )}
                   </div>
                   <span
-                    className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${verdictToneClass(
+                    className={`rounded-md border px-1.5 py-0.5 text-2xs font-semibold ${verdictToneClass(
                       row.verdictTone
                     )}`}
                   >
@@ -388,7 +388,7 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
           })}
           {rankedRows.length > visibleRankedRows.length && (
             <div className="flex items-center justify-between gap-2 pt-1.5">
-              <span className="text-[11px] text-slate-400">
+              <span className="text-micro text-slate-400">
                 Showing {visibleRankedRows.length} of {rankedRows.length} matches in this chart list
               </span>
               <div className="flex items-center gap-2">
@@ -397,14 +397,14 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
                   onClick={() =>
                     setVisibleRowLimit((prev) => nextWindowLimit(prev, 30, rankedRows.length))
                   }
-                  className="min-h-[44px] sm:min-h-[30px] px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-800 text-slate-200 hover:bg-slate-700 cursor-pointer transition"
+                  className="min-h-[44px] sm:min-h-[30px] px-2.5 py-1 rounded-lg text-micro font-semibold bg-slate-800 text-slate-200 hover:bg-slate-700 cursor-pointer transition"
                 >
                   Show 30 More
                 </button>
                 <button
                   type="button"
                   onClick={() => setVisibleRowLimit(rankedRows.length)}
-                  className="min-h-[44px] sm:min-h-[30px] px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-600/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600/25 cursor-pointer transition"
+                  className="min-h-[44px] sm:min-h-[30px] px-2.5 py-1 rounded-lg text-micro font-semibold bg-emerald-600/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600/25 cursor-pointer transition"
                 >
                   Show All ({rankedRows.length})
                 </button>
@@ -537,7 +537,7 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
           </svg>
 
           {plotMatches.length < xgMatches.length && (
-            <p className="pt-1 text-[11px] text-slate-400">
+            <p className="pt-1 text-micro text-slate-400">
               Chart plots the latest {plotMatches.length} of {xgMatches.length} matches in scope. Totals above and the Match List cover all of them.
             </p>
           )}
@@ -556,10 +556,10 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
             const verdict = describeMatchXgVerdict(xgF - xgA, gf - xgF);
 
             return (
-              <div className="rounded-xl border border-slate-800 bg-slate-950/80 px-3 py-2.5 space-y-2 text-xs">
+              <div className="rounded-xl border border-slate-800 bg-slate-950/85 px-3 py-2.5 space-y-2 text-xs">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-1.5 text-slate-200 min-w-0">
-                    <span className={`rounded border px-1.5 py-0.5 font-mono text-[9px] font-bold shrink-0 ${bucketBadgeClass}`}>
+                    <span className={`rounded-md border px-1.5 py-0.5 font-mono text-3xs font-bold shrink-0 ${bucketBadgeClass}`}>
                       {formatCompetitionBucketTag(selBucket)}
                     </span>
                     <span className="font-mono text-slate-400 shrink-0">{selectedMatch.date}</span>
@@ -595,7 +595,7 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-2.5 font-mono tabular-nums text-[11px]">
+                  <div className="flex flex-wrap items-center gap-2.5 font-mono tabular-nums text-micro">
                     <span
                       className={
                         selectedMatch.result === 'W'
@@ -615,7 +615,7 @@ export const MatchXgMomentumChart: React.FC<MatchXgMomentumChartProps> = ({
                     )}
                   </div>
                   <span
-                    className={`rounded border px-2 py-0.5 text-[10px] font-semibold ${verdictToneClass(
+                    className={`rounded-md border px-2 py-0.5 text-2xs font-semibold ${verdictToneClass(
                       verdict.tone
                     )}`}
                   >

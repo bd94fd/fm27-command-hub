@@ -47,7 +47,7 @@ export const EmptyStatePanel: React.FC<EmptyStatePanelProps> = ({
           {EMPTY_STATE_ACTION}
           <ChevronRight className="h-3.5 w-3.5 shrink-0" />
         </button>
-        <p className="mx-auto mt-1.5 max-w-xs text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">
+        <p className="mx-auto mt-1.5 max-w-xs text-micro leading-relaxed text-slate-600 dark:text-slate-400">
           {EMPTY_STATE_ACTION_HINT}
         </p>
       </>

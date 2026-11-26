@@ -77,10 +77,10 @@ export const ScoutTargetFilters: React.FC<ScoutTargetFiltersProps> = ({
               key={grp}
               type="button"
               onClick={() => setTargetPosGroup(grp)}
-              className={`min-h-[44px] sm:min-h-[30px] rounded-lg px-2.5 py-1 text-xs sm:text-[11px] font-semibold border transition cursor-pointer whitespace-nowrap ${
+              className={`min-h-[44px] sm:min-h-[30px] rounded-lg px-2.5 py-1 text-xs sm:text-micro font-semibold border transition cursor-pointer whitespace-nowrap ${
                 targetPosGroup === grp
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                  : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
+                  : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:text-slate-200'
               }`}
             >
               {grp}
@@ -102,10 +102,10 @@ export const ScoutTargetFilters: React.FC<ScoutTargetFiltersProps> = ({
               key={band.id}
               type="button"
               onClick={() => setTargetAgeBand(band.id)}
-              className={`min-h-[44px] sm:min-h-[30px] rounded-lg px-2.5 py-1 text-xs sm:text-[11px] font-semibold border transition cursor-pointer whitespace-nowrap ${
+              className={`min-h-[44px] sm:min-h-[30px] rounded-lg px-2.5 py-1 text-xs sm:text-micro font-semibold border transition cursor-pointer whitespace-nowrap ${
                 targetAgeBand === band.id
                   ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
-                  : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
+                  : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:text-slate-200'
               }`}
             >
               {band.label}
@@ -117,7 +117,7 @@ export const ScoutTargetFilters: React.FC<ScoutTargetFiltersProps> = ({
       {/* Phase 2 (v3.0): Configurable Club DNA Archetypes & Pillar Weight Tuner */}
       <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[11px] font-bold text-emerald-300 mr-1">
+          <span className="text-micro font-bold text-emerald-300 mr-1">
             Club DNA:
           </span>
           <button
@@ -126,10 +126,10 @@ export const ScoutTargetFilters: React.FC<ScoutTargetFiltersProps> = ({
               setDnaArchetypeFilter('ALL');
               setVisibleTargetCount(24);
             }}
-            className={`min-h-[44px] sm:min-h-[28px] rounded-lg px-2.5 sm:px-2 py-1 sm:py-0.5 text-xs sm:text-[11px] font-semibold border transition cursor-pointer whitespace-nowrap ${
+            className={`min-h-[44px] sm:min-h-[28px] rounded-lg px-2.5 sm:px-2 py-1 sm:py-0.5 text-xs sm:text-micro font-semibold border transition cursor-pointer whitespace-nowrap ${
               dnaArchetypeFilter === 'ALL'
                 ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
+                : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:text-slate-200'
             }`}
           >
             All DNA
@@ -142,10 +142,10 @@ export const ScoutTargetFilters: React.FC<ScoutTargetFiltersProps> = ({
                 setDnaArchetypeFilter(arch.id);
                 setVisibleTargetCount(24);
               }}
-              className={`min-h-[44px] sm:min-h-[28px] rounded-lg px-2.5 sm:px-2 py-1 sm:py-0.5 text-xs sm:text-[11px] font-semibold border transition cursor-pointer whitespace-nowrap ${
+              className={`min-h-[44px] sm:min-h-[28px] rounded-lg px-2.5 sm:px-2 py-1 sm:py-0.5 text-xs sm:text-micro font-semibold border transition cursor-pointer whitespace-nowrap ${
                 dnaArchetypeFilter === arch.id
                   ? archetypeBadgeClass(arch.badgeTone)
-                  : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
+                  : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:text-slate-200'
               }`}
             >
               {arch.shortLabel}
@@ -156,14 +156,14 @@ export const ScoutTargetFilters: React.FC<ScoutTargetFiltersProps> = ({
         <button
           type="button"
           onClick={() => setShowDnaTuner((v) => !v)}
-          className="min-h-[44px] sm:min-h-[30px] rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700 px-3 sm:px-2.5 py-1 text-xs sm:text-[11px] font-semibold text-emerald-300 transition cursor-pointer whitespace-nowrap"
+          className="min-h-[44px] sm:min-h-[30px] rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700 px-3 sm:px-2.5 py-1 text-xs sm:text-micro font-semibold text-emerald-300 transition cursor-pointer whitespace-nowrap"
         >
           {showDnaTuner ? 'Hide DNA Weight Sliders' : 'Tune Club DNA Weights'}
         </button>
       </div>
 
       {showDnaTuner && (
-        <div className="rounded-xl border border-emerald-500/30 bg-slate-950/90 p-3 space-y-2.5">
+        <div className="rounded-xl border border-emerald-500/30 bg-slate-950/85 p-3 space-y-2.5">
           <div className="flex items-center justify-between text-xs">
             <span className="font-bold text-emerald-300">
               Custom Club DNA 4-Pillar Weight Matrix (0–100 + Division Benchmark Calibration)
@@ -171,7 +171,7 @@ export const ScoutTargetFilters: React.FC<ScoutTargetFiltersProps> = ({
             <button
               type="button"
               onClick={handleResetDnaWeights}
-              className="text-[11px] text-slate-400 hover:text-white underline cursor-pointer"
+              className="text-micro text-slate-400 hover:text-white underline cursor-pointer"
             >
               Reset Default DNA
             </button>
@@ -198,7 +198,7 @@ export const ScoutTargetFilters: React.FC<ScoutTargetFiltersProps> = ({
               ] as const
             ).map((pillar) => (
               <div key={pillar.key} className="space-y-1">
-                <div className="flex justify-between text-[11px]">
+                <div className="flex justify-between text-micro">
                   <span className="text-slate-300">{pillar.label}</span>
                   <span className="font-mono font-bold text-emerald-300">
                     {clubDnaWeights[pillar.key]}
@@ -247,10 +247,10 @@ export const ScoutTargetFilters: React.FC<ScoutTargetFiltersProps> = ({
               key={btn.id}
               type="button"
               onClick={() => setTargetFilter(btn.id)}
-              className={`min-h-[44px] sm:min-h-[30px] rounded-lg px-2.5 py-1 text-xs sm:text-[11px] font-semibold border transition cursor-pointer whitespace-nowrap ${
+              className={`min-h-[44px] sm:min-h-[30px] rounded-lg px-2.5 py-1 text-xs sm:text-micro font-semibold border transition cursor-pointer whitespace-nowrap ${
                 targetFilter === btn.id
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                  : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
+                  : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:text-slate-200'
               }`}
             >
               {btn.label}
@@ -264,7 +264,7 @@ export const ScoutTargetFilters: React.FC<ScoutTargetFiltersProps> = ({
               setExactPosFilter(e.target.value);
               setVisibleTargetCount(24);
             }}
-            className="min-h-[44px] sm:min-h-[30px] rounded-lg bg-slate-950 border border-slate-700 px-2.5 sm:px-2 py-1 text-base sm:text-[11px] font-semibold text-slate-200 focus-visible:border-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
+            className="min-h-[44px] sm:min-h-[30px] rounded-lg bg-slate-950 border border-slate-700 px-2.5 sm:px-2 py-1 text-base sm:text-micro font-semibold text-slate-200 focus-visible:border-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
           >
             <option value="ALL">All Exact Slots</option>
             {(['GK', 'DC', 'DL', 'DR', 'DM', 'MC', 'AMC', 'AML', 'AMR', 'STC'] as const).map((slot) => (
@@ -289,7 +289,7 @@ export const ScoutTargetFilters: React.FC<ScoutTargetFiltersProps> = ({
               );
               setVisibleTargetCount(24);
             }}
-            className="min-h-[44px] sm:min-h-[30px] rounded-lg bg-slate-950 border border-slate-700 px-2.5 sm:px-2 py-1 text-base sm:text-[11px] font-semibold text-slate-200 focus-visible:border-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
+            className="min-h-[44px] sm:min-h-[30px] rounded-lg bg-slate-950 border border-slate-700 px-2.5 sm:px-2 py-1 text-base sm:text-micro font-semibold text-slate-200 focus-visible:border-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
           >
             <option value="GAP_FIT">Sort: Gap &amp; Role Fit</option>
             <option value="CLUB_DNA">Sort: Club DNA Score (0–100)</option>
@@ -306,10 +306,10 @@ export const ScoutTargetFilters: React.FC<ScoutTargetFiltersProps> = ({
               setGenuineGapsOnly((prev) => !prev);
               setVisibleTargetCount(24);
             }}
-            className={`min-h-[44px] sm:min-h-[30px] rounded-lg px-2.5 py-1 text-xs sm:text-[11px] font-semibold border transition cursor-pointer whitespace-nowrap ${
+            className={`min-h-[44px] sm:min-h-[30px] rounded-lg px-2.5 py-1 text-xs sm:text-micro font-semibold border transition cursor-pointer whitespace-nowrap ${
               genuineGapsOnly
                 ? 'bg-emerald-500/25 text-emerald-200 border-emerald-400 ring-1 ring-emerald-400/40 shadow-sm shadow-emerald-500/20'
-                : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
+                : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:text-slate-200'
             }`}
           >
             {genuineGapsOnly ? '✓ Genuine Gaps Only' : 'Genuine Gaps Only'}
@@ -321,12 +321,12 @@ export const ScoutTargetFilters: React.FC<ScoutTargetFiltersProps> = ({
             <button
               type="button"
               onClick={() => setSearch('')}
-              className="inline-flex items-center gap-1 rounded-lg bg-amber-500/15 border border-amber-500/40 px-2 py-0.5 text-[11px] font-semibold text-amber-200 hover:bg-amber-500/25 cursor-pointer"
+              className="inline-flex items-center gap-1 rounded-lg bg-amber-500/15 border border-amber-500/40 px-2 py-0.5 text-micro font-semibold text-amber-200 hover:bg-amber-500/25 cursor-pointer"
             >
               Filter: &ldquo;{search.trim()}&rdquo; ×
             </button>
           )}
-          <span className="text-[11px] text-slate-400">
+          <span className="text-micro text-slate-400">
             Scout pool: {filteredScoutedTargets.length} matching ({scoutedTargets.length} in save)
           </span>
         </div>

@@ -414,21 +414,21 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
     <div className="space-y-4">
       {/* Synced Analytics Scope Overview: League vs Cup vs Friendlies + Key Performance KPIs */}
       {matches.length > 0 && (
-        <div className="rounded-xl border border-slate-800 bg-slate-900/75 p-4 space-y-3">
+        <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <div className="text-sm font-bold text-white flex flex-wrap items-center gap-2">
                 <span>Match Analytics Overview</span>
-                <span className="rounded border border-emerald-500/35 bg-emerald-500/15 px-2 py-0.5 font-mono text-[10px] font-semibold text-emerald-300">
+                <span className="rounded-md border border-emerald-500/35 bg-emerald-500/15 px-2 py-0.5 font-mono text-2xs font-semibold text-emerald-300">
                   {activeScopeLabel}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 mt-0.5">
+              <p className="text-micro text-slate-400 mt-0.5">
                 Tap League, Cup, or Friendlies below to filter the xG chart, momentum story, and match log together.
               </p>
             </div>
             {liveLeagueRecord && (
-              <span className="rounded-lg bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 text-[11px] font-mono text-emerald-300 font-semibold">
+              <span className="rounded-lg bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 text-micro font-mono text-emerald-300 font-semibold">
                 League Table: {liveLeagueRecord}
               </span>
             )}
@@ -478,18 +478,18 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                     isActive ? card.activeCls : card.idleCls
                   }`}
                 >
-                  <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider">
+                  <div className="flex items-center justify-between text-2xs font-bold uppercase tracking-wider">
                     <span className={card.accent}>{card.label}</span>
                     <span className="font-mono text-slate-300">{card.rec.played} GP</span>
                   </div>
                   {card.rec.played === 0 ? (
-                    <div className="mt-1 text-[11px] text-slate-400">0 matches</div>
+                    <div className="mt-1 text-micro text-slate-400">0 matches</div>
                   ) : (
-                    <div className="mt-1 flex items-baseline justify-between gap-2 font-mono tabular-nums text-[11px]">
+                    <div className="mt-1 flex items-baseline justify-between gap-2 font-mono tabular-nums text-micro">
                       <span className="text-white font-semibold">
                         {card.rec.won}W-{card.rec.drawn}D-{card.rec.lost}L ({card.rec.goalsFor}:{card.rec.goalsAgainst})
                       </span>
-                      <span className="text-[10px] text-slate-400">
+                      <span className="text-2xs text-slate-400">
                         {card.rec.xgDiff !== null
                           ? `xGD ${card.rec.xgDiff >= 0 ? '+' : ''}${card.rec.xgDiff.toFixed(2)}`
                           : 'No xG'}
@@ -504,37 +504,37 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
           {/* 4-Card Synced KPI Strip */}
           {filteredMatches.length > 0 && (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 text-xs">
-              <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
-                <div className="text-[10px] uppercase tracking-wider text-slate-400">
+              <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2">
+                <div className="text-2xs uppercase tracking-wider text-slate-400">
                   Record &amp; Pace
                 </div>
                 <div className="mt-0.5 font-mono tabular-nums font-bold text-white">
                   {wins}W-{draws}D-{losses}L
                 </div>
-                <div className="text-[10px] font-mono text-emerald-300">
+                <div className="text-2xs font-mono text-emerald-300">
                   {ppg.toFixed(2)} PPG · {winPct}% Win
                 </div>
-                <div className="text-[10px] font-mono text-slate-400">
+                <div className="text-2xs font-mono text-slate-400">
                   Scope: {ppgScopeLabel}
                 </div>
               </div>
-              <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
-                <div className="text-[10px] uppercase tracking-wider text-slate-400">
+              <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2">
+                <div className="text-2xs uppercase tracking-wider text-slate-400">
                   Goals &amp; Shutouts
                 </div>
                 <div className="mt-0.5 font-mono tabular-nums font-bold text-white">
                   {filteredXgStats.goalsFor} : {filteredXgStats.goalsAgainst}{' '}
-                  <span className="text-[11px] font-normal text-slate-400">
+                  <span className="text-micro font-normal text-slate-400">
                     ({filteredXgStats.goalsFor - filteredXgStats.goalsAgainst >= 0 ? '+' : ''}
                     {filteredXgStats.goalsFor - filteredXgStats.goalsAgainst})
                   </span>
                 </div>
-                <div className="text-[10px] font-mono text-sky-300">
+                <div className="text-2xs font-mono text-sky-300">
                   {filteredXgStats.cleanSheets} Clean Sheet{filteredXgStats.cleanSheets === 1 ? '' : 's'}
                 </div>
               </div>
-              <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
-                <div className="text-[10px] uppercase tracking-wider text-slate-400">
+              <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2">
+                <div className="text-2xs uppercase tracking-wider text-slate-400">
                   xG &amp; Finishing
                 </div>
                 {filteredXgStats.count > 0 ? (
@@ -543,7 +543,7 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                       {filteredXgStats.totalXgFor.toFixed(2)} – {filteredXgStats.totalXgAgainst.toFixed(2)}
                     </div>
                     <div
-                      className={`text-[10px] font-mono ${
+                      className={`text-2xs font-mono ${
                         filteredXgStats.totalXgFor - filteredXgStats.totalXgAgainst >= 0
                           ? 'text-emerald-300'
                           : 'text-rose-300'
@@ -556,17 +556,17 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                     </div>
                   </>
                 ) : (
-                  <div className="mt-1 text-[11px] text-slate-400">No xG tracked</div>
+                  <div className="mt-1 text-micro text-slate-400">No xG tracked</div>
                 )}
               </div>
-              <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
-                <div className="text-[10px] uppercase tracking-wider text-slate-400">
+              <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2">
+                <div className="text-2xs uppercase tracking-wider text-slate-400">
                   Home vs Away
                 </div>
-                <div className="mt-0.5 font-mono tabular-nums text-[11px] text-white">
+                <div className="mt-0.5 font-mono tabular-nums text-micro text-white">
                   H: <strong>{filteredXgStats.homeRecord}</strong>
                 </div>
-                <div className="font-mono tabular-nums text-[11px] text-slate-300">
+                <div className="font-mono tabular-nums text-micro text-slate-300">
                   A: <strong>{filteredXgStats.awayRecord}</strong>
                 </div>
               </div>
@@ -592,14 +592,14 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
           <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] font-mono uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-semibold">
+                <span className="text-micro font-mono uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-semibold">
                   Match Momentum &amp; xG Story
                 </span>
-                <span className="rounded bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 px-1.5 py-0.5 text-[10px] font-mono text-slate-600 dark:text-slate-300">
+                <span className="rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 px-1.5 py-0.5 text-2xs font-mono text-slate-600 dark:text-slate-300">
                   {activeScopeLabel}
                 </span>
               </div>
-              <span className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400">
+              <span className="text-micro font-mono tabular-nums text-slate-500 dark:text-slate-400">
                 {momentumSummary.actualPoints} pts vs {momentumSummary.expectedPoints} xPts (
                 {momentumSummary.pointsDelta >= 0 ? '+' : ''}
                 {momentumSummary.pointsDelta})
@@ -612,16 +612,16 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
               {momentumSummary.verdictDetail}
             </p>
             {momentumSummary.matchesWithXg > 0 && (
-              <div className="flex flex-wrap gap-2 pt-1 text-[11px] font-mono tabular-nums text-slate-600 dark:text-slate-300">
-                <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800">
+              <div className="flex flex-wrap gap-2 pt-1 text-micro font-mono tabular-nums text-slate-600 dark:text-slate-300">
+                <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800">
                   Goals vs xG: {momentumSummary.goalsFor} vs {momentumSummary.xGFor} (
                   {momentumSummary.finishingDelta >= 0 ? '+' : ''}
                   {momentumSummary.finishingDelta})
                 </span>
-                <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800">
+                <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800">
                   Conceded vs xGA: {momentumSummary.goalsAgainst} vs {momentumSummary.xGAgainst}
                 </span>
-                <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
                   xG tracked: {momentumSummary.matchesWithXg}/{filteredMatches.length} GP
                 </span>
               </div>
@@ -632,14 +632,14 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
             <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[11px] font-mono uppercase tracking-wider text-sky-600 dark:text-sky-400 font-semibold">
+                  <span className="text-micro font-mono uppercase tracking-wider text-sky-600 dark:text-sky-400 font-semibold">
                     Season Chronicle
                   </span>
-                  <span className="rounded bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 px-1.5 py-0.5 text-[10px] font-mono text-slate-600 dark:text-slate-300">
+                  <span className="rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 px-1.5 py-0.5 text-2xs font-mono text-slate-600 dark:text-slate-300">
                     {formatCompetitionFilterLabel(chronicleScope)}
                   </span>
                 </div>
-                <div className="inline-flex flex-wrap items-center rounded-lg bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 p-0.5 text-[10px] font-semibold">
+                <div className="inline-flex flex-wrap items-center rounded-lg bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 p-0.5 text-2xs font-semibold">
                   {(
                     [
                       { id: 'competitive', label: 'Comp' },
@@ -668,20 +668,20 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                 {seasonChronicle.slice(0, 3).map((s) => (
                   <div
                     key={s.seasonLabel}
-                    className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-1.5 text-xs px-2.5 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/60"
+                    className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-1.5 text-xs px-2.5 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/70"
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono font-semibold text-slate-900 dark:text-white">
                         {s.seasonLabel}
                       </span>
-                      <span className="font-mono tabular-nums text-[11px] text-slate-400">
+                      <span className="font-mono tabular-nums text-micro text-slate-400">
                         ({s.played} GP)
                       </span>
                       <span className="font-mono tabular-nums text-slate-700 dark:text-slate-200">
                         {`${s.wins}W-${s.draws}D-${s.losses}L · ${s.goalsFor}:${s.goalsAgainst}`}
                       </span>
                     </div>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400 break-words">
+                    <div className="text-micro text-slate-500 dark:text-slate-400 break-words">
                       {`${s.cleanSheets} CS · ${s.longestUnbeatenRun} unbeaten${s.biggestWin ? ` · Best: ${s.biggestWin}` : ''}`}
                     </div>
                   </div>
@@ -735,7 +735,7 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
         {matches.length > 0 && (
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400 mr-1">
+              <span className="inline-flex items-center gap-1 text-micro font-semibold text-slate-400 mr-1">
                 <Calendar className="w-3.5 h-3.5" /> Season:
               </span>
               {seasons.map((s) => (
@@ -746,7 +746,7 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                   className={`min-h-[38px] sm:min-h-[30px] rounded-lg px-2.5 py-1 text-xs font-semibold border transition cursor-pointer ${
                     activeSeason === s
                       ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                      : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
+                      : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:text-slate-200'
                   }`}
                 >
                   {s}
@@ -760,7 +760,7 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                   className={`min-h-[38px] sm:min-h-[30px] rounded-lg px-2.5 py-1 text-xs font-semibold border transition cursor-pointer ${
                     activeSeason === 'ALL'
                       ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                      : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
+                      : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:text-slate-200'
                   }`}
                 >
                   All Seasons
@@ -769,7 +769,7 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400 mr-1">
+              <span className="inline-flex items-center gap-1 text-micro font-semibold text-slate-400 mr-1">
                 <Filter className="w-3.5 h-3.5" /> Comp:
               </span>
               {(
@@ -788,10 +788,10 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                   className={`min-h-[38px] sm:min-h-[30px] rounded-lg px-2.5 py-1 text-xs font-semibold border transition cursor-pointer ${
                     activeCompFilter === c.id
                       ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
-                      : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
+                      : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:text-slate-200'
                   }`}
                 >
-                  {c.label} <span className="font-mono text-[10px] opacity-75">({c.count})</span>
+                  {c.label} <span className="font-mono text-2xs opacity-75">({c.count})</span>
                 </button>
               ))}
             </div>
@@ -840,7 +840,7 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
             })}
             {filteredMatches.length > visibleMatches.length && (
               <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
-                <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                <span className="text-micro text-slate-500 dark:text-slate-400">
                   Showing {visibleMatches.length} of {filteredMatches.length} matches
                 </span>
                 <div className="flex items-center gap-2">

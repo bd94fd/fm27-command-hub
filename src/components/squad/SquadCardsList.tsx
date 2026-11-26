@@ -66,7 +66,7 @@ export const SquadCardsList: React.FC<SquadCardsListProps> = ({
         return (
           <div
             key={p.id}
-            className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/60 hover:border-emerald-500/50 dark:hover:bg-slate-800/40 transition overflow-hidden"
+            className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/60 hover:border-emerald-500/50 dark:hover:bg-slate-800/70 transition overflow-hidden"
           >
             <button
               type="button"
@@ -77,18 +77,18 @@ export const SquadCardsList: React.FC<SquadCardsListProps> = ({
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex items-center gap-1.5 flex-wrap">
                   {row.shirtNumber !== null && (
-                    <span className="font-mono text-[11px] font-bold text-slate-400">
+                    <span className="font-mono text-micro font-bold text-slate-400">
                       #{row.shirtNumber}
                     </span>
                   )}
                   <span className="font-bold text-sm text-slate-900 dark:text-slate-100 truncate">
                     {p.name}
                   </span>
-                  <span className="rounded bg-slate-200/80 dark:bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-700 dark:text-slate-200">
+                  <span className="rounded-md bg-slate-200/80 dark:bg-slate-800 px-1.5 py-0.5 font-mono text-2xs font-bold text-slate-700 dark:text-slate-200">
                     {p.position}
                   </span>
                   {p.age > 0 && (
-                    <span className="text-[11px] font-mono text-slate-400">
+                    <span className="text-micro font-mono text-slate-400">
                       {formatAge(p.age)}y
                     </span>
                   )}
@@ -102,7 +102,7 @@ export const SquadCardsList: React.FC<SquadCardsListProps> = ({
               </div>
 
               {/* Second line: Roles + Status/Availability badges */}
-              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-micro">
                 {(p.ipRole || p.oopRole) && (
                   <span className="text-slate-500 dark:text-slate-400 truncate max-w-full">
                     {p.ipRole}
@@ -112,7 +112,7 @@ export const SquadCardsList: React.FC<SquadCardsListProps> = ({
                 {row.isBanned && (
                   <span
                     title={row.activeBanTooltip || 'Suspended'}
-                    className="rounded bg-rose-500/20 border border-rose-500/45 px-1.5 py-0.5 text-[10px] font-bold text-rose-300"
+                    className="rounded-md bg-rose-500/20 border border-rose-500/45 px-1.5 py-0.5 text-2xs font-bold text-rose-300"
                   >
                     BANNED ({row.activeBanMatches}m)
                   </span>
@@ -120,35 +120,35 @@ export const SquadCardsList: React.FC<SquadCardsListProps> = ({
                 {!row.isBanned && row.hasOtherCompBan && (
                   <span
                     title={row.activeBanTooltip || 'Other-competition ban only — eligible next match'}
-                    className="rounded bg-amber-500/15 border border-amber-500/45 px-1.5 py-0.5 text-[10px] font-bold text-amber-300"
+                    className="rounded-md bg-amber-500/15 border border-amber-500/45 px-1.5 py-0.5 text-2xs font-bold text-amber-300"
                   >
                     CUP BAN ({row.activeBanMatches}m)
                   </span>
                 )}
                 {row.isInjured && (
-                  <span className="rounded bg-amber-500/20 border border-amber-500/45 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">
+                  <span className="rounded-md bg-amber-500/20 border border-amber-500/45 px-1.5 py-0.5 text-2xs font-bold text-amber-300">
                     INJURED
                   </span>
                 )}
                 {isSurplus && (
-                  <span className="rounded bg-rose-500/15 border border-rose-500/40 px-1.5 py-0.5 text-[10px] font-bold text-rose-300">
+                  <span className="rounded-md bg-rose-500/15 border border-rose-500/40 px-1.5 py-0.5 text-2xs font-bold text-rose-300">
                     SURPLUS
                   </span>
                 )}
                 {p.onLoan && (
-                  <span className="rounded bg-indigo-500/20 border border-indigo-500/45 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-300">
+                  <span className="rounded-md bg-indigo-500/20 border border-indigo-500/45 px-1.5 py-0.5 text-2xs font-semibold text-indigo-300">
                     LOAN
                   </span>
                 )}
                 {row.optYears > 0 && (
-                  <span className="rounded bg-sky-500/15 border border-sky-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-sky-300">
+                  <span className="rounded-md bg-sky-500/15 border border-sky-500/40 px-1.5 py-0.5 text-2xs font-semibold text-sky-300">
                     +{row.optYears}y Opt
                   </span>
                 )}
               </div>
 
               {row.cleanNote && (
-                <div className="mt-1 text-[11px] text-slate-400 truncate">
+                <div className="mt-1 text-micro text-slate-400 truncate">
                   {row.cleanNote}
                 </div>
               )}
@@ -172,7 +172,7 @@ export const SquadCardsList: React.FC<SquadCardsListProps> = ({
                           ? 'text-rose-400'
                           : 'text-slate-300';
                 return (
-                  <div className="mt-2 flex items-start justify-between gap-2 text-[11px] pt-1.5 border-t border-slate-200/70 dark:border-slate-800/70">
+                  <div className="mt-2 flex items-start justify-between gap-2 text-micro pt-1.5 border-t border-slate-200/70 dark:border-slate-800/70">
                     <span className="line-clamp-2 sm:truncate text-slate-600 dark:text-slate-300 leading-snug">
                       <strong className={toneText}>{cardEval.verdictLabel}</strong>
                       <span className="text-slate-500"> · </span>
@@ -181,7 +181,7 @@ export const SquadCardsList: React.FC<SquadCardsListProps> = ({
                       </span>
                     </span>
                     {cardEval.promiseTag && (
-                      <span className="font-mono text-[10px] text-amber-300 shrink-0">
+                      <span className="font-mono text-2xs text-amber-300 shrink-0">
                         {cardEval.promiseTag}
                       </span>
                     )}
@@ -198,7 +198,7 @@ export const SquadCardsList: React.FC<SquadCardsListProps> = ({
                       key={colId}
                       className="rounded-lg border border-slate-200/80 dark:border-slate-800/90 bg-white/75 dark:bg-slate-900/70 px-2 py-1.5 min-w-0"
                     >
-                      <div className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">
+                      <div className="text-2xs uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">
                         {meta.shortLabel}
                       </div>
                       <div className="mt-0.5 text-xs truncate">
@@ -211,7 +211,7 @@ export const SquadCardsList: React.FC<SquadCardsListProps> = ({
 
               {/* Compact Season & Contract Context Strip */}
               {(showAppsFooter || showGoalsFooter || showValueFooter || showExpiryFooter) && (
-                <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-2xs font-mono text-slate-500 dark:text-slate-400">
                   {showAppsFooter && (
                     <span>
                       Apps{' '}

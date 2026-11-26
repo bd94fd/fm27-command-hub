@@ -36,8 +36,8 @@ export const TabWorkspaceSkeleton: React.FC<{
       {/* Header bar matched to workspace headers (~58px) */}
       <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/60 flex items-center justify-between gap-3">
         <div className="space-y-1.5 min-w-0 flex-1">
-          <div className={`h-4 w-40 rounded bg-slate-200 dark:bg-slate-800 ${PULSE}`} />
-          <div className={`h-3 w-56 max-w-full rounded bg-slate-200/70 dark:bg-slate-800/70 ${PULSE}`} />
+          <div className={`h-4 w-40 rounded-md bg-slate-200 dark:bg-slate-800 ${PULSE}`} />
+          <div className={`h-3 w-56 max-w-full rounded-md bg-slate-200/70 dark:bg-slate-800/70 ${PULSE}`} />
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           <div className={`h-9 sm:h-8 w-24 rounded-lg bg-slate-200 dark:bg-slate-800 ${PULSE}`} />
@@ -54,20 +54,20 @@ export const TabWorkspaceSkeleton: React.FC<{
               <div
                 key={idx}
                 style={{ width: w }}
-                className={`h-11 sm:h-9 rounded-lg bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-800 shrink-0 ${PULSE}`}
+                className={`h-11 sm:h-9 rounded-lg bg-slate-100 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-800 shrink-0 ${PULSE}`}
               />
             ))}
           </div>
           {/* Primary workspace / hero area */}
           <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/60 p-4 space-y-3 min-h-[210px]">
-            <div className={`h-5 w-3/5 max-w-sm rounded bg-slate-200 dark:bg-slate-800 ${PULSE}`} />
-            <div className={`h-3.5 w-full max-w-xl rounded bg-slate-200/70 dark:bg-slate-800/70 ${PULSE}`} />
-            <div className={`h-3.5 w-4/5 max-w-lg rounded bg-slate-200/70 dark:bg-slate-800/70 ${PULSE}`} />
+            <div className={`h-5 w-3/5 max-w-sm rounded-md bg-slate-200 dark:bg-slate-800 ${PULSE}`} />
+            <div className={`h-3.5 w-full max-w-xl rounded-md bg-slate-200/70 dark:bg-slate-800/70 ${PULSE}`} />
+            <div className={`h-3.5 w-4/5 max-w-lg rounded-md bg-slate-200/70 dark:bg-slate-800/70 ${PULSE}`} />
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2">
               {[0, 1, 2].map((i) => (
                 <div
                   key={i}
-                  className={`h-20 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/75 ${PULSE}`}
+                  className={`h-20 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/70 ${PULSE}`}
                 />
               ))}
             </div>
@@ -173,13 +173,13 @@ export const JourneyPanelSkeleton: React.FC = () => (
     role="status"
     aria-live="polite"
     aria-label="Loading Save-to-Save Journey"
-    className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/75 p-4 sm:p-5 space-y-4"
+    className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/70 p-4 sm:p-5 space-y-4"
   >
     <span className="sr-only">Loading Save-to-Save Journey...</span>
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
       <div className="space-y-1.5">
-        <div className={`h-4 w-52 rounded bg-slate-200 dark:bg-slate-800 ${PULSE}`} />
-        <div className={`h-3 w-72 max-w-full rounded bg-slate-200/70 dark:bg-slate-800/70 ${PULSE}`} />
+        <div className={`h-4 w-52 rounded-md bg-slate-200 dark:bg-slate-800 ${PULSE}`} />
+        <div className={`h-3 w-72 max-w-full rounded-md bg-slate-200/70 dark:bg-slate-800/70 ${PULSE}`} />
       </div>
       <div className={`h-11 sm:h-9 w-36 rounded-lg bg-slate-200 dark:bg-slate-800 shrink-0 ${PULSE}`} />
     </div>
@@ -191,7 +191,7 @@ export const JourneyPanelSkeleton: React.FC = () => (
       {[0, 1, 2, 3].map((i) => (
         <div
           key={i}
-          className={`h-16 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 ${PULSE}`}
+          className={`h-16 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 ${PULSE}`}
         />
       ))}
     </div>
@@ -206,13 +206,13 @@ export const UploadProgressSkeleton: React.FC<{ label: string }> = ({ label }) =
   <div
     role="status"
     aria-live="polite"
-    className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80 p-3.5 sm:p-4 space-y-2.5"
+    className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 p-3.5 sm:p-4 space-y-2.5"
   >
     <div className="flex items-center justify-between gap-2">
       <div className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">
         {label}
       </div>
-      <div className={`h-4 w-12 rounded bg-slate-200 dark:bg-slate-800 shrink-0 ${PULSE}`} />
+      <div className={`h-4 w-12 rounded-md bg-slate-200 dark:bg-slate-800 shrink-0 ${PULSE}`} />
     </div>
     <div className="h-2 w-full rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
       <div className={`h-full w-1/3 rounded-full bg-emerald-500/60 ${PULSE}`} />

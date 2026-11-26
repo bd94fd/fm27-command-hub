@@ -182,7 +182,7 @@ export const SquadAgeValueScatterPlot: React.FC<SquadAgeValueScatterPlotProps> =
               key={grp}
               type="button"
               onClick={() => setPosGroup(grp)}
-              className={`min-h-[44px] sm:min-h-[32px] px-2.5 rounded-lg text-xs sm:text-[11px] font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
+              className={`min-h-[44px] sm:min-h-[32px] px-2.5 rounded-lg text-xs sm:text-micro font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
                 posGroup === grp
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                   : 'bg-slate-900/70 text-slate-400 border-slate-800 hover:text-slate-200'
@@ -192,13 +192,13 @@ export const SquadAgeValueScatterPlot: React.FC<SquadAgeValueScatterPlotProps> =
             </button>
           ))}
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+        <div className="flex flex-wrap items-center gap-1.5 text-micro">
           <label className="inline-flex items-center gap-1 text-slate-400">
             X:
             <select
               value={xMetric}
               onChange={(e) => setXMetric(e.target.value as ScatterXMetric)}
-              className="min-h-[44px] sm:min-h-[32px] rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-slate-200 text-base sm:text-[11px]"
+              className="min-h-[44px] sm:min-h-[32px] rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-slate-200 text-base sm:text-micro"
             >
               <option value="age">Age</option>
               <option value="pace">Pace</option>
@@ -212,7 +212,7 @@ export const SquadAgeValueScatterPlot: React.FC<SquadAgeValueScatterPlotProps> =
             <select
               value={yMetric}
               onChange={(e) => setYMetric(e.target.value as ScatterYMetric)}
-              className="min-h-[44px] sm:min-h-[32px] rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-slate-200 text-base sm:text-[11px]"
+              className="min-h-[44px] sm:min-h-[32px] rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-slate-200 text-base sm:text-micro"
             >
               <option value="auto">{scale.metricLabel}</option>
               <option value="ability">Ability ★</option>
@@ -230,17 +230,17 @@ export const SquadAgeValueScatterPlot: React.FC<SquadAgeValueScatterPlotProps> =
               key={p.id}
               type="button"
               onClick={() => onSelectPlayer?.(p)}
-              className="w-full min-h-[48px] text-left rounded-xl border border-slate-800 bg-slate-950/70 hover:border-emerald-500/40 px-3 py-2 flex items-center justify-between gap-2 transition cursor-pointer"
+              className="w-full min-h-[48px] text-left rounded-xl border border-slate-800 bg-slate-950/60 hover:border-emerald-500/40 px-3 py-2 flex items-center justify-between gap-2 transition cursor-pointer"
             >
               <div className="flex items-center gap-2 min-w-0">
-                <span className="w-6 font-mono text-[11px] font-bold text-slate-500 shrink-0">
+                <span className="w-6 font-mono text-micro font-bold text-slate-500 shrink-0">
                   #{rank}
                 </span>
                 <div className="min-w-0">
                   <div className="text-xs font-semibold text-white truncate">
                     {p.name}
                   </div>
-                  <div className="text-[10px] text-slate-400 font-mono">
+                  <div className="text-2xs text-slate-400 font-mono">
                     {p.position} · {p.ability.toFixed(1)}★ · {xLabel}:{' '}
                     {xMetric === 'age' ? `${xVal}y` : xVal}
                   </div>
@@ -250,7 +250,7 @@ export const SquadAgeValueScatterPlot: React.FC<SquadAgeValueScatterPlotProps> =
                 <div className="text-xs font-mono font-bold text-emerald-300 tabular-nums">
                   {formatY(yVal)}
                 </div>
-                <div className="text-[10px] text-slate-500">{yLabel}</div>
+                <div className="text-2xs text-slate-500">{yLabel}</div>
               </div>
             </button>
           ))}
@@ -385,15 +385,15 @@ export const SquadAgeValueScatterPlot: React.FC<SquadAgeValueScatterPlotProps> =
 
           {/* Docked tap-to-inspect strip */}
           {activePlayer ? (
-            <div className="rounded-xl border border-emerald-500/35 bg-slate-950/90 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="rounded-xl border border-emerald-500/35 bg-slate-950/85 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
               <div className="min-w-0">
                 <div className="font-semibold text-white truncate">
                   {activePlayer.name}{' '}
-                  <span className="font-mono text-[11px] text-emerald-300">
+                  <span className="font-mono text-micro text-emerald-300">
                     ({activePlayer.position})
                   </span>
                 </div>
-                <div className="text-[11px] font-mono text-slate-300 tabular-nums">
+                <div className="text-micro font-mono text-slate-300 tabular-nums">
                   {xLabel}: {xMetric === 'age' ? `${getXVal(activePlayer)}y` : getXVal(activePlayer)}{' '}
                   · {yLabel}: {formatY(getYVal(activePlayer))} · {activePlayer.ability.toFixed(1)}★
                 </div>
@@ -409,12 +409,12 @@ export const SquadAgeValueScatterPlot: React.FC<SquadAgeValueScatterPlotProps> =
               )}
             </div>
           ) : (
-            <div className="rounded-lg border border-slate-800/80 bg-slate-950/50 px-3 py-1.5 text-[11px] text-slate-400">
+            <div className="rounded-lg border border-slate-800/80 bg-slate-950/60 px-3 py-1.5 text-micro text-slate-400">
               Tap any dot to inspect player details, or switch to Ranked List.
             </div>
           )}
 
-          <div className="flex flex-wrap items-center gap-3 text-[10px] text-slate-400">
+          <div className="flex flex-wrap items-center gap-3 text-2xs text-slate-400">
             <span className="inline-flex items-center gap-1">
               <span className="h-2 w-2 rounded-full bg-sky-400" /> U21 Prospect
             </span>
@@ -605,7 +605,7 @@ export const InteractiveScatterExplorer: React.FC<InteractiveScatterExplorerProp
           <h3 className="text-sm font-semibold text-white">
             Interactive Squad Scatter Explorer
           </h3>
-          <p className="text-[11px] text-slate-400">
+          <p className="text-micro text-slate-400">
             {filtered.length} players · Dashed crosshair marks squad average
           </p>
         </div>
@@ -626,10 +626,10 @@ export const InteractiveScatterExplorer: React.FC<InteractiveScatterExplorerProp
               key={p.key}
               type="button"
               onClick={() => setPreset(p.key)}
-              className={`min-h-[44px] sm:min-h-[34px] px-2.5 sm:px-3 rounded-lg text-xs sm:text-[11px] font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
+              className={`min-h-[44px] sm:min-h-[34px] px-2.5 sm:px-3 rounded-lg text-xs sm:text-micro font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
                 preset === p.key
                   ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
-                  : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
+                  : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:text-slate-200'
               }`}
             >
               {p.label}
@@ -643,7 +643,7 @@ export const InteractiveScatterExplorer: React.FC<InteractiveScatterExplorerProp
               key={g}
               type="button"
               onClick={() => setPosGroup(g)}
-              className={`min-h-[44px] sm:min-h-[32px] px-2.5 rounded-lg text-xs sm:text-[11px] font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
+              className={`min-h-[44px] sm:min-h-[32px] px-2.5 rounded-lg text-xs sm:text-micro font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
                 posGroup === g
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                   : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
@@ -662,10 +662,10 @@ export const InteractiveScatterExplorer: React.FC<InteractiveScatterExplorerProp
               key={p.id}
               type="button"
               onClick={() => onSelectPlayer?.(p)}
-              className="w-full min-h-[52px] text-left rounded-xl border border-slate-800 bg-slate-950/75 hover:border-emerald-500/40 px-3 py-2 flex items-center justify-between gap-2 transition cursor-pointer"
+              className="w-full min-h-[52px] text-left rounded-xl border border-slate-800 bg-slate-950/60 hover:border-emerald-500/40 px-3 py-2 flex items-center justify-between gap-2 transition cursor-pointer"
             >
               <div className="flex items-center gap-2 min-w-0">
-                <span className="w-6 font-mono text-[11px] font-bold text-slate-500 shrink-0">
+                <span className="w-6 font-mono text-micro font-bold text-slate-500 shrink-0">
                   #{rank}
                 </span>
                 <div className="min-w-0 space-y-0.5">
@@ -673,29 +673,29 @@ export const InteractiveScatterExplorer: React.FC<InteractiveScatterExplorerProp
                     <span className="text-xs font-semibold text-white truncate">
                       {p.name}
                     </span>
-                    <span className="font-mono text-[10px] text-emerald-300 shrink-0">
+                    <span className="font-mono text-2xs text-emerald-300 shrink-0">
                       {p.position}
                     </span>
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span
-                      className={`rounded border px-1.5 py-0.25 text-[9.5px] font-semibold ${quadrantToneClass(
+                      className={`rounded-md border px-1.5 py-0.25 text-3xs font-semibold ${quadrantToneClass(
                         quadrantTone
                       )}`}
                     >
                       {quadrantLabel}
                     </span>
-                    <span className="text-[10px] font-mono text-amber-300">
+                    <span className="text-2xs font-mono text-amber-300">
                       {p.ability.toFixed(1)}★
                     </span>
                   </div>
                 </div>
               </div>
               <div className="text-right font-mono tabular-nums shrink-0">
-                <div className="text-[11px] font-bold text-white">
+                <div className="text-micro font-bold text-white">
                   {activePreset.xLabel.split(' ')[0]}: {formatVal(xVal, 'x')}
                 </div>
-                <div className="text-[10px] text-sky-300">
+                <div className="text-2xs text-sky-300">
                   {activePreset.yLabel.split(' ')[0]}: {formatVal(yVal, 'y')}
                 </div>
               </div>
@@ -821,24 +821,24 @@ export const InteractiveScatterExplorer: React.FC<InteractiveScatterExplorerProp
             const yVal = getY(activePlayer);
             const quad = classifyScatterQuadrant(preset, xVal, yVal, midX, midY);
             return (
-              <div className="rounded-xl border border-emerald-500/35 bg-slate-950/90 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="rounded-xl border border-emerald-500/35 bg-slate-950/85 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
                 <div className="min-w-0 space-y-0.5">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="font-semibold text-white truncate">
                       {activePlayer.name}
                     </span>
-                    <span className="font-mono text-[11px] text-emerald-300">
+                    <span className="font-mono text-micro text-emerald-300">
                       ({activePlayer.position})
                     </span>
                     <span
-                      className={`rounded border px-1.5 py-0.25 text-[10px] font-semibold ${quadrantToneClass(
+                      className={`rounded-md border px-1.5 py-0.25 text-2xs font-semibold ${quadrantToneClass(
                         quad.tone
                       )}`}
                     >
                       {quad.label}
                     </span>
                   </div>
-                  <div className="text-[11px] font-mono text-slate-300 tabular-nums">
+                  <div className="text-micro font-mono text-slate-300 tabular-nums">
                     {activePreset.xLabel}: {formatVal(xVal, 'x')} · {activePreset.yLabel}:{' '}
                     {formatVal(yVal, 'y')} · {activePlayer.ability.toFixed(1)}★
                   </div>
@@ -855,7 +855,7 @@ export const InteractiveScatterExplorer: React.FC<InteractiveScatterExplorerProp
               </div>
             );
           })() : (
-            <div className="rounded-lg border border-slate-800/80 bg-slate-950/50 px-3 py-1.5 text-[11px] text-slate-400">
+            <div className="rounded-lg border border-slate-800/80 bg-slate-950/60 px-3 py-1.5 text-micro text-slate-400">
               Tap any dot to inspect player details &amp; quadrant verdict, or switch to Ranked List.
             </div>
           )}
@@ -977,22 +977,22 @@ export const SquadDepthAndPlannerChart: React.FC<SquadDepthAndPlannerChartProps>
           <h3 className="text-sm font-semibold text-white">
             Primary Positional Depth &amp; FM27 Squad Planner
           </h3>
-          <p className="text-[11px] text-slate-400">
+          <p className="text-micro text-slate-400">
             Senior primary depth separated from First-Team Ready U21s, raw Academy prospects, and secondary cover
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3 text-[10px] text-slate-400">
+        <div className="flex flex-wrap items-center gap-3 text-2xs text-slate-400">
           <span className="inline-flex items-center gap-1">
-            <span className="h-2 w-2 rounded-sm bg-emerald-500" /> Senior
+            <span className="h-2 w-2 rounded-md bg-emerald-500" /> Senior
           </span>
           <span className="inline-flex items-center gap-1">
-            <span className="h-2 w-2 rounded-sm bg-teal-400" /> Ready U21
+            <span className="h-2 w-2 rounded-md bg-teal-400" /> Ready U21
           </span>
           <span className="inline-flex items-center gap-1">
-            <span className="h-2 w-2 rounded-sm bg-purple-500/80" /> Academy
+            <span className="h-2 w-2 rounded-md bg-purple-500/80" /> Academy
           </span>
           <span className="inline-flex items-center gap-1">
-            <span className="h-2 w-2 rounded-sm bg-slate-500" /> Cover
+            <span className="h-2 w-2 rounded-md bg-slate-500" /> Cover
           </span>
         </div>
       </div>
@@ -1024,16 +1024,16 @@ export const SquadDepthAndPlannerChart: React.FC<SquadDepthAndPlannerChartProps>
             return (
               <div
                 key={n.code}
-                className="rounded-lg border border-slate-800 bg-slate-950/70 p-2.5 space-y-1.5"
+                className="rounded-lg border border-slate-800 bg-slate-950/60 p-2.5 space-y-1.5"
               >
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-semibold text-white">
                     {n.code}{' '}
-                    <span className="text-[10px] font-normal text-slate-400">
+                    <span className="text-2xs font-normal text-slate-400">
                       ({n.idealMin}–{n.idealMax} target)
                     </span>
                   </span>
-                  <span className={`text-[10px] font-semibold ${statusTone}`}>
+                  <span className={`text-2xs font-semibold ${statusTone}`}>
                     {n.status === 'Need Signing'
                       ? 'Need'
                       : n.status === 'Promote Internal'
@@ -1069,7 +1069,7 @@ export const SquadDepthAndPlannerChart: React.FC<SquadDepthAndPlannerChartProps>
                     />
                   )}
                 </div>
-                <div className="text-[10px] font-mono text-slate-400">
+                <div className="text-2xs font-mono text-slate-400">
                   {seniorCount} senior
                   {readyYouthCount > 0 ? ` · ${readyYouthCount} ready U21` : ''}
                   {academyCount > 0 ? ` · ${academyCount} academy` : ''}
@@ -1087,21 +1087,21 @@ export const SquadDepthAndPlannerChart: React.FC<SquadDepthAndPlannerChartProps>
             <div>
               <div className="text-xs font-semibold text-white">
                 In-Game FM27 Squad Planner
-                <span className="ml-2 text-[11px] font-mono font-normal text-slate-400">
+                <span className="ml-2 text-micro font-mono font-normal text-slate-400">
                   ({visiblePlannerSlots.length} {effectiveScope === 'xi' ? 'tactic' : 'pitch'} positions)
                 </span>
               </div>
-              <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">
+              <p className="mt-0.5 text-micro leading-relaxed text-slate-400">
                 Your in-game FM27 pecking order (1st → 2nd → 3rd choice) per pitch position across 3 seasons. Switch seasons to spot where expiring contracts thin your depth next year.
               </p>
             </div>
 
             {canFilterXi && (
-              <div className="inline-flex rounded-lg border border-slate-800 bg-slate-950/80 p-0.5 self-start shrink-0">
+              <div className="inline-flex rounded-lg border border-slate-800 bg-slate-950/85 p-0.5 self-start shrink-0">
                 <button
                   type="button"
                   onClick={() => setPlannerScope('xi')}
-                  className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+                  className={`px-2.5 py-1 rounded-md text-micro font-semibold transition-colors ${
                     effectiveScope === 'xi'
                       ? 'bg-emerald-700 text-white dark:bg-emerald-500 dark:text-slate-950'
                       : 'text-slate-400 hover:text-slate-200'
@@ -1112,7 +1112,7 @@ export const SquadDepthAndPlannerChart: React.FC<SquadDepthAndPlannerChartProps>
                 <button
                   type="button"
                   onClick={() => setPlannerScope('all')}
-                  className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+                  className={`px-2.5 py-1 rounded-md text-micro font-semibold transition-colors ${
                     effectiveScope === 'all'
                       ? 'bg-emerald-700 text-white dark:bg-emerald-500 dark:text-slate-950'
                       : 'text-slate-400 hover:text-slate-200'
@@ -1135,14 +1135,14 @@ export const SquadDepthAndPlannerChart: React.FC<SquadDepthAndPlannerChartProps>
                     key={offset}
                     type="button"
                     onClick={() => setSelectedSeason(offset)}
-                    className={`rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                    className={`rounded-md border px-2.5 py-1 text-micro font-medium transition-colors ${
                       isSelected
                         ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-300'
                         : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700 hover:text-slate-200'
                     }`}
                   >
                     {formatSquadPlannerSeasonLabel(offset)}{' '}
-                    <span className="font-mono text-[10px] opacity-75">({count})</span>
+                    <span className="font-mono text-2xs opacity-75">({count})</span>
                   </button>
                 );
               })}
@@ -1165,36 +1165,36 @@ export const SquadDepthAndPlannerChart: React.FC<SquadDepthAndPlannerChartProps>
               return (
                 <div
                   key={`${slot.seasonOffset}-${slot.slot}-${idx}`}
-                  className="rounded-lg border border-slate-800/90 bg-slate-950/70 px-3 py-2.5 space-y-1.5"
+                  className="rounded-lg border border-slate-800/90 bg-slate-950/60 px-3 py-2.5 space-y-1.5"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 font-mono text-[10px] font-bold text-emerald-300 shrink-0">
+                      <span className="rounded-md bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 font-mono text-2xs font-bold text-emerald-300 shrink-0">
                         {meta.code}
                       </span>
-                      <span className="text-[11px] font-semibold text-slate-200 truncate">
+                      <span className="text-micro font-semibold text-slate-200 truncate">
                         {meta.label}
                       </span>
                     </div>
                     {isThinNextYear ? (
-                      <span className="rounded bg-amber-500/15 border border-amber-500/35 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-amber-300 shrink-0">
+                      <span className="rounded-md bg-amber-500/15 border border-amber-500/35 px-1.5 py-0.5 font-mono text-2xs font-semibold text-amber-300 shrink-0">
                         Next yr: {nextYrCount}
                       </span>
                     ) : (
-                      <span className="font-mono text-[10px] text-slate-500 shrink-0">
+                      <span className="font-mono text-2xs text-slate-500 shrink-0">
                         {slot.playerNames.length} deep
                       </span>
                     )}
                   </div>
 
-                  <ol className="space-y-0.5 text-[11px] leading-snug">
+                  <ol className="space-y-0.5 text-micro leading-snug">
                     {topChoices.map((name, i) => (
                       <li
                         key={`${name}-${i}`}
                         className="flex items-baseline gap-1.5 text-slate-300"
                       >
                         <span
-                          className={`font-mono text-[10px] shrink-0 ${
+                          className={`font-mono text-2xs shrink-0 ${
                             i === 0 ? 'font-bold text-emerald-400' : 'text-slate-500'
                           }`}
                         >
@@ -1208,7 +1208,7 @@ export const SquadDepthAndPlannerChart: React.FC<SquadDepthAndPlannerChartProps>
                   </ol>
 
                   {extraCount > 0 && (
-                    <div className="text-[10px] font-mono text-slate-500">
+                    <div className="text-2xs font-mono text-slate-500">
                       +{extraCount} more in planner
                     </div>
                   )}

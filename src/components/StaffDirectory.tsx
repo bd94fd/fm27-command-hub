@@ -50,7 +50,7 @@ const FILTER_ORDER: StaffDirectoryFilter[] = [
 const StaffKpiStrip: React.FC<{ kpi: StaffKpiSummary }> = ({ kpi }) => (
   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
     <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3.5 min-w-0">
-      <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400 leading-tight">
+      <div className="flex items-center gap-1.5 text-micro font-bold uppercase tracking-wider text-slate-400 leading-tight">
         <UserCheck className="h-3.5 w-3.5 text-sky-400 shrink-0" />
         <span>Total Staff</span>
       </div>
@@ -59,7 +59,7 @@ const StaffKpiStrip: React.FC<{ kpi: StaffKpiSummary }> = ({ kpi }) => (
       </div>
     </div>
     <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3.5 min-w-0">
-      <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400 leading-tight">
+      <div className="flex items-center gap-1.5 text-micro font-bold uppercase tracking-wider text-slate-400 leading-tight">
         <Wallet className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
         <span>Weekly Staff Payroll</span>
       </div>
@@ -68,17 +68,17 @@ const StaffKpiStrip: React.FC<{ kpi: StaffKpiSummary }> = ({ kpi }) => (
       </div>
     </div>
     <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3.5 min-w-0">
-      <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400 leading-tight">
+      <div className="flex items-center gap-1.5 text-micro font-bold uppercase tracking-wider text-slate-400 leading-tight">
         <Clock className="h-3.5 w-3.5 text-amber-400 shrink-0" />
         <span>Expiring Soon</span>
       </div>
       <div className="mt-1 font-mono text-xl font-bold text-amber-300 tabular-nums">
         {kpi.expiringSoonCount}
       </div>
-      <div className="text-[11px] text-slate-400">≤ 190 days</div>
+      <div className="text-micro text-slate-400">≤ 190 days</div>
     </div>
     <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3.5 min-w-0">
-      <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400 leading-tight">
+      <div className="flex items-center gap-1.5 text-micro font-bold uppercase tracking-wider text-slate-400 leading-tight">
         <Star className="h-3.5 w-3.5 text-amber-400 shrink-0" />
         <span>Avg Staff Rating</span>
       </div>
@@ -321,7 +321,7 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                 {realVacancies.slice(0, 6).map((v, idx) => (
                   <span
                     key={`${v.club || 'club'}-${v.role || 'role'}-${idx}`}
-                    className="rounded-md bg-slate-900/90 border border-slate-700 px-2 py-0.5 text-xs text-slate-300"
+                    className="rounded-md bg-slate-900/95 border border-slate-700 px-2 py-0.5 text-xs text-slate-300"
                   >
                     {v.role || 'Staff'} · {v.club || 'Club'}
                   </span>
@@ -330,7 +330,7 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
             </div>
           )}
 
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 overflow-hidden">
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/70 overflow-hidden">
             {filtered.length === 0 ? (
               <div className="p-10 text-center space-y-1">
                 <div className="text-sm font-semibold text-slate-300">
@@ -356,7 +356,7 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                         key={`m-${s.id}`}
                         type="button"
                         onClick={() => onSelectStaff(s)}
-                        className="w-full text-left p-3.5 hover:bg-slate-800/40 active:bg-slate-800/60 transition space-y-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                        className="w-full text-left p-3.5 hover:bg-slate-800/70 active:bg-slate-800/70 transition space-y-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
@@ -367,11 +367,11 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                               <span className="text-xs text-sky-300 truncate">
                                 {s.role}
                               </span>
-                              <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[11px] uppercase tracking-wider text-slate-400">
+                              <span className="rounded-md bg-slate-800 px-1.5 py-0.5 text-micro uppercase tracking-wider text-slate-400">
                                 {dept}
                               </span>
                               {s.secondaryJob && (
-                                <span className="rounded bg-slate-800/80 px-1.5 py-0.5 text-[11px] text-slate-300 truncate max-w-full">
+                                <span className="rounded-md bg-slate-800/70 px-1.5 py-0.5 text-micro text-slate-300 truncate max-w-full">
                                   2nd job: {s.secondaryJob}
                                 </span>
                               )}
@@ -389,16 +389,16 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                           )}
                         </div>
                         <div className="grid grid-cols-2 gap-1.5 text-xs">
-                          <div className="rounded-lg bg-slate-950/70 border border-slate-800/80 px-2 py-1.5 min-w-0">
-                            <div className="text-[11px] uppercase text-slate-400">
+                          <div className="rounded-lg bg-slate-950/60 border border-slate-800/80 px-2 py-1.5 min-w-0">
+                            <div className="text-micro uppercase text-slate-400">
                               Dept Role Rating
                             </div>
                             <div className="text-slate-200 font-medium break-words">
                               {headline.label}
                             </div>
                           </div>
-                          <div className="rounded-lg bg-slate-950/70 border border-slate-800/80 px-2 py-1.5 min-w-0">
-                            <div className="text-[11px] uppercase text-slate-400">
+                          <div className="rounded-lg bg-slate-950/60 border border-slate-800/80 px-2 py-1.5 min-w-0">
+                            <div className="text-micro uppercase text-slate-400">
                               Weekly Wage
                             </div>
                             <div className="font-mono text-slate-200 tabular-nums">
@@ -411,7 +411,7 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                             Exp {formatContractExpiry(s.expires)}
                           </span>
                           {expiringSoon && (
-                            <span className="inline-flex items-center gap-0.5 rounded bg-amber-500/20 border border-amber-500/40 px-1.5 py-0.5 text-[11px] font-sans font-semibold text-amber-300">
+                            <span className="inline-flex items-center gap-0.5 rounded-md bg-amber-500/20 border border-amber-500/40 px-1.5 py-0.5 text-micro font-sans font-semibold text-amber-300">
                               <Clock className="h-2.5 w-2.5" />
                               Expiring
                             </span>
@@ -425,7 +425,7 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                 {/* Desktop table (md:+) */}
                 <div className="hidden md:block overflow-x-auto">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-950/70 text-[11px] uppercase tracking-wider text-slate-400">
+                    <thead className="bg-slate-950/60 text-micro uppercase tracking-wider text-slate-400">
                       <tr>
                         <th className="px-4 py-3">Name</th>
                         <th className="px-4 py-3">Role / Dept</th>
@@ -454,14 +454,14 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                                 onSelectStaff(s);
                               }
                             }}
-                            className="cursor-pointer hover:bg-slate-800/50 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                            className="cursor-pointer hover:bg-slate-800/70 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
                           >
                             <td className="px-4 py-3 font-semibold text-white whitespace-nowrap">
                               {s.name}
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap">
                               <div className="text-sky-300">{s.role}</div>
-                              <div className="text-[11px] uppercase tracking-wider text-slate-400">
+                              <div className="text-micro uppercase tracking-wider text-slate-400">
                                 {dept}
                               </div>
                             </td>
@@ -488,7 +488,7 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                               <div className="flex items-center gap-1.5">
                                 <span>{formatContractExpiry(s.expires)}</span>
                                 {expiringSoon && (
-                                  <span className="inline-flex items-center gap-0.5 rounded bg-amber-500/20 border border-amber-500/40 px-1.5 py-0.5 text-[11px] font-sans font-semibold text-amber-300">
+                                  <span className="inline-flex items-center gap-0.5 rounded-md bg-amber-500/20 border border-amber-500/40 px-1.5 py-0.5 text-micro font-sans font-semibold text-amber-300">
                                     <Clock className="h-2.5 w-2.5" />
                                     Expiring
                                   </span>
@@ -519,20 +519,20 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
               </p>
             </div>
             {overloadedLeads.length > 0 ? (
-              <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/35 px-2.5 py-0.5 text-[11px] font-semibold text-amber-300">
+              <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/35 px-2.5 py-0.5 text-micro font-semibold text-amber-300">
                 <AlertTriangle className="h-3.5 w-3.5" />
                 {overloadedLeads.length === 1
                   ? `Overloaded: ${overloadedLeads[0].name} (${overloadedLeads[0].units} units)`
                   : `${overloadedLeads.length} coaches overloaded`}
               </span>
             ) : overloadedCount > 0 ? (
-              <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/35 px-2.5 py-0.5 text-[11px] font-semibold text-amber-300">
+              <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/35 px-2.5 py-0.5 text-micro font-semibold text-amber-300">
                 <AlertTriangle className="h-3.5 w-3.5" />
                 {overloadedCount} Overloaded Unit
                 {overloadedCount === 1 ? '' : 's'}
               </span>
             ) : (
-              <span className="rounded-md bg-emerald-500/15 border border-emerald-500/35 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-300">
+              <span className="rounded-md bg-emerald-500/15 border border-emerald-500/35 px-2.5 py-0.5 text-micro font-semibold text-emerald-300">
                 Coaching Workload Balanced
               </span>
             )}
@@ -557,16 +557,16 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
               return (
                 <div
                   key={row.key}
-                  className="rounded-xl border border-slate-800 bg-slate-950/70 p-2 sm:p-2.5 space-y-1.5 min-w-0"
+                  className="rounded-xl border border-slate-800 bg-slate-950/60 p-2 sm:p-2.5 space-y-1.5 min-w-0"
                 >
-                  <div className="text-[11px] uppercase tracking-wider text-slate-400 break-words">
+                  <div className="text-micro uppercase tracking-wider text-slate-400 break-words">
                     {row.group}
                   </div>
                   <div className="flex items-start justify-between gap-1.5">
                     <span className="text-xs font-bold text-white break-words min-w-0">
                       {row.label}
                     </span>
-                    <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 font-mono text-[11px] font-bold text-amber-300 shrink-0">
+                    <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 font-mono text-micro font-bold text-amber-300 shrink-0">
                       <Star className="h-3 w-3" />
                       {formatStars(row.stars)}
                     </span>
@@ -581,12 +581,12 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
                     )}
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-1 pt-0.5">
-                    <span className="text-[11px] text-slate-400">
+                    <span className="text-micro text-slate-400">
                       {row.qualifiedCount} qualified ≥ 2.5★
                     </span>
                     {row.workload !== 'n/a' && (
                       <span
-                        className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold shrink-0 ${workloadCls}`}
+                        className={`rounded-md border px-1.5 py-0.5 text-micro font-semibold shrink-0 ${workloadCls}`}
                       >
                         {row.workload}
                       </span>

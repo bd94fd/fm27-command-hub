@@ -109,7 +109,7 @@ export const PwaStatusBanners: React.FC<PwaStatusBannersProps> = ({
               <div className="font-semibold text-slate-900 dark:text-white">
                 Install FM27 Hub on your phone
               </div>
-              <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
+              <p className="text-micro text-slate-600 dark:text-slate-400 mt-0.5">
                 {canPromptInstall
                   ? 'Opens full-screen like a native app with instant offline access and home-screen shortcuts.'
                   : isIosSafari

@@ -85,7 +85,7 @@ export const SquadListToolbar: React.FC<SquadListToolbarProps> = ({
               key={opt.id}
               type="button"
               onClick={() => setSquadUnitFilter(opt.id)}
-              className={`min-h-[44px] sm:min-h-[32px] px-2.5 sm:px-2 py-1 text-xs sm:text-[11px] font-semibold rounded-md transition whitespace-nowrap cursor-pointer ${
+              className={`min-h-[44px] sm:min-h-[32px] px-2.5 sm:px-2 py-1 text-xs sm:text-micro font-semibold rounded-md transition whitespace-nowrap cursor-pointer ${
                 squadUnitFilter === opt.id
                   ? 'bg-emerald-700 text-white dark:bg-emerald-500 dark:text-slate-950'
                   : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
@@ -113,7 +113,7 @@ export const SquadListToolbar: React.FC<SquadListToolbarProps> = ({
               aria-selected={isActive}
               title={preset.description}
               onClick={() => setActivePresetId(preset.id)}
-              className={`min-h-[44px] sm:min-h-[32px] px-3 sm:px-2.5 py-1 text-xs sm:text-[11px] font-semibold rounded-lg border transition whitespace-nowrap shrink-0 cursor-pointer ${
+              className={`min-h-[44px] sm:min-h-[32px] px-3 sm:px-2.5 py-1 text-xs sm:text-micro font-semibold rounded-lg border transition whitespace-nowrap shrink-0 cursor-pointer ${
                 isActive
                   ? 'bg-emerald-600/15 dark:bg-emerald-600/20 border-emerald-500/60 text-emerald-800 dark:text-emerald-300'
                   : 'bg-slate-100 dark:bg-slate-800/70 border-slate-200 dark:border-slate-700/80 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
@@ -193,7 +193,7 @@ export const SquadListToolbar: React.FC<SquadListToolbarProps> = ({
         <Filter className="w-3.5 h-3.5 shrink-0" />
         <span>Filters</span>
         {activeSecondaryFilterCount > 0 && (
-          <span className="rounded-md bg-emerald-500 px-1.5 text-[10px] font-bold text-slate-950 tabular-nums">
+          <span className="rounded-md bg-emerald-500 px-1.5 text-2xs font-bold text-slate-950 tabular-nums">
             {activeSecondaryFilterCount}
           </span>
         )}

@@ -4,6 +4,21 @@
 @import "@fontsource-variable/jetbrains-mono";
 @custom-variant dark (&:where(.dark, .dark *));
 
+/*
+ * Design tokens. The app is dense: most labels sit between 9px and 12px, and
+ * Tailwind's default scale stops at text-xs (12px). These three named sizes
+ * replace ad-hoc pixel-literal text sizes so the micro range has one spelling each.
+ * 3xs is reserved for pitch-canvas labels and chips inside fixed-width cards.
+ */
+@theme {
+  --text-3xs: 0.5625rem;
+  --text-3xs--line-height: 0.75rem;
+  --text-2xs: 0.625rem;
+  --text-2xs--line-height: 0.875rem;
+  --text-micro: 0.6875rem;
+  --text-micro--line-height: 1rem;
+}
+
 @layer base {
   html,
   body {

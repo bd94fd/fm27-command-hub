@@ -198,7 +198,7 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
                 className={`inline-flex items-center justify-center gap-1.5 min-h-[36px] rounded-lg px-2.5 py-2 text-xs font-semibold border transition cursor-pointer ${
                   active
                     ? 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border-emerald-500/40'
-                    : 'bg-slate-50 dark:bg-slate-950/70 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-slate-200'
+                    : 'bg-slate-50 dark:bg-slate-950/60 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5 shrink-0" />
@@ -222,7 +222,7 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
                   <button
                     type="button"
                     onClick={() => setIncludeYouthInWarRoom(false)}
-                    className={`px-2 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+                    className={`px-2 py-1 rounded-md text-micro font-semibold transition cursor-pointer ${
                       !includeYouthInWarRoom
                         ? 'bg-emerald-700 text-white dark:bg-emerald-500 dark:text-slate-950'
                         : 'text-slate-500 dark:text-slate-400 hover:text-slate-200'
@@ -233,7 +233,7 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
                   <button
                     type="button"
                     onClick={() => setIncludeYouthInWarRoom(true)}
-                    className={`px-2 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+                    className={`px-2 py-1 rounded-md text-micro font-semibold transition cursor-pointer ${
                       includeYouthInWarRoom
                         ? 'bg-emerald-700 text-white dark:bg-emerald-500 dark:text-slate-950'
                         : 'text-slate-500 dark:text-slate-400 hover:text-slate-200'
@@ -248,7 +248,7 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
                 <button
                   type="button"
                   onClick={() => setCompanionMode((v) => !v)}
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-micro font-bold border transition cursor-pointer ${
                     companionMode
                       ? 'bg-emerald-500 text-slate-950 border-white shadow-md'
                       : 'bg-slate-950 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/15'
@@ -278,7 +278,7 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
                 hydratedFmSave?.decodedPayload?.upcomingFixtures?.[0]?.competition ??
                 null;
               return (
-                <div className="p-3.5 rounded-xl border border-amber-500/40 bg-slate-900/75 space-y-2">
+                <div className="p-3.5 rounded-xl border border-amber-500/40 bg-slate-900/70 space-y-2">
                   <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-300">
                     <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
                     <span>Active Suspensions ({combinedSuspensions.length})</span>
@@ -308,7 +308,7 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
                           </span>{' '}
                           · {ban.competitionName}{' '}
                           {!appliesNext && (
-                            <span className="ml-1 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-200">
+                            <span className="ml-1 rounded-md bg-amber-500/20 px-1.5 py-0.5 text-2xs font-bold text-amber-200">
                               {ban.scope === 'cup'
                                 ? 'Cup Ban Only — Eligible Next Match'
                                 : 'Other-Comp Ban — Eligible Next Match'}
@@ -356,7 +356,7 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
                   <strong>Competition Rule:</strong> Max {competitionRules.matchdaySubsLimit} matchday substitutions
                   {competitionRules.fixturesPerClub ? ` · ${competitionRules.fixturesPerClub}-match season` : ''}
                 </span>
-                <span className="font-mono text-[11px] text-sky-300">
+                <span className="font-mono text-micro text-sky-300">
                   Save Date: {saveDate}
                 </span>
               </div>
@@ -437,7 +437,7 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
                 <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                   {rule.summary}
                 </p>
-                <div className="pt-2 border-t border-slate-200 dark:border-slate-800 text-[11px] font-mono text-emerald-700 dark:text-emerald-400">
+                <div className="pt-2 border-t border-slate-200 dark:border-slate-800 text-micro font-mono text-emerald-700 dark:text-emerald-400">
                   {rule.inGameSetting}
                 </div>
               </div>

@@ -92,7 +92,7 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
         {healthChecks.map((item) => (
           <span
             key={item.label}
-            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono border ${
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-2xs font-mono border ${
               item.ok
                 ? 'bg-emerald-500/15 border-emerald-500/35 text-emerald-300'
                 : 'bg-amber-500/15 border-amber-500/35 text-amber-300'
@@ -182,7 +182,7 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
         <button
           type="button"
           onClick={() => setShowRawInspector((prev) => !prev)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-200 bg-slate-900/90 hover:bg-slate-800 border border-emerald-500/40 rounded-lg cursor-pointer shrink-0 self-start sm:self-center"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-200 bg-slate-900/95 hover:bg-slate-800 border border-emerald-500/40 rounded-lg cursor-pointer shrink-0 self-start sm:self-center"
         >
           <Database className="w-3.5 h-3.5 text-emerald-400" />
           <span>
@@ -199,7 +199,7 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
       </div>
 
       {removedPlayers.length > 0 && (
-        <div className="px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-700 text-[11px] text-slate-300 flex flex-wrap items-center gap-2">
+        <div className="px-3 py-2 rounded-lg bg-slate-900/95 border border-slate-700 text-micro text-slate-300 flex flex-wrap items-center gap-2">
           <span className="font-mono font-semibold uppercase tracking-wider text-amber-300">
             Squad Sync Diff:
           </span>
@@ -217,7 +217,7 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
       )}
 
       {timingEntries.length > 0 && (
-        <div className="px-3 py-2 rounded-lg bg-slate-950/75 border border-slate-800 text-[11px] flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div className="px-3 py-2 rounded-lg bg-slate-950/60 border border-slate-800 text-micro flex flex-wrap items-center gap-x-3 gap-y-1">
           <span className="inline-flex items-center gap-1 font-mono font-semibold uppercase tracking-wider text-emerald-400">
             <Clock className="w-3.5 h-3.5 shrink-0" />
             Decode Timings{hydrated.fastSync ? ' (Fast Sync)' : ''}:
@@ -249,7 +249,7 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
           <button
             type="button"
             onClick={() => setShowReaderNotes((prev) => !prev)}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/80 hover:bg-slate-800 border border-slate-700 text-[11px] font-medium text-slate-300 transition cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/70 hover:bg-slate-800 border border-slate-700 text-micro font-medium text-slate-300 transition cursor-pointer"
           >
             <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             <span>Save Reader Info ({warningsList.length})</span>
@@ -260,7 +260,7 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
             )}
           </button>
           {showReaderNotes && (
-            <div className="px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/25 text-[11px] text-amber-200/90">
+            <div className="px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/25 text-micro text-amber-200/90">
               <ul className="list-disc pl-4 space-y-0.5">
                 {warningsList.map((note, idx) => (
                   <li key={idx}>{note}</li>
@@ -274,12 +274,12 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
       {/* 4-Column Undeniable Save Proof Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 text-xs">
         {/* 1. Live League Table Top 5 */}
-        <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-1.5">
-          <div className="font-mono text-[11px] uppercase tracking-wider text-emerald-400">
+        <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800 space-y-1.5">
+          <div className="font-mono text-micro uppercase tracking-wider text-emerald-400">
             Live League Table ({d.leagueStanding?.totalTeams || '?'} Teams)
           </div>
           {d.leagueStanding ? (
-            <div className="space-y-1 font-mono text-[11px]">
+            <div className="space-y-1 font-mono text-micro">
               {d.leagueStanding.top5.map((row) => (
                 <div
                   key={row.pos}
@@ -315,19 +315,19 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
               )}
             </div>
           ) : (
-            <div className="text-[11px] text-slate-400">
+            <div className="text-micro text-slate-400">
               No league table found in this save.
             </div>
           )}
         </div>
 
         {/* 2. Last 5 Played Results */}
-        <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-1.5">
-          <div className="font-mono text-[11px] uppercase tracking-wider text-emerald-400">
+        <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800 space-y-1.5">
+          <div className="font-mono text-micro uppercase tracking-wider text-emerald-400">
             Last 5 Results (From .fm)
           </div>
           {d.playedMatches.length > 0 ? (
-            <div className="space-y-1 font-mono text-[11px]">
+            <div className="space-y-1 font-mono text-micro">
               {d.playedMatches.slice(0, 5).map((m, idx) => (
                 <div
                   key={`${m.dateDmy}-${m.opponent}-${idx}`}
@@ -351,19 +351,19 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
               ))}
             </div>
           ) : (
-            <div className="text-[11px] text-slate-400">
+            <div className="text-micro text-slate-400">
               No completed fixtures decoded.
             </div>
           )}
         </div>
 
         {/* 3. Next 5 Upcoming Fixtures */}
-        <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-1.5">
-          <div className="font-mono text-[11px] uppercase tracking-wider text-emerald-400">
+        <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800 space-y-1.5">
+          <div className="font-mono text-micro uppercase tracking-wider text-emerald-400">
             Next 5 Fixtures (From {hydrated.saveDateLabel})
           </div>
           {d.upcomingFixtures.length > 0 ? (
-            <div className="space-y-1 font-mono text-[11px] text-slate-300">
+            <div className="space-y-1 font-mono text-micro text-slate-300">
               {d.upcomingFixtures.slice(0, 5).map((f, idx) => (
                 <div
                   key={`${f.dateDmy}-${f.opponent}-${idx}`}
@@ -377,19 +377,19 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
               ))}
             </div>
           ) : (
-            <div className="text-[11px] text-slate-400">
+            <div className="text-micro text-slate-400">
               No upcoming fixtures decoded.
             </div>
           )}
         </div>
 
         {/* 4. Top 5 Synced Players (Season Stats) */}
-        <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-1.5">
-          <div className="font-mono text-[11px] uppercase tracking-wider text-emerald-400">
+        <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800 space-y-1.5">
+          <div className="font-mono text-micro uppercase tracking-wider text-emerald-400">
             Top 5 Active Players (Live Season Output)
           </div>
           {topPlayers.length > 0 ? (
-            <div className="space-y-1 font-mono text-[11px] text-slate-300">
+            <div className="space-y-1 font-mono text-micro text-slate-300">
               {topPlayers.map((p) => (
                 <div
                   key={p.uid}
@@ -406,7 +406,7 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
               ))}
             </div>
           ) : (
-            <div className="text-[11px] text-slate-400">
+            <div className="text-micro text-slate-400">
               No players extracted for club UID {d.meta.clubUid ?? 'unknown'}.
             </div>
           )}
@@ -416,10 +416,10 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
       {/* Expandable Raw Decoded Payload Inspector */}
       {showRawInspector && (
         <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
-          <div className="text-[11px] font-mono text-slate-400">
+          <div className="text-micro font-mono text-slate-400">
             Raw decoded output from local fmsave {d.meta.fmsaveVersion} WebAssembly reader (100% read directly from your .fm file · Zero raw CA/PA exposed):
           </div>
-          <pre className="max-h-72 overflow-auto text-[11px] font-mono text-emerald-200/90 leading-relaxed whitespace-pre-wrap break-words">
+          <pre className="max-h-72 overflow-auto text-micro font-mono text-emerald-200/90 leading-relaxed whitespace-pre-wrap break-words">
             {JSON.stringify(
               {
                 meta: d.meta,

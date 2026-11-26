@@ -160,8 +160,8 @@ const FinancesStat: React.FC<{
   hint?: string;
   valueClassName?: string;
 }> = ({ label, value, hint, valueClassName }) => (
-  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 p-2.5 min-w-0">
-    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 leading-tight">
+  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 p-2.5 min-w-0">
+    <div className="text-micro font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 leading-tight">
       {label}
     </div>
     <div
@@ -1904,13 +1904,13 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       {!hasLoadedSave && turns.length === 0 && !fmDecodeStage ? (
         <div className="p-5 sm:p-8 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950/60">
           <div className="max-w-xl mx-auto space-y-4 text-center">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-[11px] font-semibold text-emerald-300">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-micro font-semibold text-emerald-300">
               <Sparkles className="w-3.5 h-3.5" />
               Football Manager 27 · Patch 27.1.0 ready
             </div>
 
             <div className="space-y-2">
-              <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight text-white">
+              <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
                 {ONBOARDING_TITLE}
               </h2>
               <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
@@ -1945,7 +1945,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                 <span>Where is my save file?</span>
                 <ChevronDown className="w-4 h-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
               </summary>
-              <div className="space-y-2 px-3.5 pb-3 text-[11px] leading-relaxed text-slate-400">
+              <div className="space-y-2 px-3.5 pb-3 text-micro leading-relaxed text-slate-400">
                 <ul className="space-y-1.5">
                   {SAVE_FILE_LOCATIONS.map((location) => (
                     <li key={location.platform}>
@@ -1968,14 +1968,14 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                     key={step.id}
                     className="flex gap-2.5 rounded-xl border border-slate-800 bg-slate-900/70 p-3"
                   >
-                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-[11px] font-bold text-emerald-300">
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-micro font-bold text-emerald-300">
                       {index + 1}
                     </span>
                     <span className="min-w-0">
                       <span className="block text-xs font-bold text-slate-100">
                         {step.title}
                       </span>
-                      <span className="mt-0.5 block text-[11px] leading-relaxed text-slate-400">
+                      <span className="mt-0.5 block text-micro leading-relaxed text-slate-400">
                         {step.body}
                       </span>
                     </span>
@@ -1988,7 +1988,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               <div
                 role="group"
                 aria-label="Where to decode the save"
-                className="grid grid-cols-2 gap-1.5 rounded-xl border border-slate-700 bg-slate-900/80 p-1"
+                className="grid grid-cols-2 gap-1.5 rounded-xl border border-slate-700 bg-slate-900/70 p-1"
               >
                 <button
                   type="button"
@@ -2021,7 +2021,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                   Server backup
                 </button>
               </div>
-              <p className="text-[11px] leading-relaxed text-slate-400">
+              <p className="text-micro leading-relaxed text-slate-400">
                 {decodeTarget === 'local' ? DECODE_HELP.local : DECODE_HELP.server}
               </p>
 
@@ -2048,7 +2048,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                     <Zap className="w-3.5 h-3.5 shrink-0 text-amber-400" />
                     Fast Sync
                   </span>
-                  <span className="mt-0.5 block text-[11px] leading-relaxed text-slate-400">
+                  <span className="mt-0.5 block text-micro leading-relaxed text-slate-400">
                     {FAST_SYNC_HELP}
                   </span>
                 </span>
@@ -2071,7 +2071,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                       <span className="block text-xs font-bold text-slate-100">
                         {task.label}
                       </span>
-                      <span className="block text-[11px] leading-relaxed text-slate-400">
+                      <span className="block text-micro leading-relaxed text-slate-400">
                         {task.hint}
                       </span>
                     </span>
@@ -2091,7 +2091,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               <h2 className="text-sm font-bold text-slate-900 dark:text-white truncate">
                 AI Tactical Analyst
               </h2>
-              <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+              <div className="text-micro text-slate-500 dark:text-slate-400 truncate">
                 {players.length > 0
                   ? `${clubName && clubName !== '--' ? clubName : 'Club'} · ${describeSquadPool(countSquadPool(players))} · ${matches.length} matches`
                   : 'Ask any FM27 tactical question'}
@@ -2106,7 +2106,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               onChange={(e) =>
                 setReasoningMode(e.target.value as AnalystReasoningMode)
               }
-              className="min-h-[44px] md:min-h-[32px] px-2.5 md:px-2 py-1 text-base md:text-[11px] font-medium bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded-lg"
+              className="min-h-[44px] md:min-h-[32px] px-2.5 md:px-2 py-1 text-base md:text-micro font-medium bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded-lg"
             >
               <option value="fast_lite">Fast Co-Pilot</option>
               <option value="deep_high">Deep Analyst</option>
@@ -2117,7 +2117,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               <button
                 type="button"
                 onClick={() => setShowSyncDetails((v) => !v)}
-                className={`min-h-[44px] md:min-h-[32px] inline-flex items-center gap-1 px-2.5 md:px-2 py-1 text-xs md:text-[11px] font-medium rounded-lg border cursor-pointer transition whitespace-nowrap ${
+                className={`min-h-[44px] md:min-h-[32px] inline-flex items-center gap-1 px-2.5 md:px-2 py-1 text-xs md:text-micro font-medium rounded-lg border cursor-pointer transition whitespace-nowrap ${
                   activePreFlightValidation && !activePreFlightValidation.valid
                     ? 'text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-200 bg-amber-500/15 border-amber-500/40'
                     : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-slate-100 bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800'
@@ -2149,7 +2149,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               !activePreFlightValidation.fields.boardPromises.present && (
                 <span
                   title={activePreFlightValidation.fields.boardPromises.detail}
-                  className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-slate-500 dark:text-slate-400"
+                  className="inline-flex items-center gap-1 px-2 py-1 text-micro font-medium text-slate-500 dark:text-slate-400"
                 >
                   <Clock className="w-3 h-3 text-slate-400 dark:text-slate-500 shrink-0" />
                   Board Promises · None active
@@ -2162,7 +2162,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                   type="button"
                   onClick={handleCopyFullChat}
                   title="Copy the entire Analyst conversation to your clipboard"
-                  className="min-h-[44px] md:min-h-[32px] inline-flex items-center gap-1 px-2.5 md:px-2 py-1 text-xs md:text-[11px] font-medium text-emerald-800 dark:text-emerald-300 hover:text-emerald-950 dark:hover:text-white bg-emerald-500/10 dark:bg-slate-900 border border-emerald-500/35 rounded-lg cursor-pointer transition whitespace-nowrap"
+                  className="min-h-[44px] md:min-h-[32px] inline-flex items-center gap-1 px-2.5 md:px-2 py-1 text-xs md:text-micro font-medium text-emerald-800 dark:text-emerald-300 hover:text-emerald-950 dark:hover:text-white bg-emerald-500/10 dark:bg-slate-900 border border-emerald-500/35 rounded-lg cursor-pointer transition whitespace-nowrap"
                 >
                   {copiedId === 'full-chat' ? (
                     <>
@@ -2181,14 +2181,14 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                     <button
                       type="button"
                       onClick={handleConfirmClearChat}
-                      className="min-h-[44px] md:min-h-[32px] px-2.5 md:px-2 py-1 text-xs md:text-[11px] font-bold text-rose-200 bg-rose-500/20 border border-rose-500/50 rounded-lg cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+                      className="min-h-[44px] md:min-h-[32px] px-2.5 md:px-2 py-1 text-xs md:text-micro font-bold text-rose-200 bg-rose-500/20 border border-rose-500/50 rounded-lg cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
                     >
                       Confirm Clear
                     </button>
                     <button
                       type="button"
                       onClick={disarmClearChat}
-                      className="min-h-[44px] md:min-h-[32px] px-2.5 md:px-2 py-1 text-xs md:text-[11px] font-medium text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-lg cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                      className="min-h-[44px] md:min-h-[32px] px-2.5 md:px-2 py-1 text-xs md:text-micro font-medium text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-lg cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
                     >
                       Cancel
                     </button>
@@ -2197,7 +2197,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                   <button
                     type="button"
                     onClick={armClearChat}
-                    className="min-h-[44px] md:min-h-[32px] px-2.5 md:px-2 py-1 text-xs md:text-[11px] font-medium text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-lg cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                    className="min-h-[44px] md:min-h-[32px] px-2.5 md:px-2 py-1 text-xs md:text-micro font-medium text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-lg cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
                   >
                     Clear Chat
                   </button>
@@ -2221,7 +2221,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                 <div className="font-bold text-amber-200 leading-snug">
                   Sync Status Warning · {activePreFlightValidation.warningTitle}
                 </div>
-                <p className="text-[11px] text-amber-100/90 leading-relaxed">
+                <p className="text-micro text-amber-100/90 leading-relaxed">
                   {activePreFlightValidation.warningMessage}
                 </p>
               </div>
@@ -2229,7 +2229,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             <div className="flex items-center gap-1.5 shrink-0">
               <label
                 htmlFor="chat-multi-file-upload"
-                className="min-h-[44px] sm:min-h-[32px] inline-flex items-center gap-1 px-3 sm:px-2.5 py-1 text-xs sm:text-[11px] font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg cursor-pointer transition whitespace-nowrap"
+                className="min-h-[44px] sm:min-h-[32px] inline-flex items-center gap-1 px-3 sm:px-2.5 py-1 text-xs sm:text-micro font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg cursor-pointer transition whitespace-nowrap"
               >
                 <Upload className="w-3 h-3 shrink-0" />
                 <span>Re-import .fm</span>
@@ -2250,9 +2250,9 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               <div
                 key={field.key}
                 title={field.detail}
-                className={`px-2 py-1 rounded-lg border text-[10px] flex items-center gap-1.5 min-w-0 ${
+                className={`px-2 py-1 rounded-lg border text-2xs flex items-center gap-1.5 min-w-0 ${
                   field.informational
-                    ? 'bg-slate-900/80 border-slate-700 text-slate-300'
+                    ? 'bg-slate-900/70 border-slate-700 text-slate-300'
                     : field.present
                       ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
                       : 'bg-amber-950/60 border-amber-500/45 text-amber-200 font-semibold'
@@ -2278,7 +2278,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
 
       {/* COLLAPSIBLE SYNC STATUS, PRE-FLIGHT CHECKLIST & READER NOTES */}
       {showSyncDetails && showSyncStatusControl && (
-        <div className="px-4 py-3 border-b border-slate-800 bg-slate-950/80 space-y-2.5 text-[11px]">
+        <div className="px-4 py-3 border-b border-slate-800 bg-slate-950/85 space-y-2.5 text-micro">
           {activePreFlightValidation && (
             <div className="space-y-1.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2302,7 +2302,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                 {activePreFlightValidation.needsReimport && (
                   <label
                     htmlFor="chat-multi-file-upload"
-                    className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-amber-200 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 rounded cursor-pointer transition"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 text-2xs font-bold text-amber-200 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 rounded-md cursor-pointer transition"
                   >
                     <Upload className="w-3 h-3" />
                     Re-import .fm Save
@@ -2318,7 +2318,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                       field.informational
                         ? 'bg-slate-900/70 border-slate-700 text-slate-300'
                         : field.present
-                          ? 'bg-slate-900/90 border-slate-800 text-slate-300'
+                          ? 'bg-slate-900/95 border-slate-800 text-slate-300'
                           : 'bg-amber-950/40 border-amber-500/40 text-amber-200'
                     }`}
                   >
@@ -2332,7 +2332,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                       )}
                       {field.label}
                     </span>
-                    <span className="font-mono text-[10px] text-slate-400 truncate">
+                    <span className="font-mono text-2xs text-slate-400 truncate">
                       {field.detail}
                     </span>
                   </div>
@@ -2412,7 +2412,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       <div
         role="tablist"
         aria-label="Mobile Hub view"
-        className="md:hidden px-3.5 pt-3 pb-1 border-b border-slate-200 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-950/50"
+        className="md:hidden px-3.5 pt-3 pb-1 border-b border-slate-200 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-950/60"
       >
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 rounded-xl bg-slate-200/70 dark:bg-slate-900 border border-slate-300 dark:border-slate-800">
           <button
@@ -2420,7 +2420,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             role="tab"
             aria-selected={mobileHubView === 'chat'}
             onClick={() => setMobileHubView('chat')}
-            className={`min-h-[44px] inline-flex min-w-0 items-center justify-center gap-1 rounded-lg px-1.5 text-[11px] sm:text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+            className={`min-h-[44px] inline-flex min-w-0 items-center justify-center gap-1 rounded-lg px-1.5 text-micro sm:text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
               mobileHubView === 'chat'
                 ? 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-500/40 shadow-xs'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
@@ -2429,7 +2429,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             <MessageSquare className="w-4 h-4 shrink-0" />
             <span className="truncate">Analyst Chat</span>
             {turns.length > 0 && (
-              <span className="rounded-md bg-emerald-500/20 px-1.5 py-0.5 font-mono text-[10px] leading-none text-emerald-800 dark:text-emerald-300 tabular-nums">
+              <span className="rounded-md bg-emerald-500/20 px-1.5 py-0.5 font-mono text-2xs leading-none text-emerald-800 dark:text-emerald-300 tabular-nums">
                 {turns.length}
               </span>
             )}
@@ -2439,7 +2439,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             role="tab"
             aria-selected={mobileHubView === 'finances'}
             onClick={() => setMobileHubView('finances')}
-            className={`min-h-[44px] inline-flex min-w-0 items-center justify-center gap-1 rounded-lg px-1.5 text-[11px] sm:text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+            className={`min-h-[44px] inline-flex min-w-0 items-center justify-center gap-1 rounded-lg px-1.5 text-micro sm:text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
               mobileHubView === 'finances'
                 ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 shadow-xs'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
@@ -2453,7 +2453,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             role="tab"
             aria-selected={mobileHubView === 'journey'}
             onClick={() => setMobileHubView('journey')}
-            className={`min-h-[44px] inline-flex min-w-0 items-center justify-center gap-1 rounded-lg px-1.5 text-[11px] sm:text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+            className={`min-h-[44px] inline-flex min-w-0 items-center justify-center gap-1 rounded-lg px-1.5 text-micro sm:text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
               mobileHubView === 'journey'
                 ? 'bg-sky-500/20 text-sky-700 dark:text-sky-300 border border-sky-500/40 shadow-xs'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
@@ -2473,7 +2473,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             role="tab"
             aria-selected={mobileHubView === 'data'}
             onClick={() => setMobileHubView('data')}
-            className={`min-h-[44px] inline-flex min-w-0 items-center justify-center gap-1 rounded-lg px-1.5 text-[11px] sm:text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+            className={`min-h-[44px] inline-flex min-w-0 items-center justify-center gap-1 rounded-lg px-1.5 text-micro sm:text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
               mobileHubView === 'data'
                 ? 'bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-500/40 shadow-xs'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
@@ -2534,7 +2534,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               type="button"
               disabled={isSending}
               onClick={() => handleSendToAnalyst(undefined, qp.prompt)}
-              className="min-h-[44px] sm:min-h-[36px] shrink-0 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800/90 hover:bg-emerald-500/15 hover:text-emerald-700 dark:hover:text-emerald-300 border border-slate-200 dark:border-slate-700 rounded-lg transition cursor-pointer disabled:opacity-50 whitespace-nowrap"
+              className="min-h-[44px] sm:min-h-[36px] shrink-0 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800/70 hover:bg-emerald-500/15 hover:text-emerald-700 dark:hover:text-emerald-300 border border-slate-200 dark:border-slate-700 rounded-lg transition cursor-pointer disabled:opacity-50 whitespace-nowrap"
             >
               {qp.label}
             </button>
@@ -2551,7 +2551,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                     key={turn.id}
                     className="ml-auto max-w-2xl p-3.5 rounded-xl bg-emerald-950/50 border border-emerald-500/30 text-slate-100"
                   >
-                    <div className="flex items-center justify-between gap-2 text-[10px] font-mono text-emerald-400 mb-1">
+                    <div className="flex items-center justify-between gap-2 text-2xs font-mono text-emerald-400 mb-1">
                       <span>{displayManagerLabel}</span>
                       <div className="flex items-center gap-2 min-w-0">
                         {turn.imageNames && turn.imageNames.length > 0 && (
@@ -2566,7 +2566,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                               handleCopyText(turn.id, formatTurnForCopy(turn))
                             }
                             title="Copy message"
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-900/60 hover:bg-emerald-800/70 text-emerald-200 transition cursor-pointer shrink-0"
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-900/60 hover:bg-emerald-800/70 text-emerald-200 transition cursor-pointer shrink-0"
                           >
                             {copiedId === turn.id ? (
                               <>
@@ -2606,7 +2606,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                     </span>
                     <div className="flex items-center gap-2">
                       {turn.inGameDate && turn.inGameDate !== '--' && (
-                        <span className="text-[10px] font-mono text-slate-500">
+                        <span className="text-2xs font-mono text-slate-500">
                           {turn.inGameDate}
                         </span>
                       )}
@@ -2616,7 +2616,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                           handleCopyText(turn.id, formatTurnForCopy(turn))
                         }
                         title="Copy this Analyst reply"
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-200/80 dark:bg-slate-800 hover:bg-emerald-500/20 text-slate-700 dark:text-slate-200 hover:text-emerald-300 border border-slate-300 dark:border-slate-700 transition cursor-pointer"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-micro font-medium bg-slate-200/80 dark:bg-slate-800 hover:bg-emerald-500/20 text-slate-700 dark:text-slate-200 hover:text-emerald-300 border border-slate-300 dark:border-slate-700 transition cursor-pointer"
                       >
                         {copiedId === turn.id ? (
                           <>
@@ -2635,7 +2635,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
 
                   {turn.playerUpdatesApplied &&
                     turn.playerUpdatesApplied.length > 0 && (
-                      <div className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                      <div className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-micro text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
                         <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                         <span className="min-w-0 break-words">
                           Updated Squad:{' '}
@@ -2653,7 +2653,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                     const check = checkFm27ResponseWarnings(turn.analysisMarkdown);
                     if (check.passed) return null;
                     return (
-                      <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                      <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-micro text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
                         <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
                         <span className="min-w-0 break-words">Notice: {check.warnings.join(' · ')}</span>
                       </div>
@@ -2739,7 +2739,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
 
                   {turnCitations.length > 0 && (
                     <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-1">
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                      <div className="text-2xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
                         <BookOpen className="h-3 w-3 shrink-0" />
                         Grounded in
                       </div>
@@ -2747,7 +2747,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                         {turnCitations.map((citation) => (
                           <span
                             key={citation}
-                            className="rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-1.5 py-0.5 text-[11px] text-slate-600 dark:text-slate-300"
+                            className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-1.5 py-0.5 text-micro text-slate-600 dark:text-slate-300"
                           >
                             {citation}
                           </span>
@@ -2765,7 +2765,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                             type="button"
                             disabled={isSending}
                             onClick={() => handleSendToAnalyst(undefined, q)}
-                            className="min-h-[44px] sm:min-h-0 px-3 py-2 sm:px-2.5 sm:py-1.5 text-[11px] font-medium text-left text-emerald-800 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-lg transition cursor-pointer disabled:opacity-50"
+                            className="min-h-[44px] sm:min-h-0 px-3 py-2 sm:px-2.5 sm:py-1.5 text-micro font-medium text-left text-emerald-800 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-lg transition cursor-pointer disabled:opacity-50"
                           >
                             {q}
                           </button>
@@ -2909,7 +2909,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           </div>
 
           {hasLoadedSave && (
-            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600 dark:text-slate-400">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-micro text-slate-600 dark:text-slate-400">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <label
                   htmlFor="fm-ondevice-composer-toggle"
@@ -2990,7 +2990,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                 </p>
               </div>
               <span
-                className={`rounded-md border px-2 py-0.5 font-mono text-[11px] font-semibold tabular-nums ${
+                className={`rounded-md border px-2 py-0.5 font-mono text-micro font-semibold tabular-nums ${
                   financesPanel.payroll.wageSeverity === 'over'
                     ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40'
                     : financesPanel.payroll.wageSeverity === 'minor_over'
@@ -3005,7 +3005,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             </div>
 
             <div className="space-y-2">
-              <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <h4 className="text-micro font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Cash &amp; Runway
               </h4>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
@@ -3044,7 +3044,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                 <p
                   role="status"
                   aria-live="polite"
-                  className="flex items-start gap-1.5 rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1.5 text-[11px] text-amber-700 dark:text-amber-200"
+                  className="flex items-start gap-1.5 rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1.5 text-micro text-amber-700 dark:text-amber-200"
                 >
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                   <span>{financesPanel.cash.runwayWarning}</span>
@@ -3053,7 +3053,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             </div>
 
             <div className="space-y-2">
-              <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <h4 className="text-micro font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Weekly Payroll Breakdown
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -3081,7 +3081,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             </div>
 
             <div className="space-y-2">
-              <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <h4 className="text-micro font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Sponsorship Deals
               </h4>
               {financesPanel.sponsorships.length === 0 ? (
@@ -3093,7 +3093,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                   {financesPanel.sponsorships.map((deal, idx) => (
                     <li
                       key={`${deal.name}-${idx}`}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 px-2.5 py-1.5 text-xs"
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 px-2.5 py-1.5 text-xs"
                     >
                       <div className="min-w-0">
                         <div className="font-semibold text-slate-900 dark:text-white truncate">
@@ -3110,7 +3110,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                         {deal.datesReordered && (
                           <span
                             title="fmsave reversed the stored dates of this ended contract — start and end are swapped"
-                            className="inline-flex items-center gap-0.5 rounded border border-amber-500/40 bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300"
+                            className="inline-flex items-center gap-0.5 rounded-md border border-amber-500/40 bg-amber-500/15 px-1.5 py-0.5 text-micro font-semibold text-amber-700 dark:text-amber-300"
                           >
                             <AlertTriangle className="h-2.5 w-2.5" />
                             Dates reordered

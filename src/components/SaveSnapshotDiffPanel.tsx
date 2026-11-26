@@ -294,7 +294,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
 
   if (snapshots.length === 0) {
     return (
-      <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5 space-y-1.5">
+      <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 sm:p-5 space-y-1.5">
         <div className="flex items-center gap-2 text-xs font-bold text-slate-200">
           <History className="h-4 w-4 text-sky-400" />
           Save-to-Save Journey Report &amp; Progression Archive
@@ -389,12 +389,12 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
               <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />
               <span>Career Journey Trajectory ({pts.length} saves)</span>
               {journey && (
-                <span className="rounded border border-slate-700 bg-slate-900 px-1.5 py-0.5 font-mono text-[10px] text-emerald-300">
+                <span className="rounded-md border border-slate-700 bg-slate-900 px-1.5 py-0.5 font-mono text-2xs text-emerald-300">
                   {journey.sameSeason ? journey.toSeason : `${journey.fromSeason} → ${journey.toSeason}`}
                 </span>
               )}
               <span
-                className={`rounded border px-1.5 py-0.5 font-mono text-[10px] font-bold ${
+                className={`rounded-md border px-1.5 py-0.5 font-mono text-2xs font-bold ${
                   netIsGood
                     ? 'border-emerald-500/35 bg-emerald-500/15 text-emerald-300'
                     : 'border-rose-500/35 bg-rose-500/15 text-rose-300'
@@ -403,9 +403,9 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                 {formatVal(firstVal)} → {formatVal(lastVal)} ({netDeltaLabel})
               </span>
             </div>
-            <div className="text-[11px] text-slate-400">{metricSubtitle}</div>
+            <div className="text-micro text-slate-400">{metricSubtitle}</div>
           </div>
-          <div className="inline-flex rounded-lg border border-slate-800 bg-slate-900 p-0.5 text-[10px]">
+          <div className="inline-flex rounded-lg border border-slate-800 bg-slate-900 p-0.5 text-2xs">
             {(
               [
                 { id: 'avgAbility', label: 'Avg Stars ★' },
@@ -418,7 +418,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                 key={m.id}
                 type="button"
                 onClick={() => setTimelineMetric(m.id)}
-                className={`min-h-[44px] sm:min-h-[28px] px-2.5 sm:px-2 rounded font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                className={`min-h-[44px] sm:min-h-[28px] px-2.5 sm:px-2 rounded-md font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                   timelineMetric === m.id
                     ? 'bg-emerald-500/20 text-emerald-300'
                     : 'text-slate-400 hover:text-slate-200'
@@ -461,7 +461,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                   x={c.x}
                   y={Math.max(11, c.y - 8)}
                   textAnchor={idx === 0 ? 'start' : idx === coords.length - 1 ? 'end' : 'middle'}
-                  className="fill-emerald-300 text-[9px] font-mono tabular-nums font-semibold"
+                  className="fill-emerald-300 text-3xs font-mono tabular-nums font-semibold"
                 >
                   {formatVal(c.v)}
                 </text>
@@ -470,7 +470,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                 x={c.x}
                 y={h - 3}
                 textAnchor={idx === 0 ? 'start' : idx === coords.length - 1 ? 'end' : 'middle'}
-                className="fill-slate-400 text-[8.5px] font-mono"
+                className="fill-slate-400 text-3xs font-mono"
               >
                 {c.pt.inGameDate.slice(0, 5)}
               </text>
@@ -478,7 +478,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
           ))}
         </svg>
         {pts.length === 2 && (
-          <div className="text-[10px] text-slate-400">
+          <div className="text-2xs text-slate-400">
             2 save checkpoints tracked so far — import future dates to build a multi-month trend curve.
           </div>
         )}
@@ -487,14 +487,14 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
   })();
 
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900/75 p-4 sm:p-5 space-y-4">
+    <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 sm:p-5 space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
           <h3 className="text-sm sm:text-base font-semibold text-white flex items-center gap-2">
             <Database className="h-4 w-4 text-sky-400" />
             Save-to-Save Deep Journey Report
           </h3>
-          <p className="text-[11px] text-slate-400 mt-0.5">
+          <p className="text-micro text-slate-400 mt-0.5">
             {snapshots.length} cached save snapshot{snapshots.length === 1 ? '' : 's'} — instant trajectory breakdown plus on-demand AI Journey Briefing.
           </p>
         </div>
@@ -513,12 +513,12 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
       </div>
 
       {snapshots.length === 1 && (
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2.5 text-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2.5 text-xs">
           <div className="min-w-0">
             <div className="font-mono font-semibold text-sky-300">
               1 snapshot stored: {snapshots[0].inGameDate} · {snapshots[0].clubName}
             </div>
-            <div className="text-[11px] text-slate-400">
+            <div className="text-micro text-slate-400">
               {snapshots[0].players.length} players cached — sync a newer save date to compare, or remove this snapshot to start fresh.
             </div>
           </div>
@@ -538,7 +538,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
           {/* Snapshot selectors */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="block space-y-1">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              <span className="text-micro font-semibold uppercase tracking-wider text-slate-400">
                 Baseline Save (From)
               </span>
               <div className="flex items-center gap-1.5">
@@ -572,7 +572,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
             </label>
 
             <label className="block space-y-1">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              <span className="text-micro font-semibold uppercase tracking-wider text-slate-400">
                 Current Save (To)
               </span>
               <div className="flex items-center gap-1.5">
@@ -614,8 +614,8 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
             <div className="space-y-4">
               {/* KPI Deltas Strip (Zero raw CA/PA — Star Rating ★ only) */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
-                <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3">
-                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+                  <div className="text-2xs uppercase tracking-wider text-slate-400">
                     Squad Size
                   </div>
                   <div className="mt-1 flex items-baseline justify-between font-mono tabular-nums">
@@ -637,8 +637,8 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                   </div>
                 </div>
 
-                <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3">
-                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+                  <div className="text-2xs uppercase tracking-wider text-slate-400">
                     Avg Squad Rating (★)
                   </div>
                   <div className="mt-1 flex items-baseline justify-between font-mono tabular-nums">
@@ -660,8 +660,8 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                   </div>
                 </div>
 
-                <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3">
-                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+                  <div className="text-2xs uppercase tracking-wider text-slate-400">
                     Player Wages (Basic)
                   </div>
                   <div className="mt-1 flex items-baseline justify-between font-mono tabular-nums">
@@ -680,7 +680,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                   </div>
                   {typeof diff.kpiDeltas.toClubWagePayrollWeekly === 'number' &&
                     diff.kpiDeltas.toClubWagePayrollWeekly > 0 && (
-                      <div className="mt-0.5 text-[10px] font-mono text-slate-400 tabular-nums truncate">
+                      <div className="mt-0.5 text-2xs font-mono text-slate-400 tabular-nums truncate">
                         Player Wage Bill: £{diff.kpiDeltas.toClubWagePayrollWeekly.toLocaleString()}
                         {typeof diff.kpiDeltas.toWageBudgetWeekly === 'number' &&
                         diff.kpiDeltas.toWageBudgetWeekly > 0
@@ -691,15 +691,15 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                     )}
                   {typeof diff.kpiDeltas.toWageMissingCount === 'number' &&
                     diff.kpiDeltas.toWageMissingCount > 0 && (
-                      <div className="mt-0.5 text-[10px] font-mono text-slate-400 tabular-nums">
+                      <div className="mt-0.5 text-2xs font-mono text-slate-400 tabular-nums">
                         Known wages only — {diff.kpiDeltas.toWageMissingCount} of{' '}
                         {diff.kpiDeltas.toSquadCount} players have no decoded weekly wage
                       </div>
                     )}
                 </div>
 
-                <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3">
-                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+                  <div className="text-2xs uppercase tracking-wider text-slate-400">
                     Balance / Table
                   </div>
                   <div className="mt-1 text-xs font-mono text-white truncate tabular-nums">
@@ -716,19 +716,19 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
               {/* Season & Competition Scope Split (League vs Cup vs Friendlies — never mixed!) */}
               {journey.competitionComparison.to && (
                 <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 space-y-2.5">
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-micro">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-semibold text-slate-100">
                         {journey.toSeason} Competition Breakdown
                       </span>
-                      <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 font-mono text-[10px] text-emerald-300">
+                      <span className="rounded-md bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 font-mono text-2xs text-emerald-300">
                         Competitive: {journey.competitionComparison.to.competitive.played} GP
                         {journey.competitionComparison.to.competitive.xgDiff !== null
                           ? ` · xGD ${journey.competitionComparison.to.competitive.xgDiff >= 0 ? '+' : ''}${journey.competitionComparison.to.competitive.xgDiff.toFixed(2)}`
                           : ''}
                       </span>
                     </div>
-                    <span className="font-mono text-[10px] text-slate-400">
+                    <span className="font-mono text-2xs text-slate-400">
                       {journey.sameSeason
                         ? `Same Season (${journey.toSeason})`
                         : `Cross-Season (${journey.fromSeason} → ${journey.toSeason})`}
@@ -779,7 +779,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                           key={bucket.label}
                           className={`rounded-lg border px-3 py-2.5 space-y-1 ${bucket.tone}`}
                         >
-                          <div className="flex items-center justify-between text-[10px] uppercase tracking-wider font-bold">
+                          <div className="flex items-center justify-between text-2xs uppercase tracking-wider font-bold">
                             <span>{bucket.label}</span>
                             <span className="font-mono">
                               {bucket.rec.played} GP
@@ -787,20 +787,20 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                             </span>
                           </div>
                           {bucket.rec.played === 0 ? (
-                            <div className="text-[11px] text-slate-400 py-0.5">
+                            <div className="text-micro text-slate-400 py-0.5">
                               No matches recorded yet
                             </div>
                           ) : (
-                            <div className="space-y-1 font-mono tabular-nums text-[11px]">
+                            <div className="space-y-1 font-mono tabular-nums text-micro">
                               <div className="flex items-baseline justify-between gap-2">
                                 <span className="text-white font-bold">
                                   {bucket.rec.won}W-{bucket.rec.drawn}D-{bucket.rec.lost}L
                                 </span>
-                                <span className="text-[10px] text-slate-300">
+                                <span className="text-2xs text-slate-300">
                                   {bucket.rec.goalsFor}:{bucket.rec.goalsAgainst} ({gd >= 0 ? '+' : ''}{gd})
                                 </span>
                               </div>
-                              <div className="flex flex-wrap items-center justify-between gap-1 text-[10px] text-slate-300">
+                              <div className="flex flex-wrap items-center justify-between gap-1 text-2xs text-slate-300">
                                 <span>
                                   {bucket.isLeague
                                     ? `${bucket.rec.points} Pts · ${ppg} PPG · ${winPct}% Win`
@@ -816,7 +816,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                               </div>
                             </div>
                           )}
-                          <div className="text-[10px] text-slate-400 pt-0.5">
+                          <div className="text-2xs text-slate-400 pt-0.5">
                             {bucket.subtitle}
                           </div>
                         </div>
@@ -827,27 +827,27 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
               )}
 
               {/* At-a-Glance Journey Change Summary Strip */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-micro">
                 <div className="rounded-lg border border-emerald-500/25 bg-emerald-950/15 px-3 py-2">
-                  <div className="text-[10px] uppercase tracking-wider text-emerald-300/80">Improved</div>
+                  <div className="text-2xs uppercase tracking-wider text-emerald-300/80">Improved</div>
                   <div className="mt-0.5 font-mono font-bold text-white">
                     {journey.improved.length} signal{journey.improved.length === 1 ? '' : 's'}
                   </div>
                 </div>
                 <div className="rounded-lg border border-rose-500/25 bg-rose-950/15 px-3 py-2">
-                  <div className="text-[10px] uppercase tracking-wider text-rose-300/80">Worsened</div>
+                  <div className="text-2xs uppercase tracking-wider text-rose-300/80">Worsened</div>
                   <div className="mt-0.5 font-mono font-bold text-white">
                     {journey.worsened.length} watchpoint{journey.worsened.length === 1 ? '' : 's'}
                   </div>
                 </div>
                 <div className="rounded-lg border border-sky-500/25 bg-sky-950/15 px-3 py-2">
-                  <div className="text-[10px] uppercase tracking-wider text-sky-300/80">Stat Movers</div>
+                  <div className="text-2xs uppercase tracking-wider text-sky-300/80">Stat Movers</div>
                   <div className="mt-0.5 font-mono font-bold text-white">
                     {journey.playerStatDeltas.length} player{journey.playerStatDeltas.length === 1 ? '' : 's'}
                   </div>
                 </div>
                 <div className="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2">
-                  <div className="text-[10px] uppercase tracking-wider text-slate-400">Roster Turnover</div>
+                  <div className="text-2xs uppercase tracking-wider text-slate-400">Roster Turnover</div>
                   <div className="mt-0.5 font-mono font-bold text-white">
                     +{diff.newgens.length} in · -{diff.departed.length} out
                   </div>
@@ -858,14 +858,14 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
               {timelineSvg}
 
               {/* AI Career Journey Narrative Box */}
-              <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3.5 space-y-3">
+              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <div className="text-xs font-semibold text-white flex flex-wrap items-center gap-1.5">
                       <Sparkles className="h-3.5 w-3.5 text-emerald-400" />
                       AI Career Journey Narrative ({journey.fromDate} → {journey.toDate})
                     </div>
-                    <p className="text-[11px] text-slate-400">
+                    <p className="text-micro text-slate-400">
                       Deep scouting, tactical &amp; governance review separating League, Cup &amp; Friendlies — cached locally.
                     </p>
                   </div>
@@ -926,7 +926,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
                       <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5 space-y-1">
-                        <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400">
+                        <div className="text-2xs font-semibold uppercase tracking-wider text-emerald-400">
                           What Improved
                         </div>
                         <ul className="space-y-1 text-slate-200 list-disc pl-4">
@@ -936,7 +936,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                         </ul>
                       </div>
                       <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5 space-y-1">
-                        <div className="text-[10px] font-semibold uppercase tracking-wider text-rose-400">
+                        <div className="text-2xs font-semibold uppercase tracking-wider text-rose-400">
                           What Worsened
                         </div>
                         <ul className="space-y-1 text-slate-200 list-disc pl-4">
@@ -946,7 +946,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                         </ul>
                       </div>
                       <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5 space-y-1">
-                        <div className="text-[10px] font-semibold uppercase tracking-wider text-amber-300">
+                        <div className="text-2xs font-semibold uppercase tracking-wider text-amber-300">
                           Things To Note
                         </div>
                         <ul className="space-y-1 text-slate-200 list-disc pl-4">
@@ -957,17 +957,17 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-[11px]">
-                      <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
-                        <div className="text-[10px] font-semibold uppercase tracking-wider text-sky-400 mb-1">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-micro">
+                      <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5">
+                        <div className="text-2xs font-semibold uppercase tracking-wider text-sky-400 mb-1">
                           Tactical Evolution
                         </div>
                         <p className="text-slate-200 leading-relaxed">
                           {aiBriefing.tacticalEvolution}
                         </p>
                       </div>
-                      <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
-                        <div className="text-[10px] font-semibold uppercase tracking-wider text-amber-300 mb-1">
+                      <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5">
+                        <div className="text-2xs font-semibold uppercase tracking-wider text-amber-300 mb-1">
                           Governance &amp; Promises Audit
                         </div>
                         <p className="text-slate-200 leading-relaxed">
@@ -978,7 +978,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
 
                     {aiBriefing.priorityNextActions.length > 0 && (
                       <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2.5 space-y-1">
-                        <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
+                        <div className="text-2xs font-semibold uppercase tracking-wider text-emerald-300">
                           Priority Next Actions
                         </div>
                         <ol className="list-decimal pl-4 space-y-1 text-slate-200">
@@ -1057,7 +1057,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
               {activeTab === 'summary' ? (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs">
                   <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-2">
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400">
+                    <div className="text-2xs font-semibold uppercase tracking-wider text-emerald-400">
                       Improved ({journey.improved.length})
                     </div>
                     {journey.improved.length === 0 ? (
@@ -1068,19 +1068,19 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-semibold text-white">{item.title}</span>
                             {item.deltaLabel && (
-                              <span className="font-mono text-[11px] text-emerald-400 shrink-0">
+                              <span className="font-mono text-micro text-emerald-400 shrink-0">
                                 {item.deltaLabel}
                               </span>
                             )}
                           </div>
-                          <p className="text-[11px] text-slate-400">{item.detail}</p>
+                          <p className="text-micro text-slate-400">{item.detail}</p>
                         </div>
                       ))
                     )}
                   </div>
 
                   <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-2">
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-rose-400">
+                    <div className="text-2xs font-semibold uppercase tracking-wider text-rose-400">
                       Worsened ({journey.worsened.length})
                     </div>
                     {journey.worsened.length === 0 ? (
@@ -1091,19 +1091,19 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-semibold text-white">{item.title}</span>
                             {item.deltaLabel && (
-                              <span className="font-mono text-[11px] text-rose-400 shrink-0">
+                              <span className="font-mono text-micro text-rose-400 shrink-0">
                                 {item.deltaLabel}
                               </span>
                             )}
                           </div>
-                          <p className="text-[11px] text-slate-400">{item.detail}</p>
+                          <p className="text-micro text-slate-400">{item.detail}</p>
                         </div>
                       ))
                     )}
                   </div>
 
                   <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-2">
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-amber-300">
+                    <div className="text-2xs font-semibold uppercase tracking-wider text-amber-300">
                       Things To Note ({journey.thingsToNote.length})
                     </div>
                     {journey.thingsToNote.length === 0 ? (
@@ -1114,12 +1114,12 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-semibold text-white">{item.title}</span>
                             {item.deltaLabel && (
-                              <span className="font-mono text-[11px] text-amber-300 shrink-0">
+                              <span className="font-mono text-micro text-amber-300 shrink-0">
                                 {item.deltaLabel}
                               </span>
                             )}
                           </div>
-                          <p className="text-[11px] text-slate-400">{item.detail}</p>
+                          <p className="text-micro text-slate-400">{item.detail}</p>
                         </div>
                       ))
                     )}
@@ -1142,7 +1142,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                             <span className="font-semibold text-white">{p.name}</span>
                             <span className="ml-2 text-slate-400">{p.position}</span>
                           </div>
-                          <div className="flex items-center gap-3 font-mono text-[11px] tabular-nums">
+                          <div className="flex items-center gap-3 font-mono text-micro tabular-nums">
                             {p.minutesDelta !== 0 && (
                               <span className="text-slate-300">
                                 {p.minutesDelta > 0 ? '+' : ''}
@@ -1245,7 +1245,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                             <span className="font-semibold text-white">{c.name}</span>
                             <span className="ml-2 text-slate-400">{c.position}</span>
                           </div>
-                          <div className="font-mono text-[11px] text-slate-300 tabular-nums">
+                          <div className="font-mono text-micro text-slate-300 tabular-nums">
                             {c.previousExpires !== c.currentExpires && (
                               <span className="mr-3 text-sky-300">
                                 Exp: {c.previousExpires} → {c.currentExpires}
@@ -1283,7 +1283,7 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                               {p.position} · Age {formatAge(p.age)}
                             </span>
                           </div>
-                          <span className="font-mono text-[11px] text-emerald-300">
+                          <span className="font-mono text-micro text-emerald-300">
                             New Arrival{p.abilityDelta > 0 ? ` · +${p.abilityDelta.toFixed(1)}★` : ''}
                           </span>
                         </div>

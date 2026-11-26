@@ -57,7 +57,7 @@ export const SquadAnalyticsView: React.FC<SquadAnalyticsViewProps> = ({
             <span className="text-xs font-semibold text-white">
               Player Radar &amp; Position Percentile Pizza
             </span>
-            <p className="text-[11px] text-slate-400">
+            <p className="text-micro text-slate-400">
               Compare attributes and division-benchmarked percentiles side-by-side
             </p>
           </div>
@@ -97,7 +97,7 @@ export const SquadAnalyticsView: React.FC<SquadAnalyticsViewProps> = ({
                   />
                 </div>
               </div>
-              <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
                 <span className="text-slate-200 min-w-0">
                   <strong className="text-emerald-300">{radarIntel.verdictLabel}:</strong>{' '}
                   {radarIntel.inlineRationale}
@@ -105,7 +105,7 @@ export const SquadAnalyticsView: React.FC<SquadAnalyticsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => onSelectPlayer?.(activeRadarPlayer)}
-                  className="min-h-[40px] sm:min-h-[32px] px-2.5 rounded-lg text-[11px] font-semibold text-sky-300 hover:text-sky-200 bg-sky-500/10 border border-sky-500/30 shrink-0 cursor-pointer"
+                  className="min-h-[40px] sm:min-h-[32px] px-2.5 rounded-lg text-micro font-semibold text-sky-300 hover:text-sky-200 bg-sky-500/10 border border-sky-500/30 shrink-0 cursor-pointer"
                 >
                   Open Deep Profile →
                 </button>

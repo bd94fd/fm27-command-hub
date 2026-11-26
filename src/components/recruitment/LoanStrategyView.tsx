@@ -42,7 +42,7 @@ export const LoanStrategyView: React.FC<LoanStrategyViewProps> = ({
             <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm font-bold text-indigo-200">
               <Compass className="h-4 w-4 text-indigo-400 shrink-0" />
               <span>{loanAdvice.headline}</span>
-              <span className="rounded-md border border-indigo-400/35 bg-indigo-500/15 px-2 py-0.5 font-mono text-[10px] text-indigo-200">
+              <span className="rounded-md border border-indigo-400/35 bg-indigo-500/15 px-2 py-0.5 font-mono text-2xs text-indigo-200">
                 {leagueLevelCalibration.standingContextLabel}
               </span>
             </div>
@@ -78,9 +78,9 @@ export const LoanStrategyView: React.FC<LoanStrategyViewProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-[11px] font-mono">
-          <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-2.5 py-2">
-            <div className="text-[10px] uppercase tracking-wider text-slate-400">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-micro font-mono">
+          <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-2.5 py-2">
+            <div className="text-2xs uppercase tracking-wider text-slate-400">
               League Starter Floor
             </div>
             <div className="mt-0.5 font-bold text-white">
@@ -88,8 +88,8 @@ export const LoanStrategyView: React.FC<LoanStrategyViewProps> = ({
               {leagueLevelCalibration.starterAttrBaseline}/20
             </div>
           </div>
-          <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-2.5 py-2">
-            <div className="text-[10px] uppercase tracking-wider text-slate-400">
+          <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-2.5 py-2">
+            <div className="text-2xs uppercase tracking-wider text-slate-400">
               Incoming Loan Needs
             </div>
             <div className="mt-0.5 font-bold text-sky-300">
@@ -98,8 +98,8 @@ export const LoanStrategyView: React.FC<LoanStrategyViewProps> = ({
                 : 'Opportunistic Only'}
             </div>
           </div>
-          <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-2.5 py-2">
-            <div className="text-[10px] uppercase tracking-wider text-slate-400">
+          <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-2.5 py-2">
+            <div className="text-2xs uppercase tracking-wider text-slate-400">
               Dev Loans Out
             </div>
             <div className="mt-0.5 font-bold text-emerald-300">
@@ -107,8 +107,8 @@ export const LoanStrategyView: React.FC<LoanStrategyViewProps> = ({
               {loanAdvice.developmentLoansOut.length === 1 ? '' : 's'}
             </div>
           </div>
-          <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-2.5 py-2">
-            <div className="text-[10px] uppercase tracking-wider text-slate-400">
+          <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-2.5 py-2">
+            <div className="text-2xs uppercase tracking-wider text-slate-400">
               Wage-Relief Options
             </div>
             <div className="mt-0.5 font-bold text-amber-300">
@@ -118,20 +118,20 @@ export const LoanStrategyView: React.FC<LoanStrategyViewProps> = ({
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-800/80 bg-slate-950/60 px-3 py-2 text-[11px] text-slate-300">
+        <div className="rounded-lg border border-slate-800/80 bg-slate-950/60 px-3 py-2 text-micro text-slate-300">
           <strong className="text-indigo-300">Rules &amp; Window Fit:</strong>{' '}
           {loanAdvice.leagueLoanRulesNote}
         </div>
       </div>
 
       {/* 2. Incoming Loan Priorities */}
-      <div className="rounded-xl border border-slate-800 bg-slate-900/75 p-4 space-y-2.5">
+      <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
             <ArrowDownLeft className="h-4 w-4 text-sky-400" />
             Incoming Loan Strategy ({leagueLevelCalibration.competitionName})
           </h3>
-          <span className="text-[11px] font-mono text-slate-400">
+          <span className="text-micro font-mono text-slate-400">
             Target parent clubs 1–2 tiers above {leagueLevelCalibration.competitionName}
           </span>
         </div>
@@ -153,23 +153,23 @@ export const LoanStrategyView: React.FC<LoanStrategyViewProps> = ({
             {loanAdvice.incomingLoanPriorities.map((item) => (
               <div
                 key={item.bucketCode}
-                className="rounded-xl border border-sky-500/30 bg-slate-950/70 p-3 space-y-1.5"
+                className="rounded-xl border border-sky-500/30 bg-slate-950/60 p-3 space-y-1.5"
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-bold text-sky-200">
                     {item.bucketCode} · {item.bucketLabel}
                   </span>
-                  <span className="rounded bg-sky-500/15 border border-sky-500/35 px-2 py-0.5 text-[10px] font-mono font-semibold text-sky-300">
+                  <span className="rounded-md bg-sky-500/15 border border-sky-500/35 px-2 py-0.5 text-2xs font-mono font-semibold text-sky-300">
                     {item.reason}
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-300 leading-relaxed">
+                <p className="text-micro text-slate-300 leading-relaxed">
                   {item.rationale}
                 </p>
-                <div className="text-[11px] font-mono text-emerald-300">
+                <div className="text-micro font-mono text-emerald-300">
                   Terms: {item.recommendedWageSplitLabel}
                 </div>
-                <div className="text-[11px] text-slate-400">
+                <div className="text-micro text-slate-400">
                   Profile: {item.targetRoles}
                 </div>
                 {loanCandidatesCount > 0 && (
@@ -177,7 +177,7 @@ export const LoanStrategyView: React.FC<LoanStrategyViewProps> = ({
                     <button
                       type="button"
                       onClick={() => onJumpToLoanTargets(item.bucketCode)}
-                      className="text-[11px] font-semibold text-sky-300 hover:text-sky-200 underline cursor-pointer"
+                      className="text-micro font-semibold text-sky-300 hover:text-sky-200 underline cursor-pointer"
                     >
                       Filter Scouted Loan Candidates for {item.bucketCode} →
                     </button>
@@ -190,13 +190,13 @@ export const LoanStrategyView: React.FC<LoanStrategyViewProps> = ({
       </div>
 
       {/* 3. Outgoing Development Loans */}
-      <div className="rounded-xl border border-slate-800 bg-slate-900/75 p-4 space-y-2.5">
+      <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
             <ArrowUpRight className="h-4 w-4 text-emerald-400" />
             Outgoing Development Loans (Age 18–23 · Blocked Pathway)
           </h3>
-          <span className="text-[11px] font-mono text-slate-400">
+          <span className="text-micro font-mono text-slate-400">
             Lock &ldquo;Regular Starter&rdquo; + Recall Clause
           </span>
         </div>
@@ -213,7 +213,7 @@ export const LoanStrategyView: React.FC<LoanStrategyViewProps> = ({
             {loanAdvice.developmentLoansOut.map((item) => (
               <div
                 key={item.player.id}
-                className="rounded-xl border border-emerald-500/30 bg-slate-950/70 p-3 space-y-1.5"
+                className="rounded-xl border border-emerald-500/30 bg-slate-950/60 p-3 space-y-1.5"
               >
                 <div className="flex items-center justify-between gap-2">
                   <button
@@ -230,10 +230,10 @@ export const LoanStrategyView: React.FC<LoanStrategyViewProps> = ({
                     {item.player.ability.toFixed(1)}★/{item.player.potential.toFixed(1)}★
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-300 leading-relaxed">
+                <p className="text-micro text-slate-300 leading-relaxed">
                   {item.rationale}
                 </p>
-                <div className="text-[11px] text-emerald-300 font-medium">
+                <div className="text-micro text-emerald-300 font-medium">
                   Action: {item.recommendedMove}
                 </div>
               </div>
@@ -244,7 +244,7 @@ export const LoanStrategyView: React.FC<LoanStrategyViewProps> = ({
 
       {/* 4. Wage-Relief Loan Fallbacks & Active Loans / Do-Not-Loan Guardrails */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <div className="rounded-xl border border-slate-800 bg-slate-900/75 p-4 space-y-2.5">
+        <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-2.5">
           <h3 className="text-xs sm:text-sm font-bold text-amber-300">
             Wage-Relief Loan Fallbacks (If Cash Sales Stall)
           </h3>
@@ -254,7 +254,7 @@ export const LoanStrategyView: React.FC<LoanStrategyViewProps> = ({
             </p>
           ) : (
             <div className="space-y-2">
-              <p className="text-[11px] text-slate-300">
+              <p className="text-micro text-slate-300">
                 At <strong>{leagueLevelCalibration.clubTierLabel}</strong> level,
                 rival clubs often hesitate to pay cash fees. If permanent bids do
                 not land for these transfer-listed/surplus earners, offer via{' '}
@@ -265,7 +265,7 @@ export const LoanStrategyView: React.FC<LoanStrategyViewProps> = ({
                 {loanAdvice.wageReliefLoanFallbacks.slice(0, 6).map((item) => (
                   <div
                     key={item.player.id}
-                    className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2 text-xs"
+                    className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs"
                   >
                     <button
                       type="button"
@@ -287,14 +287,14 @@ export const LoanStrategyView: React.FC<LoanStrategyViewProps> = ({
           )}
         </div>
 
-        <div className="rounded-xl border border-slate-800 bg-slate-900/75 p-4 space-y-2.5">
+        <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-2.5">
           <h3 className="text-xs sm:text-sm font-bold text-rose-300 flex items-center gap-1.5">
             <ShieldAlert className="h-4 w-4 text-rose-400" />
             Do NOT Loan Out Guardrails &amp; Active Loans
           </h3>
           {loanAdvice.doNotLoanGuardrails.length > 0 && (
             <div className="space-y-1.5">
-              <p className="text-[11px] text-slate-300">
+              <p className="text-micro text-slate-300">
                 Keep these U21 players in your first-team squad — they already
                 start or cover senior departures:
               </p>
@@ -313,7 +313,7 @@ export const LoanStrategyView: React.FC<LoanStrategyViewProps> = ({
                       ({item.player.ability.toFixed(1)}★, {formatAge(item.player.age)}y)
                     </span>
                   </button>
-                  <span className="text-[10px] font-mono text-rose-200 truncate max-w-[180px]">
+                  <span className="text-2xs font-mono text-rose-200 truncate max-w-[180px]">
                     {item.tags.find((t) => t.startsWith('Promote')) || 'Core Starter'}
                   </span>
                 </div>
@@ -323,7 +323,7 @@ export const LoanStrategyView: React.FC<LoanStrategyViewProps> = ({
 
           {loanAdvice.activeLoansMonitor.length > 0 ? (
             <div className="space-y-1.5 pt-1">
-              <div className="text-[11px] font-semibold text-indigo-300">
+              <div className="text-micro font-semibold text-indigo-300">
                 Currently On Loan ({loanAdvice.activeLoansMonitor.length})
               </div>
               {loanAdvice.activeLoansMonitor.map((item) => (
@@ -338,7 +338,7 @@ export const LoanStrategyView: React.FC<LoanStrategyViewProps> = ({
                   >
                     {item.player.name} ({item.player.position})
                   </button>
-                  <span className="font-mono text-[11px] text-slate-300">
+                  <span className="font-mono text-micro text-slate-300">
                     exp {formatContractExpiry(item.player.expires)}
                   </span>
                 </div>

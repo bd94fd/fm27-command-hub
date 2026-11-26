@@ -132,30 +132,30 @@ export const PlayerOverviewKpiStrip: React.FC<PlayerOverviewKpiStripProps> = ({
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-      <div className="rounded-xl border border-slate-800 bg-slate-950/75 p-2.5 min-w-0">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+      <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-2.5 min-w-0">
+        <div className="text-2xs font-semibold uppercase tracking-wider text-slate-400">
           Season Rating
         </div>
         <div className="mt-0.5 text-base sm:text-lg font-bold font-mono tabular-nums text-emerald-300">
           {ratingText}
         </div>
-        <div className="text-[10px] text-slate-400 truncate">{seasonSub}</div>
+        <div className="text-2xs text-slate-400 truncate">{seasonSub}</div>
       </div>
 
-      <div className="rounded-xl border border-slate-800 bg-slate-950/75 p-2.5 min-w-0">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+      <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-2.5 min-w-0">
+        <div className="text-2xs font-semibold uppercase tracking-wider text-slate-400">
           Club DNA Fit
         </div>
         <div className="mt-0.5 text-base sm:text-lg font-bold font-mono tabular-nums text-sky-300">
           {dnaPct}%
         </div>
-        <div className="text-[10px] text-slate-400 truncate">
+        <div className="text-2xs text-slate-400 truncate">
           {analysis.clubDna.bestArchetypeLabel}
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-800 bg-slate-950/75 p-2.5 min-w-0">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+      <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-2.5 min-w-0">
+        <div className="text-2xs font-semibold uppercase tracking-wider text-slate-400">
           Dual-Phase Fit
         </div>
         <div className="mt-0.5 text-base sm:text-lg font-bold font-mono tabular-nums text-white">
@@ -165,18 +165,18 @@ export const PlayerOverviewKpiStrip: React.FC<PlayerOverviewKpiStripProps> = ({
             {bestOopPct !== null ? `${bestOopPct}%` : '—'}
           </span>
         </div>
-        <div className="text-[10px] text-slate-400 truncate">
+        <div className="text-2xs text-slate-400 truncate">
           IP / OOP natural fit
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-800 bg-slate-950/75 p-2.5 min-w-0">
+      <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-2.5 min-w-0">
         <div className="flex items-center justify-between gap-1">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 truncate">
+          <span className="text-2xs font-semibold uppercase tracking-wider text-slate-400 truncate">
             Durability
           </span>
           <span
-            className={`rounded border px-1 py-0.25 text-[9px] font-semibold shrink-0 ${durabilityBadgeClass}`}
+            className={`rounded-md border px-1 py-0.25 text-3xs font-semibold shrink-0 ${durabilityBadgeClass}`}
           >
             {analysis.physical.durability.tier}
           </span>
@@ -186,7 +186,7 @@ export const PlayerOverviewKpiStrip: React.FC<PlayerOverviewKpiStripProps> = ({
           <span className="text-xs font-normal text-slate-500"> / </span>
           {analysis.physical.durability.naturalFitness ?? '—'}
         </div>
-        <div className="text-[10px] text-slate-400 truncate">
+        <div className="text-2xs text-slate-400 truncate">
           Stamina / Nat Fit
         </div>
       </div>

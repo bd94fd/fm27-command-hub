@@ -71,14 +71,14 @@ export const SquadDataTable: React.FC<SquadDataTableProps> = ({
 
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center justify-between gap-2 text-[10px] font-mono text-slate-400 px-0.5">
+      <div className="flex items-center justify-between gap-2 text-2xs font-mono text-slate-400 px-0.5">
         <span className="truncate">
           {activePreset.label} ({activeColumns.length} cols)
         </span>
         {(scrollState.canScrollLeft || scrollState.canScrollRight) && (
           <span
             data-testid="squad-table-scroll-cue"
-            className="shrink-0 rounded-full border border-emerald-500/30 bg-emerald-950/40 px-2 py-0.5 text-[10px] font-semibold text-emerald-300"
+            className="shrink-0 rounded-full border border-emerald-500/30 bg-emerald-950/40 px-2 py-0.5 text-2xs font-semibold text-emerald-300"
           >
             {scrollHintLabel}
           </span>
@@ -101,7 +101,7 @@ export const SquadDataTable: React.FC<SquadDataTableProps> = ({
         >
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 text-micro font-semibold text-slate-500 dark:text-slate-400">
                 <th
                   className={`sticky left-0 z-20 bg-slate-50 dark:bg-slate-950 py-2.5 pl-2.5 pr-2 sm:pl-3 sm:pr-3 border-r border-slate-200 dark:border-slate-800 min-w-[136px] max-w-[158px] sm:min-w-[170px] sm:max-w-[240px] transition-shadow ${stickyShadowCls}`}
                 >
@@ -160,7 +160,7 @@ export const SquadDataTable: React.FC<SquadDataTableProps> = ({
                   <tr
                     key={p.id}
                     onClick={() => onSelectPlayer?.(p)}
-                    className={`group hover:bg-slate-50 dark:hover:bg-slate-800/50 transition ${
+                    className={`group hover:bg-slate-50 dark:hover:bg-slate-800/70 transition ${
                       onSelectPlayer ? 'cursor-pointer' : ''
                     }`}
                   >
@@ -169,7 +169,7 @@ export const SquadDataTable: React.FC<SquadDataTableProps> = ({
                     >
                       <div className="flex items-center gap-1.5 flex-wrap">
                         {row.shirtNumber !== null && (
-                          <span className="font-mono text-[10px] text-slate-400">
+                          <span className="font-mono text-2xs text-slate-400">
                             #{row.shirtNumber}
                           </span>
                         )}
@@ -179,7 +179,7 @@ export const SquadDataTable: React.FC<SquadDataTableProps> = ({
                         {row.isBanned && (
                           <span
                             title={row.activeBanTooltip || 'Suspended'}
-                            className="rounded bg-rose-500/20 border border-rose-500/50 px-1 py-0.2 text-[9px] font-bold uppercase text-rose-300"
+                            className="rounded-md bg-rose-500/20 border border-rose-500/50 px-1 py-0.2 text-3xs font-bold uppercase text-rose-300"
                           >
                             BAN {row.activeBanMatches}m
                           </span>
@@ -187,31 +187,31 @@ export const SquadDataTable: React.FC<SquadDataTableProps> = ({
                         {!row.isBanned && row.hasOtherCompBan && (
                           <span
                             title={row.activeBanTooltip || 'Other-competition ban only — eligible next match'}
-                            className="rounded bg-amber-500/15 border border-amber-500/45 px-1 py-0.2 text-[9px] font-bold uppercase text-amber-300"
+                            className="rounded-md bg-amber-500/15 border border-amber-500/45 px-1 py-0.2 text-3xs font-bold uppercase text-amber-300"
                           >
                             CUP BAN {row.activeBanMatches}m
                           </span>
                         )}
                         {row.isInjured && (
-                          <span className="rounded bg-amber-500/20 border border-amber-500/50 px-1 py-0.2 text-[9px] font-bold uppercase text-amber-300">
+                          <span className="rounded-md bg-amber-500/20 border border-amber-500/50 px-1 py-0.2 text-3xs font-bold uppercase text-amber-300">
                             INJ
                           </span>
                         )}
                         {p.onLoan && (
-                          <span className="rounded bg-indigo-500/20 border border-indigo-500/45 px-1 py-0.2 text-[9px] font-bold uppercase text-indigo-300">
+                          <span className="rounded-md bg-indigo-500/20 border border-indigo-500/45 px-1 py-0.2 text-3xs font-bold uppercase text-indigo-300">
                             LOAN
                           </span>
                         )}
                         <CompareTrayToggle player={p} iconOnly className="ml-auto" />
                       </div>
                       {showRolesSubline && (p.ipRole || p.oopRole) && (
-                        <div className="text-[11px] leading-snug text-slate-500 dark:text-slate-400 truncate mt-0.5 pb-0.5">
+                        <div className="text-micro leading-snug text-slate-500 dark:text-slate-400 truncate mt-0.5 pb-0.5">
                           {p.ipRole}
                           {p.oopRole ? ` / ${p.oopRole}` : ''}
                         </div>
                       )}
                       {row.cleanNote && (
-                        <div className="text-[10px] leading-snug text-slate-400 truncate">
+                        <div className="text-2xs leading-snug text-slate-400 truncate">
                           {row.cleanNote}
                         </div>
                       )}

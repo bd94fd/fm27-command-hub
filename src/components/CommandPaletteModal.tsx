@@ -387,28 +387,28 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
       }
       footerClassName="hidden sm:block"
       footer={
-        <div className="flex items-center justify-between text-[11px] text-slate-400">
+        <div className="flex items-center justify-between text-micro text-slate-400">
           <div className="flex items-center gap-3">
             <span>
-              <kbd className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-200">
+              <kbd className="rounded-md bg-slate-800 px-1.5 py-0.5 font-mono text-2xs text-slate-200">
                 ↑↓
               </kbd>{' '}
               Navigate
             </span>
             <span>
-              <kbd className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-200">
+              <kbd className="rounded-md bg-slate-800 px-1.5 py-0.5 font-mono text-2xs text-slate-200">
                 ↵
               </kbd>{' '}
               Select
             </span>
             <span>
-              <kbd className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-200">
+              <kbd className="rounded-md bg-slate-800 px-1.5 py-0.5 font-mono text-2xs text-slate-200">
                 Esc
               </kbd>{' '}
               Close
             </span>
           </div>
-          <span className="font-mono text-[10px] text-emerald-400">
+          <span className="font-mono text-2xs text-emerald-400">
             Shortcut: ⌘K / Ctrl+K
           </span>
         </div>
@@ -442,17 +442,17 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
                       <span className="text-xs sm:text-sm font-bold truncate">
                         {item.title}
                       </span>
-                      <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 shrink-0">
+                      <span className="text-2xs font-mono uppercase tracking-wider text-slate-400 shrink-0">
                         {item.category}
                       </span>
                     </div>
-                    <div className="text-[11px] text-slate-400 truncate">
+                    <div className="text-micro text-slate-400 truncate">
                       {item.subtitle}
                     </div>
                   </div>
                 </div>
                 {item.badge && (
-                  <span className="shrink-0 rounded-md bg-slate-950/80 border border-slate-700 px-2 py-0.5 font-mono text-[10px] font-semibold text-emerald-300">
+                  <span className="shrink-0 rounded-md bg-slate-950/85 border border-slate-700 px-2 py-0.5 font-mono text-2xs font-semibold text-emerald-300">
                     {item.badge}
                   </span>
                 )}
