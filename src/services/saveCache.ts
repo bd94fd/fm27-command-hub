@@ -251,6 +251,25 @@ export function buildFingerprintSaveCacheKey(
 }
 
 /**
+ * The cache key must describe the payload that was actually decoded. A phone
+ * fallback can choose Fast Sync even when the UI requested Full Sync, so the
+ * payload's own mode wins over the requested mode.
+ */
+export function resolveDecodedPayloadFastSync(
+  payloadFastSync: boolean | undefined,
+  requestedFastSync: boolean
+): boolean {
+  return typeof payloadFastSync === 'boolean' ? payloadFastSync : requestedFastSync;
+}
+
+export function isDecodedCacheSyncModeCompatible(
+  payloadFastSync: boolean | undefined,
+  requestedFastSync: boolean
+): boolean {
+  return typeof payloadFastSync !== 'boolean' || payloadFastSync === requestedFastSync;
+}
+
+/**
  * Extracts a compact, mobile-safe snapshot from full PlayerRecord[].
  */
 export function createSaveHistoryPoint(params: {

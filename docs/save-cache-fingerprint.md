@@ -27,6 +27,7 @@ fp::r15-v1::<scope>::<full|fast>::<fingerprint>
 
 - `r15-v1` is a schema version. Bump `DECODED_CACHE_SCHEMA_VERSION` whenever the decoded payload shape changes, so old entries are never reused after an incompatible change.
 - Scope and sync mode are part of the key because `club_and_division` vs `managed_club_only`, and Full Sync vs Fast Sync, produce different payloads.
+- The mode comes from the decoded payload's own `meta.fastSync`, not from the toggle the user requested. A phone fallback can decode Fast Sync while Full Sync was requested; that payload is stored under the Fast Sync key, and a mismatched cached mode is ignored.
 - The cache keeps the same five-save ceiling and quota eviction as the existing decoded-save cache.
 
 ## Flow
@@ -35,7 +36,7 @@ fp::r15-v1::<scope>::<full|fast>::<fingerprint>
 2. Look up the decoded payload in IndexedDB.
 3. **Hit:** validate the payload, hydrate it, update snapshots and Journey, show a green notice that the decode was skipped.
 4. **Miss:** run the existing upload/decode path, then store the decoded payload under the fingerprint.
-5. A corrupt or incompatible cached payload fails validation and is treated as a miss. The next successful decode replaces it.
+5. A corrupt, incompatible or wrong-sync-mode cached payload fails validation and is treated as a miss. The next successful decode replaces it.
 
 The cache is local to the browser profile. It is not uploaded and does not share data between devices.
 

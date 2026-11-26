@@ -38,6 +38,10 @@ import {
 } from '../types/fm27';
 import { checkFm27ResponseWarnings } from '../utils/fm27AccuracyCheck';
 import type { DeepJourneyReport } from '../services/saveCache';
+import {
+  isDecodedCacheSyncModeCompatible,
+  resolveDecodedPayloadFastSync,
+} from '../services/saveCache';
 import type { RecruitmentTarget } from '../types/fmSave';
 import type {
   ParsedFmExportResult,
@@ -1246,7 +1250,10 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                 importScope,
                 fastSync
               );
-              if (cached) {
+              if (
+                cached &&
+                isDecodedCacheSyncModeCompatible(cached.meta?.fastSync, fastSync)
+              ) {
                 decoded = assertValidDecodedFmSavePayload(cached);
                 markSaveLoadCacheHit(benchmarkId);
                 markSaveLoadStage(benchmarkId, 'upload_complete');
@@ -1332,14 +1339,18 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             );
             markSaveLoadStage(benchmarkId, 'decode_complete');
 
+            const decodedPayload = decoded;
             if (fingerprint) {
               void import('../services/saveCache')
                 .then(({ putCachedDecodedSavePayload }) =>
                   putCachedDecodedSavePayload(
                     fingerprint,
                     importScope,
-                    fastSync,
-                    decoded
+                    resolveDecodedPayloadFastSync(
+                      decodedPayload.meta?.fastSync,
+                      fastSync
+                    ),
+                    decodedPayload
                   )
                 )
                 .catch(() => false);
