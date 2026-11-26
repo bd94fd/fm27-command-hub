@@ -17,7 +17,7 @@ The audit used the authenticated GitHub CLI and the repository files. No secret 
 | Issue templates | No issue templates existed. Bug report, feature request, and template chooser were added. | Fixed |
 | Pull request template | A roadmap gate existed. Verification steps now cover type-check, tests, build, UI audit, and diff hygiene. | Fixed |
 | Release notes | There are no tags or releases. `.github/release.yml` now groups generated notes by existing labels. Release automation remains part of R42. | Fixed configuration; R42 follow-up |
-| Merge settings | `delete_branch_on_merge` is now true. Merge commits, rebase merges and squash merges are all still enabled, so commit history can stay mixed. The available token cannot change repository settings. | Partially fixed; squash-only remains |
+| Merge settings | `delete_branch_on_merge` is now true and merge commits are switched off. Rebase merging is currently the only allowed method, and squash merging is switched off. | Partially fixed; squash-only remains |
 | Actions hardening | The workflow already used `contents: read`. It now installs from the lockfile, does not persist checkout credentials, and runs the roadmap gate on edits and Dependabot PRs. | Fixed |
 | Security policy | No `SECURITY.md` existed. A private-reporting policy was added. | Fixed |
 | Licence | MIT licence is present. | Pass |
@@ -34,7 +34,7 @@ automation token after the change.
 | Rules | `deletion`, `non_fast_forward`, `required_status_checks` (`roadmap`, `verify`) |
 | Strict up-to-date policy | Off, so a branch does not need to be rebased before merging |
 | `delete_branch_on_merge` | `true` |
-| Merge methods | `allow_merge_commit: true`, `allow_rebase_merge: true`, `allow_squash_merge: true` |
+| Merge methods | `allow_merge_commit: false`, `allow_squash_merge: false`, `allow_rebase_merge: true` |
 | Bypass list | Deploy key, repository roles `2`, `4`, `5`, and five integrations, all `bypass_mode: always` |
 | Dependabot alerts | Still unreadable with this token (403) |
 
@@ -44,7 +44,7 @@ merely configured.
 
 What is still open:
 
-- Squash-only merging. Two other merge methods remain enabled.
+- Squash-only merging. Merge commits are off, but rebase merging is the method still allowed and squash is off, so this needs one more pass in repository settings.
 - Dependabot alert and security-update state, which needs owner confirmation
   because the alerts endpoint is not readable with the automation token.
 - The bypass list was deliberately kept as it is on 26 November 2026. The
