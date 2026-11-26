@@ -5,7 +5,8 @@ Purpose: remember tools and skills worth adding later, so we do not search for t
 
 ## How to use this list
 
-- Read it before starting a roadmap wave.
+- Read it at the start of every task, before planning or changing code.
+- Check the available MCP tools each session. No MCP server is installed by default; candidates are listed below with their roadmap item.
 - Move an item to **In use** only after it is installed and checked.
 - Keep the roadmap item and the reason for the timing.
 - Add new candidates with a source, licence and risk note.
