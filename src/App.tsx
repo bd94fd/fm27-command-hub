@@ -1489,6 +1489,7 @@ export default function App() {
 
       {/* Main Content Container (extra bottom padding on mobile for fixed 5-tab bar + safe area) */}
       <main
+        data-active-tab={activeTab}
         className={`flex-1 max-w-[1400px] w-full mx-auto px-3 sm:px-6 pt-3 sm:pt-5 ${
           isKeyboardOpen
             ? 'pb-4'

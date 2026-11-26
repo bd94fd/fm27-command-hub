@@ -49,7 +49,7 @@ export const SquadSummaryStrip: React.FC<SquadSummaryStripProps> = ({
                 v === 'UNAVAILABLE' ? 'ALL' : 'UNAVAILABLE'
               )
             }
-            className="rounded-md bg-rose-500/15 border border-rose-500/35 px-1.5 py-0.5 text-2xs font-semibold text-rose-300 cursor-pointer"
+            className="min-h-[36px] px-2 rounded-md bg-rose-500/15 border border-rose-500/35 text-2xs font-semibold inline-flex items-center text-rose-300 cursor-pointer"
           >
             {summary.bannedCount} Banned
           </button>
@@ -62,7 +62,7 @@ export const SquadSummaryStrip: React.FC<SquadSummaryStripProps> = ({
                 v === 'UNAVAILABLE' ? 'ALL' : 'UNAVAILABLE'
               )
             }
-            className="rounded-md bg-amber-500/15 border border-amber-500/35 px-1.5 py-0.5 text-2xs font-semibold text-amber-300 cursor-pointer"
+            className="min-h-[36px] px-2 rounded-md bg-amber-500/15 border border-amber-500/35 text-2xs font-semibold inline-flex items-center text-amber-300 cursor-pointer"
           >
             {summary.injuredCount} Injured
           </button>
@@ -73,7 +73,7 @@ export const SquadSummaryStrip: React.FC<SquadSummaryStripProps> = ({
             onClick={() =>
               setAvailabilityFilter((v) => (v === 'EXPIRING' ? 'ALL' : 'EXPIRING'))
             }
-            className="rounded-md bg-amber-500/15 border border-amber-500/35 px-1.5 py-0.5 text-2xs font-semibold text-amber-200 cursor-pointer"
+            className="min-h-[36px] px-2 rounded-md bg-amber-500/15 border border-amber-500/35 text-2xs font-semibold inline-flex items-center text-amber-200 cursor-pointer"
           >
             {summary.expiringSoonCount} Expiring ≤6m
           </button>

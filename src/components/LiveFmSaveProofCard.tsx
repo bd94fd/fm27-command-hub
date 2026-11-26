@@ -182,7 +182,7 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
         <button
           type="button"
           onClick={() => setShowRawInspector((prev) => !prev)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-200 bg-slate-900/95 hover:bg-slate-800 border border-emerald-500/40 rounded-lg cursor-pointer shrink-0 self-start sm:self-center"
+          className="inline-flex items-center gap-1.5 min-h-[36px] px-3 text-xs font-semibold text-emerald-200 bg-slate-900/95 hover:bg-slate-800 border border-emerald-500/40 rounded-lg cursor-pointer shrink-0 self-start sm:self-center"
         >
           <Database className="w-3.5 h-3.5 text-emerald-400" />
           <span>
@@ -249,7 +249,7 @@ export const LiveFmSaveProofCard: React.FC<LiveFmSaveProofCardProps> = ({
           <button
             type="button"
             onClick={() => setShowReaderNotes((prev) => !prev)}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/70 hover:bg-slate-800 border border-slate-700 text-micro font-medium text-slate-300 transition cursor-pointer"
+            className="inline-flex items-center gap-1.5 min-h-[36px] px-2.5 rounded-md bg-slate-800/70 hover:bg-slate-800 border border-slate-700 text-micro font-medium text-slate-300 transition cursor-pointer"
           >
             <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             <span>Save Reader Info ({warningsList.length})</span>
