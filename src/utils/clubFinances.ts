@@ -353,18 +353,25 @@ export interface SponsorshipPanelRow {
 }
 
 export interface ClubFinancesPanelData {
+  currencySymbol: string;
   cash: {
     balanceLabel: string;
+    /** Raw canonical balance, for calculators that need a number rather than a label. */
+    balanceAmount: number | null;
     isInDebt: boolean;
     monthlyNetAmount: number | null;
+    monthlyBurnRate: number | null;
     monthlyNetLabel: string;
     runwayStatus: 'Critical' | 'Warning' | 'Healthy' | null;
+    runwayMonths: number | null;
     runwayLabel: string;
     runwayWarning: string | null;
   };
   payroll: {
     clubPayrollLabel: string;
+    wagePayrollWeekly: number | null;
     wageBudgetLabel: string;
+    wageBudgetWeekly: number | null;
     wageComplianceLabel: string;
     wageHeadroomLabel: string;
     wageHeadroomWeekly: number | null;
@@ -533,18 +540,24 @@ export function buildClubFinancesPanel(
   const sponsorships = buildSponsorshipPanelRows(input.sponsorships, currencySymbol);
 
   return {
+    currencySymbol,
     cash: {
       balanceLabel: canonical.balanceLabel,
+      balanceAmount: canonical.balanceNum,
       isInDebt: canonical.isInDebt,
       monthlyNetAmount,
+      monthlyBurnRate: canonical.monthlyBurnRate,
       monthlyNetLabel,
       runwayStatus,
+      runwayMonths,
       runwayLabel,
       runwayWarning,
     },
     payroll: {
       clubPayrollLabel: formatWeeklyMoney(canonical.wagePayrollWeekly, currencySymbol),
+      wagePayrollWeekly: canonical.wagePayrollWeekly,
       wageBudgetLabel: formatWeeklyMoney(canonical.wageBudgetWeekly, currencySymbol),
+      wageBudgetWeekly: canonical.wageBudgetWeekly,
       wageComplianceLabel: canonical.wageComplianceLabel,
       wageHeadroomLabel,
       wageHeadroomWeekly: canonical.wageHeadroomWeekly,

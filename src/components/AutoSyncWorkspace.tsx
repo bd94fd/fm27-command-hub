@@ -141,6 +141,7 @@ import {
 import { resolveSaveCompatibility } from '../utils/fm27SaveCompatibility';
 import { mergeAnalystCitations } from '../utils/analystCitations';
 import { SaveCompatibilityPanel } from './SaveCompatibilityPanel';
+import { FinanceScenarioPanel } from './FinanceScenarioPanel';
 
 export { isUsableSponsorshipDeal, filterUsableSponsorshipDeals } from '../utils/clubFinances';
 
@@ -3116,6 +3117,19 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                   <span>{financesPanel.cash.runwayWarning}</span>
                 </p>
               )}
+            </div>
+
+            <div className="space-y-2 border-t border-slate-200 dark:border-slate-800 pt-3">
+              <FinanceScenarioPanel
+                balance={financesPanel.cash.balanceAmount}
+                monthlyNet={financesPanel.cash.monthlyNetAmount}
+                monthlyBurnRate={financesPanel.cash.monthlyBurnRate}
+                wagePayrollWeekly={financesPanel.payroll.wagePayrollWeekly}
+                wageBudgetWeekly={financesPanel.payroll.wageBudgetWeekly}
+                currencySymbol={financesPanel.currencySymbol}
+                baselineRunwayMonths={financesPanel.cash.runwayMonths}
+                baselineRunwayLabel={financesPanel.cash.runwayLabel}
+              />
             </div>
 
             <div className="space-y-2">
