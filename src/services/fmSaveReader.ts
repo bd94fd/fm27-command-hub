@@ -142,7 +142,7 @@ export async function checkServerDecodeStatus(
 
 export const SERVER_UPLOAD_CHUNK_BYTES = 2 * 1024 * 1024; // 2 MB per chunk (faster over mobile/Cloudflare & safer against HTTP 520/524 drops)
 export const SERVER_UPLOAD_CONCURRENCY = 4; // 4 parallel chunk streams on desktop when server supports parallel writes
-export const SERVER_MOBILE_UPLOAD_CONCURRENCY = 1; // Sequential 2 MB reads on mobile so Google Drive / iOS Files cloud providers never deadlock
+export const SERVER_MOBILE_UPLOAD_CONCURRENCY = 4; // 4 parallel chunk writes; file reads stay serialized below
 export const SERVER_MAX_SAVE_BYTES = 1024 * 1024 * 1024; // 1024 MB (1 GB) max total .fm save size
 export const SERVER_JOB_POLL_INTERVAL_MS = 1_200; // 1.2s polling cadence
 export const SERVER_CHUNK_MAX_RETRIES = 3;
@@ -730,6 +730,18 @@ export async function decodeFmSaveViaServer(
       return 'reconciled';
     };
 
+    // One reader at a time: Google Drive / iOS Files cloud providers deadlock when
+    // two content:// reads overlap, even though network writes may run in parallel.
+    let readQueueTail: Promise<void> = Promise.resolve();
+    const readChunkInOrder = <T>(read: () => Promise<T>): Promise<T> => {
+      const result = readQueueTail.then(read, read);
+      readQueueTail = result.then(
+        () => undefined,
+        () => undefined
+      );
+      return result;
+    };
+
     const uploadSingleChunk = async (
       chunk: { offset: number; end: number },
       effectiveSignal?: AbortSignal,
@@ -737,27 +749,28 @@ export async function decodeFmSaveViaServer(
     ): Promise<void> => {
       throwIfCancelledOrFallback();
       const activeSignal = effectiveSignal ?? signal;
-      const slice = file.slice(chunk.offset, chunk.end);
       // Materialize the 2 MB slice into an ArrayBuffer with a timeout before fetch().
       // On mobile (Android Chrome / iOS Safari), passing a raw Google Drive content:// Blob
       // directly to fetch() can hang indefinitely or fail with ERR_UPLOAD_FILE_CHANGED.
-      const chunkBuffer = await readBlobChunkWithTimeout(
-        slice,
-        SERVER_CHUNK_READ_TIMEOUT_MS,
-        activeSignal,
-        pauseSignal,
-        stallTipVisible
-          ? undefined
-          : {
-              thresholdMs: stallTipThresholdMs,
-              onStall: () => {
-                stallTipVisible = true;
-                emitUploadProgress(
-                  uploadedBytes,
-                  `Still reading ${fileName} from device storage (${formatBytesMb(uploadedBytes)} / ${totalMbLabel} MB)…`
-                );
-              },
-            }
+      const chunkBuffer = await readChunkInOrder(() =>
+        readBlobChunkWithTimeout(
+          file.slice(chunk.offset, chunk.end),
+          SERVER_CHUNK_READ_TIMEOUT_MS,
+          activeSignal,
+          pauseSignal,
+          stallTipVisible
+            ? undefined
+            : {
+                thresholdMs: stallTipThresholdMs,
+                onStall: () => {
+                  stallTipVisible = true;
+                  emitUploadProgress(
+                    uploadedBytes,
+                    `Still reading ${fileName} from device storage (${formatBytesMb(uploadedBytes)} / ${totalMbLabel} MB)…`
+                  );
+                },
+              }
+        )
       );
       const chunkByteLength = chunkBuffer.byteLength;
       // Allocate the Blob wrapper once per chunk so retries don't churn mobile GC
@@ -889,8 +902,8 @@ export async function decodeFmSaveViaServer(
       }
     };
 
-    // 2. Upload chunks — 4-way parallel on desktop when server advertises supportsParallelChunks,
-    // sequential (1-way) on mobile so Google Drive / iOS Files cloud providers never deadlock
+    // 2. Upload chunks — 4-way parallel when the server advertises supportsParallelChunks.
+    // Reads are serialized inside uploadSingleChunk so cloud files stay safe.
     const defaultConcurrency = isMobileBrowser()
       ? SERVER_MOBILE_UPLOAD_CONCURRENCY
       : SERVER_UPLOAD_CONCURRENCY;
