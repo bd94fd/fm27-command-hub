@@ -55,6 +55,7 @@ import {
   clearPersistedFmState,
   recordPreviousSnapshot,
   exportFmStateBackupJson,
+  buildFmStateBackupJson,
   importFmStateBackupJson,
   isScoutTargetTracked,
   loadTrackedScoutTargets,
@@ -719,8 +720,8 @@ export default function App() {
     }, 0);
   };
 
-  const handleExportBackup = () => {
-    let json = exportFmStateBackupJson();
+  const handleExportBackup = async () => {
+    let json = await exportFmStateBackupJson();
     // Fall back to live in-memory React state for large saves persisted in IndexedDB only
     if (
       !json &&
@@ -730,7 +731,10 @@ export default function App() {
         recruitmentCases.length > 0 ||
         shortlists.length > 0)
     ) {
-      json = JSON.stringify(
+      const saveHistory = await import('./services/saveCache')
+        .then(({ listSaveHistoryPoints }) => listSaveHistoryPoints())
+        .catch(() => []);
+      json = buildFmStateBackupJson(
         {
           version: 1,
           lastSyncedAt: new Date().toISOString(),
@@ -750,8 +754,10 @@ export default function App() {
           customSlots,
           applyToAnalystOnly,
         },
-        null,
-        2
+        {
+          trackedScoutTargets: loadTrackedScoutTargets(),
+          saveHistory,
+        }
       );
     }
     if (!json) {
