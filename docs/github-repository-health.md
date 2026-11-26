@@ -10,22 +10,50 @@ The audit used the authenticated GitHub CLI and the repository files. No secret 
 
 | Area | Finding | Status |
 | --- | --- | --- |
-| Branch protection | `main` is unprotected (`protected: false`). The repository ruleset `1` exists but is disabled. | Owner action |
-| Required checks | CI defines `roadmap` and `verify`, but branch protection does not require either one. | Owner action |
+| Branch protection | Ruleset `1` is active on all branches. It blocks deletions and force-pushes. See the 26 November re-audit below. | Fixed |
+| Required checks | `roadmap` and `verify` are required status checks on all branches. | Fixed |
 | Secrets | The repository-secrets API returned 403 with the available token. No `.env*` file is tracked except `.env.example`. A tracked-file pattern scan found no obvious API keys, tokens, or private keys. | Cannot fully verify; no leak found |
-| Dependabot | `.github/dependabot.yml` covers npm, GitHub Actions, and Docker. The alerts API reports that Dependabot alerts are disabled. `npm audit` reports 4 moderate advisories and no high or critical advisories; R44 owns remediation. | Owner action |
+| Dependabot | `.github/dependabot.yml` covers npm, GitHub Actions, and Docker. The alert state still cannot be read with the automation token, so it needs owner confirmation. `npm audit` reports 4 moderate advisories and no high or critical advisories; R44 owns remediation. | Cannot verify |
 | Issue templates | No issue templates existed. Bug report, feature request, and template chooser were added. | Fixed |
 | Pull request template | A roadmap gate existed. Verification steps now cover type-check, tests, build, UI audit, and diff hygiene. | Fixed |
 | Release notes | There are no tags or releases. `.github/release.yml` now groups generated notes by existing labels. Release automation remains part of R42. | Fixed configuration; R42 follow-up |
-| Merge settings | `delete_branch_on_merge` is false and merge commits, rebase merges, and squash merges are all enabled. The available token cannot change repository settings. | Owner action |
+| Merge settings | `delete_branch_on_merge` is now true. Merge commits, rebase merges and squash merges are all still enabled, so commit history can stay mixed. The available token cannot change repository settings. | Partially fixed; squash-only remains |
 | Actions hardening | The workflow already used `contents: read`. It now installs from the lockfile, does not persist checkout credentials, and runs the roadmap gate on edits and Dependabot PRs. | Fixed |
 | Security policy | No `SECURITY.md` existed. A private-reporting policy was added. | Fixed |
 | Licence | MIT licence is present. | Pass |
 | Code scanning and secret scanning | The available token cannot read these alerts. | Cannot verify |
 
+## Re-audit, 26 November 2026
+
+The owner applied the branch rules, and the state below was read back with the
+automation token after the change.
+
+| Setting | Verified state |
+| --- | --- |
+| Ruleset `1` | `enforcement: active`, target `branch`, conditions `ref_name: ~ALL` |
+| Rules | `deletion`, `non_fast_forward`, `required_status_checks` (`roadmap`, `verify`) |
+| Strict up-to-date policy | Off, so a branch does not need to be rebased before merging |
+| `delete_branch_on_merge` | `true` |
+| Merge methods | `allow_merge_commit: true`, `allow_rebase_merge: true`, `allow_squash_merge: true` |
+| Bypass list | Deploy key, repository roles `2`, `4`, `5`, and five integrations, all `bypass_mode: always` |
+| Dependabot alerts | Still unreadable with this token (403) |
+
+Reading back `GET /repos/{owner}/{repo}/rules/branches/main` returned exactly
+three rules, all from ruleset `27718811`, so the checks are enforced rather than
+merely configured.
+
+What is still open:
+
+- Squash-only merging. Two other merge methods remain enabled.
+- Dependabot alert and security-update state, which needs owner confirmation
+  because the alerts endpoint is not readable with the automation token.
+- The bypass list was deliberately kept as it is on 26 November 2026. The
+  required checks therefore bind contributors who are not on that list, while
+  the listed roles and integrations can still merge without them.
+
 ## What this means
 
-The most important gap is that `main` has no protection and no required checks. The CI checks are useful, but GitHub does not block a merge when they fail. That must be fixed in repository settings, not in a file in the repository.
+The most important gap at the first audit was that `main` had no protection and no required checks: the CI checks were useful, but GitHub did not block a merge when they failed. That is now fixed, because ruleset `1` requires `roadmap` and `verify` before anything reaches `main`. Squash-only merging and the Dependabot alert switches are the remaining owner settings.
 
 The available automation token can read the public repository state but cannot administer the repository. The branch-protection, Actions-permissions, repository-update, secret-list, and Dependabot-alert endpoints returned 403.
 
@@ -33,20 +61,19 @@ The available automation token can read the public repository state but cannot a
 
 These steps need a GitHub account with repository administration permission. They cannot be applied with the current automation token.
 
-1. Open `Settings > Branches` and add a branch protection rule for `main`.
-   - Require a pull request before merging.
-   - Require status checks `roadmap` and `verify` after both have run at least once.
-   - Require conversation resolution before merging.
-   - Block force pushes and deletions.
-   - Consider requiring branches to be up to date before merging.
-   - Consider including administrators so the rule cannot be bypassed.
+1. Branch rules for `main` — done through ruleset `1`.
+   - Done: block force pushes and deletions.
+   - Done: require status checks `roadmap` and `verify`.
+   - Remaining: require a pull request before merging, require conversation resolution, and decide whether branches must be up to date before merging.
+   - Remaining: decide whether to keep the repository roles and integrations on the bypass list.
 2. Open `Settings > Code security and analysis`.
    - Enable Dependabot alerts.
    - Enable Dependabot security updates.
    - Enable secret scanning and push protection if the repository plan offers them.
+   - State unconfirmed: the alerts endpoint is not readable with the automation token.
 3. Open `Settings > General > Pull Requests`.
-   - Enable automatic deletion of head branches after merge.
-   - Consider allowing squash merges only, to keep `main` history readable.
+   - Done: automatic deletion of head branches after merge.
+   - Remaining: allow squash merges only, to keep `main` history readable.
 4. Open `Settings > Actions > General`.
    - Keep the default workflow token read-only.
    - Disable the option for Actions to create and approve pull requests unless a workflow needs it.
