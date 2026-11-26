@@ -21,7 +21,8 @@
     "ui:audit": "node scripts/ui-audit.mjs",
     "device:matrix": "node scripts/device-matrix.mjs",
     "device:webkit": "node scripts/webkit-matrix.mjs",
-    "smoke:e2e": "node scripts/e2e-smoke.mjs"
+    "smoke:e2e": "node scripts/e2e-smoke.mjs",
+    "a11y:audit": "node scripts/a11y-audit.mjs"
   },
   "dependencies": {
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
@@ -47,6 +48,7 @@
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "axe-core": "^4.14.1",
     "esbuild": "^0.28.2",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",

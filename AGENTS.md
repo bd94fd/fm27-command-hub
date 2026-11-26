@@ -77,3 +77,5 @@
 - Browser gates read `dist/` from a production server on port 12000. Both harnesses now disable the HTTP cache; before that, a cached bundle could pass for a build that no longer existed.
 - `npm test` shows one failure here that CI does not see: `fm_layout_patcher classifies tested vs untested 27.x builds without fmsave` asserts no fmsave is installed, and this container has it so server decode works. Do not "fix" the assertion; check it still fails with your changes stashed.
 - `npm run smoke:e2e` is the flow gate (see `docs/e2e-smoke.md`). It needs the newest `.fm` in `.agents_tmp/uploads/` and about 40 seconds per profile.
+- `npm run a11y:audit` is the accessibility gate (see `docs/accessibility.md`). Run it with `-- --save=<newest .fm>`: without a save it only sees the first-run screen.
+- Run one browser gate at a time. They all drive the same Chromium on port 9222, so parallel runs produce fake failures (tabs that "could not be opened", targets that vanish).

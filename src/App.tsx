@@ -1288,6 +1288,24 @@ export default function App() {
   return (
     <CompareTrayProvider>
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col">
+      <a
+        href="#main-content"
+        onClick={(event) => {
+          // Focus the target directly and keep the hash out of the URL: sheet
+          // history handling re-applies a fragment on close and would pull
+          // focus back to <main> from whatever opened the sheet.
+          event.preventDefault();
+          const main = document.getElementById('main-content');
+          if (main) {
+            main.focus();
+            main.scrollIntoView({ block: 'start' });
+          }
+        }}
+        className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-lg focus:bg-emerald-600 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white"
+      >
+        Skip to main content
+      </a>
+
       {/* Top Navigation Shell (mobile header ~56.6px + BottomNav ~55.8px = ~112.4px <= 15% of 800px) */}
       <header
         className="sticky top-0 z-30 flex items-center justify-between gap-x-2.5 sm:gap-x-4 px-3.5 sm:px-6 pb-1.5 sm:pb-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800"
@@ -1405,7 +1423,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => setShowKnowledgeBase(true)}
-            aria-label="Open FM27 Patch 27.1.0 Knowledge Base"
+            aria-label="FM27 KB: open the Patch 27.1.0 knowledge base"
             title="Open FM27 Patch 27.1.0 Knowledge Base"
             className="hidden md:inline-flex items-center justify-center gap-1 min-h-[38px] min-w-[38px] px-2.5 py-1.5 text-xs font-semibold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
           >
@@ -1431,8 +1449,8 @@ export default function App() {
                 onClick={handleClearMemory}
                 aria-label={
                   confirmResetPending
-                    ? 'Confirm reset saved memory'
-                    : 'Clear saved memory'
+                    ? 'Confirm Reset?'
+                    : 'Reset: clear saved memory'
                 }
                 title={
                   confirmResetPending
@@ -1489,6 +1507,8 @@ export default function App() {
 
       {/* Main Content Container (extra bottom padding on mobile for fixed 5-tab bar + safe area) */}
       <main
+        id="main-content"
+        tabIndex={-1}
         data-active-tab={activeTab}
         className={`flex-1 max-w-[1400px] w-full mx-auto px-3 sm:px-6 pt-3 sm:pt-5 ${
           isKeyboardOpen

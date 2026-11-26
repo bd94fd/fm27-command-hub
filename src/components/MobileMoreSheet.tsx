@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { getFocusableElements } from './MobileSheetFrame';
 import {
   BookOpen,
   CheckCircle2,
@@ -111,11 +112,67 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
     };
   }, [isOpen, hasLoadedSave, playersCount, matchesCount]);
 
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  // Modal behaviour: move focus into the sheet, keep Tab inside it.
+  useEffect(() => {
+    if (!isOpen || typeof document === 'undefined') return;
+    const surface = surfaceRef.current;
+    if (!surface) return;
+    const focusables = () => getFocusableElements(surface);
+    const focusInitial = () => (focusables()[0] ?? surface).focus();
+    focusInitial();
+    const raf = requestAnimationFrame(() => {
+      if (!surface.contains(document.activeElement)) focusInitial();
+    });
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      const list = focusables();
+      if (list.length === 0) {
+        e.preventDefault();
+        surface.focus();
+        return;
+      }
+      const first = list[0];
+      const last = list[list.length - 1];
+      const active = document.activeElement;
+      if (!surface.contains(active)) {
+        e.preventDefault();
+        first.focus();
+      } else if (e.shiftKey && active === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    surface.addEventListener('keydown', onKeyDown);
+    return () => {
+      cancelAnimationFrame(raf);
+      surface.removeEventListener('keydown', onKeyDown);
+    };
+  }, [isOpen]);
+
   // Escape key dismissal + background scroll lock while sheet is open
   useEffect(() => {
     if (!isOpen || typeof document === 'undefined') return;
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    // Focus may already sit on the sheet (backdrop or first control) or have
+    // dropped to <body> when the nav re-rendered, so only an element outside
+    // this dialog counts as the opener; otherwise return to the More button.
+    const active = document.activeElement as HTMLElement | null;
+    const opener =
+      active &&
+      active !== document.body &&
+      !rootRef.current?.contains(active) &&
+      document.contains(active)
+        ? active
+        : (document.querySelector<HTMLElement>('button[aria-controls="mobile-more-sheet"]') ??
+          null);
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -127,6 +184,9 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
     return () => {
       document.body.style.overflow = prevOverflow;
       window.removeEventListener('keydown', onKeyDown);
+      if (opener && document.contains(opener) && typeof opener.focus === 'function') {
+        opener.focus();
+      }
     };
   }, [isOpen, onClose]);
 
@@ -172,6 +232,7 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
 
   return (
     <div
+      ref={rootRef}
       id="mobile-more-sheet"
       role="dialog"
       aria-modal="true"
@@ -187,7 +248,10 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
       />
 
       {/* Slide-up Sheet Surface */}
-      <div className="relative z-10 w-full max-h-[90dvh] rounded-t-2xl border-t border-slate-700/90 bg-slate-900 text-slate-100 shadow-2xl flex flex-col overflow-hidden">
+      <div
+        ref={surfaceRef}
+        tabIndex={-1}
+        className="relative z-10 w-full max-h-[90dvh] rounded-t-2xl border-t border-slate-700/90 bg-slate-900 text-slate-100 shadow-2xl flex flex-col overflow-hidden">
         {/* Grab handle */}
         <div className="pt-2.5 pb-1 flex justify-center shrink-0">
           <span
