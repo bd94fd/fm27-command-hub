@@ -13,7 +13,7 @@ Use this file to pick up any fresh mobile sprint chat in 1 turn without re-readi
 ## Quota-Saving Sprint Protocol
 - **1 fresh chat per sprint**; single agent only (never spawn subagents).
 - Extract new mobile UI/logic into **small 100–250 line files** and wire into big files via `rg -n` + bounded 40–120 line slices.
-- Run **targeted tests** while coding; run the full 5-step pre-push verification **once** per sprint, push to `origin main`, and give Bobby a 3-bullet Android test checklist.
+- Run **targeted tests** while coding; run the full 5-step pre-push verification **once** per sprint, open a PR, merge after checks, and give Bobby a 3-bullet Android test checklist.
 
 ## Sprint Status
 - [x] **Sprint 1A:** Android PWA icons (`180/192/512/maskable`), `manifest.json` shortcuts + `.fm` `file_handlers`, `index.html` viewport/safe areas, `vite.config.ts` `registerType: 'prompt'`, `usePwaLifecycle`, `PwaStatusBanners` (Offline / Safe Update / Install), `App.tsx` safe-area header & launch hooks.

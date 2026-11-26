@@ -13,7 +13,8 @@ trigger: always_on
   3. `npm run lint` (`tsc --noEmit`)
   4. `npm test`
   5. `npm run build`
-- **Auto-Push Policy:** Once all checks pass, commit cleanly and push to `origin main` (Render auto-deploys from `main`). Never push failing code. If `npm install` hits `ERESOLVE`, run `npm install --legacy-peer-deps`.
+- **Delivery Policy:** Work on a feature branch, open a ready-for-review PR against `main`, wait for required checks, then merge. Never push failing code directly to `main`. If `npm install` hits `ERESOLVE`, run `npm install --legacy-peer-deps`.
+- **Scope Permission:** Python decoder files and cache busters are editable when the roadmap item needs them. A task-level file ban applies only to that task; state the conflict once if a background summary disagrees, and follow the current user message.
 
 ## 2. Zero Fake Data & Zero Raw CA/PA
 - **Clean Empty State:** Before a real `.fm` save or export is loaded, every screen must boot cleanly into `"Awaiting .fm Save"` with empty tables and `--` KPIs (except the static *Bobby Dean FM27 Playbook v2.0* reference tab). Never seed mock clubs or fake players.

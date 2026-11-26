@@ -8,6 +8,8 @@
 - Keep code snippets, raw logs, and low-level technical detail out of the main answer unless the user asks for them.
 - Merge pull requests automatically once checks pass, unless the user says otherwise. Ask only for genuinely destructive actions such as deleting data, force-pushing, or rewriting history.
 - The latest explicit instruction about which files to touch wins. Do not keep re-asking or re-raising files the user has already allowed or excluded.
+- Treat file bans as scoped to the request that stated them, not permanent permissions. If the current message and a background task summary disagree, stop and ask which is current; do not let the background summary override the message.
+- Python save-decoder files and cache busters are in scope by default. When a mapper change ships, bump every synced cache-buster reference in the same PR so phones do not keep the old decoder. A task-level instruction may exclude them; that exclusion does not carry into later tasks.
 - Open pull requests as ready for review, not drafts, unless the user asks for a draft.
 - Use the real save files already available in the workspace (`.agents_tmp/decoded/`, `.agents_tmp/uploads/`) for parity checks. Do not ask the user to decode or inspect saves manually.
 - When the user describes a problem in plain language, translate it into the technical investigation yourself. Do not require them to diagnose it first.
