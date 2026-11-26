@@ -229,3 +229,27 @@ test('decodeFmSaveWithServerFirst falls back automatically to browser decoder wh
   assert.equal(browserFallbackCalled, true);
   assert.equal(result.meta.clubName, 'Browser Decoded Club');
 });
+
+test('forceBrowserWorker stays on the phone without probing or uploading to the server', async () => {
+  let fetchCalls = 0;
+  let browserFallbackCalled = false;
+  const result = await decodeFmSaveWithServerFirst(
+    new Blob([new Uint8Array(10)]),
+    undefined,
+    { forceBrowserWorker: true },
+    {
+      fetchImpl: (async () => {
+        fetchCalls += 1;
+        throw new Error('server must not be called');
+      }) as typeof fetch,
+      browserFallback: async () => {
+        browserFallbackCalled = true;
+        return makeDecodedPayload('Phone Decoded Club');
+      },
+    }
+  );
+
+  assert.equal(fetchCalls, 0);
+  assert.equal(browserFallbackCalled, true);
+  assert.equal(result.meta.clubName, 'Phone Decoded Club');
+});

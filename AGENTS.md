@@ -12,6 +12,14 @@
 - Use the real save files already available in the workspace (`.agents_tmp/decoded/`, `.agents_tmp/uploads/`) for parity checks. Do not ask the user to decode or inspect saves manually.
 - When the user describes a problem in plain language, translate it into the technical investigation yourself. Do not require them to diagnose it first.
 
+## Decode performance priorities
+
+- Full Sync on the user's phone is the primary path. Server decoding is a backup, not the default goal.
+- When asked to speed up Full Sync, optimise the phone/browser Pyodide decoder first. A server-only change is not an answer; state which path changed and whether the phone improved.
+- Phones default to `On this phone` decoding without uploading. Server upload is opt-in. Do not silently prefer the server on mobile.
+- Free Render is CPU-limited. Do not suggest paid hosting unless the user asks, and do not present desktop or server timings as proof of phone speed.
+- If the change was not measured on a real phone, say so plainly.
+
 ## Skills
 
 - Before changing code, run a skill check: name the skills that apply and invoke them. Do not silently skip a matching skill.
