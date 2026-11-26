@@ -22,6 +22,13 @@
 - Free Render is CPU-limited. Do not suggest paid hosting unless the user asks, and do not present desktop or server timings as proof of phone speed.
 - If the change was not measured on a real phone, say so plainly.
 
+## Start-of-task gate
+
+- Before planning or changing code, read `ROADMAP.md`, `TOOLING-WATCHLIST.md`, and the available skill/MCP list.
+- Name the applicable skills and MCP servers in one line, and invoke every matching skill. If none applies, say why once.
+- Prefer an installed skill or MCP tool over an ad-hoc script when it covers the job. If a missing tool would clearly help, add it to `TOOLING-WATCHLIST.md` with the roadmap item, source, licence and risk.
+- Every PR body and final summary includes `Skills applied:` and `MCP checked:` lines.
+
 ## Skills
 
 - Before changing code, run a skill check: name the skills that apply and invoke them. Do not silently skip a matching skill.

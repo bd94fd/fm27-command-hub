@@ -5,6 +5,7 @@ trigger: always_on
 # FM27 Command Hub — Core Rules & Quota-Saving Workflow
 
 ## 1. Communication & Delivery
+- **Start-of-Task Tool Check:** Read `ROADMAP.md`, `TOOLING-WATCHLIST.md`, and the available skill/MCP list before planning. Name applicable skills and MCP tools, invoke matching skills, and record `Skills applied:` plus `MCP checked:` in every PR and final summary. If a useful tool is missing, add it to `TOOLING-WATCHLIST.md`; do not silently go without it.
 - **Plain English for Bobby (UK English):** Explain clearly what changed, confirm all verification checks passed, and confirm it was pushed live. Skip dense technical jargon unless explicitly asked.
 - **Explain "Why" in the App:** Tactical recommendations, Rest Defence notes, Player Cards, and AI Analyst replies must explain *why* in actionable football terms.
 - **Pre-Push Verification (in order):**
