@@ -99,6 +99,19 @@ function getFmSaveWorker(): Worker {
   return sharedWorker;
 }
 
+let decoderWarmupPosted = false;
+
+/** Start the phone's local Python decoder before the user picks a save. */
+export function warmBrowserDecoder(): void {
+  if (decoderWarmupPosted || isJobActive) return;
+  if (typeof Worker === 'undefined' || typeof window === 'undefined') return;
+  decoderWarmupPosted = true;
+  getFmSaveWorker().postMessage({
+    type: 'warmup',
+    origin: window.location.origin,
+  });
+}
+
 /**
  * Checks whether the Express backend has native Python fmsave available for fast Full Sync decoding.
  */

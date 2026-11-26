@@ -108,6 +108,13 @@ import {
   toApiResponseError,
 } from '../utils/apiResponse';
 import { countSquadPool, describeSquadPool } from '../utils/squadViewHelpers';
+import {
+  DECODE_TARGET_STORAGE_KEY,
+  isMobileUserAgent,
+  resolveDecodeTarget,
+  shouldPrewarmLocalDecoder,
+  type DecodeTarget,
+} from '../utils/decodeTarget';
 import { recordFm27BuildRun } from '../utils/fm27BuildMemory';
 import {
   buildClubFinancesPanel,
@@ -337,6 +344,13 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   const [serverDecodeAvailable, setServerDecodeAvailable] = useState<boolean | null>(
     null
   );
+  const [decodeTarget, setDecodeTarget] = useState<DecodeTarget>(() => {
+    if (typeof window === 'undefined') return 'local';
+    return resolveDecodeTarget(
+      window.localStorage.getItem(DECODE_TARGET_STORAGE_KEY),
+      isMobileUserAgent(navigator.userAgent)
+    );
+  });
   const fastSyncManuallyToggledRef = useRef<boolean>(false);
   const [fastSync, setFastSync] = useState<boolean>(false);
   const [extractionWarnings, setExtractionWarnings] = useState<string[]>([]);
@@ -515,6 +529,18 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   }, [pendingPrompt, onClearPendingPrompt]);
 
   useEffect(() => {
+    try {
+      window.localStorage.setItem(DECODE_TARGET_STORAGE_KEY, decodeTarget);
+    } catch {
+      // Storage can be unavailable in private mode; the default still applies.
+    }
+  }, [decodeTarget]);
+
+  useEffect(() => {
+    if (decodeTarget === 'local') {
+      setServerDecodeAvailable(null);
+      return;
+    }
     let active = true;
     void probeServerDecodeAvailability().then((available) => {
       if (!active) return;
@@ -530,7 +556,55 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     return () => {
       active = false;
     };
-  }, []);
+  }, [decodeTarget]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const nav = navigator as Navigator & {
+      deviceMemory?: number;
+      connection?: { saveData?: boolean; effectiveType?: string };
+    };
+    if (
+      !shouldPrewarmLocalDecoder({
+        target: decodeTarget,
+        online: navigator.onLine,
+        saveData: nav.connection?.saveData,
+        effectiveType: nav.connection?.effectiveType,
+        deviceMemoryGb: nav.deviceMemory,
+      })
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    const start = () => {
+      if (cancelled) return;
+      void import('../services/fmSaveReader')
+        .then((mod) => {
+          if (!cancelled) mod.warmBrowserDecoder();
+        })
+        .catch(() => {
+          // A failed warmup is harmless; the real import retries the boot.
+        });
+    };
+    let cancel = () => {
+      cancelled = true;
+    };
+    if (typeof window.requestIdleCallback === 'function') {
+      const id = window.requestIdleCallback(start, { timeout: 3000 });
+      cancel = () => {
+        cancelled = true;
+        window.cancelIdleCallback?.(id);
+      };
+    } else {
+      const id = window.setTimeout(start, 2000);
+      cancel = () => {
+        cancelled = true;
+        window.clearTimeout(id);
+      };
+    }
+    return cancel;
+  }, [decodeTarget]);
 
   useEffect(() => {
     if (turns.length > 0 || isSending) {
@@ -1311,6 +1385,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                   fastSync,
                   uploadControl,
                   benchmarkId,
+                  forceBrowserWorker: decodeTarget === 'local',
                   onCheckpoint: (cp) => {
                     let checkpointPayload: DecodedFmSavePayload;
                     try {
@@ -1768,6 +1843,10 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       dismissedPreFlightSignature !== preFlightSignature
   );
   const showSyncStatusControl = hasLoadedSave || hasTimingOrNotes;
+  const localDecodeLabel =
+    typeof navigator !== 'undefined' && isMobileUserAgent(navigator.userAgent)
+      ? 'On this phone (recommended)'
+      : 'On this device (recommended)';
 
   return (
     <div
@@ -1805,6 +1884,12 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <label
               htmlFor="welcome-fm-upload"
+              onClick={() => {
+                if (decodeTarget !== 'local') return;
+                void import('../services/fmSaveReader').then((mod) =>
+                  mod.warmBrowserDecoder()
+                );
+              }}
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 rounded-xl shadow-lg shadow-emerald-500/20 cursor-pointer transition"
             >
               <Upload className="w-4 h-4" />
@@ -1840,6 +1925,43 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
               <span>Fast Sync (Quick Preview)</span>
             </label>
+          </div>
+
+          <div className="flex flex-col items-center gap-1.5">
+            <div
+              role="group"
+              aria-label="Where to decode the save"
+              className="inline-flex items-center rounded-xl border border-slate-700 bg-slate-900/80 p-1"
+            >
+              <button
+                type="button"
+                aria-pressed={decodeTarget === 'local'}
+                onClick={() => setDecodeTarget('local')}
+                className={`min-h-[36px] px-3.5 text-xs font-bold rounded-lg transition cursor-pointer ${
+                  decodeTarget === 'local'
+                    ? 'bg-emerald-400 text-slate-950 shadow-sm'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                {localDecodeLabel}
+              </button>
+              <button
+                type="button"
+                aria-pressed={decodeTarget === 'server'}
+                onClick={() => setDecodeTarget('server')}
+                className={`min-h-[36px] px-3.5 text-xs font-semibold rounded-lg transition cursor-pointer ${
+                  decodeTarget === 'server'
+                    ? 'bg-slate-200 text-slate-950 shadow-sm'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                Server backup
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-400 text-center max-w-md">
+              On-device keeps the save on your device and starts Full Sync
+              without an upload. Server backup uploads the save to Render.
+            </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl mx-auto pt-2 text-left">
@@ -2647,6 +2769,12 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             <label
               htmlFor="chat-multi-file-upload"
               title="Import .fm save or attach a screenshot"
+              onClick={() => {
+                if (decodeTarget !== 'local') return;
+                void import('../services/fmSaveReader').then((mod) =>
+                  mod.warmBrowserDecoder()
+                );
+              }}
               className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 rounded-xl cursor-pointer transition shrink-0"
             >
               <Upload className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
@@ -2692,24 +2820,41 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           </div>
 
           {hasLoadedSave && (
-            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
-              <label
-                htmlFor="fm-fast-sync-composer-toggle"
-                className="inline-flex min-h-[36px] items-center gap-1.5 cursor-pointer select-none hover:text-slate-300"
-              >
-                <input
-                  id="fm-fast-sync-composer-toggle"
-                  type="checkbox"
-                  checked={fastSync}
-                  onChange={(e) => {
-                    fastSyncManuallyToggledRef.current = true;
-                    setFastSync(e.target.checked);
-                  }}
-                  className="accent-amber-500 w-3.5 h-3.5 cursor-pointer"
-                />
-                <Zap className="w-3 h-3 text-amber-400" />
-                <span>Fast Sync on next .fm upload</span>
-              </label>
+            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600 dark:text-slate-400">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <label
+                  htmlFor="fm-ondevice-composer-toggle"
+                  className="inline-flex min-h-[36px] items-center gap-1.5 cursor-pointer select-none hover:text-slate-900 dark:hover:text-slate-200"
+                >
+                  <input
+                    id="fm-ondevice-composer-toggle"
+                    type="checkbox"
+                    checked={decodeTarget === 'local'}
+                    onChange={(e) =>
+                      setDecodeTarget(e.target.checked ? 'local' : 'server')
+                    }
+                    className="accent-emerald-500 w-3.5 h-3.5 cursor-pointer"
+                  />
+                  <span>On-device decode (recommended)</span>
+                </label>
+                <label
+                  htmlFor="fm-fast-sync-composer-toggle"
+                  className="inline-flex min-h-[36px] items-center gap-1.5 cursor-pointer select-none hover:text-slate-900 dark:hover:text-slate-200"
+                >
+                  <input
+                    id="fm-fast-sync-composer-toggle"
+                    type="checkbox"
+                    checked={fastSync}
+                    onChange={(e) => {
+                      fastSyncManuallyToggledRef.current = true;
+                      setFastSync(e.target.checked);
+                    }}
+                    className="accent-amber-500 w-3.5 h-3.5 cursor-pointer"
+                  />
+                  <Zap className="w-3 h-3 text-amber-400" />
+                  <span>Fast Sync on next .fm upload</span>
+                </label>
+              </div>
               <span
                 className={
                   activePreFlightValidation && !activePreFlightValidation.valid
@@ -2719,9 +2864,11 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               >
                 {activePreFlightValidation && !activePreFlightValidation.valid
                   ? `Sync Status: ${activePreFlightValidation.missingFields.length} core field(s) missing — re-import advised`
-                  : serverDecodeAvailable
-                    ? 'Server Sync Ready'
-                    : 'Local Reader Ready'}
+                  : decodeTarget === 'local'
+                    ? 'On-device Sync Selected'
+                    : serverDecodeAvailable
+                      ? 'Server Sync Ready'
+                      : 'Local Reader Ready'}
               </span>
             </div>
           )}

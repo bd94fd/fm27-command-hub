@@ -42,6 +42,8 @@ Test cold and warm loads. Record the device, Android version, Chrome version, ne
 
 ## Rules
 
+- The user's phone on-device decoder is the primary Full Sync path. Server decoding is a backup. When asked to speed up Full Sync, change and measure the phone path first; do not present server-only work as the answer.
+- Report phone and server timings separately. Never use a desktop or server number as proof of phone speed.
 - Do not invent numbers. If a stage cannot be measured, say so.
 - Keep the raw results next to the save name and device.
 - Do not edit cache busters or `public/fm-save-mapper.py` unless the task explicitly allows it.

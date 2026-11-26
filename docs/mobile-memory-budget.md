@@ -13,7 +13,7 @@ That fallback is the risk this change addresses: a phone asked to start a Full S
 
 | Layer | Limit | Effect |
 | --- | --- | --- |
-| Upload chunk | 2 MB | Small peak buffer; 4 parallel chunks on desktop, 1 on mobile. |
+| Upload chunk | 2 MB | Small peak buffer; 4 parallel chunk writes on desktop and mobile, with file reads serialized so cloud providers never deadlock. |
 | Browser worker buffer | 64 MB | Above this, an ArrayBuffer is refused; the file-picker WORKERFS path is zero-copy. |
 | Server upload | 1 GB | Rejected before upload. |
 | Pending uploads | 2 GB | Caps concurrent upload sessions. |
@@ -22,6 +22,8 @@ That fallback is the risk this change addresses: a phone asked to start a Full S
 
 ## Change
 
+- Phones now default to **On this phone** decoding. The server upload is an explicit **Server backup** choice. This keeps the 242 MB upload off the phone and avoids waiting on Render's free CPU.
+- The phone's Pyodide runtime is warmed in the background when the device has enough memory and is not on a data saver or 2G connection. The warmup starts before the user picks a save, so the first import skips most of the Python boot.
 - New pure helper `src/utils/saveMemoryBudget.ts` classifies a large save (200 MB or more), a low-memory device (under 4 GB reported) and the fallback sync mode.
 - A browser fallback keeps Full Sync whenever the device has enough memory. Only a large save on a device that reports under 4 GB is upgraded to Fast Sync.
 - A phone that reports enough memory keeps Full Sync. A real 242 MB save completed in Full Sync on a phone in 162 seconds without crashing.
@@ -37,4 +39,4 @@ That fallback is the risk this change addresses: a phone asked to start a Full S
 
 - Force a 507 on a physical Android Chrome session with a real 250–265 MB save and confirm the fallback starts in Fast Sync and completes without a tab crash.
 - Repeat the same run in the installed PWA with a dropped connection.
-- Only tune chunk size or worker memory further if those runs show a specific bottleneck. The current 2 MB / 1-way mobile upload is already the memory-safe choice.
+- Only tune chunk size or worker memory further if those runs show a specific bottleneck. Mobile uses 4 parallel 2 MB writes with serialized reads; the phone-first decoder is the main path.
