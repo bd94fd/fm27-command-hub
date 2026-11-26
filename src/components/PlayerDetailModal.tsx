@@ -44,6 +44,7 @@ import {
   analyzePlayerCard,
   getPrimaryPositionCode,
   getRealShirtNumber,
+  type RankedRoleFit,
 } from '../utils/playerCardAnalysis';
 import { isSuspensionActiveForCompetition } from '../utils/bestXiSolver';
 import {
@@ -82,6 +83,52 @@ interface PlayerDetailModalProps {
 }
 
 type DetailTab = 'overview' | 'attributes' | 'positions' | 'metrics' | 'contract';
+
+const RoleFitExplainability: React.FC<{ fit: RankedRoleFit }> = ({ fit }) => (
+  <div className="space-y-2 rounded-lg border border-slate-800 bg-slate-900/50 p-2.5">
+    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+      Why this score
+    </div>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1">
+      {fit.attributeWeights.map((attr) => (
+        <div
+          key={attr.key}
+          className="flex items-center justify-between gap-2 text-[11px] min-w-0"
+        >
+          <span className="text-slate-300 truncate">
+            {attr.label}
+            {attr.missing ? ' (missing)' : ''}
+          </span>
+          <span className="font-mono text-slate-400 shrink-0 tabular-nums">
+            {attr.value}/20 · ×{attr.weight} · {attr.weightSharePct}%
+          </span>
+        </div>
+      ))}
+    </div>
+    <div className="flex flex-wrap gap-1">
+      {fit.keyThresholds.map((threshold) => (
+        <span
+          key={threshold.key}
+          className={`rounded border px-1.5 py-0.5 text-[10px] font-mono ${
+            threshold.met
+              ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+              : 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+          }`}
+        >
+          {threshold.label} {threshold.value}/20{' '}
+          {threshold.met ? '✓' : `✗ < ${threshold.threshold}`}
+        </span>
+      ))}
+    </div>
+    {fit.nearestAlternative && (
+      <div className="text-[11px] text-slate-400">
+        Nearest alternative:{' '}
+        <span className="text-slate-200">{fit.nearestAlternative.roleName}</span>{' '}
+        ({fit.nearestAlternative.fitPct}% · {fit.nearestAlternative.tier})
+      </div>
+    )}
+  </div>
+);
 
 const PITCH_ROWS: Array<Array<{ code: string; label: string }>> = [
   [{ code: 'ST', label: 'ST' }],
@@ -1082,6 +1129,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     <div className="text-sm font-bold text-white">
                       {analysis.bestIpRole.role.name}
                     </div>
+                    <RoleFitExplainability fit={analysis.bestIpRole} />
                     {analysis.bestIpRole.topSupporting.length > 0 && (
                       <div className="text-[11px] text-slate-400">
                         Driven by:{' '}
@@ -1112,6 +1160,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     <div className="text-sm font-bold text-white">
                       {analysis.bestOopRole.role.name}
                     </div>
+                    <RoleFitExplainability fit={analysis.bestOopRole} />
                     {analysis.bestOopRole.topSupporting.length > 0 && (
                       <div className="text-[11px] text-slate-400">
                         Driven by:{' '}

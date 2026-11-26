@@ -142,6 +142,7 @@ flowchart LR
 | `computeCompetitiveSummary` | `src/App.tsx` | `src/utils/tacticalAnalystContext.ts` |
 | `classifyMatchEntryBucket` | `src/components/MatchLogArchive.tsx` | `src/utils/tacticalAnalystContext.ts` |
 | `analyzePlayerCard` | `src/components/PlayerDetailModal.tsx` | `src/utils/tacticalAnalystContext.ts` |
+| `rankRolesForPlayer` / `RankedRoleFit` weights | `src/components/PlayerDetailModal.tsx` | `src/utils/tacticalAnalystContext.ts` squad BF% from the same `bestIpRole` |
 | `evaluatePlayerMetaScore` | `src/components/PlayerDetailModal.tsx` | `src/utils/fmfShortlistExporter.ts` |
 | `buildSquadTransferAudit` | `src/components/RecruitmentWorkspace.tsx` | `src/utils/tacticalAnalystContext.ts` |
 | `buildDynamicSetPieceRoutines` | `src/components/SetPiecesAndTraining.tsx` | `src/utils/tacticalAnalystContext.ts` |
@@ -200,5 +201,5 @@ These are UI-only by design. They are not gaps, and the Analyst should not inven
 ## Verification
 
 - `src/utils/dataParityContract.test.ts` checks the shared-selector tripwires, the required table sections, and the roadmap link.
-- Existing parity tests cover the individual domains: `financesStaffOverhaul.test.ts`, `phase5AnalystAndConsistency.test.ts`, `staffRatings.test.ts`, `clubFinances.test.ts`, and `fmSaveHydrator.test.ts`. `crossTabConsistency.test.ts` checks staff ratings, staff payroll, finance totals, squad pool counts, expiry windows and journey wage totals across Hub, Squad, Staff and Analyst. `fm27SaveCompatibility.test.ts` checks the matrix, the UI panel, the Analyst block and the unsupported-save message.
+- Existing parity tests cover the individual domains: `financesStaffOverhaul.test.ts`, `phase5AnalystAndConsistency.test.ts`, `staffRatings.test.ts`, `clubFinances.test.ts`, and `fmSaveHydrator.test.ts`. `crossTabConsistency.test.ts` checks staff ratings, staff payroll, finance totals, squad pool counts, expiry windows and journey wage totals across Hub, Squad, Staff and Analyst. `fm27SaveCompatibility.test.ts` checks the matrix, the UI panel, the Analyst block and the unsupported-save message. `playerCardAnalysis.test.ts` checks role weights, thresholds, missing attributes and the nearest alternative.
 - R03's real-save regression suite covers the decoder fingerprint separately.
