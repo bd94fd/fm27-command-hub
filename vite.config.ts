@@ -89,6 +89,22 @@ export default defineConfig(({command, mode}) => {
               },
             },
             {
+              // Pyodide is fetched from jsDelivr by public/fm-save-worker.js. Without
+              // this route an offline phone can only decode from the HTTP cache,
+              // which the browser is free to evict. CacheFirst keeps the phone
+              // decoder working with no signal after one successful decode.
+              urlPattern: /^https:\/\/cdn\.jsdelivr\.net\/pyodide\//i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'fm-pyodide',
+                cacheableResponse: { statuses: [0, 200] },
+                expiration: {
+                  maxEntries: 80,
+                  maxAgeSeconds: 60 * 60 * 24 * 30,
+                },
+              },
+            },
+            {
               urlPattern: /\/api\/.*/i,
               handler: 'NetworkOnly',
             },

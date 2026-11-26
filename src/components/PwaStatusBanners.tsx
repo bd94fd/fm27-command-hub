@@ -9,6 +9,8 @@ import { Download, RefreshCw, Share, WifiOff, X } from 'lucide-react';
 interface PwaStatusBannersProps {
   isOnline: boolean;
   clubName: string;
+  /** In-game date of the save on this device, so offline data can be called stale. */
+  saveDate?: string;
   hasLoadedSave: boolean;
   showUpdateBanner: boolean;
   onApplyUpdate: () => void;
@@ -23,6 +25,7 @@ interface PwaStatusBannersProps {
 export const PwaStatusBanners: React.FC<PwaStatusBannersProps> = ({
   isOnline,
   clubName,
+  saveDate,
   hasLoadedSave,
   showUpdateBanner,
   onApplyUpdate,
@@ -50,7 +53,9 @@ export const PwaStatusBanners: React.FC<PwaStatusBannersProps> = ({
           <p className="leading-snug">
             <span className="font-semibold text-amber-900 dark:text-amber-200">Offline mode — </span>
             {hasLoadedSave
-              ? `browsing your saved ${clubName} data locally. AI Analyst will use instant offline briefings until signal returns.`
+              ? `showing the ${clubName} save stored on this device${
+                  saveDate ? `, last updated in game on ${saveDate}` : ''
+                }. Nothing is being sent anywhere. AI Analyst will use instant offline briefings until signal returns.`
               : 'no internet connection detected. Cached screens still work, and you can import a local .fm save directly on your device.'}
           </p>
         </div>
