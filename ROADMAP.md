@@ -170,6 +170,6 @@ A quick scan on 26 November 2026 found:
 - R26 Design system and visual consistency: In progress. Staff and Hub finances typography are aligned; the remaining screens are pending.
 - R27 Motion, feedback and undo: In progress. Clear Chat has a confirmation step and a 5-second undo window; other destructive actions are pending.
 - R42 CI and release automation: In progress. A roadmap-reference gate is in place; broader release automation is pending.
-- R43 Documentation refresh: In progress. Roadmap discipline is recorded in `AGENTS.md`; agent workflow rules now use feature-branch PRs, scope file bans per task, keep Python decoder/cache-buster work in scope, require a skill/MCP check at the start of every task, and require needed repo-level tools to be installed rather than only noted. The remaining documentation refresh is pending.
+- R43 Documentation refresh: In progress. Roadmap discipline is recorded in `AGENTS.md`; agent workflow rules now use feature-branch PRs, scope file bans per task, keep Python decoder/cache-buster work in scope, require a skill/MCP check at the start of every task, and require needed repo-level tools to be installed rather than only noted. Playwright and Chrome DevTools MCP are configured for new conversations; `docs/mcp-setup.md` records the selection and safety rules. The remaining documentation refresh is pending.
 
 All other items are proposed.
