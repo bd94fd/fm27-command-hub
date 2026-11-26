@@ -57,7 +57,7 @@ import {
 } from './matchScopeHelpers';
 import { formatAge, formatNation, formatWeeklyWage, MISSING_VALUE } from './squadViewHelpers';
 
-export const WORKER_CACHE_BUSTER = '?v=24';
+export const WORKER_CACHE_BUSTER = '?v=25';
 
 export function resolveSquadUnit(
   teamSlot?: number | null
