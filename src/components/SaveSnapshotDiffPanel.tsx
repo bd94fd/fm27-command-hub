@@ -689,6 +689,13 @@ export const SaveSnapshotDiffPanel: React.FC<SaveSnapshotDiffPanelProps> = ({
                         p/w
                       </div>
                     )}
+                  {typeof diff.kpiDeltas.toWageMissingCount === 'number' &&
+                    diff.kpiDeltas.toWageMissingCount > 0 && (
+                      <div className="mt-0.5 text-[10px] font-mono text-slate-400 tabular-nums">
+                        Known wages only — {diff.kpiDeltas.toWageMissingCount} of{' '}
+                        {diff.kpiDeltas.toSquadCount} players have no decoded weekly wage
+                      </div>
+                    )}
                 </div>
 
                 <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3">
