@@ -2579,7 +2579,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                               handleCopyText(turn.id, formatTurnForCopy(turn))
                             }
                             title="Copy message"
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-900/60 hover:bg-emerald-800/70 text-emerald-200 transition cursor-pointer shrink-0"
+                            className="inline-flex items-center gap-1 min-h-[36px] md:min-h-[24px] px-2 rounded-md bg-emerald-900/60 hover:bg-emerald-800/70 text-emerald-200 transition cursor-pointer shrink-0"
                           >
                             {copiedId === turn.id ? (
                               <>
@@ -2629,7 +2629,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                           handleCopyText(turn.id, formatTurnForCopy(turn))
                         }
                         title="Copy this Analyst reply"
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-micro font-medium bg-slate-200/80 dark:bg-slate-800 hover:bg-emerald-500/20 text-slate-700 dark:text-slate-200 hover:text-emerald-300 border border-slate-300 dark:border-slate-700 transition cursor-pointer"
+                        className="inline-flex items-center gap-1 min-h-[36px] md:min-h-[24px] px-2 rounded-md text-micro font-medium bg-slate-200/80 dark:bg-slate-800 hover:bg-emerald-500/20 text-slate-700 dark:text-slate-200 hover:text-emerald-300 border border-slate-300 dark:border-slate-700 transition cursor-pointer"
                       >
                         {copiedId === turn.id ? (
                           <>

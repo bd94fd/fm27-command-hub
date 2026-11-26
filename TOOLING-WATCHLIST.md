@@ -74,6 +74,7 @@ Purpose: remember tools and skills worth adding later, so we do not search for t
 - 26 Nov 2026: enabled Playwright MCP and Chrome DevTools MCP for new conversations. Pinned both versions, disabled Chrome DevTools CrUX/usage reporting, and documented the selection rule in `AGENTS.md` and `docs/mcp-setup.md`.
 - 26 Nov 2026: found that Chrome DevTools MCP could list its tools but could not start a browser (`Target closed`). Cause: Chromium cannot create a sandbox as root, and only Playwright had `--no-sandbox`. Documented the `--chromeArg=--no-sandbox` fix rather than adding a second trace tool.
 
+- 26 Nov 2026: R28 added the Safari leg of the device matrix. Playwright stays an on-demand tool, not a dependency: `scripts/webkit-matrix.mjs` imports `playwright` if present and exits with install instructions if not, so `npm install` and CI do not download a second browser engine. WebKit on this Linux image needed `libgstreamer-plugins-bad1.0-0`, `libgtk-4-1`, `libsecret-1-0`, `libenchant-2-2` and `libmanette-0.2-0` before `webkit.launch()` would start.
 ## Rejected for now
 
 | Tool or skill | Why not now |

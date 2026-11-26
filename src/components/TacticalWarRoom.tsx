@@ -222,7 +222,7 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
                   <button
                     type="button"
                     onClick={() => setIncludeYouthInWarRoom(false)}
-                    className={`px-2 py-1 rounded-md text-micro font-semibold transition cursor-pointer ${
+                    className={`min-h-[36px] px-2.5 rounded-md text-micro font-semibold transition cursor-pointer inline-flex items-center ${
                       !includeYouthInWarRoom
                         ? 'bg-emerald-700 text-white dark:bg-emerald-500 dark:text-slate-950'
                         : 'text-slate-500 dark:text-slate-400 hover:text-slate-200'
@@ -233,7 +233,7 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
                   <button
                     type="button"
                     onClick={() => setIncludeYouthInWarRoom(true)}
-                    className={`px-2 py-1 rounded-md text-micro font-semibold transition cursor-pointer ${
+                    className={`min-h-[36px] px-2.5 rounded-md text-micro font-semibold transition cursor-pointer inline-flex items-center ${
                       includeYouthInWarRoom
                         ? 'bg-emerald-700 text-white dark:bg-emerald-500 dark:text-slate-950'
                         : 'text-slate-500 dark:text-slate-400 hover:text-slate-200'

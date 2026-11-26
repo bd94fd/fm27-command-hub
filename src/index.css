@@ -26,6 +26,12 @@
     overflow-x: clip;
   }
 
+  /* The app is always dark. Without this, native controls paint light: the squad
+     role select, date pickers, checkboxes and scrollbars all came out white on iOS. */
+  html {
+    color-scheme: dark;
+  }
+
   body {
     font-family: 'Plus Jakarta Sans Variable', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   }
