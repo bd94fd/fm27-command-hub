@@ -43,15 +43,33 @@ function isRetryableStatus(status: number): boolean {
   return status === 408 || status === 425 || status === 429 || status >= 500;
 }
 
-/** Builds a short, human-readable "HTTP <status>: <reason>" description. */
-export function describeApiFailure(err: unknown): string {
+/** What the user is told when a request fails because the device has no signal. */
+export const OFFLINE_FAILURE_REASON = 'no connection on this device';
+
+function isDeviceOffline(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === false;
+}
+
+/**
+ * Builds a short, human-readable "HTTP <status>: <reason>" description.
+ * Pass `isOffline` to override the browser probe, for tests.
+ */
+export function describeApiFailure(
+  err: unknown,
+  options: { isOffline?: boolean } = {}
+): string {
+  const offline = options.isOffline ?? isDeviceOffline();
   if (err instanceof ApiResponseError) {
     if (err.kind === 'network' || err.status <= 0) {
-      return `Network error: ${shortenReason(err.reason)}`;
+      // "Network error: Failed to fetch" is meaningless to someone in a tunnel.
+      return offline ? OFFLINE_FAILURE_REASON : `Network error: ${shortenReason(err.reason)}`;
     }
     return `HTTP ${err.status}: ${shortenReason(err.reason)}`;
   }
   const message = err instanceof Error ? err.message : String(err ?? '');
+  if (offline && /failed to fetch|networkerror|load failed/i.test(message)) {
+    return OFFLINE_FAILURE_REASON;
+  }
   return shortenReason(message) || 'Unknown network error';
 }
 

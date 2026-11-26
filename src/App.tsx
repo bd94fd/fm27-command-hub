@@ -1488,6 +1488,7 @@ export default function App() {
       <PwaStatusBanners
         isOnline={pwa.isOnline}
         clubName={clubName}
+        saveDate={saveDate}
         hasLoadedSave={Boolean(hydratedFmSave || players.length > 0)}
         showUpdateBanner={pwa.showUpdateBanner}
         onApplyUpdate={pwa.applyUpdate}

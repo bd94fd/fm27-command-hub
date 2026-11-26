@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   ApiResponseError,
   describeApiFailure,
+  OFFLINE_FAILURE_REASON,
   isRecoverableAnalystFailure,
   parseJsonApiResponse,
   sanitizeReaderNote,
@@ -106,6 +107,19 @@ test('describeApiFailure, toApiResponseError, and isRecoverableAnalystFailure ha
   assert.equal(describeApiFailure(badReq), 'HTTP 400: Invalid input');
   assert.equal(isRecoverableAnalystFailure(badReq), false);
   assert.equal(isRecoverableAnalystFailure(new Error('HTTP 503 Service Unavailable')), true);
+});
+
+test('describeApiFailure says the device is offline instead of quoting a fetch error', () => {
+  const netErr = toApiResponseError(new TypeError('Failed to fetch'));
+  assert.equal(describeApiFailure(netErr, { isOffline: true }), OFFLINE_FAILURE_REASON);
+  assert.match(describeApiFailure(netErr, { isOffline: false }), /^Network error:/);
+  // A server-side 500 while offline is still a server problem, not a signal problem.
+  const serverErr = new ApiResponseError('boom', {
+    status: 500,
+    kind: 'http',
+    retryable: true,
+  });
+  assert.equal(describeApiFailure(serverErr, { isOffline: true }), 'HTTP 500: boom');
 });
 
 test('sanitizeReaderNote and sanitizeReaderNotes strip GitHub issue URLs and deduplicate', () => {

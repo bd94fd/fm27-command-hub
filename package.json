@@ -20,6 +20,7 @@
     "profile:decode": "node --import tsx scripts/profile-decode-stages.mjs",
     "ui:audit": "node scripts/ui-audit.mjs",
     "device:matrix": "node scripts/device-matrix.mjs",
+    "offline:check": "node scripts/offline-check.mjs",
     "device:webkit": "node scripts/webkit-matrix.mjs",
     "smoke:e2e": "node scripts/e2e-smoke.mjs",
     "a11y:audit": "node scripts/a11y-audit.mjs",

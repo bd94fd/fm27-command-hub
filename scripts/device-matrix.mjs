@@ -16,7 +16,7 @@
  * Safari/WebKit is a separate run: see scripts/webkit-matrix.mjs.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { clickTab as clickTabShared, connect, fetchJson, sleep, startBrowser } from './lib/browser.mjs';
 
 const MIN_TAP_PX = 36;
@@ -269,8 +269,17 @@ async function run() {
   if (profiles.length === 0) throw new Error(`No profile named ${args.only}`);
 
   if (args.screenshots) mkdirSync(args.screenshots, { recursive: true });
-  const seed = args.seed ? readFileSync(args.seed, 'utf8') : null;
-  if (args.seed && !seed) throw new Error(`Seed file is empty: ${args.seed}`);
+  let seed = null;
+  if (args.seed) {
+    const size = statSync(args.seed).size;
+    if (size > 5_000_000) {
+      throw new Error(`Seed file is ${(size / 1e6).toFixed(1)} MB. Expected a JSON copy of fm27_command_hub_state_v1, not a save.`);
+    }
+    seed = readFileSync(args.seed, 'utf8');
+    if (!seed.trim().startsWith('{')) {
+      throw new Error(`Seed file is not JSON: ${args.seed}. Copy fm27_command_hub_state_v1 from localStorage instead.`);
+    }
+  }
   const stopBrowser = await ensureBrowser(args.cdp);
   const client = await connect(args.cdp);
   const results = [];

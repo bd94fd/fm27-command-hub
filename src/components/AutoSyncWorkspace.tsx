@@ -417,6 +417,10 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [isDeviceOnline, setIsDeviceOnline] = useState<boolean>(() =>
+    typeof navigator === 'undefined' ? true : navigator.onLine !== false
+  );
+  const [offlineServerRouteFile, setOfflineServerRouteFile] = useState<File | null>(null);
   const [chatFallbackNotice, setChatFallbackNotice] = useState<string | null>(
     null
   );
@@ -645,6 +649,18 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     }
     return cancel;
   }, [decodeTarget]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const sync = () => setIsDeviceOnline(navigator.onLine !== false);
+    sync();
+    window.addEventListener('online', sync);
+    window.addEventListener('offline', sync);
+    return () => {
+      window.removeEventListener('online', sync);
+      window.removeEventListener('offline', sync);
+    };
+  }, []);
 
   useEffect(() => {
     if (turns.length > 0 || isSending) {
@@ -1303,15 +1319,29 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     });
   };
 
-  const processIncomingFiles = async (files: File[]) => {
+  const processIncomingFiles = async (
+    files: File[],
+    options: { forceLocal?: boolean } = {}
+  ) => {
     if (files.length === 0) return;
     setChatError(null);
     setChatFallbackNotice(null);
+    setOfflineServerRouteFile(null);
+    const routeTarget: DecodeTarget = options.forceLocal ? 'local' : decodeTarget;
 
     for (const file of files) {
       const lower = file.name.toLowerCase();
 
       if (lower.endsWith('.fm')) {
+        // Uploading to a server that cannot be reached used to end in "this is
+        // not a valid save", which sends the user to fix a file that is fine.
+        if (routeTarget === 'server' && !isDeviceOnline) {
+          setOfflineServerRouteFile(file);
+          setChatError(
+            `You're offline, so the server backup can't be reached and ${file.name} was not uploaded. Decode it on this device instead.`
+          );
+          continue;
+        }
         const benchmarkId = startSaveLoadBenchmark({
           fileName: file.name,
           fileSizeBytes: file.size,
@@ -1425,7 +1455,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                   fastSync,
                   uploadControl,
                   benchmarkId,
-                  forceBrowserWorker: decodeTarget === 'local',
+                  forceBrowserWorker: routeTarget === 'local',
                   onCheckpoint: (cp) => {
                     let checkpointPayload: DecodedFmSavePayload;
                     try {
@@ -2037,6 +2067,15 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               <p className="text-micro leading-relaxed text-slate-400">
                 {decodeTarget === 'local' ? DECODE_HELP.local : DECODE_HELP.server}
               </p>
+              {decodeTarget === 'server' && !isDeviceOnline && (
+                <p
+                  role="status"
+                  className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-micro leading-relaxed text-amber-800 dark:text-amber-200"
+                >
+                  You're offline, so the server backup can't be reached. Imports will not upload until the
+                  signal returns — switch to on-device decoding to import now.
+                </p>
+              )}
 
               <label
                 htmlFor="fm-fast-sync-welcome-toggle"
@@ -2821,9 +2860,22 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         )}
 
         {chatError && (
-          <div className="p-2.5 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2 text-xs text-red-700 dark:text-red-400">
+          <div className="p-2.5 bg-red-500/10 border border-red-500/30 rounded-lg flex flex-wrap items-center gap-2 text-xs text-red-700 dark:text-red-400">
             <AlertCircle className="w-4 h-4 shrink-0" />
-            <span className="min-w-0 break-words">{chatError}</span>
+            <span className="min-w-0 break-words flex-1">{chatError}</span>
+            {offlineServerRouteFile && (
+              <button
+                type="button"
+                onClick={() => {
+                  const pending = offlineServerRouteFile;
+                  setDecodeTarget('local');
+                  void processIncomingFiles([pending], { forceLocal: true });
+                }}
+                className="min-h-[44px] sm:min-h-[36px] px-3 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-500 transition cursor-pointer shrink-0"
+              >
+                Decode on this device
+              </button>
+            )}
           </div>
         )}
 
