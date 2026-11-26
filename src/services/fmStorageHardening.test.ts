@@ -2,13 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   clearPersistedFmState,
+  exportFmStateBackupJson,
+  FM27_STORAGE_KEY,
+  importFmStateBackupJson,
   loadPersistedFmState,
   loadPersistedFmStateFromIndexedDb,
+  loadTrackedScoutTargets,
   savePersistedFmState,
+  saveTrackedScoutTargets,
   type FmHubPersistedState,
 } from './fmStorage.ts';
 import {
+  clearSaveHistoryPoints,
   createSaveHistoryPoint,
+  listSaveHistoryPoints,
   MAX_CACHED_SAVES,
   putCachedSavePayload,
   putSaveHistoryPoint,
@@ -21,6 +28,7 @@ import {
   type DecodedFmSavePayload,
 } from '../utils/fmSaveHydrator.ts';
 import { isIndexedDbSnapshotNewer } from '../utils/persistedStateRecency.ts';
+import type { RecruitmentTarget } from '../types/fmSave.ts';
 
 function toMb(bytes: number): number {
   return Number((bytes / (1024 * 1024)).toFixed(2));
@@ -206,6 +214,16 @@ function createMockIndexedDb(options?: {
                       }
                     }, 0);
                     return getReq;
+                  },
+                  getAll: () => {
+                    const allReq: Record<string, unknown> = {};
+                    setTimeout(() => {
+                      allReq.result = Array.from(map.values());
+                      if (typeof allReq.onsuccess === 'function') {
+                        (allReq.onsuccess as () => void)();
+                      }
+                    }, 0);
+                    return allReq;
                   },
                   delete: (key: string) => {
                     map.delete(key);
@@ -776,6 +794,162 @@ test('a state save enqueued while a clear is draining still reaches IndexedDB', 
       delete (globalThis as unknown as { window?: unknown }).window;
     } else {
       (globalThis as unknown as { window?: unknown }).window = prevWindow;
+    }
+  }
+});
+
+test('backup and restore drill restores full hub state, tracked targets, and save history after localStorage failure', async () => {
+  const storageMap = new Map<string, string>();
+  const mockIdb = createMockIndexedDb();
+  const prevWindow = (globalThis as unknown as { window?: unknown }).window;
+  const prevIndexedDb = (globalThis as unknown as { indexedDB?: unknown }).indexedDB;
+
+  (globalThis as unknown as { window: unknown }).window = {
+    localStorage: {
+      getItem: (key: string) => storageMap.get(key) ?? null,
+      setItem: (key: string, value: string) => storageMap.set(key, value),
+      removeItem: (key: string) => storageMap.delete(key),
+      clear: () => storageMap.clear(),
+    },
+    indexedDB: mockIdb.indexedDB,
+  };
+  (globalThis as unknown as { indexedDB: unknown }).indexedDB = mockIdb.indexedDB;
+
+  try {
+    const fullState = {
+      saveDate: '18/09/2027',
+      nextFixture: '02/10/2027 vs KFC Dessel Sport',
+      leagueStandingSub: '#3 of 16 | 9 Pts',
+      wageSpend: '£9,707 / £10,203 p/w',
+      balance: '£-710K',
+      clubName: 'KVV Zelzate',
+      players: [
+        {
+          id: 'p1',
+          uid: 101,
+          name: 'Mbey Epolo',
+          position: 'ST (C)',
+          age: 26,
+          ability: 3.5,
+          potential: 4,
+          wagePw: 650,
+          attributes: {},
+        },
+      ],
+      matches: [
+        {
+          id: 'm1',
+          date: '18/09/2027',
+          opponent: 'Jong Cercle',
+          result: 'W',
+          score: '2 - 0',
+        },
+      ],
+      staff: [
+        {
+          id: 's1',
+          name: 'Karel Fraeye',
+          role: 'Assistant Manager',
+          department: 'Coaching',
+        },
+      ],
+      recruitmentCases: [{ id: 'r1', playerName: 'Scout Target' }],
+      shortlists: [{ id: 'l1', name: 'Shortlist' }],
+      hydratedFmSave: {
+        saveDateLabel: '18/09/2027',
+        updatedSquad: [],
+        updatedMatches: [],
+        updatedStaff: [],
+        recruitmentTargets: [],
+        decodedPayload: { finances: { balance: 123 } },
+      },
+      archivedSaveSnapshots: [
+        {
+          id: 'snap-1',
+          saveDate: '18/09/2027',
+          clubName: 'KVV Zelzate',
+          savedAt: '2027-09-18T12:00:00.000Z',
+          playersCount: 1,
+          matchesCount: 1,
+        },
+      ],
+    } as unknown as Omit<FmHubPersistedState, 'version' | 'lastSyncedAt'>;
+
+    assert.equal(await savePersistedFmState(fullState), true);
+
+    // Simulate a quota-compacted localStorage while IndexedDB keeps full fidelity.
+    const compactedLocal = JSON.parse(storageMap.get(FM27_STORAGE_KEY) || '{}');
+    storageMap.set(
+      FM27_STORAGE_KEY,
+      JSON.stringify({
+        ...compactedLocal,
+        players: [],
+        staff: [],
+        localStorageCompacted: true,
+      })
+    );
+
+    const target: RecruitmentTarget = {
+      uid: 9001,
+      name: 'Lucas Janssens',
+      age: 21,
+      nationality: 'Belgium',
+      primaryPosition: 'AMR',
+      isFreeAgent: true,
+      contractExpiryMonths: 0,
+      demandedWageEur: 350,
+      attributes: { pace: 15, acceleration: 15 },
+    };
+    assert.equal(saveTrackedScoutTargets([target]), true);
+
+    const historyPoint = createSaveHistoryPoint({
+      saveName: 'auto_save.fm',
+      inGameDate: '18/09/2027',
+      clubName: 'KVV Zelzate',
+      players: [],
+      balanceNum: -710_000,
+      leaguePosition: 3,
+      played: 5,
+      points: 9,
+    });
+    assert.equal(await putSaveHistoryPoint(historyPoint), true);
+
+    const backup = await exportFmStateBackupJson();
+    assert.ok(backup);
+    const parsed = JSON.parse(backup);
+    assert.equal(parsed.backupFormatVersion, 2);
+    assert.equal(parsed.players.length, 1, 'export must use full IndexedDB state, not compacted localStorage');
+    assert.equal(parsed.staff.length, 1);
+    assert.equal(parsed.trackedScoutTargets.length, 1);
+    assert.equal(parsed.saveHistory.length, 1);
+    assert.equal(parsed.archivedSaveSnapshots.length, 1);
+
+    // Simulate a clean profile: wipe the hub state and save history stores.
+    storageMap.clear();
+    await clearPersistedFmState();
+    await clearSaveHistoryPoints();
+
+    const imported = await importFmStateBackupJson(backup);
+    assert.ok(imported);
+    assert.equal(imported.players.length, 1);
+    assert.equal(imported.staff?.length, 1);
+    assert.equal(imported.archivedSaveSnapshots?.length, 1);
+    assert.equal(loadTrackedScoutTargets().length, 1);
+
+    const restoredHistory = await listSaveHistoryPoints();
+    assert.equal(restoredHistory.length, 1);
+    assert.equal(restoredHistory[0].cacheKey, historyPoint.cacheKey);
+    assert.equal(restoredHistory[0].balanceNum, -710_000);
+  } finally {
+    if (prevWindow === undefined) {
+      delete (globalThis as unknown as { window?: unknown }).window;
+    } else {
+      (globalThis as unknown as { window?: unknown }).window = prevWindow;
+    }
+    if (prevIndexedDb === undefined) {
+      delete (globalThis as unknown as { indexedDB?: unknown }).indexedDB;
+    } else {
+      (globalThis as unknown as { indexedDB?: unknown }).indexedDB = prevIndexedDb;
     }
   }
 });

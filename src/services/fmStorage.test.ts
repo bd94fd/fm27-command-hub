@@ -176,7 +176,7 @@ test('fmStorage exports and imports JSON backups cleanly', async () => {
     hydratedFmSave: null,
   });
 
-  const exported = exportFmStateBackupJson();
+  const exported = await exportFmStateBackupJson();
   assert.ok(exported);
   assert.ok(exported.includes('Mbey Epolo'));
 
@@ -298,7 +298,7 @@ test('fmStorage v2 migrates v1 state and persists customSlots, activeShape, appl
     ],
   });
 
-  const exported = exportBackupJson();
+  const exported = await exportBackupJson();
   assert.ok(exported);
   mockLocalStorage.clear();
 

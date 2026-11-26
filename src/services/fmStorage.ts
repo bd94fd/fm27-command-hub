@@ -12,6 +12,8 @@ import {
 } from '../types/fm27';
 import { RecruitmentTarget } from '../types/fmSave';
 import { HydratedSaveState } from '../utils/fmSaveHydrator';
+import { isIndexedDbSnapshotNewer } from '../utils/persistedStateRecency';
+import type { SaveHistoryPoint } from './saveCache';
 
 import { FormationPresetKey } from '../utils/bestXiSolver';
 
@@ -19,6 +21,7 @@ export const FM27_STORAGE_KEY = 'fm27_command_hub_state_v1';
 export const FM27_PREVIOUS_KEY = 'fm27_command_hub_prev_snapshot_v1';
 export const FM27_TRACKED_TARGETS_KEY = 'fm27_command_hub_tracked_targets_v1';
 export const CURRENT_SCHEMA_VERSION = 2;
+export const BACKUP_FORMAT_VERSION = 2;
 
 export interface PersistedCustomSlot {
   slotId: string;
@@ -702,13 +705,98 @@ export function removeTrackedScoutTarget(
   return next;
 }
 
+function normalizeTrackedScoutTargets(raw: unknown): RecruitmentTarget[] | null {
+  if (!Array.isArray(raw)) return null;
+  return raw.filter(
+    (item): item is RecruitmentTarget =>
+      Boolean(item) &&
+      typeof item === 'object' &&
+      typeof (item as RecruitmentTarget).name === 'string'
+  );
+}
+
+function normalizeSaveHistoryPoints(raw: unknown): SaveHistoryPoint[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((item): item is SaveHistoryPoint => {
+    if (!item || typeof item !== 'object') return false;
+    const point = item as Partial<SaveHistoryPoint>;
+    return typeof point.cacheKey === 'string' && Array.isArray(point.players);
+  });
+}
+
+async function readSaveHistoryForBackup(): Promise<SaveHistoryPoint[]> {
+  try {
+    const { listSaveHistoryPoints } = await import('./saveCache');
+    return await listSaveHistoryPoints();
+  } catch (err) {
+    console.warn('Failed to read save history for backup:', err);
+    return [];
+  }
+}
+
+async function restoreBackupExtras(raw: unknown): Promise<void> {
+  if (!raw || typeof raw !== 'object') return;
+  const obj = raw as Record<string, unknown>;
+
+  const tracked = normalizeTrackedScoutTargets(obj.trackedScoutTargets);
+  if (tracked) saveTrackedScoutTargets(tracked);
+
+  const history = normalizeSaveHistoryPoints(obj.saveHistory);
+  if (history.length === 0) return;
+  try {
+    const { putSaveHistoryPoint } = await import('./saveCache');
+    for (const point of history) {
+      await putSaveHistoryPoint(point);
+    }
+  } catch (err) {
+    console.warn('Failed to restore save history from backup:', err);
+  }
+}
+
+export function buildFmStateBackupJson(
+  state: FmHubPersistedState,
+  extras: {
+    trackedScoutTargets?: RecruitmentTarget[];
+    saveHistory?: SaveHistoryPoint[];
+  } = {}
+): string {
+  return JSON.stringify(
+    {
+      ...state,
+      backupFormatVersion: BACKUP_FORMAT_VERSION,
+      exportedAt: new Date().toISOString(),
+      trackedScoutTargets: Array.isArray(extras.trackedScoutTargets)
+        ? extras.trackedScoutTargets
+        : [],
+      saveHistory: Array.isArray(extras.saveHistory) ? extras.saveHistory : [],
+    },
+    null,
+    2
+  );
+}
+
 /**
- * Export saved state as a portable JSON backup string.
+ * Export the fullest available state as a portable JSON backup string.
+ * Prefers IndexedDB when localStorage had to be quota-compacted, and includes
+ * the separate tracked-targets and save-history stores so a clean-profile
+ * restore brings back the same campaign.
  */
-export function exportFmStateBackupJson(): string | null {
-  const state = loadPersistedFmState();
+export async function exportFmStateBackupJson(): Promise<string | null> {
+  const local = loadPersistedFmState();
+  const indexedDb = await loadPersistedFmStateFromIndexedDb();
+  const state = !local
+    ? indexedDb
+    : !indexedDb
+      ? local
+      : isIndexedDbSnapshotNewer(indexedDb, local)
+        ? indexedDb
+        : local;
   if (!state) return null;
-  return JSON.stringify(state, null, 2);
+
+  return buildFmStateBackupJson(state, {
+    trackedScoutTargets: loadTrackedScoutTargets(),
+    saveHistory: await readSaveHistoryForBackup(),
+  });
 }
 
 /**
@@ -724,6 +812,7 @@ export async function importFmStateBackupJson(
       throw new Error('Invalid FM27 backup schema');
     }
     await savePersistedFmState(migrated);
+    await restoreBackupExtras(parsed);
     return migrated;
   } catch (err) {
     console.error('Failed to import FM27 state backup:', err);
@@ -734,7 +823,7 @@ export async function importFmStateBackupJson(
 /**
  * Pass 2 (v2.1): Export schemaVersion 2 portable JSON backup string.
  */
-export function exportBackupJson(): string | null {
+export async function exportBackupJson(): Promise<string | null> {
   return exportFmStateBackupJson();
 }
 
@@ -757,6 +846,7 @@ export async function importBackupJson(jsonString: string): Promise<{
       return { ok: false, state: null, errors: ['Failed to migrate state payload'] };
     }
     await savePersistedFmState(migrated);
+    await restoreBackupExtras(parsed);
     return { ok: true, state: migrated, errors: [] };
   } catch (err) {
     return {
