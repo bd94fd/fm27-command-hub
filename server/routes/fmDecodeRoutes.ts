@@ -120,6 +120,7 @@ interface DecodeJobEntry {
   checkpointPayloadJson?: string;
   checkpointDelivered?: boolean;
   checkpointSeq?: number;
+  serverStageTimingsMs?: Record<string, number>;
   error?: string;
   errorCode?: string;
   httpStatus?: number;
@@ -562,7 +563,9 @@ function startAsyncNativeFmDecodeJob(
     progress: 'Opening .fm save...',
     createdAt: Date.now(),
     updatedAt: Date.now(),
+    serverStageTimingsMs: {},
   };
+  const jobStartedAt = job.createdAt;
   decodeJobs.set(jobId, job);
 
   const tmpBaseDir = path.resolve(os.tmpdir());
@@ -694,7 +697,12 @@ function startAsyncNativeFmDecodeJob(
   }
 
   activeDecodeChildren.add(child);
+  job.serverStageTimingsMs = {
+    ...job.serverStageTimingsMs,
+    jobToSpawnMs: Date.now() - jobStartedAt,
+  };
 
+  let firstStdoutAt: number | null = null;
   const stderrHistory: string[] = [];
   let stderrLineBuf = '';
   let stdoutBytes = 0;
@@ -737,6 +745,13 @@ function startAsyncNativeFmDecodeJob(
 
   child.stdout?.on('data', (chunk: Buffer) => {
     if (settled) return;
+    if (firstStdoutAt === null) {
+      firstStdoutAt = Date.now();
+      job.serverStageTimingsMs = {
+        ...job.serverStageTimingsMs,
+        spawnToFirstStdoutMs: firstStdoutAt - jobStartedAt,
+      };
+    }
     stdoutBytes += chunk.length;
     if (stdoutBytes > SERVER_DECODE_MAX_STDOUT_BYTES) {
       killChild();
@@ -834,6 +849,13 @@ function startAsyncNativeFmDecodeJob(
 
   child.on('close', (code, signal) => {
     activeDecodeChildren.delete(child);
+    job.serverStageTimingsMs = {
+      ...job.serverStageTimingsMs,
+      jobToChildCloseMs: Date.now() - jobStartedAt,
+      ...(firstStdoutAt !== null
+        ? { trailingStdoutMs: Date.now() - firstStdoutAt }
+        : {}),
+    };
     if (stderrLineBuf.trim()) {
       stderrHistory.push(stderrLineBuf.trim());
     }
@@ -894,7 +916,13 @@ function startAsyncNativeFmDecodeJob(
           return;
         }
         try {
+          const validationStartedAt = Date.now();
           await validateJsonObjectFileStreaming(tmpOutputPath);
+          job.serverStageTimingsMs = {
+            ...job.serverStageTimingsMs,
+            jsonValidateMs: Date.now() - validationStartedAt,
+            jobToDoneMs: Date.now() - jobStartedAt,
+          };
           // Guard against shutdown/eviction while validation was running
           if (!decodeJobs.has(jobId)) {
             cleanupOutputFile();
@@ -1363,6 +1391,7 @@ export function createFmDecodeRouter(options?: {
       const rawPayloadJson = job.rawPayloadJson;
       const payload = job.payload;
       const progress = job.progress;
+      const serverStageTimingsMs = job.serverStageTimingsMs ?? {};
       // Release job entry immediately upon delivery
       decodeJobs.delete(jobId);
 
@@ -1376,7 +1405,7 @@ export function createFmDecodeRouter(options?: {
         };
 
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
-        res.write(`{"status":"done","progress":${JSON.stringify(progress)},"payload":`);
+        res.write(`{"status":"done","progress":${JSON.stringify(progress)},"serverStageTimingsMs":${JSON.stringify(serverStageTimingsMs)},"payload":`);
 
         const readStream = fs.createReadStream(rawPayloadPath, {
           highWaterMark: 64 * 1024,
@@ -1404,12 +1433,13 @@ export function createFmDecodeRouter(options?: {
       if (typeof rawPayloadJson === 'string') {
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
         return res.send(
-          `{"status":"done","progress":${JSON.stringify(progress)},"payload":${rawPayloadJson}}`
+          `{"status":"done","progress":${JSON.stringify(progress)},"serverStageTimingsMs":${JSON.stringify(serverStageTimingsMs)},"payload":${rawPayloadJson}}`
         );
       }
       return res.json({
         status: 'done',
         progress,
+        serverStageTimingsMs,
         payload,
       });
     }

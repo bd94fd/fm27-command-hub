@@ -81,6 +81,7 @@ async function waitForJobTerminal(baseUrl: string, jobId: string) {
       error?: string;
       errorCode?: string;
       serverDecodeAvailable?: boolean;
+      serverStageTimingsMs?: Record<string, number>;
     };
     if (body.status === 'running' && body.checkpointPayload) {
       checkpointSeen = true;
@@ -296,6 +297,14 @@ describe('Phase 4 server decode stress, idempotent chunking & 512 MB RAM safety'
       assert.equal(terminal.body.status, 'done');
       assert.equal(terminal.body.payload?.size, TOTAL_BYTES);
       assert.equal(terminal.body.payload?.sha256, expectedSha256);
+      assert.ok(
+        typeof terminal.body.serverStageTimingsMs?.jobToDoneMs === 'number',
+        'server decode response must include stage timings for profiling'
+      );
+      assert.ok(
+        typeof terminal.body.serverStageTimingsMs?.jobToSpawnMs === 'number',
+        'server decode response must include the spawn stage'
+      );
 
       // Deterministic cleanup verification: input .fm and output .json must be gone
       await new Promise((r) => setTimeout(r, 30));

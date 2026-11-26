@@ -78,7 +78,7 @@ A quick scan on 26 November 2026 found:
 
 | Rank | ID | Option | Why it matters | Effort |
 | ---: | --- | --- | --- | --- |
-| 14 | R14 | Decode stage profiling on Android | Time each stage separately on Android Chrome and the installed PWA: upload, Python decode, JSON transfer, hydration and render. This shows the real bottleneck. | S |
+| 14 | R14 | Decode stage profiling on Android | Time each stage separately on Android Chrome and the installed PWA: upload, Python decode, JSON transfer, hydration and render. This shows the real bottleneck. **Done.** `docs/decode-stage-profiling.md` and `npm run profile:decode` split the load into upload/decode/transfer/hydrate/render and the decoder into its own stages. The slow save is caused by `--auto-try-layout` costing about 27 s, not JSON or React. | S |
 | 15 | R17 | Mobile memory and fallback tuning | Tune chunk size, worker memory and the native-to-browser fallback for 250–265 MB saves. Large saves must not crash the tab. | M |
 | 16 | R15 | Content-fingerprint cache | Reuse a decoded save by file fingerprint instead of only save name and in-game date. This avoids decoding the same 250–265 MB file again. | M |
 | 17 | R16 | Progressive first paint | Show squad, staff and finances as soon as each part is ready. Keep the rest loading behind skeletons. This makes a big save feel faster. | M |

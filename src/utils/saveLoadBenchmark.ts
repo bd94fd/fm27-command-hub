@@ -30,6 +30,7 @@ export interface SaveLoadBenchmarkRecord {
   startedAtMs: number;
   completedAtIso: string | null;
   marksMs: Partial<Record<SaveLoadStage, number>>;
+  detailMs: Record<string, number>;
 }
 
 export interface StartSaveLoadBenchmarkInput {
@@ -57,6 +58,7 @@ function cloneRecord(record: SaveLoadBenchmarkRecord): SaveLoadBenchmarkRecord {
   return {
     ...record,
     marksMs: { ...record.marksMs },
+    detailMs: { ...record.detailMs },
   };
 }
 
@@ -80,6 +82,7 @@ export function startSaveLoadBenchmark(
     startedAtMs,
     completedAtIso: null,
     marksMs: { upload_start: 0 },
+    detailMs: {},
   });
   publishToWindow();
   return id;
@@ -102,6 +105,20 @@ export function markSaveLoadStage(
   record.marksMs[stage] = Math.max(0, Math.round(nowMs() - record.startedAtMs));
   if (stage === 'full_tab_ready' || stage === 'failed') {
     record.completedAtIso = new Date().toISOString();
+  }
+  publishToWindow();
+}
+
+export function recordSaveLoadDetails(
+  id: string,
+  details: Record<string, number>
+): void {
+  const record = records.get(id);
+  if (!record) return;
+  for (const [key, value] of Object.entries(details)) {
+    if (Number.isFinite(value) && value >= 0) {
+      record.detailMs[key] = Math.round(value);
+    }
   }
   publishToWindow();
 }

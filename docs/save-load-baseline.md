@@ -83,4 +83,4 @@ The script resolves Playwright from the project first, then from `.agents/skills
 
 ## Next step
 
-R14 should profile the slow save's decode stages before any optimisation work. R15 should confirm the memory ceiling on the real deployment target and on a physical Android device. R05 itself is a baseline only.
+R14 is complete: see `docs/decode-stage-profiling.md`. The slow save's extra time is the native decoder's `--auto-try-layout` trial, which costs about 27 s outside the decoder's own stage timers. Transfer, hydration and render are negligible. R17 should confirm the memory ceiling on the real deployment target and on a physical Android device. R05 itself is a baseline only.

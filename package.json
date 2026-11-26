@@ -17,6 +17,7 @@
     "audit:decoder": "node --import tsx scripts/audit-decoder-fields.mjs",
     "bench:save-load": "node scripts/benchmark-save-load.mjs",
     "check:fmsave": "node scripts/check-fmsave-upstream.mjs",
+    "profile:decode": "node --import tsx scripts/profile-decode-stages.mjs",
     "ui:audit": "node scripts/ui-audit.mjs"
   },
   "dependencies": {
