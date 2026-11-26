@@ -5,6 +5,7 @@ import {
   FM27_ROLE_ATTR_MAP,
   Fm27RoleItem,
   getNaturalRolesForPlayer,
+  getRolePositionFamiliarity,
   resolveNaturalDefaultRoles,
   scorePlayerForFm27Role,
 } from './fm27RoleMatcher';
@@ -27,12 +28,47 @@ export interface PlayerTraitInsight {
   summary: string;
 }
 
+export type RoleFitTier = 'Natural Fit' | 'Solid' | 'Makeshift';
+
+export interface RoleAttributeWeight {
+  key: string;
+  label: string;
+  value: number;
+  /** 2 for a primary priority, 1 for a supporting priority. */
+  weight: number;
+  /** Share of the weighted score this attribute carries, 0-100. */
+  weightSharePct: number;
+  /** Raw points this attribute adds to the weighted score before position familiarity. */
+  weightedPoints: number;
+  missing: boolean;
+}
+
+export interface RoleFitThreshold {
+  key: string;
+  label: string;
+  value: number;
+  threshold: number;
+  met: boolean;
+}
+
+export interface RoleFitAlternative {
+  roleName: string;
+  fitPct: number;
+  tier: RoleFitTier;
+}
+
 export interface RankedRoleFit {
   role: Fm27RoleItem;
   fitPct: number;
-  tier: 'Natural Fit' | 'Solid' | 'Makeshift';
+  tier: RoleFitTier;
   topSupporting: Array<{ label: string; value: number }>;
   topLimiting: Array<{ label: string; value: number }>;
+  /** Every role priority in weight order, so the UI can explain the score. */
+  attributeWeights: RoleAttributeWeight[];
+  /** Role-specific pass/fail thresholds that explain a fit or a miss. */
+  keyThresholds: RoleFitThreshold[];
+  /** The next-best role, so a miss has a practical alternative. */
+  nearestAlternative: RoleFitAlternative | null;
 }
 
 export interface DurabilityAssessment {
@@ -348,21 +384,93 @@ export function rankRolesForPlayer(
       const tier: RankedRoleFit['tier'] =
         fitPct >= 68 ? 'Natural Fit' : fitPct >= 54 ? 'Solid' : 'Makeshift';
 
-      const priorityValues: Array<{ label: string; value: number; isPrimary: boolean }> = [];
+      const priorityValues: Array<{
+        key: string;
+        label: string;
+        value: number;
+        isPrimary: boolean;
+        missing: boolean;
+      }> = [];
       for (const [snakeKey, pTier] of Object.entries(role.priorities || {})) {
         const camelKey = FM27_ROLE_ATTR_MAP[snakeKey];
         if (!camelKey) continue;
-        const val = readRawAttr(player, camelKey);
-        if (val === null) continue;
+        const rawVal = readRawAttr(player, camelKey);
+        const val = rawVal ?? 9;
         priorityValues.push({
+          key: camelKey,
           label: ATTR_LABELS[camelKey] || camelKey,
           value: val,
           isPrimary: pTier === 'primary',
+          missing: rawVal === null,
         });
       }
 
-      const sortedDesc = [...priorityValues].sort((a, b) => b.value - a.value);
-      const sortedAsc = [...priorityValues].sort((a, b) => a.value - b.value);
+      const presentValues = priorityValues.filter((x) => !x.missing);
+      const sortedDesc = [...presentValues].sort((a, b) => b.value - a.value);
+      const sortedAsc = [...presentValues].sort((a, b) => a.value - b.value);
+      const totalWeight = priorityValues.reduce(
+        (sum, item) => sum + (item.isPrimary ? 2 : 1),
+        0
+      );
+      const attributeWeights: RoleAttributeWeight[] = priorityValues
+        .map((item) => {
+          const weight = item.isPrimary ? 2 : 1;
+          return {
+            key: item.key,
+            label: item.label,
+            value: item.value,
+            weight,
+            weightSharePct:
+              totalWeight > 0
+                ? Number(((weight / totalWeight) * 100).toFixed(0))
+                : 0,
+            weightedPoints: Number(
+              (((item.value / 20) * 100 * weight) / Math.max(1, totalWeight)).toFixed(1)
+            ),
+            missing: item.missing,
+          };
+        })
+        .sort((a, b) => b.weight - a.weight || b.value - a.value);
+
+      const primary = priorityValues
+        .filter((x) => x.isPrimary)
+        .map((x) => x.value);
+      const secondary = priorityValues.filter((x) => !x.isPrimary);
+      const avg = (values: number[]) =>
+        values.length > 0
+          ? Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1))
+          : 0;
+      const keyThresholds: RoleFitThreshold[] = [];
+      if (primary.length > 0) {
+        const primaryAvg = avg(primary);
+        const primaryMin = Math.min(...primary);
+        const primaryMax = Math.max(...primary);
+        keyThresholds.push(
+          { key: 'primary_avg', label: 'Primary average', value: primaryAvg, threshold: 12, met: primaryAvg >= 12 },
+          { key: 'primary_min', label: 'Lowest primary', value: primaryMin, threshold: 10, met: primaryMin >= 10 },
+          { key: 'primary_max', label: 'Best primary', value: primaryMax, threshold: 15, met: primaryMax >= 15 }
+        );
+      }
+      if (secondary.length > 0) {
+        const secondaryAvg = avg(secondary.map((x) => x.value));
+        keyThresholds.push({
+          key: 'secondary_avg',
+          label: 'Secondary average',
+          value: secondaryAvg,
+          threshold: 10,
+          met: secondaryAvg >= 10,
+        });
+      }
+      const familiarity = getRolePositionFamiliarity(player, role.positionGroup);
+      if (familiarity !== null) {
+        keyThresholds.push({
+          key: 'position_familiarity',
+          label: 'Position familiarity',
+          value: familiarity,
+          threshold: 12,
+          met: familiarity >= 12,
+        });
+      }
 
       return {
         role,
@@ -373,9 +481,21 @@ export function rankRolesForPlayer(
           .filter((x) => x.value <= 10)
           .slice(0, 2)
           .map(({ label, value }) => ({ label, value })),
+        attributeWeights,
+        keyThresholds,
+        nearestAlternative: null,
       };
     })
-    .sort((a, b) => b.fitPct - a.fitPct);
+    .sort((a, b) => b.fitPct - a.fitPct)
+    .map((fit, index, ranked) => {
+      const next = ranked[index + 1] ?? null;
+      return {
+        ...fit,
+        nearestAlternative: next
+          ? { roleName: next.role.name, fitPct: next.fitPct, tier: next.tier }
+          : null,
+      };
+    });
 }
 
 export function evaluateDurability(player: PlayerRecord): DurabilityAssessment {

@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { PlayerRecord } from '../types/fm27';
 import {
@@ -7,6 +8,7 @@ import {
   evaluateDurability,
   evaluateSeasonProduction,
   getRealShirtNumber,
+  rankRolesForPlayer,
 } from './playerCardAnalysis';
 import {
   computeSquadRelativePercentile,
@@ -177,4 +179,60 @@ test('getPizzaSlicesForPosition gives forwards attacking slices (no tackling) an
   const lowPct = computeSquadRelativePercentile(8, 'pace', squad);
   assert.ok(topPct >= 85);
   assert.ok(lowPct <= 15);
+});
+
+test('role-fit explainability lists attribute weights, thresholds and a nearest alternative', () => {
+  const wolf = makePlayer();
+  const ranked = rankRolesForPlayer(wolf, 'In Possession');
+  assert.ok(ranked.length > 0);
+  const best = ranked[0];
+
+  assert.ok(best.attributeWeights.length > 0);
+  assert.ok(
+    best.attributeWeights.every(
+      (attr) => attr.value >= 1 && attr.value <= 20 && attr.weight >= 1 && attr.weight <= 2
+    )
+  );
+  const share = best.attributeWeights.reduce((sum, attr) => sum + attr.weightSharePct, 0);
+  assert.ok(share >= 95 && share <= 105, `weight shares should total ~100, got ${share}`);
+  assert.ok(best.attributeWeights.some((attr) => attr.weight === 2));
+  assert.ok(best.keyThresholds.length > 0);
+  assert.ok(best.nearestAlternative);
+  assert.notEqual(best.nearestAlternative?.roleName, best.role.name);
+  assert.equal(best.nearestAlternative?.fitPct, ranked[1].fitPct);
+});
+
+test('missing role attributes are labelled and do not appear as supporting strengths', () => {
+  const thin = makePlayer({
+    attributes: {
+      pace: 12,
+      acceleration: 12,
+      stamina: 10,
+      jumpingReach: 10,
+      determination: 10,
+      passing: 10,
+      finishing: 10,
+      tackling: 10,
+      firstTouch: 10,
+      decisions: 10,
+      workRate: 10,
+      offTheBall: 10,
+    },
+  });
+  const best = rankRolesForPlayer(thin, 'In Possession')[0];
+  const missing = best.attributeWeights.filter((attr) => attr.missing);
+  assert.ok(missing.length > 0);
+  assert.ok(best.topSupporting.every((item) => !missing.some((m) => m.label === item.label)));
+});
+
+test('PlayerDetailModal renders the role-fit explanation instead of only a score', () => {
+  const source = readFileSync(
+    new URL('../components/PlayerDetailModal.tsx', import.meta.url),
+    'utf8'
+  );
+  assert.match(source, /RoleFitExplainability/);
+  assert.ok(source.includes('Why this score'));
+  assert.match(source, /attributeWeights\.map/);
+  assert.match(source, /keyThresholds\.map/);
+  assert.match(source, /Nearest alternative/);
 });
