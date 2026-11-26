@@ -42,5 +42,8 @@
 
 ## Planning
 
-- The living product and engineering backlog is `ROADMAP.md`. Read it before choosing new work.
-- Update the matching item status when work starts or finishes. Add new ideas to the right wave instead of keeping them only in chat.
+- `ROADMAP.md` is the only work queue. Before starting, name the roadmap item and its current status. Do not create a parallel numbered list in chat or the task tracker; task-tracker titles may only mirror roadmap items with the `Rxx` prefix.
+- If a request does not map to a roadmap item, stop and ask whether to add it to `ROADMAP.md` before doing the work. Do not do adjacent "while I am here" work.
+- Update the item status in `ROADMAP.md` in the same PR when work starts or finishes.
+- Every PR title or body must include `Roadmap: Rxx`. Before suggesting a next step, read `ROADMAP.md` and name the next item by ID.
+- Add new ideas to the right roadmap wave instead of keeping them only in chat.
