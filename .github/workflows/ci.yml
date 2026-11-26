@@ -79,6 +79,9 @@ jobs:
       - name: Build production bundle
         run: npm run build
 
+      - name: Service worker precaches the app shell
+        run: npm run verify:precache
+
       - name: Publish bundle size summary
         run: |
           {

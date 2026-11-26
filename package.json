@@ -22,7 +22,8 @@
     "device:matrix": "node scripts/device-matrix.mjs",
     "device:webkit": "node scripts/webkit-matrix.mjs",
     "smoke:e2e": "node scripts/e2e-smoke.mjs",
-    "a11y:audit": "node scripts/a11y-audit.mjs"
+    "a11y:audit": "node scripts/a11y-audit.mjs",
+    "verify:precache": "node scripts/verify-precache.mjs"
   },
   "dependencies": {
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
