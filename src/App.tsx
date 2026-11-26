@@ -35,8 +35,8 @@ import { useSheetHistory, useTabHistory } from './hooks/useHistoryNavigation';
 import { clearAllChatHistory } from './services/chatStorage';
 import { PwaStatusBanners } from './components/PwaStatusBanners';
 import { MobileBottomNav } from './components/MobileBottomNav';
-import { computeCompetitiveSummary } from './utils/fmSyncEngine';
-import { formatNation } from './utils/squadViewHelpers';
+import { computeCompetitiveSummary } from './utils/competitiveSummary';
+import { formatNation } from './utils/displayValue';
 import {
   finishSaveLoadBenchmark,
   markSaveLoadStage,
