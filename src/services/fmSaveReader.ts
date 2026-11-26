@@ -16,6 +16,7 @@ import {
   markSaveLoadStage,
   recordSaveLoadDetails,
 } from '../utils/saveLoadBenchmark';
+import { resolveFallbackFastSync } from '../utils/saveMemoryBudget';
 
 import {
   UploadController,
@@ -1175,8 +1176,8 @@ export async function decodeFmSaveViaServer(
         );
       }
 
-      // 507 = the server (Render free tier, 512 MB) OOM-killed the Python child.
-      // Fall back to Pyodide / Fast Sync immediately instead of retrying for minutes.
+      // 507 = the server memory limit OOM-killed the Python child. Fall back to
+      // Pyodide / Fast Sync immediately instead of retrying for minutes.
       if (jobRes.status === 507) {
         throw new ServerDecodeUnavailableError(
           await readErrorMessageFromResponse(
@@ -1618,14 +1619,26 @@ export async function decodeFmSaveWithServerFirst(
   const clubHint = options.clubHint || '';
   const scope: FmImportScope = options.scope || 'managed_club_only';
   const serverFastSync = options.fastSync === true; // Full Sync (false) by default on server!
+  const deviceMemoryGb =
+    typeof navigator !== 'undefined'
+      ? (navigator as Navigator & { deviceMemory?: number }).deviceMemory
+      : undefined;
   const fallbackFastSync =
-    typeof options.fastSync === 'boolean'
-      ? options.fastSync
-      : typeof options.viewportWidth === 'number'
+    resolveFallbackFastSync({
+      requestedFastSync: options.fastSync,
+      fileSizeBytes: file.size || 0,
+      isMobile: isMobileBrowser(),
+      deviceMemoryGb,
+    }) ||
+    (options.fastSync === undefined &&
+      (typeof options.viewportWidth === 'number'
         ? shouldDefaultFastSync(options.viewportWidth)
         : typeof window !== 'undefined'
           ? shouldDefaultFastSync(window.innerWidth)
-          : false;
+          : false));
+  const fallbackSyncLabel = fallbackFastSync ? 'Fast Sync' : 'Full Sync';
+  const fallbackUpgradedToFastSync =
+    options.fastSync === false && fallbackFastSync;
 
   if (
     !options.forceBrowserWorker &&
@@ -1680,8 +1693,10 @@ export async function decodeFmSaveWithServerFirst(
           canPause: false,
           canFallbackToLocal: false,
           label: manualFallback
-            ? 'Switched to on-device decoder — starting local browser reader…'
-            : 'Server decoder unavailable or restarted — switching automatically to local browser decoder…',
+            ? `Switched to on-device decoder (${fallbackSyncLabel}) — starting local browser reader…`
+            : fallbackUpgradedToFastSync
+              ? 'Server decoder unavailable — switching to on-device Fast Sync to protect phone memory…'
+              : `Server decoder unavailable or restarted — switching automatically to local browser decoder (${fallbackSyncLabel})…`,
         });
       }
     }
