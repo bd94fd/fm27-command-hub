@@ -61,7 +61,7 @@ Purpose: remember tools and skills worth adding later, so we do not search for t
 ## MCP status
 
 - `playwright` — enabled, pinned to `@playwright/mcp@0.0.86`, headless and isolated, smoke-tested with 25 tools.
-- `chrome-devtools` — enabled, pinned to `chrome-devtools-mcp@1.14.0`, headless and isolated, CrUX/usage reporting disabled, tool list smoke-tested.
+- `chrome-devtools` — enabled, pinned to `chrome-devtools-mcp@1.14.0`, headless and isolated, CrUX/usage reporting disabled, tool list smoke-tested. It needs `--chromeArg=--no-sandbox` in the server arguments, because Chromium cannot start as root in this sandbox; without it every tool call fails with `Target closed`. See `docs/mcp-setup.md`.
 - MCP settings are account-level. Changes apply to new conversations only. See `docs/mcp-setup.md`.
 
 ## Decision log
@@ -72,6 +72,7 @@ Purpose: remember tools and skills worth adding later, so we do not search for t
 - 25 Nov 2026: trialled Impeccable on the loaded Staff and Hub screens. Staff had 135 mobile and 106 desktop findings, mostly the same 9px card labels repeated. Hub had 12 findings. Verdict: useful for targeted audits with JSON and dedupe, not yet a blocking CI gate.
 - 25 Nov 2026: searched for regression-test skills while starting R03. Added `verify-regression-tests` to the candidate list. It was not installed because the real-save fingerprint guard needed a small manual known-bad check, not a new runtime dependency.
 - 26 Nov 2026: enabled Playwright MCP and Chrome DevTools MCP for new conversations. Pinned both versions, disabled Chrome DevTools CrUX/usage reporting, and documented the selection rule in `AGENTS.md` and `docs/mcp-setup.md`.
+- 26 Nov 2026: found that Chrome DevTools MCP could list its tools but could not start a browser (`Target closed`). Cause: Chromium cannot create a sandbox as root, and only Playwright had `--no-sandbox`. Documented the `--chromeArg=--no-sandbox` fix rather than adding a second trace tool.
 
 ## Rejected for now
 

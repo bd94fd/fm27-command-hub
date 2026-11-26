@@ -10,7 +10,7 @@ file. Two stdio servers are enabled for new conversations:
 | Name | Package | Use it for | Runtime flags |
 | --- | --- | --- | --- |
 | `playwright` | `@playwright/mcp@0.0.86` | Live UI inspection, clicking, screenshots and browser console checks. | `--headless --isolated --executable-path /usr/bin/chromium --no-sandbox` |
-| `chrome-devtools` | `chrome-devtools-mcp@1.14.0` | Performance traces, long tasks, memory and network diagnostics. | `--headless --isolated --executablePath /usr/bin/chromium --no-performance-crux --usageStatistics=false` |
+| `chrome-devtools` | `chrome-devtools-mcp@1.14.0` | Performance traces, long tasks, memory and network diagnostics. | `--headless --isolated --executablePath /usr/bin/chromium --chromeArg=--no-sandbox --no-performance-crux --usageStatistics=false` |
 
 Both were smoke-tested by starting the server and listing tools. Playwright
 returned 25 tools; Chrome DevTools returned its tool list normally.
@@ -53,6 +53,27 @@ start a new conversation. Use the command and arguments from the table above.
 The Chromium path is `/usr/bin/chromium` in the current sandbox image. If that
 path changes, update the MCP configuration rather than hard-coding a different
 browser in test scripts.
+
+## If Chrome DevTools fails to launch its browser
+
+Symptom: the tools are listed, but every call fails with
+`Protocol error (Target.setDiscoverTargets): Target closed`. That is Chromium
+exiting at start, not a missing tool.
+
+Cause in this sandbox: Chromium cannot create a sandbox as root. Verified
+directly on 26 November 2026:
+
+- `/usr/bin/chromium --headless --dump-dom about:blank` exits 1 with
+  `No usable sandbox!`;
+- the same command with `--no-sandbox` exits 0.
+
+Fix: pass the flag to Chrome through the server, because the server launches the
+browser itself. Use `--chromeArg=--no-sandbox` in the server arguments, which is
+now part of the recommended command in the table above. Playwright already had
+`--no-sandbox`; Chrome DevTools did not, which is why only one of the two worked.
+
+Applying it needs the account-level MCP settings plus a new conversation, since
+a running conversation cannot reload its MCP servers.
 
 ## Safety
 
