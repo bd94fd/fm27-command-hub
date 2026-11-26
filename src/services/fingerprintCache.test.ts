@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import {
   buildFingerprintSaveCacheKey,
   getCachedDecodedSavePayload,
+  isDecodedCacheSyncModeCompatible,
   putCachedDecodedSavePayload,
+  resolveDecodedPayloadFastSync,
   SAVE_CACHE_STORE,
 } from './saveCache';
 
@@ -110,4 +112,17 @@ test('decoded payload cache round-trips by file fingerprint', async () => {
   } finally {
     restore();
   }
+});
+
+test('cache key uses the decoded payload mode, not the requested mode', () => {
+  assert.equal(resolveDecodedPayloadFastSync(true, false), true);
+  assert.equal(resolveDecodedPayloadFastSync(false, true), false);
+  assert.equal(resolveDecodedPayloadFastSync(undefined, false), false);
+  assert.equal(resolveDecodedPayloadFastSync(undefined, true), true);
+
+  assert.equal(isDecodedCacheSyncModeCompatible(undefined, false), true);
+  assert.equal(isDecodedCacheSyncModeCompatible(true, true), true);
+  assert.equal(isDecodedCacheSyncModeCompatible(false, false), true);
+  assert.equal(isDecodedCacheSyncModeCompatible(true, false), false);
+  assert.equal(isDecodedCacheSyncModeCompatible(false, true), false);
 });
