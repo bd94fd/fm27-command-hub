@@ -8,9 +8,9 @@ The code is `src/utils/fm27SaveCompatibility.ts`. The Hub Data tab and the Analy
 
 | Build family | Status | Layout | Tested fmsave versions | Fields that changed |
 | --- | --- | --- | --- | --- |
-| FM27 27.1.x (`27.1.0`, `27.1.0+2505117`) | Verified | 27.1 | 0.14.1 – 0.14.4 | Staff Preferred Jobs (`job_ratings`), staff secondary job, sponsorship `dates_reordered`, ClubTable 5-byte finance tail, tactics set-piece markers |
+| FM27 27.1.x (`27.1.0`, `27.1.0+2505117`) | Verified | 27.1 | 0.14.1 – 0.14.5 | Staff Preferred Jobs (`job_ratings`), staff secondary job, sponsorship `dates_reordered`, ClubTable 5-byte finance tail, tactics set-piece markers |
 | FM27 27.0.x (`27.0`, `27.0.1`) | Supported | 27.0 | 0.14.0 | ClubTable 0-byte finance tail, no staff Preferred Jobs, older tactics set-piece layout |
-| FM27 27.2.x (`27.2.0+2506012`) | Untested | 27.1 inherited | 0.14.4 | Layout inherited from 27.1; dynamic build registration |
+| FM27 27.2.x (`27.2.0+2506012`) | Untested | 27.1 inherited | 0.14.4 – 0.14.5 | Layout inherited from 27.1; dynamic build registration |
 | Any other build | Unsupported | none | unknown | none trusted |
 
 ## What happens by status
