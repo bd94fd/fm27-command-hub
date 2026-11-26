@@ -14,7 +14,7 @@ interface DataQualityPanelProps {
 
 function scoreTone(score: number): string {
   if (score >= 98) {
-    return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40';
+    return 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border-emerald-500/40';
   }
   if (score >= 90) {
     return 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40';

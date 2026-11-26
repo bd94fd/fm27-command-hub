@@ -1103,7 +1103,7 @@ export const SquadDepthAndPlannerChart: React.FC<SquadDepthAndPlannerChartProps>
                   onClick={() => setPlannerScope('xi')}
                   className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors ${
                     effectiveScope === 'xi'
-                      ? 'bg-emerald-600 text-white'
+                      ? 'bg-emerald-700 text-white dark:bg-emerald-500 dark:text-slate-950'
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
@@ -1114,7 +1114,7 @@ export const SquadDepthAndPlannerChart: React.FC<SquadDepthAndPlannerChartProps>
                   onClick={() => setPlannerScope('all')}
                   className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors ${
                     effectiveScope === 'all'
-                      ? 'bg-emerald-600 text-white'
+                      ? 'bg-emerald-700 text-white dark:bg-emerald-500 dark:text-slate-950'
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >

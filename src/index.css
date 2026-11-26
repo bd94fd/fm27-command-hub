@@ -25,6 +25,26 @@
   }
 }
 
+/*
+ * Keyboard focus, unlayered on purpose: utilities such as `focus:outline-none`
+ * and `outline-none` live in a later cascade layer, so an unlayered rule here
+ * is what actually keeps a ring visible on every focusable control.
+ */
+:focus-visible {
+  outline: 2px solid #059669;
+  outline-offset: 2px;
+}
+
+.dark :focus-visible {
+  outline-color: #34d399;
+}
+
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 3px solid Highlight;
+  }
+}
+
 /* Mobile-first 16px minimum input font size prevents Android/iOS auto-zoom while preserving desktop typography */
 @media (max-width: 767px) {
   input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']):not([type='button']):not([type='submit']):not([type='reset']),

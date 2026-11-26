@@ -76,7 +76,7 @@ export const PwaStatusBanners: React.FC<PwaStatusBannersProps> = ({
             <button
               type="button"
               onClick={onApplyUpdate}
-              className="px-3 py-1.5 min-h-[44px] sm:min-h-[36px] rounded-lg bg-emerald-600 dark:bg-emerald-500 hover:bg-emerald-500 dark:hover:bg-emerald-400 text-white dark:text-slate-950 font-bold text-xs transition cursor-pointer whitespace-nowrap"
+              className="px-3 py-1.5 min-h-[44px] sm:min-h-[36px] rounded-lg bg-emerald-700 dark:bg-emerald-500 hover:bg-emerald-800 dark:hover:bg-emerald-400 text-white dark:text-slate-950 font-bold text-xs transition cursor-pointer whitespace-nowrap"
             >
               Refresh
             </button>
@@ -84,7 +84,7 @@ export const PwaStatusBanners: React.FC<PwaStatusBannersProps> = ({
               type="button"
               aria-label="Dismiss update notice"
               onClick={onDismissUpdate}
-              className="p-1.5 min-w-[44px] min-h-[44px] sm:min-w-[36px] sm:min-h-[36px] inline-flex items-center justify-center rounded-lg text-emerald-700 dark:text-emerald-300/80 hover:text-emerald-950 dark:hover:text-white hover:bg-emerald-200/70 dark:hover:bg-emerald-900/60 transition cursor-pointer"
+              className="p-1.5 min-w-[44px] min-h-[44px] sm:min-w-[36px] sm:min-h-[36px] inline-flex items-center justify-center rounded-lg text-emerald-800 dark:text-emerald-300/80 hover:text-emerald-950 dark:hover:text-white hover:bg-emerald-200/70 dark:hover:bg-emerald-900/60 transition cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>

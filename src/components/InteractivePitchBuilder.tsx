@@ -552,7 +552,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                 onClick={() => setLineupMode('save')}
                 className={`min-h-[36px] px-2.5 py-1.5 rounded-md text-xs font-semibold transition cursor-pointer ${
                   effectiveLineupMode === 'save'
-                    ? 'bg-emerald-600 text-white'
+                    ? 'bg-emerald-700 text-white dark:bg-emerald-500 dark:text-slate-950'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
@@ -564,7 +564,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
               onClick={handleAutoPick}
               className={`inline-flex items-center gap-1 min-h-[36px] px-2.5 py-1.5 rounded-md text-xs font-semibold transition cursor-pointer ${
                 effectiveLineupMode === 'best'
-                  ? 'bg-emerald-600 text-white'
+                  ? 'bg-emerald-700 text-white dark:bg-emerald-500 dark:text-slate-950'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -680,7 +680,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
               onClick={() => setPitchPhaseMode(mode.id)}
               className={`min-h-[44px] sm:min-h-[28px] px-2 sm:px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer text-center whitespace-nowrap ${
                 pitchPhaseMode === mode.id
-                  ? 'bg-emerald-600 text-white'
+                  ? 'bg-emerald-700 text-white dark:bg-emerald-500 dark:text-slate-950'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -1055,7 +1055,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                   })()}
                 </div>
                 {selectedSlot.player && (
-                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 shrink-0">
+                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 shrink-0">
                     Fit {selectedSlot.combinedFitPct}% (IP {selectedSlot.ipFitPct}% / OOP{' '}
                     {selectedSlot.oopFitPct}%)
                   </span>

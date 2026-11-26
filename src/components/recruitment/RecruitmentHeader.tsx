@@ -93,7 +93,7 @@ export const RecruitmentHeader: React.FC<RecruitmentHeaderProps> = ({
                 onClick={() => setIncludeYouthInAudit(false)}
                 className={`min-h-[44px] sm:min-h-[32px] px-2.5 sm:px-2 py-1 rounded-md text-xs sm:text-[11px] font-semibold transition cursor-pointer whitespace-nowrap ${
                   !includeYouthInAudit
-                    ? 'bg-emerald-600 text-white'
+                    ? 'bg-emerald-700 text-white dark:bg-emerald-500 dark:text-slate-950'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
@@ -104,7 +104,7 @@ export const RecruitmentHeader: React.FC<RecruitmentHeaderProps> = ({
                 onClick={() => setIncludeYouthInAudit(true)}
                 className={`min-h-[44px] sm:min-h-[32px] px-2.5 sm:px-2 py-1 rounded-md text-xs sm:text-[11px] font-semibold transition cursor-pointer whitespace-nowrap ${
                   includeYouthInAudit
-                    ? 'bg-emerald-600 text-white'
+                    ? 'bg-emerald-700 text-white dark:bg-emerald-500 dark:text-slate-950'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >

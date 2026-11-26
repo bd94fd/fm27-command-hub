@@ -26,7 +26,7 @@ const LEVEL_LABEL: Record<SaveCompatibilityLevel, string> = {
 function levelTone(level: SaveCompatibilityLevel): string {
   switch (level) {
     case 'verified':
-      return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40';
+      return 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border-emerald-500/40';
     case 'supported':
       return 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/40';
     case 'untested':

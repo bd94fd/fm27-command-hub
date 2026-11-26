@@ -858,7 +858,7 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
                   <button
                     type="button"
                     onClick={() => setVisibleMatchLimit(filteredMatches.length)}
-                    className="min-h-[44px] sm:min-h-[32px] px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600/25 cursor-pointer transition"
+                    className="min-h-[44px] sm:min-h-[32px] px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600/25 cursor-pointer transition"
                   >
                     Show All ({filteredMatches.length})
                   </button>

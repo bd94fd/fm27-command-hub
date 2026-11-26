@@ -197,7 +197,7 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
                 }}
                 className={`inline-flex items-center justify-center gap-1.5 min-h-[36px] rounded-lg px-2.5 py-2 text-xs font-semibold border transition cursor-pointer ${
                   active
-                    ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
+                    ? 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border-emerald-500/40'
                     : 'bg-slate-50 dark:bg-slate-950/70 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
               >
@@ -224,7 +224,7 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
                     onClick={() => setIncludeYouthInWarRoom(false)}
                     className={`px-2 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
                       !includeYouthInWarRoom
-                        ? 'bg-emerald-600 text-white'
+                        ? 'bg-emerald-700 text-white dark:bg-emerald-500 dark:text-slate-950'
                         : 'text-slate-500 dark:text-slate-400 hover:text-slate-200'
                     }`}
                   >
@@ -235,7 +235,7 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
                     onClick={() => setIncludeYouthInWarRoom(true)}
                     className={`px-2 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
                       includeYouthInWarRoom
-                        ? 'bg-emerald-600 text-white'
+                        ? 'bg-emerald-700 text-white dark:bg-emerald-500 dark:text-slate-950'
                         : 'text-slate-500 dark:text-slate-400 hover:text-slate-200'
                     }`}
                   >
