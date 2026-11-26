@@ -106,6 +106,8 @@ import {
   buildClubFinancesPanel,
   filterUsableSponsorshipDeals,
 } from '../utils/clubFinances';
+import { resolveSaveCompatibility } from '../utils/fm27SaveCompatibility';
+import { SaveCompatibilityPanel } from './SaveCompatibilityPanel';
 
 export { isUsableSponsorshipDeal, filterUsableSponsorshipDeals } from '../utils/clubFinances';
 
@@ -1552,6 +1554,11 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     return decoded ? buildSaveDataQualityReport(decoded) : null;
   }, [hydratedFmSave]);
 
+  const saveCompatibility = useMemo(
+    () => resolveSaveCompatibility(hydratedFmSave?.decodedPayload?.meta),
+    [hydratedFmSave]
+  );
+
   const handleTextareaPaste = async (
     e: React.ClipboardEvent<HTMLTextAreaElement>
   ) => {
@@ -2761,6 +2768,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           }
         >
           <DataQualityPanel report={dataQualityReport} />
+          <SaveCompatibilityPanel compatibility={saveCompatibility} />
         </div>
       )}
 

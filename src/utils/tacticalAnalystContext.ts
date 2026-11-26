@@ -45,6 +45,10 @@ import {
 import { loadFm27BinaryDictionary } from './fm27BinaryDictionary';
 import { normalizeJobVacancy } from './jobVacancies';
 import {
+  formatSaveCompatibilityForAnalyst,
+  resolveSaveCompatibility,
+} from './fm27SaveCompatibility';
+import {
   buildSponsorshipPanelRows,
   filterUsableSponsorshipDeals,
 } from './clubFinances';
@@ -549,6 +553,16 @@ export function buildLiveTacticalAnalystContext(
       : players.flatMap((p) => p.activeSuspensions || []);
 
   const squadPool = countSquadPool(players);
+  if (decoded?.meta) {
+    const compatibility = resolveSaveCompatibility(decoded.meta);
+    blocks.push({
+      id: 'save_compatibility',
+      tier: 'P1',
+      fullText: `=== SAVE COMPATIBILITY ===\n${formatSaveCompatibilityForAnalyst(
+        compatibility
+      )}`,
+    });
+  }
   const payrollIsCanonical = Boolean(hydratedFmSave?.wageComplianceLabel);
   const runway = hydratedFmSave?.financialRunway;
   const runwayLabel = runway
