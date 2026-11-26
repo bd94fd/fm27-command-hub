@@ -1091,10 +1091,14 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
 
               {/* Player Override Selector */}
               <div className="space-y-1">
-                <label className="block text-micro font-semibold text-slate-600 dark:text-slate-400">
+                <label
+                  htmlFor="ip-slot-player"
+                  className="block text-micro font-semibold text-slate-600 dark:text-slate-400"
+                >
                   Assigned Player
                 </label>
                 <select
+                  id="ip-slot-player"
                   disabled={effectiveLineupMode === 'bteam'}
                   value={selectedSlot.player?.id || ''}
                   onChange={(e) =>
@@ -1143,10 +1147,14 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
 
               {/* Separate IP Role Dropdown */}
               <div className="space-y-1">
-                <label className="block text-micro font-semibold text-emerald-700 dark:text-emerald-400">
+                <label
+                  htmlFor="ip-slot-ip-role"
+                  className="block text-micro font-semibold text-emerald-700 dark:text-emerald-400"
+                >
                   In-Possession (IP) Role — FM27 Pure Role
                 </label>
                 <select
+                  id="ip-slot-ip-role"
                   value={selectedSlot.ipRole}
                   onChange={(e) =>
                     handleUpdateSlot(selectedSlot.slotId, {
@@ -1165,10 +1173,14 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
 
               {/* Separate OOP Role Dropdown */}
               <div className="space-y-1">
-                <label className="block text-micro font-semibold text-sky-700 dark:text-sky-400">
+                <label
+                  htmlFor="ip-slot-oop-role"
+                  className="block text-micro font-semibold text-sky-700 dark:text-sky-400"
+                >
                   Out-of-Possession (OOP) Role — FM27 Pure Role
                 </label>
                 <select
+                  id="ip-slot-oop-role"
                   value={selectedSlot.oopRole}
                   onChange={(e) =>
                     handleUpdateSlot(selectedSlot.slotId, {
@@ -1208,7 +1220,12 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                 </span>
               </div>
             ) : (
-              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+              <div
+                role="region"
+                aria-label="Playbook guardrail warnings"
+                tabIndex={0}
+                className="space-y-2 max-h-48 overflow-y-auto pr-1"
+              >
                 {guardrails.map((alert) => (
                   <div
                     key={alert.id}

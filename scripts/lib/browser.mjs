@@ -157,6 +157,18 @@ export async function connect(cdp, { listeners = [] } = {}) {
     throw new Error(`Timed out after ${timeout}ms waiting for ${label}`);
   };
 
+  const KEY_CODES = {
+    Escape: { key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 },
+    Tab: { key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 },
+  };
+
+  /** Sends one key press to the focused element, for keyboard-path checks. */
+  const pressKey = async (key) => {
+    const spec = KEY_CODES[key] || { key, code: key, windowsVirtualKeyCode: 0 };
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', ...spec });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', ...spec });
+  };
+
   /** Attaches a real file to a hidden <input type="file">, the way a user's picker would. */
   const setFileInput = async (selector, filePath) => {
     const document = await send('DOM.getDocument', { depth: -1 });
@@ -180,6 +192,9 @@ export async function connect(cdp, { listeners = [] } = {}) {
     navigate,
     waitFor,
     setFileInput,
+    pressKey,
+    pressEscape: () => pressKey('Escape'),
+    pressTab: () => pressKey('Tab'),
     onEvent: (handler) => extraListeners.add(handler),
     offEvent: (handler) => extraListeners.delete(handler),
     consoleErrors,

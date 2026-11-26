@@ -37,8 +37,8 @@ Purpose: remember tools and skills worth adding later, so we do not search for t
 
 | Tool or skill | Add when | Why | Source | Licence | Risk or note |
 | --- | --- | --- | --- | --- | --- |
-| `@axe-core/playwright` | R30 Accessibility audit | Industry-standard automated WCAG checks inside Playwright. | https://github.com/dequelabs/axe-core-npm | MPL-2.0 | Adds a dev dependency. Run against real pages, not mocks. |
-| `Pa11y` or `pa11y-ci` | R30, if axe is not enough | CI accessibility checks and simple HTML reports. | https://github.com/pa11y/pa11y | LGPL-3.0 | Choose one engine with axe; do not duplicate every check. |
+| `axe-core` | R30 Accessibility audit | Adopted: a dev dependency driven over the DevTools protocol by `scripts/a11y-audit.mjs`, so no Playwright runtime is needed. | https://github.com/dequelabs/axe-core | MPL-2.0 | Run against the shipped build, never mocks. `@axe-core/playwright` was not needed because the repo drives Chromium directly. |
+| `Pa11y` or `pa11y-ci` | R30, if axe is not enough | Not adopted. One engine is enough; the remaining gaps are manual screen-reader checks, which Pa11y cannot do either. | https://github.com/pa11y/pa11y | LGPL-3.0 | Revisit only if CI needs HTML reports. |
 | Lighthouse CI | R45 Performance budgets | Fails CI when performance or accessibility drops below a budget. | https://github.com/GoogleChrome/lighthouse-ci | Apache-2.0 | Needs a stable preview URL and a budget file. |
 | `size-limit` | R45 Performance budgets | Fails CI when the bundle grows past a limit. | https://github.com/ai/size-limit | MIT | Set limits after the R18 baseline, not before. |
 | `web-vitals` | R05 and R45 | Real-user LCP, INP and CLS from the app. | https://github.com/GoogleChrome/web-vitals | Apache-2.0 | Needs a privacy-safe reporting endpoint. |

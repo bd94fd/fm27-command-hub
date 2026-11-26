@@ -21,7 +21,18 @@ export function getFocusableElements(
 ): HTMLElement[] {
   return Array.from(
     container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
-  ).filter((el) => el.tabIndex >= 0);
+  ).filter((el) => {
+    if (el.tabIndex < 0) return false;
+    // A control that is not rendered cannot take focus, and calling focus() on
+    // it silently leaves focus on the page behind the sheet.
+    if (typeof el.getClientRects === 'function' && el.getClientRects().length === 0) {
+      return false;
+    }
+    if (typeof el.closest === 'function' && el.closest('[aria-hidden="true"]')) {
+      return false;
+    }
+    return true;
+  });
 }
 
 // Reference-counted body scroll lock so stacked or rapid-swap modals never leave body frozen.
@@ -123,6 +134,7 @@ export const MobileSheetFrame: React.FC<MobileSheetFrameProps> = ({
   children,
 }) => {
   const surfaceRef = useRef<HTMLDivElement | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
   useSheetHistory(isOpen, onClose);
   // Latest callbacks in refs so a parent re-render cannot re-run the focus/scroll effect
   // and steal focus back to the first control mid-interaction.
@@ -146,11 +158,17 @@ export const MobileSheetFrame: React.FC<MobileSheetFrameProps> = ({
       const focusable = getFocusableElements(surface);
       (focusable[0] ?? surface).focus();
     };
+    // Focus synchronously: rAF never fires while the page is hidden or
+    // occluded (background tab, headless run), which would leave focus on the
+    // page behind the sheet. The rAF pass only covers late-mounting content.
+    focusInitial();
     const raf =
       typeof requestAnimationFrame === 'function'
-        ? requestAnimationFrame(focusInitial)
+        ? requestAnimationFrame(() => {
+            const surface = surfaceRef.current;
+            if (surface && !surface.contains(document.activeElement)) focusInitial();
+          })
         : null;
-    if (raf === null) focusInitial();
 
     const handleWindowKeyDown = (e: KeyboardEvent) => {
       if (!disableEscapeRef.current && e.key === 'Escape') {
@@ -158,13 +176,40 @@ export const MobileSheetFrame: React.FC<MobileSheetFrameProps> = ({
         onCloseRef.current();
       }
     };
+    // While the sheet is modal, anything outside it that grabs focus is pulled
+    // back. This also covers late-mounting content and re-renders that would
+    // otherwise leave focus on the page behind (WCAG 2.4.3).
+    const onFocusIn = (event: FocusEvent) => {
+      const root = rootRef.current;
+      const target = event.target as Node | null;
+      if (!root || !target || target === document.body) return;
+      if (!root.contains(target)) focusInitial();
+    };
+
+    // A re-render can swap out the focused node, which drops focus to <body>
+    // without firing focusin; watch for that and pull focus back too.
+    const onFocusOut = (event: FocusEvent) => {
+      const root = rootRef.current;
+      if (!root) return;
+      const next = event.relatedTarget as Node | null;
+      if (next && root.contains(next)) return;
+      setTimeout(() => {
+        const surface = surfaceRef.current;
+        if (surface && !surface.contains(document.activeElement)) focusInitial();
+      }, 0);
+    };
+
     window.addEventListener('keydown', handleWindowKeyDown);
+    document.addEventListener('focusin', onFocusIn, true);
+    document.addEventListener('focusout', onFocusOut, true);
     return () => {
       if (raf !== null && typeof cancelAnimationFrame === 'function') {
         cancelAnimationFrame(raf);
       }
       releaseBodyScrollLock();
       window.removeEventListener('keydown', handleWindowKeyDown);
+      document.removeEventListener('focusin', onFocusIn, true);
+      document.removeEventListener('focusout', onFocusOut, true);
       if (
         previouslyFocused &&
         typeof previouslyFocused.focus === 'function' &&
@@ -208,6 +253,7 @@ export const MobileSheetFrame: React.FC<MobileSheetFrameProps> = ({
 
   return (
     <div
+      ref={rootRef}
       role="dialog"
       aria-modal="true"
       aria-label={ariaLabel}

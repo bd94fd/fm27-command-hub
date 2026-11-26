@@ -117,7 +117,11 @@ const PROBE = `(() => {
     if (rect.top > window.innerHeight || rect.bottom < 0) return false;
     const style = getComputedStyle(el);
     if (style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) < 0.05) return false;
-    return !el.closest('[aria-hidden="true"]');
+    if (el.closest('[aria-hidden="true"]')) return false;
+    // Visually-hidden skip links and screen-reader text are not tappable.
+    if (style.clip === 'rect(0px, 0px, 0px, 0px)' || style.clip === 'rect(0, 0, 0, 0)') return false;
+    if (rect.width <= 1 && rect.height <= 1 && style.position === 'absolute') return false;
+    return true;
   };
 
   const small = [];
