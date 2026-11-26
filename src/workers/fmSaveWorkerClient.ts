@@ -1,7 +1,7 @@
 import { FmImportScope, Pass0ExtractionPayload } from '../types/fmSave';
 import { DecodedFmSavePayload, WORKER_CACHE_BUSTER } from '../utils/fmSaveHydrator';
 
-// Worker bundle uses WORKER_CACHE_BUSTER ('?v=24') from fmSaveHydrator.ts
+// Worker bundle uses WORKER_CACHE_BUSTER ('?v=25') from fmSaveHydrator.ts
 export const WORKER_INACTIVITY_TIMEOUT_MS = 150_000;
 export const WORKER_HARD_CEILING_MS = 480_000;
 

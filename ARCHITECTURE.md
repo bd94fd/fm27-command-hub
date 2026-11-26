@@ -11,7 +11,7 @@ Quick file index so developers and AI agents can jump directly to the right modu
 ## 2. `.fm` Save Decoding Pipeline (Large-Save & Mobile-Safe)
 - `public/fm-save-mapper.py` — Pass 0 Python extractor (`fmsave 0.14.4+`): single-pass `game_db` borrow, club-scoped fast extractors, `_finalize_payload_dict()` + `deep_scrub_ca_pa()`, CLI JSON streaming, `step_*` API. **Large file (~8.8k lines): always search with `rg -n` before reading bounded ranges.**
 - `public/fm_layout_patcher.py` — Runtime FM27 layout patcher + dynamic build registration + per-save telemetry reset (`reset_patch_telemetry()`).
-- `public/fm-save-worker.js` — Browser Web Worker running Pyodide `314.0.8` (native `compression.zstd`, zero-copy `WORKERFS`, 64 MB MEMFS cap, `?v=24`).
+- `public/fm-save-worker.js` — Browser Web Worker running Pyodide `314.0.8` (native `compression.zstd`, zero-copy `WORKERFS`, 64 MB MEMFS cap, `?v=25`).
 - `server/routes/fmDecodeRoutes.ts` — Chunked upload (`/init`, `/chunk`, `/finish`, `/job/:jobId`), 1 GB upload cap, 8 MB chunk cap, JSON `413`/`400` handler, single-job `503` guard, `507` OOM fallback, raw JSON passthrough (`rawPayloadJson`).
 - `src/services/fmSaveReader.ts` & `src/workers/fmSaveWorkerClient.ts` — Server-first chunked upload client with automatic Pyodide Web Worker fallback.
 - `src/utils/fmSaveHydrator.ts` — Converts decoded `.fm` payloads into app state (`PlayerRecord`, `StaffRecord`, `MatchLogEntry`, injuries, governance, finances).

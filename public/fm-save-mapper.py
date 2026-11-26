@@ -49,7 +49,7 @@ try:
 except Exception:
     _layout_patcher = None  # type: ignore[assignment]
 
-MAPPER_CACHE_BUSTER = "?v=24"
+MAPPER_CACHE_BUSTER = "?v=25"
 
 # FM27 27.1.0 native 64-bit in/out-of-possession role bit tables. Bits already claimed by
 # _FM27_ROLE_DUTY_MASK are duty bits, not role bits, and are masked out before decoding.
