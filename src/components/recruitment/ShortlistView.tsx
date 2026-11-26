@@ -108,18 +108,18 @@ export const ShortlistView: React.FC<ShortlistViewProps> = ({
   return (
     <div className="space-y-3">
       {/* Header Strip */}
-      <div className="rounded-xl border border-slate-800 bg-slate-900/75 p-3.5 flex flex-wrap items-center justify-between gap-2.5">
+      <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3.5 flex flex-wrap items-center justify-between gap-2.5">
         <div>
           <h3 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
             <Bookmark className="h-4 w-4 text-emerald-400" />
             Your In-Game FM27 Shortlist ({shortlistAudit.items.length})
             {shortlistAudit.actionableCount > 0 && (
-              <span className="rounded-md bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 text-[11px] font-mono text-emerald-200">
+              <span className="rounded-md bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 text-micro font-mono text-emerald-200">
                 {shortlistAudit.actionableCount} Budget-Ready Moves
               </span>
             )}
           </h3>
-          <p className="text-[11px] text-slate-400 mt-0.5">
+          <p className="text-micro text-slate-400 mt-0.5">
             Pulled strictly from your `.fm` save shortlist · Ranked by Direct First-Team Upgrades, Immediate Gaps, Cheaper Backups &amp; Future U23 Succession under your Strict Club Budget Gate.
           </p>
         </div>
@@ -136,7 +136,7 @@ export const ShortlistView: React.FC<ShortlistViewProps> = ({
 
       {/* Filter Pills + Position + Search */}
       {shortlistAudit.items.length > 0 && (
-        <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-3 space-y-2.5">
+        <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 space-y-2.5">
           <div className="flex flex-wrap gap-1.5">
             {(
               [
@@ -155,10 +155,10 @@ export const ShortlistView: React.FC<ShortlistViewProps> = ({
                 key={pill.id}
                 type="button"
                 onClick={() => setTierFilter(pill.id)}
-                className={`min-h-[34px] rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition cursor-pointer ${
+                className={`min-h-[34px] rounded-lg px-2.5 py-1 text-micro font-semibold border transition cursor-pointer ${
                   tierFilter === pill.id
                     ? 'bg-emerald-500/20 text-emerald-200 border-emerald-500/45'
-                    : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
+                    : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:text-slate-200'
                 }`}
               >
                 {pill.label}
@@ -196,7 +196,7 @@ export const ShortlistView: React.FC<ShortlistViewProps> = ({
 
       {/* Empty State or Cards */}
       {shortlistAudit.items.length === 0 ? (
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 text-center space-y-1.5 text-xs text-slate-400">
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-8 text-center space-y-1.5 text-xs text-slate-400">
           <div className="text-sm font-bold text-slate-200">
             No In-Game Shortlist Players Found in This Save
           </div>
@@ -205,7 +205,7 @@ export const ShortlistView: React.FC<ShortlistViewProps> = ({
           </p>
         </div>
       ) : filteredItems.length === 0 ? (
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 text-center text-xs text-slate-400">
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-8 text-center text-xs text-slate-400">
           No shortlisted players match the active filter. Try switching back to <strong>All</strong>.
         </div>
       ) : (
@@ -235,7 +235,7 @@ export const ShortlistView: React.FC<ShortlistViewProps> = ({
                       ? 'border-sky-500/40 bg-sky-950/15'
                       : item.tier === 'monitor_budget_blocked'
                         ? 'border-amber-500/35 bg-amber-950/10'
-                        : 'border-slate-800 bg-slate-900/75'
+                        : 'border-slate-800 bg-slate-900/70'
                 }`}
               >
                 {/* Header */}
@@ -244,7 +244,7 @@ export const ShortlistView: React.FC<ShortlistViewProps> = ({
                     <h4 className="text-sm font-bold text-white truncate">
                       {target.name}
                     </h4>
-                    <p className="text-[11px] text-slate-400 truncate">
+                    <p className="text-micro text-slate-400 truncate">
                       {formatAge(target.age)}y · {formatNation(target.nationality)} ·{' '}
                       <span className="font-mono font-semibold text-emerald-300">
                         {target.primaryPosition}
@@ -253,7 +253,7 @@ export const ShortlistView: React.FC<ShortlistViewProps> = ({
                     </p>
                   </div>
                   <span
-                    className={`shrink-0 rounded-md border px-2 py-0.5 text-[10px] font-bold ${TIER_BADGE_CLASSES[item.badgeTone]}`}
+                    className={`shrink-0 rounded-md border px-2 py-0.5 text-2xs font-bold ${TIER_BADGE_CLASSES[item.badgeTone]}`}
                   >
                     {item.tierLabel}
                   </span>
@@ -261,35 +261,35 @@ export const ShortlistView: React.FC<ShortlistViewProps> = ({
 
                 {/* 4-KPI Grid */}
                 <div className="grid grid-cols-2 gap-1.5 text-xs">
-                  <div className="rounded-lg border border-slate-800 bg-slate-950/80 px-2 py-1.5 min-w-0">
-                    <div className="text-[9px] uppercase tracking-wider text-slate-400 truncate">
+                  <div className="rounded-lg border border-slate-800 bg-slate-950/85 px-2 py-1.5 min-w-0">
+                    <div className="text-3xs uppercase tracking-wider text-slate-400 truncate">
                       FM27 Role Fit
                     </div>
                     <div className="mt-0.5 font-semibold text-emerald-300 truncate">
                       {item.ipRoleFitPct}% · {item.bestIpRole}
                     </div>
                   </div>
-                  <div className="rounded-lg border border-slate-800 bg-slate-950/80 px-2 py-1.5 min-w-0">
-                    <div className="text-[9px] uppercase tracking-wider text-slate-400 truncate">
+                  <div className="rounded-lg border border-slate-800 bg-slate-950/85 px-2 py-1.5 min-w-0">
+                    <div className="text-3xs uppercase tracking-wider text-slate-400 truncate">
                       Personality
                     </div>
                     <div className="mt-0.5 font-semibold text-sky-200 truncate">
                       {item.character.personalityLabel}
                     </div>
                   </div>
-                  <div className="rounded-lg border border-slate-800 bg-slate-950/80 px-2 py-1.5 min-w-0">
-                    <div className="text-[9px] uppercase tracking-wider text-slate-400 truncate">
+                  <div className="rounded-lg border border-slate-800 bg-slate-950/85 px-2 py-1.5 min-w-0">
+                    <div className="text-3xs uppercase tracking-wider text-slate-400 truncate">
                       Deal / Fee
                     </div>
-                    <div className="mt-0.5 font-mono text-[11px] font-semibold text-slate-200 truncate">
+                    <div className="mt-0.5 font-mono text-micro font-semibold text-slate-200 truncate">
                       {item.budget.feeLabel}
                     </div>
                   </div>
-                  <div className="rounded-lg border border-slate-800 bg-slate-950/80 px-2 py-1.5 min-w-0">
-                    <div className="text-[9px] uppercase tracking-wider text-slate-400 truncate">
+                  <div className="rounded-lg border border-slate-800 bg-slate-950/85 px-2 py-1.5 min-w-0">
+                    <div className="text-3xs uppercase tracking-wider text-slate-400 truncate">
                       Wage vs Squad
                     </div>
-                    <div className="mt-0.5 font-mono text-[11px] font-semibold text-amber-300 truncate">
+                    <div className="mt-0.5 font-mono text-micro font-semibold text-amber-300 truncate">
                       £{item.budget.expectedWagePw.toLocaleString()}/wk
                       {item.budget.netWeeklyWageDelta !== null
                         ? ` (${item.budget.netWeeklyWageDelta <= 0 ? '' : '+'}£${item.budget.netWeeklyWageDelta})`
@@ -303,9 +303,9 @@ export const ShortlistView: React.FC<ShortlistViewProps> = ({
                   {relevantAttributes.map((attrChip) => (
                     <div
                       key={attrChip.label}
-                      className="rounded-lg bg-slate-950/80 border border-slate-800 px-1.5 py-1.5 min-w-0"
+                      className="rounded-lg bg-slate-950/85 border border-slate-800 px-1.5 py-1.5 min-w-0"
                     >
-                      <div className="text-[9px] uppercase tracking-wider text-slate-400 truncate">
+                      <div className="text-3xs uppercase tracking-wider text-slate-400 truncate">
                         {attrChip.label}
                       </div>
                       <div
@@ -324,7 +324,7 @@ export const ShortlistView: React.FC<ShortlistViewProps> = ({
                 </div>
 
                 {/* Plain-English Now/Why Strip */}
-                <div className="rounded-lg border border-slate-800/90 bg-slate-950/75 px-2.5 py-2 text-[11px] space-y-1">
+                <div className="rounded-lg border border-slate-800/90 bg-slate-950/60 px-2.5 py-2 text-micro space-y-1">
                   <div className="font-semibold text-slate-100 flex items-center gap-1">
                     <Sparkles className="h-3 w-3 text-emerald-400 shrink-0" />
                     <span className="truncate">{item.headline}</span>
@@ -342,10 +342,10 @@ export const ShortlistView: React.FC<ShortlistViewProps> = ({
                       e.stopPropagation();
                       handleToggleCompareTray(target);
                     }}
-                    className={`min-h-[40px] sm:min-h-[32px] inline-flex items-center justify-center rounded-lg border px-2 py-1 text-[11px] font-semibold transition cursor-pointer ${
+                    className={`min-h-[40px] sm:min-h-[32px] inline-flex items-center justify-center rounded-lg border px-2 py-1 text-micro font-semibold transition cursor-pointer ${
                       inCompareTray
                         ? 'bg-amber-500/25 border-amber-400/60 text-amber-200'
-                        : 'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700 text-slate-300'
+                        : 'bg-slate-800/70 hover:bg-slate-700/80 border-slate-700 text-slate-300'
                     }`}
                   >
                     {inCompareTray ? 'In Tray' : '+ Tray'}
@@ -356,7 +356,7 @@ export const ShortlistView: React.FC<ShortlistViewProps> = ({
                       e.stopPropagation();
                       setCompareTarget(target);
                     }}
-                    className="min-h-[40px] sm:min-h-[32px] inline-flex items-center justify-center gap-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/35 px-2 py-1 text-[11px] font-semibold text-sky-300 transition cursor-pointer"
+                    className="min-h-[40px] sm:min-h-[32px] inline-flex items-center justify-center gap-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/35 px-2 py-1 text-micro font-semibold text-sky-300 transition cursor-pointer"
                   >
                     <GitCompare className="h-3 w-3 shrink-0" />
                     <span>Compare</span>
@@ -367,7 +367,7 @@ export const ShortlistView: React.FC<ShortlistViewProps> = ({
                       e.stopPropagation();
                       handleToggleTrack(target);
                     }}
-                    className={`min-h-[40px] sm:min-h-[32px] inline-flex items-center justify-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-semibold transition cursor-pointer ${
+                    className={`min-h-[40px] sm:min-h-[32px] inline-flex items-center justify-center gap-1 rounded-lg border px-2 py-1 text-micro font-semibold transition cursor-pointer ${
                       isPinned
                         ? 'bg-amber-500/20 border-amber-400/50 text-amber-200'
                         : 'bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/35 text-emerald-300'
@@ -390,7 +390,7 @@ export const ShortlistView: React.FC<ShortlistViewProps> = ({
 
       {filteredItems.length > visibleItems.length && (
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-          <span className="text-[11px] text-slate-400">
+          <span className="text-micro text-slate-400">
             Showing {visibleItems.length} of {filteredItems.length} shortlisted players
           </span>
           <div className="flex items-center gap-2">

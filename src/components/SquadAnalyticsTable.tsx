@@ -395,10 +395,10 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
           {clubName && clubName !== '--' ? `${clubName} Squad` : 'Squad Database'}
         </h2>
         <div className="flex shrink-0 items-center gap-1">
-          <span className="rounded-full bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 text-[11px] font-mono font-semibold text-emerald-800 dark:text-emerald-300">
+          <span className="rounded-full bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 text-micro font-mono font-semibold text-emerald-800 dark:text-emerald-300">
             {firstTeamCount} 1st Team
           </span>
-          <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-mono font-semibold text-slate-600 dark:text-slate-300">
+          <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-micro font-mono font-semibold text-slate-600 dark:text-slate-300">
             {squadPoolCounts.fullPool} Pool
           </span>
         </div>
@@ -417,7 +417,7 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
             key={id}
             type="button"
             onClick={() => setViewMode(id)}
-            className={`min-w-0 min-h-[44px] sm:min-h-[36px] inline-flex items-center justify-center gap-1 px-1.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-semibold rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+            className={`min-w-0 min-h-[44px] sm:min-h-[36px] inline-flex items-center justify-center gap-1 px-1.5 sm:px-3 py-1.5 text-micro sm:text-xs font-semibold rounded-md transition-colors cursor-pointer whitespace-nowrap ${
               viewMode === id
                 ? 'bg-emerald-700 text-white dark:bg-emerald-500 dark:text-slate-950 shadow-xs'
                 : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'

@@ -73,10 +73,10 @@ export function getMobileSheetFrameClasses(
     : 'sm:items-center';
 
   return {
-    overlayClass: `fixed inset-0 z-50 flex items-end justify-center bg-slate-950/80 backdrop-blur-sm p-0 sm:p-4 ${desktopAlignClass}`,
+    overlayClass: `fixed inset-0 z-50 flex items-end justify-center bg-slate-950/85 backdrop-blur-sm p-0 sm:p-4 ${desktopAlignClass}`,
     surfaceClass: `relative z-10 w-full ${maxWidthClass} max-h-[92dvh] sm:max-h-[90dvh] rounded-t-2xl sm:rounded-2xl border-t sm:border border-slate-700/90 bg-slate-900 text-slate-100 shadow-2xl flex flex-col overflow-hidden`,
     closeButtonClass:
-      'min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-xl bg-slate-800/90 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white transition-colors cursor-pointer shrink-0',
+      'min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-xl bg-slate-800/70 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white transition-colors cursor-pointer shrink-0',
   };
 }
 

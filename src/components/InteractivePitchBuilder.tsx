@@ -626,7 +626,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
               type="checkbox"
               checked={applyToAnalystOnly}
               onChange={(e) => onChangeApplyToAnalystOnly(e.target.checked)}
-              className="rounded border-slate-400 text-emerald-600 focus:ring-emerald-500"
+              className="rounded-md border-slate-400 text-emerald-600 focus:ring-emerald-500"
             />
             <span>Analyst Sandbox Only</span>
           </label>
@@ -634,13 +634,13 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
       </div>
 
       {/* Phase 1 (v3.0): Dual-Phase & Rest-Defence Matrix Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 px-3.5 py-2.5 rounded-xl bg-slate-950/85 border border-slate-800">
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="font-mono font-bold text-emerald-400">
             {restDefenseMatrix.structureLabel.replace('Rest-Defense', 'Rest Defence')}
           </span>
           <span
-            className={`rounded-md px-2 py-0.5 font-mono text-[11px] font-bold border ${
+            className={`rounded-md px-2 py-0.5 font-mono text-micro font-bold border ${
               restDefenseMatrix.stabilityScore >= 75
                 ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35'
                 : restDefenseMatrix.stabilityScore >= 58
@@ -650,7 +650,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
           >
             Transition Stability: {restDefenseMatrix.stabilityScore}/100
           </span>
-          <span className="text-[11px] text-slate-400">
+          <span className="text-micro text-slate-400">
             Base: {restDefenseMatrix.baseDefenderCount} CB +{' '}
             {restDefenseMatrix.pivotScreenCount} Pivot · Shuttles:{' '}
             {restDefenseMatrix.shuttleCount} · Outlets:{' '}
@@ -659,7 +659,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
           <button
             type="button"
             onClick={() => setShowRestDefenseGuide((v) => !v)}
-            className="inline-flex min-h-[36px] items-center gap-1 rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-emerald-300 transition cursor-pointer"
+            className="inline-flex min-h-[36px] items-center gap-1 rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800 px-2 py-0.5 text-micro font-semibold text-emerald-300 transition cursor-pointer"
           >
             <HelpCircle className="w-3 h-3 shrink-0" />
             <span>{showRestDefenseGuide ? 'Hide Guide' : 'What is Rest Defence?'}</span>
@@ -678,7 +678,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
               key={mode.id}
               type="button"
               onClick={() => setPitchPhaseMode(mode.id)}
-              className={`min-h-[44px] sm:min-h-[28px] px-2 sm:px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer text-center whitespace-nowrap ${
+              className={`min-h-[44px] sm:min-h-[28px] px-2 sm:px-2.5 py-1 rounded-md text-micro font-semibold transition cursor-pointer text-center whitespace-nowrap ${
                 pitchPhaseMode === mode.id
                   ? 'bg-emerald-700 text-white dark:bg-emerald-500 dark:text-slate-950'
                   : 'text-slate-400 hover:text-slate-200'
@@ -693,20 +693,20 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
 
       {/* Pack 5: Live Decoded FM27 Save Dual-Phase IP -> OOP Slot Shape */}
       {savedTactics.length > 0 && savedTactics[0].slots && savedTactics[0].slots.length > 0 && (
-        <div className="px-3.5 py-2.5 rounded-xl bg-slate-950/70 border border-sky-500/30 space-y-2">
+        <div className="px-3.5 py-2.5 rounded-xl bg-slate-950/60 border border-sky-500/30 space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono font-bold text-sky-400">
                 Live .fm Save Tactic: {savedTactics[0].name}
               </span>
-              <span className="rounded bg-emerald-500/15 border border-emerald-500/35 px-2 py-0.5 text-[11px] font-mono text-emerald-300">
+              <span className="rounded-md bg-emerald-500/15 border border-emerald-500/35 px-2 py-0.5 text-micro font-mono text-emerald-300">
                 IP: {savedTactics[0].inPossessionFormation || activeShape}
               </span>
-              <span className="rounded bg-sky-500/15 border border-sky-500/35 px-2 py-0.5 text-[11px] font-mono text-sky-300">
+              <span className="rounded-md bg-sky-500/15 border border-sky-500/35 px-2 py-0.5 text-micro font-mono text-sky-300">
                 OOP: {savedTactics[0].outOfPossessionFormation || savedTactics[0].inPossessionFormation || activeShape}
               </span>
             </div>
-            <span className="text-[11px] text-slate-400 font-mono">
+            <span className="text-micro text-slate-400 font-mono">
               {savedTactics[0].mentality} Mentality
             </span>
           </div>
@@ -718,7 +718,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
               return (
                 <span
                   key={sl.slotIndex}
-                  className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-mono ${
+                  className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-2xs font-mono ${
                     shifted
                       ? 'bg-sky-500/15 border-sky-500/40 text-sky-200'
                       : 'bg-slate-900 border-slate-800 text-slate-300'
@@ -863,16 +863,16 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                         : 'bg-slate-950/85 text-slate-100 border-emerald-400/40 hover:border-emerald-300 z-10'
                   }`}
                 >
-                  <div className="text-[8.5px] sm:text-[10px] font-mono font-bold leading-tight whitespace-nowrap truncate">
+                  <div className="text-3xs sm:text-2xs font-mono font-bold leading-tight whitespace-nowrap truncate">
                     {slot.label}
                     {slot.player ? ` ${slot.combinedFitPct}%` : ' --'}
                   </div>
-                  <div className="text-[10px] sm:text-[11px] font-semibold leading-tight truncate">
+                  <div className="text-2xs sm:text-micro font-semibold leading-tight truncate">
                     {slot.player
                       ? formatMobileSurname(slot.player.name)
                       : 'Empty'}
                   </div>
-                  <div className="hidden sm:block text-[9px] leading-tight opacity-85 truncate">
+                  <div className="hidden sm:block text-3xs leading-tight opacity-85 truncate">
                     {formatCompactPitchRole(rawNodeRole)}
                   </div>
                 </button>
@@ -928,10 +928,10 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                       isActiveLane ? 'ring-2 ring-white/80' : ''
                     }`}
                   >
-                    <div className="text-[9px] sm:text-[10px] font-bold truncate">
+                    <div className="text-3xs sm:text-2xs font-bold truncate">
                       {lane.lane}
                     </div>
-                    <div className="text-[9px] sm:text-[10px] font-mono">
+                    <div className="text-3xs sm:text-2xs font-mono">
                       {lane.status} ({lane.coverageCount})
                     </div>
                   </button>
@@ -946,7 +946,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                 );
                 if (!lane) return null;
                 return (
-                  <div className="rounded-lg border border-slate-700 bg-slate-950/90 px-3 py-2 text-[11px] text-slate-200 flex items-center justify-between gap-2">
+                  <div className="rounded-lg border border-slate-700 bg-slate-950/85 px-3 py-2 text-micro text-slate-200 flex items-center justify-between gap-2">
                     <div>
                       <strong className="text-emerald-300">{lane.lane}</strong>{' '}
                       <span className="font-mono text-slate-400">
@@ -957,7 +957,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                     <button
                       type="button"
                       onClick={() => setSelectedLaneName(null)}
-                      className="text-slate-400 hover:text-white text-[10px] font-semibold shrink-0 cursor-pointer"
+                      className="text-slate-400 hover:text-white text-2xs font-semibold shrink-0 cursor-pointer"
                     >
                       Close
                     </button>
@@ -966,7 +966,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
               })()}
 
             {restDefenseMatrix.alerts.length > 0 && (
-              <div className="rounded-lg border border-rose-500/35 bg-rose-950/25 px-3 py-2 space-y-1 text-[11px] text-rose-200">
+              <div className="rounded-lg border border-rose-500/35 bg-rose-950/25 px-3 py-2 space-y-1 text-micro text-rose-200">
                 {restDefenseMatrix.alerts.map((alertText, idx) => (
                   <div key={idx} className="flex items-start gap-1.5">
                     <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
@@ -984,11 +984,11 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                     <Shield className="w-3.5 h-3.5 shrink-0" />
                     Rest Defence Explained
                   </span>
-                  <span className="text-[10px] text-slate-400">
+                  <span className="text-2xs text-slate-400">
                     Tap any player or lane above for details
                   </span>
                 </div>
-                <p className="text-[11px] leading-relaxed text-slate-300">
+                <p className="text-micro leading-relaxed text-slate-300">
                   <strong className="text-white">Rest Defence</strong> is the shape your
                   team stays in <em>while you have the ball</em> so you don&apos;t get
                   caught on the counter-attack the instant you lose possession. Your{' '}
@@ -1001,7 +1001,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                   ({restDefenseMatrix.stabilityScore}/100) scores how safely all 5 vertical
                   lanes (flanks, half-spaces &amp; centre) are covered on turnover.
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-micro">
                   <div className="rounded-lg border border-emerald-500/30 bg-emerald-950/20 px-2.5 py-1.5">
                     <div className="font-bold text-emerald-300">
                       Green Ring &amp; Dashed Shield
@@ -1048,14 +1048,14 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                   {selectedSlot.player && (() => {
                     const dur = computeDurabilityProfile(selectedSlot.player);
                     return (
-                      <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">
+                      <div className="text-micro font-mono text-slate-500 dark:text-slate-400 mt-0.5">
                         {dur.label} · {dur.summary}
                       </div>
                     );
                   })()}
                 </div>
                 {selectedSlot.player && (
-                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 shrink-0">
+                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 shrink-0">
                     Fit {selectedSlot.combinedFitPct}% (IP {selectedSlot.ipFitPct}% / OOP{' '}
                     {selectedSlot.oopFitPct}%)
                   </span>
@@ -1075,7 +1075,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                         ? 'border-purple-500/35 bg-purple-500/10 text-purple-300'
                         : 'border-slate-700 bg-slate-900 text-slate-300';
                 return (
-                  <div className={`rounded-lg border px-3 py-2 text-[11px] space-y-0.5 ${badgeCls}`}>
+                  <div className={`rounded-lg border px-3 py-2 text-micro space-y-0.5 ${badgeCls}`}>
                     <div className="font-bold">
                       Rest-Defence Job: {selRestNode.categoryLabel.replace('Rest-Defense', 'Rest Defence')}
                     </div>
@@ -1091,7 +1091,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
 
               {/* Player Override Selector */}
               <div className="space-y-1">
-                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+                <label className="block text-micro font-semibold text-slate-600 dark:text-slate-400">
                   Assigned Player
                 </label>
                 <select
@@ -1143,7 +1143,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
 
               {/* Separate IP Role Dropdown */}
               <div className="space-y-1">
-                <label className="block text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                <label className="block text-micro font-semibold text-emerald-700 dark:text-emerald-400">
                   In-Possession (IP) Role — FM27 Pure Role
                 </label>
                 <select
@@ -1165,7 +1165,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
 
               {/* Separate OOP Role Dropdown */}
               <div className="space-y-1">
-                <label className="block text-[11px] font-semibold text-sky-700 dark:text-sky-400">
+                <label className="block text-micro font-semibold text-sky-700 dark:text-sky-400">
                   Out-of-Possession (OOP) Role — FM27 Pure Role
                 </label>
                 <select
@@ -1194,7 +1194,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                 <Shield className="w-4 h-4 text-emerald-500" />
                 Playbook v2.0 Live Guardrails
               </div>
-              <span className="text-[11px] font-mono text-slate-500">
+              <span className="text-micro font-mono text-slate-500">
                 Avg Fit: {activeAvgFit}%
               </span>
             </div>
@@ -1222,7 +1222,7 @@ export const InteractivePitchBuilder: React.FC<InteractivePitchBuilderProps> = (
                       <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                       <span>{alert.title}</span>
                     </div>
-                    <p className="mt-0.5 text-[11px] opacity-90">
+                    <p className="mt-0.5 text-micro opacity-90">
                       {alert.detail}
                     </p>
                   </div>

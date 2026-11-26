@@ -49,17 +49,17 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
             ) are separated from raw Academy prospects so 3.5★ ready players are never mixed with 1.0★ teenagers.
           </span>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-mono tabular-nums">
-          <span className="rounded bg-rose-500/15 border border-rose-500/35 px-2 py-0.5 text-rose-300">
+        <div className="flex flex-wrap items-center gap-1.5 text-micro font-mono tabular-nums">
+          <span className="rounded-md bg-rose-500/15 border border-rose-500/35 px-2 py-0.5 text-rose-300">
             Need Signing: {thinPositions.length}
           </span>
-          <span className="rounded bg-teal-500/15 border border-teal-500/35 px-2 py-0.5 text-teal-300">
+          <span className="rounded-md bg-teal-500/15 border border-teal-500/35 px-2 py-0.5 text-teal-300">
             Promote Internal: {promoteInternalPositions.length}
           </span>
-          <span className="rounded bg-purple-500/15 border border-purple-500/35 px-2 py-0.5 text-purple-300">
+          <span className="rounded-md bg-purple-500/15 border border-purple-500/35 px-2 py-0.5 text-purple-300">
             Succession: {successionGapPositions.length}
           </span>
-          <span className="rounded bg-amber-500/15 border border-amber-500/35 px-2 py-0.5 text-amber-300">
+          <span className="rounded-md bg-amber-500/15 border border-amber-500/35 px-2 py-0.5 text-amber-300">
             Overstocked: {overstockedPositions.length}
           </span>
         </div>
@@ -84,25 +84,25 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
                       ? 'border-purple-500/45 bg-purple-950/20'
                       : isOver
                         ? 'border-amber-500/40 bg-amber-950/15'
-                        : 'border-slate-800 bg-slate-900/60'
+                        : 'border-slate-800 bg-slate-900/70'
               }`}
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                   <h4 className="text-sm font-bold text-white">{b.label}</h4>
                   {isPromoteInternal && (
-                    <span className="rounded bg-teal-500/20 border border-teal-500/50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-teal-200">
+                    <span className="rounded-md bg-teal-500/20 border border-teal-500/50 px-1.5 py-0.5 text-2xs font-bold uppercase tracking-wide text-teal-200">
                       Promote Internal
                     </span>
                   )}
                   {isSuccessionGap && (
-                    <span className="rounded bg-purple-500/25 border border-purple-500/50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-purple-200">
+                    <span className="rounded-md bg-purple-500/25 border border-purple-500/50 px-1.5 py-0.5 text-2xs font-bold uppercase tracking-wide text-purple-200">
                       Succession Gap
                     </span>
                   )}
                 </div>
                 <span
-                  className={`text-[11px] font-mono tabular-nums font-bold px-2 py-0.5 rounded-md shrink-0 ${
+                  className={`text-micro font-mono tabular-nums font-bold px-2 py-0.5 rounded-md shrink-0 ${
                     isThin
                       ? 'bg-rose-500/20 text-rose-300'
                       : isPromoteInternal
@@ -118,20 +118,20 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
               </div>
 
               {isSuccessionGap && (
-                <div className="rounded-lg border border-purple-500/35 bg-purple-950/40 p-2.5 text-[11px] text-purple-200 leading-snug">
+                <div className="rounded-lg border border-purple-500/35 bg-purple-950/40 p-2.5 text-micro text-purple-200 leading-snug">
                   All senior primary options are <strong>28+</strong> with <strong>no U23 cover</strong> — scout a U23 successor.
                 </div>
               )}
 
               {isPromoteInternal && (
-                <div className="rounded-lg border border-teal-500/35 bg-teal-950/35 p-2.5 text-[11px] text-teal-100 space-y-1">
+                <div className="rounded-lg border border-teal-500/35 bg-teal-950/35 p-2.5 text-micro text-teal-100 space-y-1">
                   <div className="font-bold flex items-center gap-1 text-teal-300">
                     <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
                     <span>
                       No External Signing Needed — Promote {readyYouthCount} First-Team Ready U21 Option{readyYouthCount === 1 ? '' : 's'}
                     </span>
                   </div>
-                  <div className="text-[11px] text-slate-300 leading-snug">
+                  <div className="text-micro text-slate-300 leading-snug">
                     {b.firstTeamReadyYouthPlayers
                       .map((p) => `${p.name} (Age ${formatAge(p.age)}, ${p.ability.toFixed(1)}★)`)
                       .join(', ')}{' '}
@@ -141,7 +141,7 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
               )}
 
               {isThin && (
-                <div className="rounded-lg border border-rose-500/30 bg-rose-950/40 p-2.5 text-[11px] text-rose-200 space-y-1">
+                <div className="rounded-lg border border-rose-500/30 bg-rose-950/40 p-2.5 text-micro text-rose-200 space-y-1">
                   <div className="font-bold flex items-center gap-1 text-rose-300">
                     <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                     <span>
@@ -152,14 +152,14 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
                       )
                     </span>
                   </div>
-                  <div className="text-[11px] text-slate-300 leading-snug">
+                  <div className="text-micro text-slate-300 leading-snug">
                     {b.scoutProfile}
                   </div>
                 </div>
               )}
 
               {isOver && (
-                <div className="text-[11px] text-amber-300 leading-snug">
+                <div className="text-micro text-amber-300 leading-snug">
                   Senior primary depth is overstocked ({b.currentCount} vs ideal {b.idealMin}–{b.idealMax}) — review paid backups before adding wages.
                 </div>
               )}
@@ -171,7 +171,7 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
                 );
                 const actionableMatches = bucketMatches.filter((m) => m.isActionable);
                 return (
-                  <div className="rounded-lg border border-sky-500/30 bg-sky-950/20 p-2.5 space-y-1.5 text-[11px]">
+                  <div className="rounded-lg border border-sky-500/30 bg-sky-950/20 p-2.5 space-y-1.5 text-micro">
                     <div className="flex items-center justify-between gap-1.5 font-bold text-sky-200">
                       <span className="inline-flex items-center gap-1">
                         <Sparkles className="h-3.5 w-3.5 text-sky-300 shrink-0" />
@@ -189,7 +189,7 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
                             key={m.target.uid}
                             type="button"
                             onClick={() => onOpenShortlistTarget?.(m.target)}
-                            className="w-full rounded-lg border border-slate-800 bg-slate-950/80 hover:border-emerald-500/50 px-2.5 py-1.5 text-left transition cursor-pointer"
+                            className="w-full rounded-lg border border-slate-800 bg-slate-950/85 hover:border-emerald-500/50 px-2.5 py-1.5 text-left transition cursor-pointer"
                           >
                             <div className="flex items-center justify-between gap-1.5">
                               <span className="font-semibold text-white truncate">
@@ -199,7 +199,7 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
                                 </span>
                               </span>
                               <span
-                                className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold ${
+                                className={`shrink-0 rounded-md px-1.5 py-0.5 text-3xs font-bold ${
                                   m.isActionable
                                     ? 'bg-emerald-500/20 text-emerald-300'
                                     : 'bg-amber-500/20 text-amber-300'
@@ -208,7 +208,7 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
                                 {m.tierLabel}
                               </span>
                             </div>
-                            <div className="text-[10px] text-slate-400 truncate mt-0.5">
+                            <div className="text-2xs text-slate-400 truncate mt-0.5">
                               {m.budget.feeLabel} · {m.character.personalityLabel}
                             </div>
                           </button>
@@ -221,12 +221,12 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
 
               {/* 1. Senior Primary Players (All rows shown cleanly, zero mid-row clipping) */}
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-slate-400">
+                <div className="flex items-center justify-between text-2xs font-mono uppercase tracking-wider text-slate-400">
                   <span>Senior First Team (Primary)</span>
                   <span>{b.seniorPrimaryPlayers.length}</span>
                 </div>
                 {b.seniorPrimaryPlayers.length === 0 ? (
-                  <div className="text-[11px] text-slate-400 italic px-1">
+                  <div className="text-micro text-slate-400 italic px-1">
                     {readyYouthCount > 0
                       ? '0 assigned to Senior slot — promote Ready U21 below'
                       : 'No senior primary options'}
@@ -247,31 +247,31 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
                           key={p.id}
                           type="button"
                           onClick={() => onSelectPlayer(p)}
-                          className="w-full flex items-center justify-between gap-2 rounded-lg bg-slate-950/75 border border-slate-800/80 px-2.5 py-2 text-xs hover:border-emerald-500/40 transition text-left cursor-pointer"
+                          className="w-full flex items-center justify-between gap-2 rounded-lg bg-slate-950/60 border border-slate-800/80 px-2.5 py-2 text-xs hover:border-emerald-500/40 transition text-left cursor-pointer"
                         >
                           <div className="min-w-0 flex-1">
                             <div className="font-medium text-slate-100 break-words leading-tight">
                               {p.name}
                             </div>
-                            <div className="text-[10px] text-slate-400 mt-0.5 flex flex-wrap items-center gap-1.5">
+                            <div className="text-2xs text-slate-400 mt-0.5 flex flex-wrap items-center gap-1.5">
                               <span>Age {formatAge(p.age)}</span>
                               <span>·</span>
                               <span className="font-mono tabular-nums">
                                 {formatWeeklyWage(p.wagePw)}
                               </span>
                               {isTeenStarter && (
-                                <span className="rounded bg-emerald-500/20 px-1 text-[9px] font-bold text-emerald-300">
+                                <span className="rounded-md bg-emerald-500/20 px-1 text-3xs font-bold text-emerald-300">
                                   Young Starter
                                 </span>
                               )}
                               {isSurplus && (
-                                <span className="rounded bg-rose-500/20 px-1 text-[9px] font-bold text-rose-300">
+                                <span className="rounded-md bg-rose-500/20 px-1 text-3xs font-bold text-rose-300">
                                   Surplus
                                 </span>
                               )}
                             </div>
                           </div>
-                          <span className="font-mono tabular-nums text-amber-300 font-semibold text-[11px] shrink-0">
+                          <span className="font-mono tabular-nums text-amber-300 font-semibold text-micro shrink-0">
                             {p.ability.toFixed(1)}★/{p.potential.toFixed(1)}★
                           </span>
                         </button>
@@ -284,7 +284,7 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
               {/* 2. First-Team Ready U21 / Reserve Players (Meet squad rotation/starter CA floor — Promote Now) */}
               {b.firstTeamReadyYouthPlayers.length > 0 && (
                 <div className="space-y-1.5 pt-2 border-t border-slate-800/70">
-                  <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-teal-300">
+                  <div className="flex items-center justify-between text-2xs font-mono uppercase tracking-wider text-teal-300">
                     <span>First-Team Ready (U21 / Reserve — Promote)</span>
                     <span>{b.firstTeamReadyYouthPlayers.length}</span>
                   </div>
@@ -297,18 +297,18 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
                           key={`rdy-${p.id}`}
                           type="button"
                           onClick={() => onSelectPlayer(p)}
-                          className="w-full flex items-center justify-between gap-2 rounded-lg bg-teal-950/30 border border-teal-500/35 px-2.5 py-1.5 text-[11px] hover:border-teal-400/70 transition text-left cursor-pointer"
+                          className="w-full flex items-center justify-between gap-2 rounded-lg bg-teal-950/30 border border-teal-500/35 px-2.5 py-1.5 text-micro hover:border-teal-400/70 transition text-left cursor-pointer"
                         >
                           <div className="min-w-0 flex-1">
                             <span className="text-teal-50 font-semibold break-words">
                               {p.name}{' '}
-                              <span className="text-[10px] font-normal text-teal-200/80">
+                              <span className="text-2xs font-normal text-teal-200/80">
                                 (Age {formatAge(p.age)})
                               </span>
                             </span>
                             <div className="mt-0.5 flex flex-wrap items-center gap-1">
                               <span
-                                className={`rounded px-1.5 py-0.2 text-[9px] font-bold ${
+                                className={`rounded-md px-1.5 py-0.2 text-3xs font-bold ${
                                   isStarterQual
                                     ? 'bg-emerald-500/20 text-emerald-300'
                                     : 'bg-teal-500/20 text-teal-200'
@@ -316,7 +316,7 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
                               >
                                 {isStarterQual ? 'Starter Level' : 'Rotation Ready'}
                               </span>
-                              <span className="text-[9px] font-mono text-slate-400">
+                              <span className="text-3xs font-mono text-slate-400">
                                 {formatWeeklyWage(p.wagePw)}
                               </span>
                             </div>
@@ -334,7 +334,7 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
               {/* 3. Secondary Versatility / Cover (Marked clearly as cover, NOT counted as separate bodies) */}
               {b.secondaryCoverPlayers.length > 0 && (
                 <div className="space-y-1.5 pt-2 border-t border-slate-800/70">
-                  <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-sky-400/90">
+                  <div className="flex items-center justify-between text-2xs font-mono uppercase tracking-wider text-sky-400/90">
                     <span>Versatility / Cover (Secondary)</span>
                     <span>+{b.secondaryCoverPlayers.length}</span>
                   </div>
@@ -344,10 +344,10 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
                         key={`cov-${p.id}`}
                         type="button"
                         onClick={() => onSelectPlayer(p)}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500/10 border border-sky-500/25 px-2 py-1 text-[11px] text-sky-200 hover:border-sky-400 transition cursor-pointer"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500/10 border border-sky-500/25 px-2 py-1 text-micro text-sky-200 hover:border-sky-400 transition cursor-pointer"
                       >
                         <span className="font-medium">{p.name}</span>
-                        <span className="text-[10px] font-mono text-sky-300/80">
+                        <span className="text-2xs font-mono text-sky-300/80">
                           ({p.position.split(',')[0].trim()})
                         </span>
                       </button>
@@ -359,7 +359,7 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
               {/* 4. Academy / Developing Prospects (Below First-Team CA floor — long-term pipeline) */}
               {b.academyProspectPlayers.length > 0 && (
                 <div className="space-y-1.5 pt-2 border-t border-slate-800/70">
-                  <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-purple-300/90">
+                  <div className="flex items-center justify-between text-2xs font-mono uppercase tracking-wider text-purple-300/90">
                     <span>Academy / Developing (Not Senior-Ready Yet)</span>
                     <span>{b.academyProspectPlayers.length}</span>
                   </div>
@@ -374,18 +374,18 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
                           key={`yth-${p.id}`}
                           type="button"
                           onClick={() => onSelectPlayer(p)}
-                          className="w-full flex items-center justify-between gap-2 rounded-lg bg-purple-950/20 border border-purple-500/20 px-2.5 py-1.5 text-[11px] hover:border-purple-400/50 transition text-left cursor-pointer"
+                          className="w-full flex items-center justify-between gap-2 rounded-lg bg-purple-950/20 border border-purple-500/20 px-2.5 py-1.5 text-micro hover:border-purple-400/50 transition text-left cursor-pointer"
                         >
                           <div className="min-w-0 flex-1">
                             <span className="text-purple-100/90 font-medium break-words">
                               {p.name}{' '}
-                              <span className="text-[10px] text-purple-300/70">
+                              <span className="text-2xs text-purple-300/70">
                                 (Age {formatAge(p.age)})
                               </span>
                             </span>
                             <div className="mt-0.5 flex flex-wrap items-center gap-1">
                               <span
-                                className={`rounded px-1.5 py-0.2 text-[9px] font-semibold ${
+                                className={`rounded-md px-1.5 py-0.2 text-3xs font-semibold ${
                                   isDeveloping
                                     ? 'bg-sky-500/15 text-sky-300'
                                     : 'bg-slate-800 text-slate-400'
@@ -394,7 +394,7 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
                                 {isDeveloping ? 'Developing U21' : 'Raw Academy'}
                               </span>
                               {isHighCeiling && (
-                                <span className="rounded bg-amber-500/15 px-1.5 py-0.2 text-[9px] font-semibold text-amber-300">
+                                <span className="rounded-md bg-amber-500/15 px-1.5 py-0.2 text-3xs font-semibold text-amber-300">
                                   High Ceiling
                                 </span>
                               )}
@@ -413,7 +413,7 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
               {/* 4. Out on Loan */}
               {b.onLoanPlayers.length > 0 && (
                 <div className="space-y-1.5 pt-2 border-t border-slate-800/70">
-                  <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-indigo-300">
+                  <div className="flex items-center justify-between text-2xs font-mono uppercase tracking-wider text-indigo-300">
                     <span>Out on Loan</span>
                     <span>{b.onLoanPlayers.length}</span>
                   </div>
@@ -423,10 +423,10 @@ export const PositionalDepthView: React.FC<PositionalDepthViewProps> = ({
                         key={`loan-${p.id}`}
                         type="button"
                         onClick={() => onSelectPlayer(p)}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/30 px-2 py-1 text-[11px] text-indigo-200 hover:border-indigo-400 transition cursor-pointer"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/30 px-2 py-1 text-micro text-indigo-200 hover:border-indigo-400 transition cursor-pointer"
                       >
                         <span>{p.name}</span>
-                        <span className="font-mono text-[10px] text-amber-300">
+                        <span className="font-mono text-2xs text-amber-300">
                           {p.ability.toFixed(1)}★/{p.potential.toFixed(1)}★
                         </span>
                       </button>

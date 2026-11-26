@@ -48,7 +48,7 @@ export const SquadFilterDrawer: React.FC<SquadFilterDrawerProps> = ({
                 key={grp}
                 type="button"
                 onClick={() => setPosFilter(grp)}
-                className={`px-2 py-1 text-[11px] font-semibold rounded-md transition cursor-pointer ${
+                className={`px-2 py-1 text-micro font-semibold rounded-md transition cursor-pointer ${
                   posFilter === grp
                     ? 'bg-white dark:bg-slate-900 text-emerald-500 shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
@@ -65,7 +65,7 @@ export const SquadFilterDrawer: React.FC<SquadFilterDrawerProps> = ({
                 key={st}
                 type="button"
                 onClick={() => setStatusFilter(st)}
-                className={`px-2 py-1 text-[11px] font-medium rounded-md transition whitespace-nowrap cursor-pointer ${
+                className={`px-2 py-1 text-micro font-medium rounded-md transition whitespace-nowrap cursor-pointer ${
                   statusFilter === st
                     ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
@@ -91,7 +91,7 @@ export const SquadFilterDrawer: React.FC<SquadFilterDrawerProps> = ({
                 key={opt.id}
                 type="button"
                 onClick={() => setAvailabilityFilter(opt.id)}
-                className={`px-2 py-1 text-[11px] font-medium rounded-md transition whitespace-nowrap cursor-pointer ${
+                className={`px-2 py-1 text-micro font-medium rounded-md transition whitespace-nowrap cursor-pointer ${
                   availabilityFilter === opt.id
                     ? 'bg-white dark:bg-slate-900 text-emerald-500 shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
@@ -107,7 +107,7 @@ export const SquadFilterDrawer: React.FC<SquadFilterDrawerProps> = ({
               aria-label="Filter by contract expiry year"
               value={expiryYearFilter}
               onChange={(e) => setExpiryYearFilter(e.target.value)}
-              className="px-2.5 py-1 text-[11px] font-medium bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 rounded-lg"
+              className="px-2.5 py-1 text-micro font-medium bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 rounded-lg"
             >
               <option value="ALL">Expiry: All Years</option>
               {availableExpiryYears.map((yr) => (
@@ -122,7 +122,7 @@ export const SquadFilterDrawer: React.FC<SquadFilterDrawerProps> = ({
             <button
               type="button"
               onClick={handleResetFilters}
-              className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-rose-400 hover:text-rose-300 cursor-pointer ml-auto"
+              className="inline-flex items-center gap-1 px-2 py-1 text-micro font-semibold text-rose-400 hover:text-rose-300 cursor-pointer ml-auto"
             >
               <RotateCcw className="w-3 h-3" />
               Reset

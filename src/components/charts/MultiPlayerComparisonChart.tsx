@@ -56,7 +56,7 @@ export const MultiPlayerComparisonChart: React.FC<MultiPlayerComparisonChartProp
         <div
           role="tablist"
           aria-label="Comparison chart mode"
-          className="inline-flex rounded-xl border border-slate-800 bg-slate-950/80 p-1"
+          className="inline-flex rounded-xl border border-slate-800 bg-slate-950/85 p-1"
         >
           {(
             [
@@ -83,18 +83,18 @@ export const MultiPlayerComparisonChart: React.FC<MultiPlayerComparisonChartProp
         </div>
 
         {/* Player color legend */}
-        <div className="flex flex-wrap items-center gap-2 text-[11px]">
+        <div className="flex flex-wrap items-center gap-2 text-micro">
           {players.map((p, idx) => (
             <span
               key={p.id}
-              className="inline-flex items-center gap-1.5 rounded-full border border-slate-800 bg-slate-900/80 px-2.5 py-1 text-slate-200"
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-800 bg-slate-900/70 px-2.5 py-1 text-slate-200"
             >
               <span
                 className="h-2.5 w-2.5 rounded-full shrink-0"
                 style={{ backgroundColor: colors[idx] }}
               />
               <span className="font-medium truncate max-w-[120px]">{p.name}</span>
-              <span className="text-[10px] text-slate-400 font-mono">{p.position}</span>
+              <span className="text-2xs text-slate-400 font-mono">{p.position}</span>
             </span>
           ))}
         </div>
@@ -153,7 +153,7 @@ export const MultiPlayerComparisonChart: React.FC<MultiPlayerComparisonChartProp
                     y={ly}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    className={`text-[10px] font-semibold ${
+                    className={`text-2xs font-semibold ${
                       isSelected ? 'fill-white' : 'fill-slate-300'
                     }`}
                   >
@@ -203,7 +203,7 @@ export const MultiPlayerComparisonChart: React.FC<MultiPlayerComparisonChartProp
           </svg>
 
           {activeAxis ? (
-            <div className="w-full rounded-lg border border-emerald-500/30 bg-slate-950/85 px-3 py-2 text-[11px] flex flex-wrap items-center justify-between gap-2">
+            <div className="w-full rounded-lg border border-emerald-500/30 bg-slate-950/85 px-3 py-2 text-micro flex flex-wrap items-center justify-between gap-2">
               <span className="font-semibold text-white">{activeAxis.label}</span>
               <div className="flex flex-wrap items-center gap-2 font-mono tabular-nums">
                 {players.map((p, idx) => (
@@ -214,7 +214,7 @@ export const MultiPlayerComparisonChart: React.FC<MultiPlayerComparisonChartProp
               </div>
             </div>
           ) : (
-            <div className="text-[10px] text-slate-500">
+            <div className="text-2xs text-slate-500">
               Tap any axis label to inspect exact scores side-by-side
             </div>
           )}
@@ -230,9 +230,9 @@ export const MultiPlayerComparisonChart: React.FC<MultiPlayerComparisonChartProp
                 key={slice.key}
                 className="rounded-lg border border-slate-800/90 bg-slate-950/60 p-2.5 space-y-1.5"
               >
-                <div className="flex items-center justify-between text-[11px]">
+                <div className="flex items-center justify-between text-micro">
                   <span className="font-semibold text-slate-200">{slice.label}</span>
-                  <span className="text-[10px] text-slate-500 uppercase tracking-wider">
+                  <span className="text-2xs text-slate-500 uppercase tracking-wider">
                     {slice.category}
                   </span>
                 </div>
@@ -243,7 +243,7 @@ export const MultiPlayerComparisonChart: React.FC<MultiPlayerComparisonChartProp
                     const bucket = slice.buckets[idx];
                     return (
                       <div key={p.id} className="space-y-0.5">
-                        <div className="flex items-center justify-between text-[10px] font-mono">
+                        <div className="flex items-center justify-between text-2xs font-mono">
                           <span className="text-slate-300 truncate max-w-[110px]">{p.name}</span>
                           <span className="text-slate-200">
                             {val} · <span style={{ color: colors[idx] }}>{pct}p</span>{' '}
@@ -281,7 +281,7 @@ export const MultiPlayerComparisonChart: React.FC<MultiPlayerComparisonChartProp
                 <span className="font-semibold text-slate-200">{metric.label}</span>
                 {metric.leaderIndex !== null && (
                   <span
-                    className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700"
+                    className="text-2xs font-mono px-1.5 py-0.5 rounded-md bg-slate-900 border border-slate-700"
                     style={{ color: colors[metric.leaderIndex] }}
                   >
                     Leader: {players[metric.leaderIndex]?.name.split(' ').slice(-1)[0]}
@@ -293,7 +293,7 @@ export const MultiPlayerComparisonChart: React.FC<MultiPlayerComparisonChartProp
                   const val = metric.values[idx] ?? 10;
                   const widthPct = Math.round((val / 20) * 100);
                   return (
-                    <div key={p.id} className="flex items-center gap-2 text-[11px]">
+                    <div key={p.id} className="flex items-center gap-2 text-micro">
                       <span className="w-24 truncate text-slate-400">{p.name}</span>
                       <div className="flex-1 h-2 rounded-full bg-slate-800 overflow-hidden">
                         <div

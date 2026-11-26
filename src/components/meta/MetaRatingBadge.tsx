@@ -79,7 +79,7 @@ const MetaExplainer: React.FC<{
     <div className="space-y-3 text-slate-200">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">
+          <div className="text-micro font-bold uppercase tracking-wider text-emerald-400">
             Meta rating explained
           </div>
           <h3 className="text-sm font-bold text-white mt-0.5 break-words">
@@ -87,7 +87,7 @@ const MetaExplainer: React.FC<{
             {current.toFixed(1)} now
             {potential > current ? `, up to ${potential.toFixed(1)} at full potential` : ''}
           </h3>
-          <p className="text-[11px] text-slate-400 mt-0.5">
+          <p className="text-micro text-slate-400 mt-0.5">
             Tier {meta.tier}
             {meta.isGoalkeeper ? ' · goalkeeper weights' : ' · outfield weights'}
           </p>
@@ -105,22 +105,22 @@ const MetaExplainer: React.FC<{
       </div>
 
       <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-2.5">
-        <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-300">
+        <h4 className="text-micro font-bold uppercase tracking-wider text-slate-300">
           What the score measures
         </h4>
-        <p className="mt-1 text-[11px] leading-snug text-slate-300">
+        <p className="mt-1 text-micro leading-snug text-slate-300">
           A single 1 to 20 score for how much a player adds in the match
           engine. We weight the attributes that FM-Arena match testing rates as
           most influential, then average the result.
         </p>
-        <p className="mt-1.5 text-[11px] leading-snug text-slate-400">
+        <p className="mt-1.5 text-micro leading-snug text-slate-400">
           Outfield weights lead with pace (20.5), acceleration (20.4), jumping
           reach (11.6), dribbling (9.8) and balance (5.3). Keepers lead with
           reflexes (12.8), agility (8.0), acceleration (4.7), pace (3.5) and
           aerial reach (3.4).
         </p>
         {!meta.isGoalkeeper && topWeights.length > 0 && (
-          <ul className="mt-1.5 space-y-0.5 text-[11px] text-slate-400">
+          <ul className="mt-1.5 space-y-0.5 text-micro text-slate-400">
             {topWeights.map((entry) => (
               <li key={entry.key} className="flex items-center justify-between gap-2">
                 <span className="capitalize truncate">{entry.label}</span>
@@ -131,7 +131,7 @@ const MetaExplainer: React.FC<{
             ))}
           </ul>
         )}
-        <p className="mt-1.5 text-[11px] leading-snug text-slate-400">
+        <p className="mt-1.5 text-micro leading-snug text-slate-400">
           Pot is the ceiling if the player reaches full potential. We take the
           gap between current and potential ability stars, multiply by 1.15, and
           scale it by age: full uplift to 21, 65% to 24, then 25%. The result
@@ -140,10 +140,10 @@ const MetaExplainer: React.FC<{
       </section>
 
       <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-2.5">
-        <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-300">
+        <h4 className="text-micro font-bold uppercase tracking-wider text-slate-300">
           How it differs from other scores
         </h4>
-        <dl className="mt-1 space-y-1.5 text-[11px] leading-snug">
+        <dl className="mt-1 space-y-1.5 text-micro leading-snug">
           <div>
             <dt className="font-semibold text-sky-300">Best Fit %</dt>
             <dd className="text-slate-400">
@@ -165,16 +165,16 @@ const MetaExplainer: React.FC<{
       </section>
 
       <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-2.5">
-        <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-300">
+        <h4 className="text-micro font-bold uppercase tracking-wider text-slate-300">
           Tier legend
         </h4>
-        <ul className="mt-1 space-y-1 text-[11px]">
+        <ul className="mt-1 space-y-1 text-micro">
           {META_TIER_LEGEND.map((entry) => {
             const isCurrent = entry.tier === meta.tier;
             return (
               <li
                 key={entry.tier}
-                className={`flex items-center justify-between gap-2 rounded px-1.5 py-0.5 ${
+                className={`flex items-center justify-between gap-2 rounded-md px-1.5 py-0.5 ${
                   isCurrent ? 'bg-emerald-500/15 text-emerald-200' : 'text-slate-400'
                 }`}
               >
@@ -184,7 +184,7 @@ const MetaExplainer: React.FC<{
             );
           })}
         </ul>
-        <p className="mt-1.5 text-[11px] leading-snug text-slate-500">
+        <p className="mt-1.5 text-micro leading-snug text-slate-500">
           The weights follow public FM-Arena testing, so treat them as a guide
           rather than official Sports Interactive data. Meta and Pot stay the
           same whatever tactic you pick. Best Fit % and stars do not.
@@ -342,7 +342,7 @@ export const MetaRatingBadge: React.FC<MetaRatingBadgeProps> = ({
                 bodyClassName="p-4"
                 header={
                   <div className="min-w-0">
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-emerald-400">
+                    <div className="text-micro font-semibold uppercase tracking-wider text-emerald-400">
                       Meta rating
                     </div>
                     <h3 className="text-base font-bold text-white mt-0.5 break-words">

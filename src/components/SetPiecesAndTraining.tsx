@@ -64,7 +64,7 @@ const CATEGORY_STYLES: Record<
     label: 'Recovery',
   },
   rest: {
-    badge: 'border-slate-700 bg-slate-900/80 text-slate-400',
+    badge: 'border-slate-700 bg-slate-900/70 text-slate-400',
     dot: 'bg-slate-500',
     label: 'Rest',
   },
@@ -170,7 +170,7 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
                 <span className="font-semibold text-slate-900 dark:text-slate-100 truncate">
                   A{item.rank}. {item.name}
                 </span>
-                <span className="font-mono text-[11px] text-emerald-600 dark:text-emerald-400 shrink-0">
+                <span className="font-mono text-micro text-emerald-600 dark:text-emerald-400 shrink-0">
                   JR {item.jumpingReach} · Hdr {item.heading}
                 </span>
               </div>
@@ -191,7 +191,7 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
                 <span className="font-semibold text-slate-900 dark:text-slate-100 truncate">
                   {idx + 1}. {item.name}
                 </span>
-                <span className="font-mono text-[11px] text-slate-600 dark:text-slate-400 shrink-0">
+                <span className="font-mono text-micro text-slate-600 dark:text-slate-400 shrink-0">
                   Cor {item.corners} · Cro {item.crossing} · Tec{' '}
                   {item.technique}
                 </span>
@@ -213,7 +213,7 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
                 <span className="font-semibold text-slate-900 dark:text-slate-100 truncate">
                   {idx + 1}. {item.name}
                 </span>
-                <span className="font-mono text-[11px] text-slate-600 dark:text-slate-400 shrink-0">
+                <span className="font-mono text-micro text-slate-600 dark:text-slate-400 shrink-0">
                   Cor {item.corners} · Cro {item.crossing} · Tec{' '}
                   {item.technique}
                 </span>
@@ -235,7 +235,7 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
                 <span className="font-semibold text-slate-900 dark:text-slate-100 truncate">
                   D{idx + 1}. {item.name}
                 </span>
-                <span className="font-mono text-[11px] text-slate-600 dark:text-slate-400 shrink-0">
+                <span className="font-mono text-micro text-slate-600 dark:text-slate-400 shrink-0">
                   Pac {item.pace} · Acc {item.acceleration} · Tck{' '}
                   {item.tackling}
                 </span>
@@ -331,7 +331,7 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
                   {activeRoutine.assignments.map((a) => (
                     <tr
                       key={a.code}
-                      className="hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                      className="hover:bg-slate-50 dark:hover:bg-slate-800/70"
                     >
                       <td className="py-2.5 pr-4 font-mono font-bold text-emerald-700 dark:text-emerald-400">
                         {a.code}
@@ -409,14 +409,14 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
         )}
 
         {/* Intensity & Fatigue Summary Bar */}
-        <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3.5 space-y-2.5">
+        <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 space-y-2.5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-xs font-bold text-slate-200">
               <Activity className="h-4 w-4 text-emerald-400" />
               Weekly Intensity &amp; Fatigue Summary
             </div>
             <span
-              className={`rounded-md border px-2 py-0.5 text-[11px] font-semibold ${
+              className={`rounded-md border px-2 py-0.5 text-micro font-semibold ${
                 loadSummary.riskTier === 'Optimal / Low Injury Risk'
                   ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
                   : loadSummary.riskTier === 'Moderate Load'
@@ -441,7 +441,7 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
             />
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-micro text-slate-400">
             <div className="flex flex-wrap gap-3 font-mono">
               <span className="text-orange-300">High: {loadSummary.highCount}</span>
               <span className="text-sky-300">Med: {loadSummary.mediumCount}</span>
@@ -460,7 +460,7 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
                 key={day.dayShort}
                 type="button"
                 onClick={() => setSelectedMobileDay(idx)}
-                className={`min-h-[44px] min-w-0 rounded-lg px-0.5 py-2 text-center text-[11px] font-bold transition cursor-pointer ${
+                className={`min-h-[44px] min-w-0 rounded-lg px-0.5 py-2 text-center text-micro font-bold transition cursor-pointer ${
                   selectedMobileDay === idx
                     ? 'bg-emerald-500 text-slate-950'
                     : 'bg-slate-950 text-slate-400 border border-slate-800'
@@ -474,7 +474,7 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
           {(() => {
             const activeDay = activeWeeklyDays[selectedMobileDay] ?? activeWeeklyDays[0];
             return (
-              <div className="rounded-xl border border-slate-800 bg-slate-950/80 p-3.5 sm:p-4 space-y-3">
+              <div className="rounded-xl border border-slate-800 bg-slate-950/85 p-3.5 sm:p-4 space-y-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <div className="text-sm font-bold text-white">
@@ -482,7 +482,7 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
                       {activeDay.dateLabel ? ` · ${activeDay.dateLabel}` : ''}
                     </div>
                     {activeDay.fixtureContext && (
-                      <div className="text-[11px] text-emerald-400 mt-0.5">
+                      <div className="text-micro text-emerald-400 mt-0.5">
                         {activeDay.fixtureContext}
                       </div>
                     )}
@@ -525,7 +525,7 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
                         key={sIdx}
                         className={`rounded-lg border p-2.5 ${style.badge}`}
                       >
-                        <div className="flex items-center justify-between text-[10px] uppercase tracking-wider opacity-80">
+                        <div className="flex items-center justify-between text-2xs uppercase tracking-wider opacity-80">
                           <span>{slotTitle}</span>
                           <span>{style.label}</span>
                         </div>
@@ -538,7 +538,7 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
                 </div>
 
                 {activeDay.directive && (
-                  <p className="text-[11px] text-slate-400 border-t border-slate-800 pt-2">
+                  <p className="text-micro text-slate-400 border-t border-slate-800 pt-2">
                     {activeDay.directive}
                   </p>
                 )}
@@ -552,7 +552,7 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
           {activeWeeklyDays.map((day) => (
             <div
               key={day.dayShort}
-              className="rounded-xl border border-slate-800 bg-slate-950/70 p-2.5 flex flex-col gap-2"
+              className="rounded-xl border border-slate-800 bg-slate-950/60 p-2.5 flex flex-col gap-2"
             >
               <div className="border-b border-slate-800 pb-2">
                 <div className="flex items-center justify-between">
@@ -560,14 +560,14 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
                     {day.dayShort}
                   </span>
                   {day.dateLabel && (
-                    <span className="font-mono text-[10px] text-slate-400">
+                    <span className="font-mono text-2xs text-slate-400">
                       {day.dateLabel}
                     </span>
                   )}
                 </div>
                 {day.fixtureContext && (
                   <div
-                    className="text-[10px] text-emerald-400 truncate mt-0.5"
+                    className="text-2xs text-emerald-400 truncate mt-0.5"
                     title={day.fixtureContext}
                   >
                     {day.fixtureContext}
@@ -581,9 +581,9 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
                   return (
                     <div
                       key={sIdx}
-                      className={`rounded-lg border px-2 py-2 text-[11px] leading-snug ${style.badge}`}
+                      className={`rounded-lg border px-2 py-2 text-micro leading-snug ${style.badge}`}
                     >
-                      <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-wider opacity-80 mb-0.5">
+                      <div className="flex items-center gap-1.5 text-3xs uppercase tracking-wider opacity-80 mb-0.5">
                         <span className={`h-1.5 w-1.5 rounded-full ${style.dot}`} />
                         <span>{style.label}</span>
                       </div>
@@ -608,7 +608,7 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
               Target your weakest Tactical Effectiveness pillar each week to raise matchday execution.
             </p>
           </div>
-          <span className="text-[11px] font-mono text-emerald-700 dark:text-emerald-400">
+          <span className="text-micro font-mono text-emerald-700 dark:text-emerald-400">
             FM27 Patch 27.1.0
           </span>
         </div>
@@ -643,10 +643,10 @@ export const SetPiecesAndTraining: React.FC<SetPiecesAndTrainingProps> = ({
               <div className="text-xs font-semibold text-slate-900 dark:text-slate-100">
                 {item.pillar}
               </div>
-              <div className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+              <div className="text-micro font-medium text-emerald-700 dark:text-emerald-400">
                 {item.sessions}
               </div>
-              <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+              <p className="text-micro text-slate-600 dark:text-slate-400 leading-relaxed">
                 {item.cue}
               </p>
             </div>

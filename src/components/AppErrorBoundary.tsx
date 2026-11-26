@@ -133,7 +133,7 @@ export class AppErrorBoundary extends Component<
         </div>
 
         {this.state.errorMessage && (
-          <div className="rounded-xl border border-slate-800 bg-slate-950/90 px-3.5 py-2.5 font-mono text-[11px] text-rose-300 break-words">
+          <div className="rounded-xl border border-slate-800 bg-slate-950/85 px-3.5 py-2.5 font-mono text-micro text-rose-300 break-words">
             {this.state.errorMessage}
           </div>
         )}

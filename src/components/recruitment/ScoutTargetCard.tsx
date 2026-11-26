@@ -100,7 +100,7 @@ export const ScoutTargetCard: React.FC<ScoutTargetCardProps> = ({
           <h3 className="text-sm font-bold text-white truncate">
             {target.name}
           </h3>
-          <p className="text-[11px] text-slate-400 truncate">
+          <p className="text-micro text-slate-400 truncate">
             {formatAge(target.age)} yrs · {formatNation(target.nationality)} ·{' '}
             <span className="font-mono font-semibold text-emerald-300">
               {target.primaryPosition}
@@ -108,7 +108,7 @@ export const ScoutTargetCard: React.FC<ScoutTargetCardProps> = ({
           </p>
         </div>
         <span
-          className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-semibold border ${
+          className={`shrink-0 rounded-md px-2 py-0.5 text-2xs font-semibold border ${
             target.isFreeAgent
               ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
               : 'bg-amber-500/15 text-amber-300 border-amber-500/40'
@@ -120,20 +120,20 @@ export const ScoutTargetCard: React.FC<ScoutTargetCardProps> = ({
 
       {/* Complete 4-KPI Summary Grid (2×2 on phones, 4-across on sm+) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-        <div className="rounded-lg border border-slate-800 bg-slate-950/80 px-2 py-1.5 min-w-0">
-          <div className="text-[10px] uppercase tracking-wider text-slate-400 truncate">
+        <div className="rounded-lg border border-slate-800 bg-slate-950/85 px-2 py-1.5 min-w-0">
+          <div className="text-2xs uppercase tracking-wider text-slate-400 truncate">
             Club DNA
           </div>
           <div className="mt-0.5 text-xs font-mono font-bold text-emerald-300 tabular-nums truncate">
             {dna.overallDnaScore}/100{' '}
-            <span className="font-sans font-normal text-[10px] text-slate-400">
+            <span className="font-sans font-normal text-2xs text-slate-400">
               {dna.bestArchetypeShortLabel}
             </span>
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-800 bg-slate-950/80 px-2 py-1.5 min-w-0">
-          <div className="text-[10px] uppercase tracking-wider text-slate-400 truncate">
+        <div className="rounded-lg border border-slate-800 bg-slate-950/85 px-2 py-1.5 min-w-0">
+          <div className="text-2xs uppercase tracking-wider text-slate-400 truncate">
             Best Role Fit
           </div>
           <div className="mt-0.5 text-xs font-semibold text-sky-300 truncate">
@@ -141,8 +141,8 @@ export const ScoutTargetCard: React.FC<ScoutTargetCardProps> = ({
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-800 bg-slate-950/80 px-2 py-1.5 min-w-0">
-          <div className="text-[10px] uppercase tracking-wider text-slate-400 truncate">
+        <div className="rounded-lg border border-slate-800 bg-slate-950/85 px-2 py-1.5 min-w-0">
+          <div className="text-2xs uppercase tracking-wider text-slate-400 truncate">
             Wage / Deal
           </div>
           <div className="mt-0.5 text-xs font-mono font-semibold text-slate-200 tabular-nums truncate">
@@ -150,8 +150,8 @@ export const ScoutTargetCard: React.FC<ScoutTargetCardProps> = ({
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-800 bg-slate-950/80 px-2 py-1.5 min-w-0">
-          <div className="text-[10px] uppercase tracking-wider text-slate-400 truncate">
+        <div className="rounded-lg border border-slate-800 bg-slate-950/85 px-2 py-1.5 min-w-0">
+          <div className="text-2xs uppercase tracking-wider text-slate-400 truncate">
             3-Yr Cost
           </div>
           <div className="mt-0.5 text-xs font-mono font-semibold text-amber-300 tabular-nums truncate">
@@ -161,16 +161,16 @@ export const ScoutTargetCard: React.FC<ScoutTargetCardProps> = ({
       </div>
 
       {/* Archetype + Trial + Scout Badges */}
-      <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+      <div className="flex flex-wrap items-center gap-1.5 text-micro">
         <span
-          className={`rounded border px-2 py-0.5 font-semibold ${archetypeBadgeClass(
+          className={`rounded-md border px-2 py-0.5 font-semibold ${archetypeBadgeClass(
             archetype.badgeTone
           )}`}
         >
           {archetype.name} · {archetype.score}%
         </span>
         {contractDisplay.trialBadge && (
-          <span className="rounded bg-teal-500/15 border border-teal-500/40 px-2 py-0.5 text-[10px] font-bold text-teal-300">
+          <span className="rounded-md bg-teal-500/15 border border-teal-500/40 px-2 py-0.5 text-2xs font-bold text-teal-300">
             {contractDisplay.trialBadge}
           </span>
         )}
@@ -178,7 +178,7 @@ export const ScoutTargetCard: React.FC<ScoutTargetCardProps> = ({
           target.scoutBadges.map((badge) => (
             <span
               key={badge}
-              className="rounded bg-indigo-500/15 border border-indigo-500/30 px-1.5 py-0.5 text-[10px] text-indigo-300"
+              className="rounded-md bg-indigo-500/15 border border-indigo-500/30 px-1.5 py-0.5 text-2xs text-indigo-300"
             >
               {badge}
             </span>
@@ -190,9 +190,9 @@ export const ScoutTargetCard: React.FC<ScoutTargetCardProps> = ({
         {relevantAttributes.map((attrChip) => (
           <div
             key={attrChip.label}
-            className="rounded-lg bg-slate-950/80 border border-slate-800 px-1.5 py-1.5 min-w-0"
+            className="rounded-lg bg-slate-950/85 border border-slate-800 px-1.5 py-1.5 min-w-0"
           >
-            <div className="text-[9px] uppercase tracking-wider text-slate-400 truncate">
+            <div className="text-3xs uppercase tracking-wider text-slate-400 truncate">
               {attrChip.label}
             </div>
             <div
@@ -211,15 +211,15 @@ export const ScoutTargetCard: React.FC<ScoutTargetCardProps> = ({
       </div>
 
       {/* Inline FM27 Scout Card Verdict Strip (readable 2 lines on mobile) */}
-      <div className="rounded-lg border border-slate-800/90 bg-slate-950/75 px-2.5 py-2 text-[11px] space-y-1">
+      <div className="rounded-lg border border-slate-800/90 bg-slate-950/60 px-2.5 py-2 text-micro space-y-1">
         <div className="line-clamp-2 text-slate-300 leading-snug">
           <strong className={toneCls}>{intel.verdictLabel}</strong>
           <span className="text-slate-500"> · </span>
           <span>{intel.inlineRationale}</span>
         </div>
-        <div className="flex items-center justify-between gap-2 text-[10px] font-mono text-slate-400">
+        <div className="flex items-center justify-between gap-2 text-2xs font-mono text-slate-400">
           {depth.isGenuineGap ? (
-            <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-sans font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+            <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-sans font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40">
               {depth.label}
             </span>
           ) : (
@@ -237,10 +237,10 @@ export const ScoutTargetCard: React.FC<ScoutTargetCardProps> = ({
             e.stopPropagation();
             handleToggleCompareTray(target);
           }}
-          className={`min-h-[44px] sm:min-h-[32px] inline-flex items-center justify-center gap-1 rounded-lg border px-2 py-1.5 sm:py-1 text-[11px] font-semibold transition cursor-pointer ${
+          className={`min-h-[44px] sm:min-h-[32px] inline-flex items-center justify-center gap-1 rounded-lg border px-2 py-1.5 sm:py-1 text-micro font-semibold transition cursor-pointer ${
             inCompareTray
               ? 'bg-amber-500/25 border-amber-400/60 text-amber-200'
-              : 'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700 text-slate-300'
+              : 'bg-slate-800/70 hover:bg-slate-700/80 border-slate-700 text-slate-300'
           }`}
           title="Add to 3-player comparison tray"
         >
@@ -252,7 +252,7 @@ export const ScoutTargetCard: React.FC<ScoutTargetCardProps> = ({
             e.stopPropagation();
             setCompareTarget(target);
           }}
-          className="min-h-[44px] sm:min-h-[32px] inline-flex items-center justify-center gap-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/35 px-2 py-1.5 sm:py-1 text-[11px] font-semibold text-sky-300 transition cursor-pointer"
+          className="min-h-[44px] sm:min-h-[32px] inline-flex items-center justify-center gap-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/35 px-2 py-1.5 sm:py-1 text-micro font-semibold text-sky-300 transition cursor-pointer"
         >
           <GitCompare className="h-3.5 w-3.5 sm:h-3 sm:w-3 shrink-0" />
           <span>Compare</span>
@@ -263,7 +263,7 @@ export const ScoutTargetCard: React.FC<ScoutTargetCardProps> = ({
             e.stopPropagation();
             handleToggleTrack(target);
           }}
-          className={`min-h-[44px] sm:min-h-[32px] inline-flex items-center justify-center rounded-lg border px-2.5 py-1.5 sm:py-1 text-[11px] font-semibold transition cursor-pointer ${
+          className={`min-h-[44px] sm:min-h-[32px] inline-flex items-center justify-center rounded-lg border px-2.5 py-1.5 sm:py-1 text-micro font-semibold transition cursor-pointer ${
             isTracked
               ? 'bg-emerald-500/25 hover:bg-emerald-500/35 border-emerald-400/60 text-emerald-200'
               : 'bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/30 text-emerald-300'

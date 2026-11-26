@@ -141,7 +141,7 @@ export const AttributeRadarChart: React.FC<AttributeRadarChartProps> = ({
                 y={ly}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                className={`text-[10.5px] font-semibold ${
+                className={`text-2xs font-semibold ${
                   isSelected ? 'fill-white' : 'fill-slate-300'
                 }`}
               >
@@ -152,7 +152,7 @@ export const AttributeRadarChart: React.FC<AttributeRadarChartProps> = ({
                 y={ly + 12}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                className="fill-emerald-400 text-[9.5px] font-mono tabular-nums"
+                className="fill-emerald-400 text-3xs font-mono tabular-nums"
               >
                 {pVal}
                 {comparePlayer
@@ -237,7 +237,7 @@ export const AttributeRadarChart: React.FC<AttributeRadarChartProps> = ({
           : null;
         const delta = p2Val !== null ? p1Val - p2Val : null;
         return (
-          <div className="mt-2 w-full rounded-lg border border-emerald-500/30 bg-slate-950/85 px-3 py-2 text-[11px] flex flex-wrap items-center justify-between gap-2">
+          <div className="mt-2 w-full rounded-lg border border-emerald-500/30 bg-slate-950/85 px-3 py-2 text-micro flex flex-wrap items-center justify-between gap-2">
             <span className="font-semibold text-white">{activeAxis.label}</span>
             <span className="font-mono tabular-nums text-emerald-300">
               {p1Val}/20
@@ -263,7 +263,7 @@ export const AttributeRadarChart: React.FC<AttributeRadarChartProps> = ({
           </div>
         );
       })() : (
-        <div className="mt-2 flex flex-wrap items-center justify-center gap-3 text-[11px]">
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-3 text-micro">
           <span className="inline-flex items-center gap-1.5 text-emerald-300 font-semibold">
             <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
             {player.name} ({player.position})
@@ -453,13 +453,13 @@ export const RolePercentilePizzaChart: React.FC<RolePercentilePizzaChartProps> =
         <div className="text-xs font-bold text-slate-200">
           Position Attribute Profile ({player.position})
         </div>
-        <div className="text-[10px] text-slate-400">
+        <div className="text-2xs text-slate-400">
           {useSquadBaseline
             ? `Compared against your ${squadPlayers.length}-player squad`
             : 'Compared against division baseline'}
         </div>
         {(ipRoleName || oopRoleName) && (
-          <div className="text-[11px] text-slate-400 mt-0.5">
+          <div className="text-micro text-slate-400 mt-0.5">
             IP: <span className="text-emerald-300 font-semibold">{ipRoleName || '--'}</span>
             {' · '}OOP:{' '}
             <span className="text-sky-300 font-semibold">{oopRoleName || '--'}</span>
@@ -537,7 +537,7 @@ export const RolePercentilePizzaChart: React.FC<RolePercentilePizzaChartProps> =
                 y={ly - 4}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                className={`text-[9.5px] font-semibold ${
+                className={`text-3xs font-semibold ${
                   isSelected || isRoleKey ? 'fill-white font-bold' : 'fill-slate-300'
                 }`}
               >
@@ -548,7 +548,7 @@ export const RolePercentilePizzaChart: React.FC<RolePercentilePizzaChartProps> =
                 y={ly + 6}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                className="fill-emerald-300 text-[8.5px] font-mono tabular-nums"
+                className="fill-emerald-300 text-3xs font-mono tabular-nums"
               >
                 {rawVal} ({pct}p)
               </text>
@@ -565,10 +565,10 @@ export const RolePercentilePizzaChart: React.FC<RolePercentilePizzaChartProps> =
         const normKey = String(activeSlice.key).toLowerCase().replace(/[^a-z]/g, '');
         const isRoleKey = highlightedPrimaryKeys?.has(normKey) ?? false;
         return (
-          <div className="w-full rounded-lg border border-emerald-500/30 bg-slate-950/85 px-3 py-2 text-[11px] flex flex-wrap items-center justify-between gap-2">
+          <div className="w-full rounded-lg border border-emerald-500/30 bg-slate-950/85 px-3 py-2 text-micro flex flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
               <span className="font-semibold text-white">{activeSlice.label}</span>
-              <span className="ml-1.5 text-[10px] text-slate-400">
+              <span className="ml-1.5 text-2xs text-slate-400">
                 ({activeSlice.category}{isRoleKey ? ' · Key Role Attr' : ''})
               </span>
             </div>
@@ -579,21 +579,21 @@ export const RolePercentilePizzaChart: React.FC<RolePercentilePizzaChartProps> =
         );
       })() : (
         <>
-          <div className="flex flex-wrap items-center justify-center gap-3 text-[10px] text-slate-400">
+          <div className="flex flex-wrap items-center justify-center gap-3 text-2xs text-slate-400">
             <span className="inline-flex items-center gap-1">
-              <span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" /> Physical
+              <span className="h-2.5 w-2.5 rounded-md bg-emerald-500" /> Physical
             </span>
             <span className="inline-flex items-center gap-1">
-              <span className="h-2.5 w-2.5 rounded-sm bg-sky-500" /> Technical / GK
+              <span className="h-2.5 w-2.5 rounded-md bg-sky-500" /> Technical / GK
             </span>
             <span className="inline-flex items-center gap-1">
-              <span className="h-2.5 w-2.5 rounded-sm bg-amber-500" /> Mental
+              <span className="h-2.5 w-2.5 rounded-md bg-amber-500" /> Mental
             </span>
             <span className="inline-flex items-center gap-1 text-slate-300">
-              <span className="h-2.5 w-2.5 rounded-sm border border-white bg-slate-700" /> White rim = Key for Role
+              <span className="h-2.5 w-2.5 rounded-md border border-white bg-slate-700" /> White rim = Key for Role
             </span>
           </div>
-          <p className="text-[10px] text-slate-500 text-center max-w-xs">
+          <p className="text-2xs text-slate-500 text-center max-w-xs">
             Tap any slice to inspect. E.g. <span className="font-mono text-slate-300">85p</span> means higher than 85% of {useSquadBaseline ? 'your squad' : 'the division baseline'}.
           </p>
         </>
@@ -618,7 +618,7 @@ export const PlayerProgressionSparkline: React.FC<PlayerProgressionSparklineProp
 
   if (points.length < 2) {
     return (
-      <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3 text-xs text-slate-400">
+      <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-400">
         Save at least 2 `.fm` snapshots over time to unlock {playerName}&apos;s progression timeline (star rating &amp; attribute delta).
       </div>
     );
@@ -655,7 +655,7 @@ export const PlayerProgressionSparkline: React.FC<PlayerProgressionSparklineProp
         <span className="font-semibold text-slate-200">
           Progression Timeline ({points.length} saves)
         </span>
-        <div className="flex items-center gap-2 font-mono text-[11px] tabular-nums">
+        <div className="flex items-center gap-2 font-mono text-micro tabular-nums">
           <span
             className={
               activePoint.netDeltaFromStart >= 0 ? 'text-emerald-400' : 'text-rose-400'
@@ -716,7 +716,7 @@ export const PlayerProgressionSparkline: React.FC<PlayerProgressionSparklineProp
         })}
       </svg>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-mono text-slate-400">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-2xs font-mono text-slate-400">
         <span>{first.saveDate}</span>
         <span className="text-slate-200">
           {activePoint.saveDate} · Avg Core {activePoint.avgCoreAttr.toFixed(1)}
@@ -778,7 +778,7 @@ export const PercentilePizzaChart: React.FC<PercentilePizzaChartProps> = ({
           Position Percentile Profile
         </div>
         {subtitle && (
-          <div className="text-[11px] text-slate-400 mt-0.5">{subtitle}</div>
+          <div className="text-micro text-slate-400 mt-0.5">{subtitle}</div>
         )}
       </div>
 
@@ -840,7 +840,7 @@ export const PercentilePizzaChart: React.FC<PercentilePizzaChartProps> = ({
                 y={ly - 4}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                className={`text-[9.5px] font-semibold ${
+                className={`text-3xs font-semibold ${
                   isSelected ? 'fill-white' : 'fill-slate-300'
                 }`}
               >
@@ -851,7 +851,7 @@ export const PercentilePizzaChart: React.FC<PercentilePizzaChartProps> = ({
                 y={ly + 7}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                className="fill-emerald-300 text-[8.5px] font-mono tabular-nums"
+                className="fill-emerald-300 text-3xs font-mono tabular-nums"
               >
                 {slice.value} ({slice.percentile}p)
               </text>
@@ -861,7 +861,7 @@ export const PercentilePizzaChart: React.FC<PercentilePizzaChartProps> = ({
       </svg>
 
       {activeSlice ? (
-        <div className="w-full rounded-lg border border-emerald-500/30 bg-slate-950/85 px-3 py-2 text-[11px] flex flex-wrap items-center justify-between gap-2">
+        <div className="w-full rounded-lg border border-emerald-500/30 bg-slate-950/85 px-3 py-2 text-micro flex flex-wrap items-center justify-between gap-2">
           <span className="font-semibold text-slate-100">{activeSlice.label}</span>
           <span className="font-mono tabular-nums text-emerald-300">
             {activeSlice.value}/20 · {activeSlice.percentile}th pct
@@ -871,15 +871,15 @@ export const PercentilePizzaChart: React.FC<PercentilePizzaChartProps> = ({
           </span>
         </div>
       ) : (
-        <div className="flex flex-wrap items-center justify-center gap-3 text-[10px] text-slate-400">
+        <div className="flex flex-wrap items-center justify-center gap-3 text-2xs text-slate-400">
           <span className="inline-flex items-center gap-1">
-            <span className="h-2 w-2 rounded-sm bg-emerald-500" /> Physical
+            <span className="h-2 w-2 rounded-md bg-emerald-500" /> Physical
           </span>
           <span className="inline-flex items-center gap-1">
-            <span className="h-2 w-2 rounded-sm bg-sky-500" /> Technical / GK
+            <span className="h-2 w-2 rounded-md bg-sky-500" /> Technical / GK
           </span>
           <span className="inline-flex items-center gap-1">
-            <span className="h-2 w-2 rounded-sm bg-amber-500" /> Mental
+            <span className="h-2 w-2 rounded-md bg-amber-500" /> Mental
           </span>
         </div>
       )}

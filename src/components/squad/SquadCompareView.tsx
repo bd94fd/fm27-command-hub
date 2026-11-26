@@ -30,7 +30,7 @@ export const SquadCompareView: React.FC<SquadCompareViewProps> = ({
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="min-w-0">
-              <label className="block text-[11px] font-semibold uppercase tracking-wider text-emerald-400 mb-1">
+              <label className="block text-micro font-semibold uppercase tracking-wider text-emerald-400 mb-1">
                 Player A (Emerald)
               </label>
               <select
@@ -47,7 +47,7 @@ export const SquadCompareView: React.FC<SquadCompareViewProps> = ({
               </select>
             </div>
             <div className="min-w-0">
-              <label className="block text-[11px] font-semibold uppercase tracking-wider text-sky-400 mb-1">
+              <label className="block text-micro font-semibold uppercase tracking-wider text-sky-400 mb-1">
                 Player B (Sky Blue)
               </label>
               <select

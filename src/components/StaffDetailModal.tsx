@@ -198,7 +198,7 @@ export const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
               return (
                 <div
                   key={key}
-                  className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/60 px-2.5 py-1.5"
+                  className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/70 px-2.5 py-1.5"
                 >
                   <span className="text-slate-300">{label}</span>
                   <span

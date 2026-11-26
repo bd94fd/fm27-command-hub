@@ -200,7 +200,7 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
         <div className="px-4 pb-3 border-b border-slate-800 flex items-center justify-between gap-3 shrink-0">
           <div className="min-w-0">
             <h2 className="text-base font-bold text-white truncate">More</h2>
-            <p className="text-[11px] text-slate-400 truncate">
+            <p className="text-micro text-slate-400 truncate">
               {hasLoadedSave
                 ? `${clubName}${saveDate && saveDate !== '--' ? ` · ${saveDate}` : ''}`
                 : 'Awaiting .fm Save'}
@@ -225,7 +225,7 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
         >
           {/* 1. Secondary Club Sections */}
           <section aria-label="More club sections" className="space-y-2">
-            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 px-1">
+            <h3 className="text-micro font-semibold uppercase tracking-wider text-slate-400 px-1">
               Club Sections
             </h3>
             <div className="space-y-2">
@@ -242,19 +242,19 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
                 }`}
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <span className="w-9 h-9 rounded-lg bg-slate-900/80 border border-slate-700/70 flex items-center justify-center shrink-0">
+                  <span className="w-9 h-9 rounded-lg bg-slate-900/70 border border-slate-700/70 flex items-center justify-center shrink-0">
                     <Trophy className="w-4 h-4 text-emerald-400" />
                   </span>
                   <div className="min-w-0">
                     <div className="text-sm font-semibold truncate">Matches</div>
-                    <div className="text-[11px] text-slate-400 truncate">
+                    <div className="text-micro text-slate-400 truncate">
                       Results, form &amp; post-match tactical debriefs
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   {matchesCount > 0 && (
-                    <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-900 text-emerald-300 border border-slate-700">
+                    <span className="px-2 py-0.5 rounded-full text-micro font-semibold bg-slate-900 text-emerald-300 border border-slate-700">
                       {matchesCount}
                     </span>
                   )}
@@ -275,19 +275,19 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
                 }`}
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <span className="w-9 h-9 rounded-lg bg-slate-900/80 border border-slate-700/70 flex items-center justify-center shrink-0">
+                  <span className="w-9 h-9 rounded-lg bg-slate-900/70 border border-slate-700/70 flex items-center justify-center shrink-0">
                     <UserCheck className="w-4 h-4 text-emerald-400" />
                   </span>
                   <div className="min-w-0">
                     <div className="text-sm font-semibold truncate">Staff</div>
-                    <div className="text-[11px] text-slate-400 truncate">
+                    <div className="text-micro text-slate-400 truncate">
                       Backroom coaching, medical &amp; scouting ratings
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   {staffCount > 0 && (
-                    <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-900 text-emerald-300 border border-slate-700">
+                    <span className="px-2 py-0.5 rounded-full text-micro font-semibold bg-slate-900 text-emerald-300 border border-slate-700">
                       {staffCount}
                     </span>
                   )}
@@ -309,7 +309,7 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
                   </span>
                   <div className="min-w-0">
                     <div className="text-sm font-semibold truncate">FM27 Knowledge Base</div>
-                    <div className="text-[11px] text-slate-400 truncate">
+                    <div className="text-micro text-slate-400 truncate">
                       Patch 27.1.0 IP/OOP roles &amp; Playbook v2.0
                     </div>
                   </div>
@@ -321,10 +321,10 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
 
           {/* 2. Local Cache Status */}
           <section aria-label="Local cache status" className="space-y-2">
-            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 px-1">
+            <h3 className="text-micro font-semibold uppercase tracking-wider text-slate-400 px-1">
               Local Cache Status
             </h3>
-            <div className="rounded-xl border border-slate-700/80 bg-slate-950/70 p-3.5 space-y-2.5">
+            <div className="rounded-xl border border-slate-700/80 bg-slate-950/60 p-3.5 space-y-2.5">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0">
                   <Database className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -333,7 +333,7 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
                   </span>
                 </div>
                 <span
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0 border ${
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-semibold shrink-0 border ${
                     isOnline
                       ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
                       : 'bg-amber-500/15 text-amber-200 border-amber-500/35'
@@ -351,33 +351,33 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
                 </span>
               </div>
 
-              <p className="text-[11px] text-slate-300 leading-snug">
+              <p className="text-micro text-slate-300 leading-snug">
                 {cacheSummary.subline}
               </p>
 
-              <div className="grid grid-cols-2 gap-2 text-[11px]">
+              <div className="grid grid-cols-2 gap-2 text-micro">
                 <div className="rounded-lg bg-slate-900 border border-slate-800 px-2.5 py-2 min-w-0">
-                  <div className="text-slate-400 text-[10px]">Cached Saves</div>
+                  <div className="text-slate-400 text-2xs">Cached Saves</div>
                   <div className="font-semibold text-slate-100 truncate mt-0.5">
                     {loadingCache ? 'Checking…' : cacheSummary.savesLabel}
                   </div>
                 </div>
                 <div className="rounded-lg bg-slate-900 border border-slate-800 px-2.5 py-2 min-w-0">
-                  <div className="text-slate-400 text-[10px]">Save Journey</div>
+                  <div className="text-slate-400 text-2xs">Save Journey</div>
                   <div className="font-semibold text-slate-100 truncate mt-0.5">
                     {loadingCache ? 'Checking…' : cacheSummary.snapshotsLabel}
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-2 text-[11px] text-slate-400 pt-0.5 border-t border-slate-800/80">
+              <div className="flex items-center justify-between gap-2 text-micro text-slate-400 pt-0.5 border-t border-slate-800/80">
                 <span>Phone Storage</span>
                 <span className="font-mono text-slate-200 truncate">
                   {loadingCache ? 'Checking…' : cacheSummary.storageLabel}
                 </span>
               </div>
 
-              <p className="text-[11px] text-slate-400 leading-snug">
+              <p className="text-micro text-slate-400 leading-snug">
                 {cacheSummary.offlineNote}
               </p>
             </div>
@@ -385,7 +385,7 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
 
           {/* 3. App & Data Tools (Install, Update, Backup/Restore, Reset) */}
           <section aria-label="App and data tools" className="space-y-2">
-            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 px-1">
+            <h3 className="text-micro font-semibold uppercase tracking-wider text-slate-400 px-1">
               App &amp; Data
             </h3>
             <div className="space-y-2">
@@ -401,7 +401,7 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
                   <RefreshCw className="w-4 h-4 text-emerald-300 shrink-0" />
                   <div className="min-w-0">
                     <div className="text-sm font-semibold">Apply App Update</div>
-                    <div className="text-[11px] text-emerald-200/80">
+                    <div className="text-micro text-emerald-200/80">
                       Refresh now to load the newest version safely
                     </div>
                   </div>
@@ -414,7 +414,7 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                   <div className="min-w-0">
                     <div className="text-sm font-semibold">Installed as App</div>
-                    <div className="text-[11px] text-slate-400">
+                    <div className="text-micro text-slate-400">
                       Running full-screen on your device with offline caching
                     </div>
                   </div>
@@ -432,7 +432,7 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
                     <Smartphone className="w-4 h-4 text-sky-300 shrink-0" />
                     <div className="min-w-0">
                       <div className="text-sm font-semibold">Install App</div>
-                      <div className="text-[11px] text-sky-200/80">
+                      <div className="text-micro text-sky-200/80">
                         Opens full-screen with home-screen shortcuts &amp; offline mode
                       </div>
                     </div>
@@ -440,7 +440,7 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
                   <ChevronRight className="w-4 h-4 text-sky-300 shrink-0" />
                 </button>
               ) : (
-                <div className="w-full min-h-[48px] px-3.5 py-2.5 rounded-xl border border-slate-700/80 bg-slate-800/50 text-slate-200 flex items-center gap-3">
+                <div className="w-full min-h-[48px] px-3.5 py-2.5 rounded-xl border border-slate-700/80 bg-slate-800/70 text-slate-200 flex items-center gap-3">
                   {isIosSafari ? (
                     <Share className="w-4 h-4 text-sky-400 shrink-0" />
                   ) : (
@@ -448,7 +448,7 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
                   )}
                   <div className="min-w-0">
                     <div className="text-sm font-semibold">Install App</div>
-                    <div className="text-[11px] text-slate-400">
+                    <div className="text-micro text-slate-400">
                       {isIosSafari
                         ? 'Tap Share in Safari, then choose "Add to Home Screen"'
                         : 'Open Chrome’s ⋮ menu and tap "Install app" or "Add to Home screen"'}
@@ -470,7 +470,7 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
                   <Download className="w-4 h-4 text-emerald-400 shrink-0" />
                   <div className="min-w-0">
                     <div className="text-sm font-semibold">Export JSON Backup</div>
-                    <div className="text-[11px] text-slate-400">
+                    <div className="text-micro text-slate-400">
                       Save a portable snapshot of your squad &amp; shortlist
                     </div>
                   </div>
@@ -489,7 +489,7 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
                 <Upload className="w-4 h-4 text-sky-400 shrink-0" />
                 <div className="min-w-0">
                   <div className="text-sm font-semibold">Restore from Backup</div>
-                  <div className="text-[11px] text-slate-400">
+                  <div className="text-micro text-slate-400">
                     Import a previously exported .json campaign backup
                   </div>
                 </div>
@@ -503,7 +503,7 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
                   className={`w-full min-h-[48px] px-3.5 py-2.5 rounded-xl border flex items-center gap-3 text-left transition-colors cursor-pointer ${
                     confirmResetPending
                       ? 'border-rose-500/70 bg-rose-950/80 text-rose-100'
-                      : 'border-slate-700/80 bg-slate-800/60 hover:bg-rose-950/35 hover:border-rose-800/50 text-slate-200'
+                      : 'border-slate-700/80 bg-slate-800/70 hover:bg-rose-950/35 hover:border-rose-800/50 text-slate-200'
                   }`}
                 >
                   <Trash2
@@ -518,7 +518,7 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
                         : 'Reset Local Memory'}
                     </div>
                     <div
-                      className={`text-[11px] ${
+                      className={`text-micro ${
                         confirmResetPending ? 'text-rose-200/90' : 'text-slate-400'
                       }`}
                     >

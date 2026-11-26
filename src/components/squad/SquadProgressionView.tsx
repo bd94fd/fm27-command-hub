@@ -137,47 +137,47 @@ export const SquadProgressionView: React.FC<SquadProgressionViewProps> = ({
               <div className="space-y-4">
                 {/* Compact Progression KPI Strip */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 p-3">
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 p-3">
+                    <div className="text-micro text-slate-500 dark:text-slate-400">
                       Players Developing
                     </div>
                     <div className="text-base font-bold font-mono tabular-nums text-emerald-500 mt-0.5">
                       {netPositivePlayers} / {totalPlayersChanged}
                     </div>
-                    <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    <div className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
                       Net positive attribute shift
                     </div>
                   </div>
-                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 p-3">
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 p-3">
+                    <div className="text-micro text-slate-500 dark:text-slate-400">
                       Major Shifts (|&Delta;| &ge; 2)
                     </div>
                     <div className="text-base font-bold font-mono tabular-nums text-sky-400 mt-0.5">
                       {progressionDiff.majorShiftsCount}
                     </div>
-                    <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    <div className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
                       High-impact growth/decline
                     </div>
                   </div>
-                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 p-3">
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 p-3">
+                    <div className="text-micro text-slate-500 dark:text-slate-400">
                       Mentoring Det Jumps
                     </div>
                     <div className="text-base font-bold font-mono tabular-nums text-amber-400 mt-0.5">
                       {progressionDiff.mentoringDeterminationJumps.length}
                     </div>
-                    <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    <div className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
                       Determination +2 or higher
                     </div>
                   </div>
-                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 p-3">
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 p-3">
+                    <div className="text-micro text-slate-500 dark:text-slate-400">
                       Noise Filtered Out
                     </div>
                     <div className="text-base font-bold font-mono tabular-nums text-slate-300 mt-0.5">
                       {progressionDiff.filteredIrrelevantCount}
                     </div>
-                    <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    <div className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
                       Irrelevant GK/outfield stats
                     </div>
                   </div>
@@ -292,7 +292,7 @@ export const SquadProgressionView: React.FC<SquadProgressionViewProps> = ({
                       return (
                         <div
                           key={summary.uid}
-                          className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/75 p-3.5 space-y-2.5"
+                          className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/70 p-3.5 space-y-2.5"
                         >
                           <div className="flex flex-wrap items-start justify-between gap-2">
                             <button
@@ -310,7 +310,7 @@ export const SquadProgressionView: React.FC<SquadProgressionViewProps> = ({
                               <div className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-emerald-400 transition break-words">
                                 {summary.playerName}
                               </div>
-                              <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">
+                              <div className="text-micro font-mono text-slate-500 dark:text-slate-400 mt-0.5">
                                 {summary.position} · Age {formatAge(summary.age)}
                                 {summary.majorCount > 0
                                   ? ` · ${summary.majorCount} major shift${summary.majorCount === 1 ? '' : 's'}`
@@ -341,7 +341,7 @@ export const SquadProgressionView: React.FC<SquadProgressionViewProps> = ({
                               return (
                                 <span
                                   key={`${summary.uid}-${d.attributeName}`}
-                                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] ${
+                                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-micro ${
                                     isRise
                                       ? isMajor
                                         ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-200 font-semibold'
@@ -370,7 +370,7 @@ export const SquadProgressionView: React.FC<SquadProgressionViewProps> = ({
                                   [summary.uid]: true,
                                 }))
                               }
-                              className="text-[11px] font-medium text-slate-400 hover:text-emerald-300 cursor-pointer"
+                              className="text-micro font-medium text-slate-400 hover:text-emerald-300 cursor-pointer"
                             >
                               + Show {hiddenMinorCount} minor &plusmn;1 shift
                               {hiddenMinorCount === 1 ? '' : 's'}
@@ -387,7 +387,7 @@ export const SquadProgressionView: React.FC<SquadProgressionViewProps> = ({
                                     [summary.uid]: false,
                                   }))
                                 }
-                                className="text-[11px] font-medium text-slate-400 hover:text-slate-200 cursor-pointer"
+                                className="text-micro font-medium text-slate-400 hover:text-slate-200 cursor-pointer"
                               >
                                 Hide minor &plusmn;1 shifts
                               </button>
@@ -408,7 +408,7 @@ export const SquadProgressionView: React.FC<SquadProgressionViewProps> = ({
                 <h3 className="text-xs font-bold uppercase tracking-wider text-sky-400">
                   Youth Intake &amp; Newgen Radar (Ranked by Stars · Club DNA Fit % · Physical Score)
                 </h3>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                <p className="text-micro text-slate-500 dark:text-slate-400">
                   Brand-new player UIDs since {progressionDiff.baselineSaveDate} — strictly zero raw CA/PA.
                 </p>
               </div>
@@ -433,7 +433,7 @@ export const SquadProgressionView: React.FC<SquadProgressionViewProps> = ({
                       className={`text-left rounded-xl p-2.5 text-xs border transition ${
                         n.isYouthIntakeHighlight
                           ? 'bg-sky-500/10 text-sky-200 border-sky-500/40 hover:border-sky-400'
-                          : 'bg-slate-800/50 text-slate-300 border-slate-700 hover:border-slate-600'
+                          : 'bg-slate-800/70 text-slate-300 border-slate-700 hover:border-slate-600'
                       } ${matchedPlayer && onSelectPlayer ? 'cursor-pointer' : ''}`}
                     >
                       <div className="flex items-center justify-between gap-1.5">
@@ -441,12 +441,12 @@ export const SquadProgressionView: React.FC<SquadProgressionViewProps> = ({
                           #{idx + 1} {n.playerName}
                         </span>
                         {n.isYouthIntakeHighlight && (
-                          <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-sky-500/30 text-sky-100 shrink-0">
+                          <span className="px-1.5 py-0.5 text-2xs font-bold rounded-md bg-sky-500/30 text-sky-100 shrink-0">
                             U18 INTAKE
                           </span>
                         )}
                       </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-mono">
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-micro font-mono">
                         <span className="text-slate-300">
                           {n.position} · Age {formatAge(n.age)}
                         </span>
@@ -454,11 +454,11 @@ export const SquadProgressionView: React.FC<SquadProgressionViewProps> = ({
                           {n.abilityStars.toFixed(1)}★/{n.potentialStars.toFixed(1)}★
                         </span>
                       </div>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px] font-mono">
-                        <span className="rounded bg-emerald-500/15 border border-emerald-500/35 px-1.5 py-0.5 text-emerald-300 font-semibold">
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-2xs font-mono">
+                        <span className="rounded-md bg-emerald-500/15 border border-emerald-500/35 px-1.5 py-0.5 text-emerald-300 font-semibold">
                           DNA Fit {n.clubDnaFitPct}% ({n.bestArchetypeShortLabel})
                         </span>
-                        <span className="rounded bg-indigo-500/15 border border-indigo-500/35 px-1.5 py-0.5 text-indigo-300">
+                        <span className="rounded-md bg-indigo-500/15 border border-indigo-500/35 px-1.5 py-0.5 text-indigo-300">
                           Phys {n.physicalEngineScore}/100
                         </span>
                         <span className="text-slate-400">

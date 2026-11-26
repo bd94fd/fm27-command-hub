@@ -136,7 +136,7 @@ export const KnowledgeBasePanel: React.FC<KnowledgeBasePanelProps> = ({
               className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold border transition cursor-pointer ${
                 drawerTab === 'mechanics'
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                  : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
+                  : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:text-slate-200'
               }`}
             >
               <ShieldCheck className="h-3.5 w-3.5" />
@@ -148,7 +148,7 @@ export const KnowledgeBasePanel: React.FC<KnowledgeBasePanelProps> = ({
               className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold border transition cursor-pointer ${
                 drawerTab === 'roles'
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                  : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
+                  : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:text-slate-200'
               }`}
             >
               <Compass className="h-3.5 w-3.5" />
@@ -177,10 +177,10 @@ export const KnowledgeBasePanel: React.FC<KnowledgeBasePanelProps> = ({
                     <button
                       key={cat}
                       onClick={() => setSelectedCategory(cat)}
-                      className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition cursor-pointer ${
+                      className={`rounded-lg px-2.5 py-1 text-micro font-medium transition cursor-pointer ${
                         selectedCategory === cat
                           ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                          : 'bg-slate-800/80 text-slate-400 border border-slate-700/60 hover:text-slate-200'
+                          : 'bg-slate-800/70 text-slate-400 border border-slate-700/60 hover:text-slate-200'
                       }`}
                     >
                       {cat}
@@ -224,14 +224,14 @@ export const KnowledgeBasePanel: React.FC<KnowledgeBasePanelProps> = ({
                       )}
                     </div>
                     {verification.warnings.length > 0 && (
-                      <ul className="mt-1.5 list-disc pl-4 space-y-0.5 text-[11px]">
+                      <ul className="mt-1.5 list-disc pl-4 space-y-0.5 text-micro">
                         {verification.warnings.map((w, idx) => (
                           <li key={idx}>{w}</li>
                         ))}
                       </ul>
                     )}
                     {verification.citedVerifiedRoles.length > 0 && (
-                      <div className="mt-1.5 text-[11px] text-slate-300">
+                      <div className="mt-1.5 text-micro text-slate-300">
                         Verified FM27 roles detected:{' '}
                         <span className="font-mono text-emerald-300">
                           {verification.citedVerifiedRoles.join(', ')}
@@ -247,13 +247,13 @@ export const KnowledgeBasePanel: React.FC<KnowledgeBasePanelProps> = ({
                 {results.map((entry) => (
                   <div
                     key={entry.id}
-                    className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 space-y-2"
+                    className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="rounded-md bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
+                      <span className="rounded-md bg-emerald-500/15 px-2 py-0.5 text-2xs font-semibold uppercase tracking-wider text-emerald-300">
                         {entry.category}
                       </span>
-                      <span className="text-[11px] font-mono text-slate-500">
+                      <span className="text-micro font-mono text-slate-500">
                         {entry.patchVerified}
                       </span>
                     </div>
@@ -310,19 +310,19 @@ export const KnowledgeBasePanel: React.FC<KnowledgeBasePanelProps> = ({
                         key={ph.id}
                         type="button"
                         onClick={() => setPhaseFilter(ph.id)}
-                        className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition cursor-pointer ${
+                        className={`rounded-lg px-2.5 py-1 text-micro font-semibold border transition cursor-pointer ${
                           phaseFilter === ph.id
                             ? ph.id === 'OOP'
                               ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
                               : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                            : 'bg-slate-800/80 text-slate-400 border-slate-700/60 hover:text-slate-200'
+                            : 'bg-slate-800/70 text-slate-400 border-slate-700/60 hover:text-slate-200'
                         }`}
                       >
                         {ph.label}
                       </button>
                     ))}
                   </div>
-                  <span className="text-[11px] text-slate-400 font-mono">
+                  <span className="text-micro text-slate-400 font-mono">
                     {filteredRoles.length} roles shown
                   </span>
                 </div>
@@ -333,7 +333,7 @@ export const KnowledgeBasePanel: React.FC<KnowledgeBasePanelProps> = ({
                       key={grp}
                       type="button"
                       onClick={() => setPosGroupFilter(grp)}
-                      className={`rounded-md px-2 py-0.5 text-[10px] font-mono font-semibold border transition cursor-pointer ${
+                      className={`rounded-md px-2 py-0.5 text-2xs font-mono font-semibold border transition cursor-pointer ${
                         posGroupFilter === grp
                           ? 'bg-slate-100 text-slate-900 border-white'
                           : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
@@ -364,19 +364,19 @@ export const KnowledgeBasePanel: React.FC<KnowledgeBasePanelProps> = ({
                   return (
                     <div
                       key={role.id}
-                      className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 space-y-2.5"
+                      className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2.5"
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                           <h3 className="text-sm font-bold text-white">
                             {role.name}
                           </h3>
-                          <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-mono text-slate-300">
+                          <span className="rounded-md bg-slate-800 px-1.5 py-0.5 text-2xs font-mono text-slate-300">
                             {role.positionGroup}
                           </span>
                         </div>
                         <span
-                          className={`rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                          className={`rounded-md border px-2 py-0.5 text-2xs font-bold uppercase tracking-wider ${
                             role.phase === 'IP'
                               ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
                               : 'bg-sky-500/15 border-sky-500/40 text-sky-300'
@@ -386,7 +386,7 @@ export const KnowledgeBasePanel: React.FC<KnowledgeBasePanelProps> = ({
                         </span>
                       </div>
 
-                      <div className="space-y-1 text-[11px]">
+                      <div className="space-y-1 text-micro">
                         <div className="flex flex-wrap gap-1 items-center">
                           <span className="text-slate-400 font-semibold mr-1">
                             Primary:
@@ -394,7 +394,7 @@ export const KnowledgeBasePanel: React.FC<KnowledgeBasePanelProps> = ({
                           {role.primaryAttributes.map((attr) => (
                             <span
                               key={`p-${attr}`}
-                              className="rounded bg-emerald-500/10 border border-emerald-500/30 px-1.5 py-0.5 text-emerald-300"
+                              className="rounded-md bg-emerald-500/10 border border-emerald-500/30 px-1.5 py-0.5 text-emerald-300"
                             >
                               {attr}
                             </span>
@@ -408,7 +408,7 @@ export const KnowledgeBasePanel: React.FC<KnowledgeBasePanelProps> = ({
                             {role.secondaryAttributes.map((attr) => (
                               <span
                                 key={`s-${attr}`}
-                                className="rounded bg-slate-800 border border-slate-700 px-1.5 py-0.5 text-slate-300"
+                                className="rounded-md bg-slate-800 border border-slate-700 px-1.5 py-0.5 text-slate-300"
                               >
                                 {attr}
                               </span>
@@ -419,7 +419,7 @@ export const KnowledgeBasePanel: React.FC<KnowledgeBasePanelProps> = ({
 
                       {topMatches.length > 0 ? (
                         <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
-                          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          <div className="flex items-center gap-1.5 text-2xs font-bold uppercase tracking-wider text-slate-400">
                             <Users className="h-3 w-3 text-emerald-400" />
                             Best-Suited Players in Your Squad
                           </div>
@@ -427,7 +427,7 @@ export const KnowledgeBasePanel: React.FC<KnowledgeBasePanelProps> = ({
                             {topMatches.map((m) => (
                               <div
                                 key={m.player.id}
-                                className="rounded-lg border border-slate-800 bg-slate-900/70 px-2.5 py-1.5 text-[11px]"
+                                className="rounded-lg border border-slate-800 bg-slate-900/70 px-2.5 py-1.5 text-micro"
                               >
                                 <div className="flex items-center justify-between gap-1">
                                   <span className="font-semibold text-slate-100 truncate">
@@ -437,7 +437,7 @@ export const KnowledgeBasePanel: React.FC<KnowledgeBasePanelProps> = ({
                                     {m.fitPct}%
                                   </span>
                                 </div>
-                                <div className="text-[10px] font-mono text-slate-400">
+                                <div className="text-2xs font-mono text-slate-400">
                                   {m.player.position} · {m.player.ability.toFixed(1)}★ ·{' '}
                                   {formatWeeklyWage(m.player.wagePw)}
                                 </div>
@@ -446,11 +446,11 @@ export const KnowledgeBasePanel: React.FC<KnowledgeBasePanelProps> = ({
                           </div>
                         </div>
                       ) : players.length > 0 ? (
-                        <div className="pt-1.5 border-t border-slate-800/80 text-[11px] text-slate-500 italic">
+                        <div className="pt-1.5 border-t border-slate-800/80 text-micro text-slate-500 italic">
                           No natural/accomplished fits (&ge;15/20) in your active {players.length}-player squad for {role.name}.
                         </div>
                       ) : (
-                        <div className="pt-1.5 border-t border-slate-800/80 text-[11px] text-slate-500 italic">
+                        <div className="pt-1.5 border-t border-slate-800/80 text-micro text-slate-500 italic">
                           Load a .fm save to rank your squad&apos;s best fits for {role.name}.
                         </div>
                       )}

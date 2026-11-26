@@ -256,10 +256,10 @@ export const MatchdayCompanionView: React.FC<MatchdayCompanionViewProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-base sm:text-lg font-extrabold text-white">
+              <h2 className="text-base sm:text-lg font-bold text-white">
                 Matchday Touchline Companion
               </h2>
-              <span className="rounded-md bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 text-[11px] font-mono font-bold text-emerald-300">
+              <span className="rounded-md bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 text-micro font-mono font-bold text-emerald-300">
                 {activeShape}
               </span>
             </div>
@@ -338,11 +338,11 @@ export const MatchdayCompanionView: React.FC<MatchdayCompanionViewProps> = ({
             return (
               <div
                 key={slot.slotId}
-                className="rounded-xl border border-slate-800 bg-slate-900/90 p-3 space-y-1.5"
+                className="rounded-xl border border-slate-800 bg-slate-900/95 p-3 space-y-1.5"
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[11px] font-bold text-emerald-300">
+                    <span className="rounded-md bg-slate-800 px-1.5 py-0.5 font-mono text-micro font-bold text-emerald-300">
                       {slot.label}
                     </span>
                     <span className="text-sm font-bold text-white truncate">
@@ -356,7 +356,7 @@ export const MatchdayCompanionView: React.FC<MatchdayCompanionViewProps> = ({
                           ? 'Injury-Prone — manage workload and sub early'
                           : 'Stamina & Natural Fitness (Durability)'
                       }
-                      className={`rounded border px-1.5 py-0.5 font-mono text-[10px] font-bold shrink-0 ${durCls}`}
+                      className={`rounded-md border px-1.5 py-0.5 font-mono text-2xs font-bold shrink-0 ${durCls}`}
                     >
                       Sta {stamina}
                       {natFit !== null ? ` · NF ${natFit}` : ''}
@@ -365,16 +365,16 @@ export const MatchdayCompanionView: React.FC<MatchdayCompanionViewProps> = ({
                   )}
                 </div>
 
-                <div className="flex flex-wrap items-center gap-1 text-[11px]">
-                  <span className="rounded bg-emerald-500/15 border border-emerald-500/35 px-1.5 py-0.5 text-emerald-300 font-semibold">
+                <div className="flex flex-wrap items-center gap-1 text-micro">
+                  <span className="rounded-md bg-emerald-500/15 border border-emerald-500/35 px-1.5 py-0.5 text-emerald-300 font-semibold">
                     IP: {slot.ipRole}
                   </span>
-                  <span className="rounded bg-sky-500/15 border border-sky-500/35 px-1.5 py-0.5 text-sky-300 font-semibold">
+                  <span className="rounded-md bg-sky-500/15 border border-sky-500/35 px-1.5 py-0.5 text-sky-300 font-semibold">
                     OOP: {slot.oopRole}
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 pt-0.5">
+                <div className="flex items-center justify-between text-2xs font-mono text-slate-400 pt-0.5">
                   <span>{restCat.categoryLabel}</span>
                   <span>Fit {slot.combinedFitPct}%</span>
                 </div>
@@ -387,14 +387,14 @@ export const MatchdayCompanionView: React.FC<MatchdayCompanionViewProps> = ({
       {/* Section 2: Set-Piece Routine Card + Interactive 62'/75' Touchline Checklist */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* Set-Piece Aerial & Taker Quick Card */}
-        <div className="lg:col-span-5 rounded-xl border border-slate-800 bg-slate-900/80 p-4 space-y-3">
+        <div className="lg:col-span-5 rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
           <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-sky-300">
             <Flag className="w-4 h-4" />
             Set-Piece Aerial &amp; Taker Assignments
           </div>
 
           <div className="space-y-2 text-xs">
-            <div className="flex items-center justify-between rounded-lg bg-slate-950/80 border border-slate-800 px-3 py-2">
+            <div className="flex items-center justify-between rounded-lg bg-slate-950/85 border border-slate-800 px-3 py-2">
               <span className="text-slate-400">Near-Post Aerial Flick:</span>
               <strong className="font-mono text-emerald-300">
                 {setPieceAssignments.nearPostTarget
@@ -402,7 +402,7 @@ export const MatchdayCompanionView: React.FC<MatchdayCompanionViewProps> = ({
                   : '--'}
               </strong>
             </div>
-            <div className="flex items-center justify-between rounded-lg bg-slate-950/80 border border-slate-800 px-3 py-2">
+            <div className="flex items-center justify-between rounded-lg bg-slate-950/85 border border-slate-800 px-3 py-2">
               <span className="text-slate-400">Far-Post Attacking Runner:</span>
               <strong className="font-mono text-sky-300">
                 {setPieceAssignments.farPostRunner
@@ -410,7 +410,7 @@ export const MatchdayCompanionView: React.FC<MatchdayCompanionViewProps> = ({
                   : '--'}
               </strong>
             </div>
-            <div className="flex items-center justify-between rounded-lg bg-slate-950/80 border border-slate-800 px-3 py-2">
+            <div className="flex items-center justify-between rounded-lg bg-slate-950/85 border border-slate-800 px-3 py-2">
               <span className="text-slate-400">Edge Counter-Recovery Guard:</span>
               <strong className="font-mono text-amber-300">
                 {setPieceAssignments.edgeRecoveryGuard
@@ -418,7 +418,7 @@ export const MatchdayCompanionView: React.FC<MatchdayCompanionViewProps> = ({
                   : '--'}
               </strong>
             </div>
-            <div className="flex items-center justify-between rounded-lg bg-slate-950/80 border border-slate-800 px-3 py-2">
+            <div className="flex items-center justify-between rounded-lg bg-slate-950/85 border border-slate-800 px-3 py-2">
               <span className="text-slate-400">Corner / Penalty Takers:</span>
               <strong className="font-mono text-slate-200">
                 {setPieceAssignments.cornerTaker?.name || '--'} /{' '}
@@ -429,13 +429,13 @@ export const MatchdayCompanionView: React.FC<MatchdayCompanionViewProps> = ({
         </div>
 
         {/* Interactive 62'/75' Matchday Touchline Checklist */}
-        <div className="lg:col-span-7 rounded-xl border border-slate-800 bg-slate-900/80 p-4 space-y-2.5">
+        <div className="lg:col-span-7 rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-2.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-emerald-300">
               <Timer className="w-4 h-4" />
               Live Touchline &amp; 62&apos;/75&apos; Substitution Checklist
             </div>
-            <span className="text-[11px] font-mono text-slate-400">
+            <span className="text-micro font-mono text-slate-400">
               Tap to check off in-game
             </span>
           </div>
@@ -451,7 +451,7 @@ export const MatchdayCompanionView: React.FC<MatchdayCompanionViewProps> = ({
                   className={`w-full text-left rounded-xl border p-3 transition flex items-start gap-2.5 cursor-pointer ${
                     done
                       ? 'border-emerald-500/40 bg-emerald-950/25 text-slate-300'
-                      : 'border-slate-800 bg-slate-950/80 hover:border-slate-700 text-slate-100'
+                      : 'border-slate-800 bg-slate-950/85 hover:border-slate-700 text-slate-100'
                   }`}
                 >
                   {done ? (
@@ -461,7 +461,7 @@ export const MatchdayCompanionView: React.FC<MatchdayCompanionViewProps> = ({
                   )}
                   <div className="space-y-0.5 min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] font-bold text-emerald-300">
+                      <span className="rounded-md bg-slate-800 px-1.5 py-0.5 font-mono text-2xs font-bold text-emerald-300">
                         {step.minute}
                       </span>
                       <span
@@ -472,7 +472,7 @@ export const MatchdayCompanionView: React.FC<MatchdayCompanionViewProps> = ({
                         {step.title}
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-400 leading-snug">
+                    <p className="text-micro text-slate-400 leading-snug">
                       {step.detail}
                     </p>
                   </div>

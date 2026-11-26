@@ -540,7 +540,7 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                   <Icon className="h-3.5 w-3.5" />
                   <span>{t.label}</span>
                   {t.count !== null && (
-                    <span className="font-mono tabular-nums text-[11px] opacity-80">({t.count})</span>
+                    <span className="font-mono tabular-nums text-micro opacity-80">({t.count})</span>
                   )}
                 </button>
               );
@@ -554,7 +554,7 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                   key={`${tac.name}-${idx}`}
                   type="button"
                   onClick={() => setSelectedTacticIdx(idx)}
-                  className={`min-h-[32px] px-2.5 rounded text-xs font-medium transition-colors whitespace-nowrap ${
+                  className={`min-h-[32px] px-2.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
                     selectedTacticIdx === idx
                       ? 'bg-slate-800 text-white'
                       : 'text-slate-400 hover:text-slate-200'
@@ -587,7 +587,7 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
             <button
               type="button"
               onClick={handleCopyPatchDiagnosticReport}
-              className="min-h-[26px] inline-flex items-center gap-1 rounded border border-sky-500/40 bg-sky-500/10 px-2 text-[11px] font-medium text-sky-100 hover:border-sky-400/60 hover:bg-sky-500/20"
+              className="min-h-[26px] inline-flex items-center gap-1 rounded-md border border-sky-500/40 bg-sky-500/10 px-2 text-micro font-medium text-sky-100 hover:border-sky-400/60 hover:bg-sky-500/20"
             >
               <Copy className="h-3 w-3" /> Copy Patch Diagnostic Report
             </button>
@@ -681,12 +681,12 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                               <div className="font-semibold text-white">
                                 {sl.playerName || `Slot ${idx + 1}`}
                               </div>
-                              <div className="text-[11px] text-slate-400 font-mono tabular-nums">
+                              <div className="text-micro text-slate-400 font-mono tabular-nums">
                                 IP {ipPos}
                                 {oopPos !== ipPos ? ` → OOP ${oopPos}` : ''}
                               </div>
                             </td>
-                            <td className="py-2.5 px-3 align-top font-mono text-[11px] tabular-nums">
+                            <td className="py-2.5 px-3 align-top font-mono text-micro tabular-nums">
                               <div className="text-slate-200">{ipCore || 'No bits'}</div>
                               <div
                                 className={
@@ -722,7 +722,7 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                                 ))}
                               </select>
                             </td>
-                            <td className="py-2.5 px-3 align-top font-mono text-[11px] tabular-nums">
+                            <td className="py-2.5 px-3 align-top font-mono text-micro tabular-nums">
                               <div className="text-slate-200">{oopCore || 'No bits'}</div>
                               <div
                                 className={
@@ -834,13 +834,13 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                             isSelected
                               ? 'border-emerald-500 bg-emerald-500/10'
                               : isDecoded
-                                ? 'border-emerald-500/40 bg-slate-900/90 hover:border-emerald-400'
+                                ? 'border-emerald-500/40 bg-slate-900/95 hover:border-emerald-400'
                                 : isNonZero
-                                  ? 'border-slate-700 bg-slate-900/60 hover:border-slate-500'
+                                  ? 'border-slate-700 bg-slate-900/70 hover:border-slate-500'
                                   : 'border-slate-800/80 bg-slate-950 hover:border-slate-700'
                           }`}
                         >
-                          <div className="flex items-center justify-between font-mono text-[11px] tabular-nums">
+                          <div className="flex items-center justify-between font-mono text-micro tabular-nums">
                             <span className="text-slate-400">
                               TI[{String(b.index).padStart(2, '0')}]
                             </span>
@@ -848,11 +848,11 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                               {b.hex}
                             </span>
                           </div>
-                          <div className="font-mono text-[10px] text-slate-500 tabular-nums mt-0.5">
+                          <div className="font-mono text-2xs text-slate-500 tabular-nums mt-0.5">
                             dec {b.value} · {b.value.toString(2).padStart(8, '0')}
                           </div>
                           <div
-                            className={`text-[11px] mt-1 truncate ${
+                            className={`text-micro mt-1 truncate ${
                               isDecoded ? 'text-emerald-300 font-medium' : 'text-slate-500'
                             }`}
                           >
@@ -1002,7 +1002,7 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                         <button
                           type="button"
                           onClick={() => setSelectedPiPhase('ip')}
-                          className={`px-2.5 py-1 rounded text-xs font-medium ${
+                          className={`px-2.5 py-1 rounded-md text-xs font-medium ${
                             selectedPiPhase === 'ip'
                               ? 'bg-emerald-500/20 text-emerald-300'
                               : 'text-slate-400'
@@ -1013,7 +1013,7 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                         <button
                           type="button"
                           onClick={() => setSelectedPiPhase('oop')}
-                          className={`px-2.5 py-1 rounded text-xs font-medium ${
+                          className={`px-2.5 py-1 rounded-md text-xs font-medium ${
                             selectedPiPhase === 'oop'
                               ? 'bg-sky-500/20 text-sky-300'
                               : 'text-slate-400'
@@ -1027,7 +1027,7 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                 </div>
 
                 {activePiUnits.length === 0 ? (
-                  <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4 text-xs text-slate-400">
+                  <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-4 text-xs text-slate-400">
                     No raw <span className="font-mono">TacticSettingUnit</span> entries captured for
                     this slot/phase. Re-import your <span className="font-mono">.fm</span> save with
                     the updated v19 decoder to populate decomposed units.
@@ -1052,7 +1052,7 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                           );
                           const currentLabel = decodedPi.decodedLabels[0] || '';
                           return (
-                            <tr key={`${u.index}-${u.signature}`} className="hover:bg-slate-900/40">
+                            <tr key={`${u.index}-${u.signature}`} className="hover:bg-slate-900/50">
                               <td className="py-2 px-3 font-mono tabular-nums text-slate-400">
                                 {u.index + 1}
                               </td>
@@ -1174,12 +1174,12 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
               </div>
 
               {!diffReport ? (
-                <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-6 text-center space-y-2">
+                <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-6 text-center space-y-2">
                   <p className="text-xs text-slate-300">
                     Load a second <span className="font-mono">.fm</span> save above (or upload two
                     saves in your Career Journey) to run a binary diff.
                   </p>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-micro text-slate-500">
                     Tip: Change one IP/OOP role or one Team Instruction in FM27, save to a test slot,
                     and drop it here—your active career stays untouched.
                   </p>
@@ -1212,7 +1212,7 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                                 {d.position} · {d.playerName || `Slot ${d.slotIndex + 1}`} ·{' '}
                                 {d.phase.toUpperCase()}
                               </div>
-                              <div className="font-mono text-[11px] text-slate-400 tabular-nums">
+                              <div className="font-mono text-micro text-slate-400 tabular-nums">
                                 {d.beforeCoreSig || 'none'} →{' '}
                                 <span className="text-emerald-300">{d.afterCoreSig || 'none'}</span>
                                 {' · '}+{d.addedUnits.length}/-{d.removedUnits.length} units
@@ -1271,7 +1271,7 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                                 </span>{' '}
                                 ({uDiff.position} · {uDiff.phase.toUpperCase()})
                               </div>
-                              <div className="text-[11px] text-slate-400">
+                              <div className="text-micro text-slate-400">
                                 {uDiff.roleBitsChanged
                                   ? 'Changed alongside role bits (role default unit)'
                                   : 'Pure Player Instruction toggle (role bits unchanged)'}
@@ -1349,7 +1349,7 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                           onChange={(e) =>
                             setGovBindTarget(e.target.value as GovernanceTargetField)
                           }
-                          className="min-h-[30px] rounded border border-slate-700 bg-slate-900 px-2 text-xs text-slate-200"
+                          className="min-h-[30px] rounded-md border border-slate-700 bg-slate-900 px-2 text-xs text-slate-200"
                         >
                           <option value="board_confidence">Board Confidence</option>
                           <option value="supporter_confidence">Supporter Confidence</option>
@@ -1361,7 +1361,7 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                           onChange={(e) =>
                             setGovBindEncoding(e.target.value as GovernanceValueEncoding)
                           }
-                          className="min-h-[30px] rounded border border-slate-700 bg-slate-900 px-2 text-xs text-slate-200"
+                          className="min-h-[30px] rounded-md border border-slate-700 bg-slate-900 px-2 text-xs text-slate-200"
                         >
                           <option value="u8_percent_0_100">u8 (0–100%)</option>
                           <option value="u8_grade_0_12">u8 (F..A+ grade)</option>
@@ -1373,7 +1373,7 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                     </div>
 
                     {diffReport.governanceByteDiffs.length === 0 ? (
-                      <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3 text-xs text-slate-400">
+                      <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-400">
                         No anchored governance bytes moved between these two saves.
                       </div>
                     ) : (
@@ -1391,16 +1391,16 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                           <tbody className="divide-y divide-slate-800/80">
                             {diffReport.governanceByteDiffs.slice(0, 25).map((g, i) => (
                               <tr key={`${g.section}-${g.anchorLabel}-${g.relOffset}-${i}`}>
-                                <td className="py-2 px-3 font-mono text-[11px] text-slate-200">
+                                <td className="py-2 px-3 font-mono text-micro text-slate-200">
                                   {g.section}.{g.anchorLabel}
                                 </td>
-                                <td className="py-2 px-3 font-mono text-[11px] tabular-nums text-slate-400">
+                                <td className="py-2 px-3 font-mono text-micro tabular-nums text-slate-400">
                                   +{g.relOffset}
                                 </td>
-                                <td className="py-2 px-3 font-mono text-[11px] tabular-nums text-slate-200">
+                                <td className="py-2 px-3 font-mono text-micro tabular-nums text-slate-200">
                                   {g.beforeU8} → {g.afterU8} ({g.delta >= 0 ? `+${g.delta}` : g.delta})
                                 </td>
-                                <td className="py-2 px-3 text-[11px] text-slate-400">
+                                <td className="py-2 px-3 text-micro text-slate-400">
                                   {g.plausibleRatingCandidate
                                     ? 'Rating 0–100 candidate'
                                     : g.plausibleGradeCandidate
@@ -1419,7 +1419,7 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                                         govBindEncoding
                                       )
                                     }
-                                    className="min-h-[28px] rounded border border-slate-700 bg-slate-900 px-2.5 text-[11px] font-medium text-emerald-300 hover:border-emerald-500/50"
+                                    className="min-h-[28px] rounded-md border border-slate-700 bg-slate-900 px-2.5 text-micro font-medium text-emerald-300 hover:border-emerald-500/50"
                                   >
                                     Bind Offset
                                   </button>
@@ -1440,7 +1440,7 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
           {activeTab === 'governance' && (
             <div className="space-y-6">
               {/* Patch Compatibility Self-Diagnostics */}
-              <div className="space-y-2 rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+              <div className="space-y-2 rounded-lg border border-slate-800 bg-slate-900/50 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <h3 className="text-sm font-semibold text-white">
@@ -1456,7 +1456,7 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                       type="button"
                       onClick={handleCopyPatchDiagnosticReport}
                       disabled={!decodedPayload}
-                      className="min-h-[32px] inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-2.5 text-[11px] font-medium text-slate-200 hover:border-sky-500/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      className="min-h-[32px] inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-2.5 text-micro font-medium text-slate-200 hover:border-sky-500/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       <Copy className="h-3.5 w-3.5 text-sky-400" /> Copy Patch Diagnostic Report
                     </button>
@@ -1465,7 +1465,7 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                       onClick={handleCopyAgentHandoff}
                       disabled={!decodedPayload}
                       title="Copy a Markdown packet to paste into an agent that can investigate the decode failure"
-                      className="min-h-[36px] inline-flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 text-[11px] font-medium text-amber-100 hover:border-amber-400/60 hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="min-h-[36px] inline-flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 text-micro font-medium text-amber-100 hover:border-amber-400/60 hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       <Copy className="h-3.5 w-3.5 text-amber-300" /> Copy Agent Handoff
                     </button>
@@ -1483,7 +1483,7 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                       {patchCompat.summary}
                     </p>
                     {buildProfile && (
-                      <p className="text-[11px] text-slate-400">
+                      <p className="text-micro text-slate-400">
                         {priorBuildRuns > 0
                           ? `Seen ${buildProfile.seenCount} times`
                           : 'First run for this build'}
@@ -1495,7 +1495,7 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                       {patchCompat.sections.map((section) => (
                         <span
                           key={section.id}
-                          className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-mono ${
+                          className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-2xs font-mono ${
                             PATCH_SECTION_CHIP_STYLES[section.status] ??
                             PATCH_SECTION_CHIP_STYLES.unavailable
                           }`}
@@ -1736,7 +1736,7 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                     .fm Archive Section Inventory ({forensics?.sections?.length ?? 0})
                   </h4>
                   {!forensics || forensics.sections.length === 0 ? (
-                    <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4 text-xs text-slate-400">
+                    <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-4 text-xs text-slate-400">
                       Re-import your <span className="font-mono">.fm</span> save with v19 to populate
                       the archive section inventory.
                     </div>
@@ -1750,7 +1750,7 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                             <th className="py-2 px-3 font-medium text-right">Size</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-800/70 font-mono text-[11px] tabular-nums">
+                        <tbody className="divide-y divide-slate-800/70 font-mono text-micro tabular-nums">
                           {forensics.sections.map((sec) => (
                             <tr key={sec.name}>
                               <td className="py-1.5 px-3 text-slate-200">{sec.name}</td>
@@ -1776,7 +1776,7 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                   {!forensics ||
                   (forensics.governanceProbes.length === 0 &&
                     forensics.promiseCandidates.length === 0) ? (
-                    <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4 text-xs text-slate-400">
+                    <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-4 text-xs text-slate-400">
                       Anchored binary probes and player promise candidates appear here once decoded
                       from your <span className="font-mono">.fm</span> save.
                     </div>
@@ -1784,13 +1784,13 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                     <div className="rounded-lg border border-slate-800 divide-y divide-slate-800/80 max-h-60 overflow-y-auto text-xs">
                       {forensics.governanceProbes.map((pr) => (
                         <div key={pr.id} className="p-2.5 space-y-1">
-                          <div className="flex items-center justify-between font-mono text-[11px] tabular-nums">
+                          <div className="flex items-center justify-between font-mono text-micro tabular-nums">
                             <span className="text-sky-300">
                               {pr.section}.{pr.anchorLabel}
                             </span>
                             <span className="text-slate-500">@{pr.anchorOffset}</span>
                           </div>
-                          <div className="text-[11px] text-slate-400">
+                          <div className="text-micro text-slate-400">
                             {pr.u8Values.length}B window
                             {pr.candidateDates?.length
                               ? ` · Dates: ${pr.candidateDates
@@ -1802,11 +1802,11 @@ export const Fm27BinaryCalibrationLab: React.FC<Fm27BinaryCalibrationLabProps> =
                         </div>
                       ))}
                       {forensics.promiseCandidates.map((pc) => (
-                        <div key={pc.id} className="p-2.5 space-y-0.5 bg-slate-900/40">
+                        <div key={pc.id} className="p-2.5 space-y-0.5 bg-slate-900/50">
                           <div className="font-medium text-amber-200">
                             Promise Candidate · {pc.playerName || `UID ${pc.playerUid}`}
                           </div>
-                          <div className="font-mono text-[11px] text-slate-400 tabular-nums">
+                          <div className="font-mono text-micro text-slate-400 tabular-nums">
                             {pc.section}@{pc.anchorOffset} · Due {pc.dueDateDmy || '--'} · type=
                             {pc.typeCode ?? '--'} · status={pc.statusCode ?? '--'}
                           </div>

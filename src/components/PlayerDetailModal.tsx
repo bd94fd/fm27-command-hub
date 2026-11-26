@@ -86,14 +86,14 @@ type DetailTab = 'overview' | 'attributes' | 'positions' | 'metrics' | 'contract
 
 const RoleFitExplainability: React.FC<{ fit: RankedRoleFit }> = ({ fit }) => (
   <div className="space-y-2 rounded-lg border border-slate-800 bg-slate-900/50 p-2.5">
-    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+    <div className="text-2xs font-bold uppercase tracking-wider text-slate-400">
       Why this score
     </div>
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1">
       {fit.attributeWeights.map((attr) => (
         <div
           key={attr.key}
-          className="flex items-center justify-between gap-2 text-[11px] min-w-0"
+          className="flex items-center justify-between gap-2 text-micro min-w-0"
         >
           <span className="text-slate-300 truncate">
             {attr.label}
@@ -109,7 +109,7 @@ const RoleFitExplainability: React.FC<{ fit: RankedRoleFit }> = ({ fit }) => (
       {fit.keyThresholds.map((threshold) => (
         <span
           key={threshold.key}
-          className={`rounded border px-1.5 py-0.5 text-[10px] font-mono ${
+          className={`rounded-md border px-1.5 py-0.5 text-2xs font-mono ${
             threshold.met
               ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
               : 'border-amber-500/40 bg-amber-500/10 text-amber-300'
@@ -121,7 +121,7 @@ const RoleFitExplainability: React.FC<{ fit: RankedRoleFit }> = ({ fit }) => (
       ))}
     </div>
     {fit.nearestAlternative && (
-      <div className="text-[11px] text-slate-400">
+      <div className="text-micro text-slate-400">
         Nearest alternative:{' '}
         <span className="text-slate-200">{fit.nearestAlternative.roleName}</span>{' '}
         ({fit.nearestAlternative.fitPct}% · {fit.nearestAlternative.tier})
@@ -452,7 +452,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
             ? 'bg-emerald-500/15 border-emerald-500/40'
             : isPref
               ? 'bg-sky-500/10 border-sky-500/30'
-              : 'bg-slate-900/60 border-slate-800'
+              : 'bg-slate-900/70 border-slate-800'
         }`}
       >
         <span className="text-slate-300 flex items-center gap-1.5">
@@ -710,7 +710,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                         <MetaRatingBadge player={player} />
                         {(dual.bestInPossession || dual.bestOutOfPossession) && (
                           <span
-                            className="rounded-md bg-cyan-500/15 border border-cyan-500/30 px-2 py-0.5 text-[11px] font-medium text-cyan-200"
+                            className="rounded-md bg-cyan-500/15 border border-cyan-500/30 px-2 py-0.5 text-micro font-medium text-cyan-200"
                             title="FM27 Touchline Dual-Phase Best Roles (In-Possession / Out-of-Possession)"
                           >
                             IP: {dual.bestInPossession?.name ?? '--'} · OOP:{' '}
@@ -721,17 +721,17 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     );
                   })()}
                   {player.squadUnit && player.squadUnit !== 'First Team' && (
-                    <span className="rounded-md bg-indigo-500/15 border border-indigo-500/35 px-2 py-0.5 text-[11px] font-semibold text-indigo-300">
+                    <span className="rounded-md bg-indigo-500/15 border border-indigo-500/35 px-2 py-0.5 text-micro font-semibold text-indigo-300">
                       {player.squadUnit}
                     </span>
                   )}
                   {player.onLoan && (
-                    <span className="rounded-md bg-purple-500/15 border border-purple-500/35 px-2 py-0.5 text-[11px] font-semibold text-purple-300">
+                    <span className="rounded-md bg-purple-500/15 border border-purple-500/35 px-2 py-0.5 text-micro font-semibold text-purple-300">
                       On Loan
                     </span>
                   )}
                   {player.morale && (
-                    <span className="rounded-md bg-slate-800 border border-slate-700 px-2 py-0.5 text-[11px] text-slate-300">
+                    <span className="rounded-md bg-slate-800 border border-slate-700 px-2 py-0.5 text-micro text-slate-300">
                       Morale: {player.morale}
                     </span>
                   )}
@@ -752,7 +752,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                   );
                 })()}
               </div>
-              <p className="text-[11px] sm:text-xs text-slate-400 leading-snug">
+              <p className="text-micro sm:text-xs text-slate-400 leading-snug">
                 Age {formatAge(player.age)} · {formatNation(player.nation)} ·{' '}
                 {formatFootLabel(player)}
                 {player.heightCm ? ` · ${player.heightCm} cm` : ''}
@@ -790,7 +790,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
         </div>
       }
       subHeader={
-        <div className="flex gap-1 overflow-x-auto border-b border-slate-800 bg-slate-950/50 px-3 sm:px-5 pt-1 no-scrollbar snap-x">
+        <div className="flex gap-1 overflow-x-auto border-b border-slate-800 bg-slate-950/60 px-3 sm:px-5 pt-1 no-scrollbar snap-x">
           {(
             [
               { id: 'overview', label: 'Overview', shortLabel: 'Overview', icon: LayoutDashboard },
@@ -825,32 +825,32 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
           <div className="sm:hidden space-y-2.5 rounded-xl border border-slate-800/90 bg-slate-950/60 p-3">
             <div className="flex flex-wrap items-center gap-1.5">
               {analysis.bestIpRole && (
-                <span className="rounded-md bg-sky-500/15 border border-sky-500/35 px-2 py-0.5 text-[11px] font-semibold text-sky-300">
+                <span className="rounded-md bg-sky-500/15 border border-sky-500/35 px-2 py-0.5 text-micro font-semibold text-sky-300">
                   Best Fit: {analysis.bestIpRole.role.name} · {analysis.bestIpRole.fitPct}%
                 </span>
               )}
               {(() => {
                 const meta = evaluatePlayerMetaScore(player);
                 return meta.metaScore !== null ? (
-                  <MetaRatingBadge player={player} className="text-[11px]" />
+                  <MetaRatingBadge player={player} className="text-micro" />
                 ) : null;
               })()}
               {player.squadUnit && player.squadUnit !== 'First Team' && (
-                <span className="rounded-md bg-indigo-500/15 border border-indigo-500/35 px-2 py-0.5 text-[11px] font-semibold text-indigo-300">
+                <span className="rounded-md bg-indigo-500/15 border border-indigo-500/35 px-2 py-0.5 text-micro font-semibold text-indigo-300">
                   {player.squadUnit}
                 </span>
               )}
               {player.onLoan && (
-                <span className="rounded-md bg-purple-500/15 border border-purple-500/35 px-2 py-0.5 text-[11px] font-semibold text-purple-300">
+                <span className="rounded-md bg-purple-500/15 border border-purple-500/35 px-2 py-0.5 text-micro font-semibold text-purple-300">
                   On Loan
                 </span>
               )}
               {player.morale && (
-                <span className="rounded-md bg-slate-800 border border-slate-700 px-2 py-0.5 text-[11px] text-slate-300">
+                <span className="rounded-md bg-slate-800 border border-slate-700 px-2 py-0.5 text-micro text-slate-300">
                   Morale: {player.morale}
                 </span>
               )}
-              <span className="rounded-md bg-slate-900 border border-slate-800 px-2 py-0.5 text-[11px] text-slate-400">
+              <span className="rounded-md bg-slate-900 border border-slate-800 px-2 py-0.5 text-micro text-slate-400">
                 {player.personality} · exp {formatContractExpiry(player.expires)}
               </span>
             </div>
@@ -922,7 +922,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     Scouting Verdict
                   </h3>
                   {analysis.squadDepth && (
-                    <span className="rounded-md bg-slate-900/90 border border-slate-700 px-2 py-0.5 text-[11px] font-medium text-slate-200">
+                    <span className="rounded-md bg-slate-900/95 border border-slate-700 px-2 py-0.5 text-micro font-medium text-slate-200">
                       {analysis.squadDepth.summary}
                     </span>
                   )}
@@ -930,15 +930,15 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                 <p className="text-sm text-slate-200 leading-relaxed">
                   {analysis.scoutingVerdict}
                 </p>
-                <p className="text-[11px] text-slate-400">
+                <p className="text-micro text-slate-400">
                   Stars ({player.ability.toFixed(1)}★ / {player.potential.toFixed(1)}★) are measured relative to your current squad.
                 </p>
               </div>
 
               {/* Role in Squad: Now vs 1–3 Year Future Outlook */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
-                <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3.5 space-y-1">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 space-y-1">
+                  <div className="text-2xs font-bold uppercase tracking-wider text-emerald-400">
                     Role in Squad · Right Now
                   </div>
                   <p className="text-slate-200 leading-relaxed">
@@ -956,8 +956,8 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     (OOP) · {analysis.physical.durability.tier} durability ({analysis.physical.durability.stamina}/20 Stamina).
                   </p>
                 </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3.5 space-y-1">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-sky-400">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 space-y-1">
+                  <div className="text-2xs font-bold uppercase tracking-wider text-sky-400">
                     1–3 Year Squad Outlook · {analysis.development.stage}
                   </div>
                   <p className="text-slate-200 leading-relaxed">
@@ -977,7 +977,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     <span className="text-xs font-bold text-amber-200">
                       ★ In-Game Shortlist Upgrade / Replacement Ready ({shortlistUpgrades.length})
                     </span>
-                    <span className="text-[10px] font-mono text-emerald-300">
+                    <span className="text-2xs font-mono text-emerald-300">
                       Passes Strict Club Budget Gate
                     </span>
                   </div>
@@ -985,19 +985,19 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     {shortlistUpgrades.slice(0, 2).map((up) => (
                       <div
                         key={up.target.uid}
-                        className="rounded-lg border border-slate-800 bg-slate-950/80 p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs"
+                        className="rounded-lg border border-slate-800 bg-slate-950/85 p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs"
                       >
                         <div className="min-w-0 flex-1 space-y-0.5">
                           <div className="font-bold text-white">
                             {up.target.name}{' '}
-                            <span className="font-mono text-[11px] text-emerald-300">
+                            <span className="font-mono text-micro text-emerald-300">
                               ({up.target.primaryPosition}, Age {formatAge(up.target.age)})
                             </span>{' '}
-                            <span className="rounded bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] text-emerald-200">
+                            <span className="rounded-md bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.5 text-2xs text-emerald-200">
                               {up.tierLabel}
                             </span>
                           </div>
-                          <p className="text-[11px] text-slate-300 leading-snug">
+                          <p className="text-micro text-slate-300 leading-snug">
                             {up.whyUpgradeOrHold}
                           </p>
                         </div>
@@ -1008,7 +1008,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                               onClose();
                               onOpenShortlistTarget(up.target);
                             }}
-                            className="min-h-[36px] shrink-0 rounded-lg border border-emerald-500/40 bg-emerald-500/15 hover:bg-emerald-500/25 px-3 py-1.5 text-[11px] font-semibold text-emerald-200 transition cursor-pointer"
+                            className="min-h-[36px] shrink-0 rounded-lg border border-emerald-500/40 bg-emerald-500/15 hover:bg-emerald-500/25 px-3 py-1.5 text-micro font-semibold text-emerald-200 transition cursor-pointer"
                           >
                             Open Profile →
                           </button>
@@ -1032,7 +1032,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                   </div>
                   <div className="md:col-span-6 space-y-2.5 text-xs">
                     <div>
-                      <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
+                      <div className="text-2xs uppercase tracking-wider text-slate-400 font-semibold">
                         Card Intelligence Verdict
                       </div>
                       <div className="text-sm font-bold text-white mt-0.5">
@@ -1043,11 +1043,11 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                       </p>
                     </div>
                     <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5 space-y-1">
-                      <div className="text-[10px] uppercase tracking-wider text-sky-400 font-semibold">
+                      <div className="text-2xs uppercase tracking-wider text-sky-400 font-semibold">
                         Active Tactic &amp; Promise Alignment
                       </div>
-                      <p className="text-[11px] text-slate-200">{cardIntel.tacticalFitNote}</p>
-                      <p className="text-[11px] text-amber-300">
+                      <p className="text-micro text-slate-200">{cardIntel.tacticalFitNote}</p>
+                      <p className="text-micro text-amber-300">
                         {cardIntel.promiseTag || 'Playing-time promise currently aligned with minutes'}
                       </p>
                     </div>
@@ -1072,7 +1072,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                               {s.value}/20
                             </span>
                           </div>
-                          <p className="text-[11px] text-slate-400">{s.summary}</p>
+                          <p className="text-micro text-slate-400">{s.summary}</p>
                         </div>
                       ))}
                     </div>
@@ -1098,7 +1098,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                               {w.value}/20
                             </span>
                           </div>
-                          <p className="text-[11px] text-slate-400">{w.summary}</p>
+                          <p className="text-micro text-slate-400">{w.summary}</p>
                         </div>
                       ))}
                     </div>
@@ -1115,11 +1115,11 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                 {analysis.bestIpRole && (
                   <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                      <span className="text-2xs font-bold uppercase tracking-wider text-emerald-400">
                         Best In-Possession (IP) Role
                       </span>
                       <span
-                        className={`rounded border px-2 py-0.5 text-[10px] font-semibold ${tierBadgeClass(
+                        className={`rounded-md border px-2 py-0.5 text-2xs font-semibold ${tierBadgeClass(
                           analysis.bestIpRole.tier
                         )}`}
                       >
@@ -1131,7 +1131,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     </div>
                     <RoleFitExplainability fit={analysis.bestIpRole} />
                     {analysis.bestIpRole.topSupporting.length > 0 && (
-                      <div className="text-[11px] text-slate-400">
+                      <div className="text-micro text-slate-400">
                         Driven by:{' '}
                         <span className="text-slate-200">
                           {analysis.bestIpRole.topSupporting
@@ -1146,11 +1146,11 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                 {analysis.bestOopRole && (
                   <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-sky-400">
+                      <span className="text-2xs font-bold uppercase tracking-wider text-sky-400">
                         Best Out-of-Possession (OOP) Role
                       </span>
                       <span
-                        className={`rounded border px-2 py-0.5 text-[10px] font-semibold ${tierBadgeClass(
+                        className={`rounded-md border px-2 py-0.5 text-2xs font-semibold ${tierBadgeClass(
                           analysis.bestOopRole.tier
                         )}`}
                       >
@@ -1162,7 +1162,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     </div>
                     <RoleFitExplainability fit={analysis.bestOopRole} />
                     {analysis.bestOopRole.topSupporting.length > 0 && (
-                      <div className="text-[11px] text-slate-400">
+                      <div className="text-micro text-slate-400">
                         Driven by:{' '}
                         <span className="text-slate-200">
                           {analysis.bestOopRole.topSupporting
@@ -1179,11 +1179,11 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    <span className="text-2xs font-bold uppercase tracking-wider text-slate-400">
                       Durability &amp; Workload
                     </span>
                     <span
-                      className={`rounded border px-2 py-0.5 text-[10px] font-semibold ${durabilityBadgeClass}`}
+                      className={`rounded-md border px-2 py-0.5 text-2xs font-semibold ${durabilityBadgeClass}`}
                     >
                       {analysis.physical.durability.tier}
                     </span>
@@ -1191,17 +1191,17 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                   <div className="text-xs font-semibold text-white">
                     {analysis.physical.durability.headline}
                   </div>
-                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                  <p className="text-micro text-slate-400 leading-relaxed">
                     {analysis.physical.durability.advice}
                   </p>
                 </div>
 
                 <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    <span className="text-2xs font-bold uppercase tracking-wider text-slate-400">
                       Development &amp; Training
                     </span>
-                    <span className="inline-flex items-center gap-1 rounded bg-indigo-500/15 border border-indigo-500/30 px-2 py-0.5 text-[10px] font-semibold text-indigo-300">
+                    <span className="inline-flex items-center gap-1 rounded-md bg-indigo-500/15 border border-indigo-500/30 px-2 py-0.5 text-2xs font-semibold text-indigo-300">
                       <TrendingUp className="h-3 w-3" />
                       {analysis.development.stage}
                     </span>
@@ -1209,40 +1209,40 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                   <div className="text-xs font-semibold text-white">
                     {analysis.development.headline}
                   </div>
-                  <div className="text-[11px] text-slate-300">
+                  <div className="text-micro text-slate-300">
                     Focus: <span className="text-emerald-300">{analysis.development.trainingFocus.join(', ')}</span>
                   </div>
-                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                  <p className="text-micro text-slate-400 leading-relaxed">
                     {analysis.development.note}
                   </p>
                 </div>
 
                 <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    <span className="text-2xs font-bold uppercase tracking-wider text-slate-400">
                       Club DNA Fit
                     </span>
-                    <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-mono font-bold text-emerald-300">
+                    <span className="rounded-md bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-2xs font-mono font-bold text-emerald-300">
                       {analysis.clubDna.overallDnaScore}/100
                     </span>
                   </div>
                   <div className="text-xs font-semibold text-white">
                     {analysis.clubDna.bestArchetypeLabel}
                   </div>
-                  <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-                    <div className="flex justify-between rounded bg-slate-900 px-2 py-1">
+                  <div className="grid grid-cols-2 gap-1.5 text-micro">
+                    <div className="flex justify-between rounded-md bg-slate-900 px-2 py-1">
                       <span className="text-slate-400">Physical</span>
                       <span className="font-mono text-slate-200">{analysis.clubDna.pillarScores.physicalIntensity}</span>
                     </div>
-                    <div className="flex justify-between rounded bg-slate-900 px-2 py-1">
+                    <div className="flex justify-between rounded-md bg-slate-900 px-2 py-1">
                       <span className="text-slate-400">Technical</span>
                       <span className="font-mono text-slate-200">{analysis.clubDna.pillarScores.technicalSecurity}</span>
                     </div>
-                    <div className="flex justify-between rounded bg-slate-900 px-2 py-1">
+                    <div className="flex justify-between rounded-md bg-slate-900 px-2 py-1">
                       <span className="text-slate-400">Tactical</span>
                       <span className="font-mono text-slate-200">{analysis.clubDna.pillarScores.tacticalDiscipline}</span>
                     </div>
-                    <div className="flex justify-between rounded bg-slate-900 px-2 py-1">
+                    <div className="flex justify-between rounded-md bg-slate-900 px-2 py-1">
                       <span className="text-slate-400">Aerial</span>
                       <span className="font-mono text-slate-200">{analysis.clubDna.pillarScores.aerialDominance}</span>
                     </div>
@@ -1260,7 +1260,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                 (formTrend && formTrend.recentRatings.length > 0)) && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-1.5">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    <div className="text-2xs font-bold uppercase tracking-wider text-slate-400">
                       Scout Report Badges
                     </div>
                     <div className="flex flex-wrap gap-1.5">
@@ -1268,7 +1268,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                         scoutBadges.map((badge) => (
                           <span
                             key={badge}
-                            className={`rounded-md border px-2 py-0.5 text-[11px] font-semibold ${
+                            className={`rounded-md border px-2 py-0.5 text-micro font-semibold ${
                               badge === 'Injury-Prone'
                                 ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
                                 : 'bg-indigo-500/15 border-indigo-500/40 text-indigo-300'
@@ -1278,7 +1278,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                           </span>
                         ))
                       ) : (
-                        <span className="text-[11px] text-slate-500 italic">
+                        <span className="text-micro text-slate-500 italic">
                           No flagged scout traits
                         </span>
                       )}
@@ -1286,7 +1286,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                   </div>
 
                   <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-1.5">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    <div className="text-2xs font-bold uppercase tracking-wider text-slate-400">
                       Last 5 Match Form
                     </div>
                     {formTrend && formTrend.recentRatings.length > 0 ? (
@@ -1296,7 +1296,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                             {formTrend.averageRating.toFixed(2)}
                           </span>
                           <span
-                            className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase ${
+                            className={`rounded-md px-2 py-0.5 text-2xs font-bold uppercase ${
                               formTrend.trend === 'improving'
                                 ? 'bg-emerald-500/20 text-emerald-300'
                                 : formTrend.trend === 'declining'
@@ -1311,7 +1311,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                           {formTrend.recentRatings.map((r, i) => (
                             <span
                               key={i}
-                              className="rounded bg-slate-900 border border-slate-700 px-1.5 py-0.5 text-[10px] font-mono text-slate-300"
+                              className="rounded-md bg-slate-900 border border-slate-700 px-1.5 py-0.5 text-2xs font-mono text-slate-300"
                             >
                               {r.toFixed(1)}
                             </span>
@@ -1319,14 +1319,14 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                         </div>
                       </div>
                     ) : (
-                      <span className="text-[11px] text-slate-500 italic">
+                      <span className="text-micro text-slate-500 italic">
                         Awaiting match ratings
                       </span>
                     )}
                   </div>
 
                   <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-1.5">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    <div className="text-2xs font-bold uppercase tracking-wider text-slate-400">
                       Player Traits
                     </div>
                     <div className="flex flex-wrap gap-1">
@@ -1334,13 +1334,13 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                         traits.map((t, idx) => (
                           <span
                             key={`${t}-${idx}`}
-                            className="rounded bg-slate-800/90 border border-slate-700 px-2 py-0.5 text-[11px] text-slate-200"
+                            className="rounded-md bg-slate-800/70 border border-slate-700 px-2 py-0.5 text-micro text-slate-200"
                           >
                             {t}
                           </span>
                         ))
                       ) : (
-                        <span className="text-[11px] text-slate-500 italic">
+                        <span className="text-micro text-slate-500 italic">
                           No player traits recorded
                         </span>
                       )}
@@ -1352,7 +1352,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
               {/* IP / OOP role highlight selector with live Fit % */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
                 <div className="min-w-0">
-                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-emerald-400 mb-1">
+                  <label className="block text-micro font-semibold uppercase tracking-wider text-emerald-400 mb-1">
                     In-Possession (IP) Role Highlight
                   </label>
                   <select
@@ -1372,7 +1372,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                   </select>
                 </div>
                 <div className="min-w-0">
-                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-sky-400 mb-1">
+                  <label className="block text-micro font-semibold uppercase tracking-wider text-sky-400 mb-1">
                     Out-of-Possession (OOP) Role Highlight
                   </label>
                   <select
@@ -1394,7 +1394,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
               </div>
 
               {/* Mobile-only attribute pillar filter so Android users don't scroll 36 rows */}
-              <div className="grid grid-cols-4 gap-1 rounded-xl border border-slate-800 bg-slate-950/70 p-1 md:hidden">
+              <div className="grid grid-cols-4 gap-1 rounded-xl border border-slate-800 bg-slate-950/60 p-1 md:hidden">
                 {(
                   [
                     { id: 'all', label: 'All' },
@@ -1463,7 +1463,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                       <span className="w-2 h-2 rounded-full bg-sky-400" />
                       <span>Preferable role attribute</span>
                     </div>
-                    <div className="text-[11px] text-slate-500 pt-1">
+                    <div className="text-micro text-slate-500 pt-1">
                       “—” means that attribute wasn&apos;t included in this import.
                     </div>
                   </div>
@@ -1502,15 +1502,15 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                               score
                             )}`}
                           >
-                            <div className="text-[11px] font-bold">{pos.label}</div>
-                            <div className="text-[10px] font-mono opacity-80">{score}/20</div>
+                            <div className="text-micro font-bold">{pos.label}</div>
+                            <div className="text-2xs font-mono opacity-80">{score}/20</div>
                           </div>
                         );
                       })}
                     </div>
                   ))}
                 </div>
-                <p className="text-[10px] text-slate-400 text-center">
+                <p className="text-2xs text-slate-400 text-center">
                   18–20 = Natural · 15–17 = Accomplished · 12–14 = Competent
                 </p>
               </div>
@@ -1524,11 +1524,11 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     {analysis.topIpRoles.map((r) => (
                       <div
                         key={r.role.name}
-                        className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs"
+                        className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/70 px-3 py-2 text-xs"
                       >
                         <span className="font-medium text-slate-200 min-w-0 truncate">{r.role.name}</span>
                         <span
-                          className={`rounded border px-2 py-0.5 text-[10px] font-mono font-semibold shrink-0 ${tierBadgeClass(
+                          className={`rounded-md border px-2 py-0.5 text-2xs font-mono font-semibold shrink-0 ${tierBadgeClass(
                             r.tier
                           )}`}
                         >
@@ -1547,11 +1547,11 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     {analysis.topOopRoles.map((r) => (
                       <div
                         key={r.role.name}
-                        className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs"
+                        className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/70 px-3 py-2 text-xs"
                       >
                         <span className="font-medium text-slate-200 min-w-0 truncate">{r.role.name}</span>
                         <span
-                          className={`rounded border px-2 py-0.5 text-[10px] font-mono font-semibold shrink-0 ${tierBadgeClass(
+                          className={`rounded-md border px-2 py-0.5 text-2xs font-mono font-semibold shrink-0 ${tierBadgeClass(
                             r.tier
                           )}`}
                         >
@@ -1580,58 +1580,58 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
                 <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 sm:p-4 space-y-1 min-w-0">
                   <div className="flex flex-wrap items-center justify-between gap-1">
-                    <span className="text-[10px] uppercase tracking-wider text-slate-400">
+                    <span className="text-2xs uppercase tracking-wider text-slate-400">
                       Physical
                     </span>
-                    <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-semibold text-emerald-300">
+                    <span className="rounded-md bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 text-3xs sm:text-2xs font-semibold text-emerald-300">
                       {analysis.physical.tier}
                     </span>
                   </div>
                   <div className="text-xl sm:text-2xl font-bold text-emerald-400 font-mono tabular-nums">
                     {analysis.physical.score}/100
                   </div>
-                  <div className="text-[11px] text-slate-400 leading-snug">
+                  <div className="text-micro text-slate-400 leading-snug">
                     {analysis.physical.explanation}
                   </div>
                 </div>
 
                 <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 sm:p-4 space-y-1 min-w-0">
-                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                  <div className="text-2xs uppercase tracking-wider text-slate-400">
                     Top Sprint Speed
                   </div>
                   <div className="text-xl sm:text-2xl font-bold text-sky-300 font-mono tabular-nums">
                     {analysis.physical.topSpeedKmh} <span className="text-xs sm:text-sm font-normal">km/h</span>
                   </div>
-                  <div className="text-[11px] text-slate-300 leading-snug">
+                  <div className="text-micro text-slate-300 leading-snug">
                     {analysis.physical.speedVerdict}
                   </div>
-                  <div className="text-[10px] text-slate-500 font-mono">
+                  <div className="text-2xs text-slate-500 font-mono">
                     {analysis.physical.topSpeedMps} m/s · Pace {a.pace} · Acc {a.acceleration}
                   </div>
                 </div>
 
                 <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 sm:p-4 space-y-1 min-w-0">
-                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                  <div className="text-2xs uppercase tracking-wider text-slate-400">
                     Aerial Reach
                   </div>
                   <div className="text-xl sm:text-2xl font-bold text-amber-300 font-mono tabular-nums">
                     +{analysis.physical.jumpHeightMeters} m
                   </div>
-                  <div className="text-[11px] text-slate-300 leading-snug">
+                  <div className="text-micro text-slate-300 leading-snug">
                     {analysis.physical.aerialVerdict}
                   </div>
-                  <div className="text-[10px] text-slate-500 font-mono">
+                  <div className="text-2xs text-slate-500 font-mono">
                     Jump {a.jumpingReach}/20 · Head {a.heading ?? '—'}/20
                   </div>
                 </div>
 
                 <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 sm:p-4 space-y-1 min-w-0">
                   <div className="flex flex-wrap items-center justify-between gap-1">
-                    <span className="text-[10px] uppercase tracking-wider text-slate-400">
+                    <span className="text-2xs uppercase tracking-wider text-slate-400">
                       Durability
                     </span>
                     <span
-                      className={`rounded border px-1.5 py-0.5 text-[9px] sm:text-[10px] font-semibold ${durabilityBadgeClass}`}
+                      className={`rounded-md border px-1.5 py-0.5 text-3xs sm:text-2xs font-semibold ${durabilityBadgeClass}`}
                     >
                       {analysis.physical.durability.tier}
                     </span>
@@ -1641,10 +1641,10 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     <span className="text-xs sm:text-sm font-normal text-slate-400"> / </span>
                     {analysis.physical.durability.naturalFitness ?? '—'}
                   </div>
-                  <div className="text-[11px] text-slate-300 leading-snug">
+                  <div className="text-micro text-slate-300 leading-snug">
                     {analysis.physical.durability.headline}
                   </div>
-                  <div className="text-[10px] text-slate-500">
+                  <div className="text-2xs text-slate-500">
                     Stamina / Natural Fitness
                   </div>
                 </div>
@@ -1670,7 +1670,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                         value={comparePlayerId}
                         onChange={(e) => setComparePlayerId(e.target.value)}
                         aria-label="Compare with teammate"
-                        className="w-full sm:w-auto sm:max-w-[210px] min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1 text-[11px] text-slate-200"
+                        className="w-full sm:w-auto sm:max-w-[210px] min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1 text-micro text-slate-200"
                       >
                         {analysis.squadDepth?.bestTeammate && (
                           <option value="__AUTO__">
@@ -1733,7 +1733,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                       Season Production
                     </h4>
                     {analysis.seasonProduction.hasPlayed && player.statsSource && (
-                      <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300">
+                      <span className="rounded-md bg-slate-800 px-2 py-0.5 text-2xs text-slate-300">
                         {player.statsSource}
                       </span>
                     )}
@@ -1792,7 +1792,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                       </div>
                       {(analysis.seasonProduction.finishingNote ||
                         analysis.seasonProduction.creationNote) && (
-                        <div className="pt-2 border-t border-slate-800 space-y-1 text-[11px] text-emerald-300">
+                        <div className="pt-2 border-t border-slate-800 space-y-1 text-micro text-emerald-300">
                           {analysis.seasonProduction.finishingNote && (
                             <div>• {analysis.seasonProduction.finishingNote}</div>
                           )}
@@ -1864,7 +1864,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     </span>
                   </div>
                   {analysis.contractStanding.promiseMismatch && (
-                    <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] text-amber-200">
+                    <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-micro text-amber-200">
                       {analysis.contractStanding.promiseMismatch}
                     </div>
                   )}
@@ -1892,15 +1892,15 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                         Contract Clauses &amp; Match Bonuses
                       </h4>
                       {player.contractDetails?.promisedPlayingTime && (
-                        <span className="rounded bg-indigo-500/15 border border-indigo-500/30 px-2 py-0.5 text-[11px] font-semibold text-indigo-300">
+                        <span className="rounded-md bg-indigo-500/15 border border-indigo-500/30 px-2 py-0.5 text-micro font-semibold text-indigo-300">
                           Promised: {player.contractDetails.promisedPlayingTime}
                         </span>
                       )}
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
-                        <div className="text-[10px] uppercase text-slate-400">
+                      <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5">
+                        <div className="text-2xs uppercase text-slate-400">
                           Optional Club Extension
                         </div>
                         <div className="mt-0.5 font-mono font-semibold text-slate-100">
@@ -1909,8 +1909,8 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                             : 'None recorded'}
                         </div>
                       </div>
-                      <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
-                        <div className="text-[10px] uppercase text-slate-400">
+                      <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5">
+                        <div className="text-2xs uppercase text-slate-400">
                           Release Clauses
                         </div>
                         {partitioned.releaseClauses.length > 0 ? (
@@ -1925,8 +1925,8 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                           <div className="mt-0.5 text-slate-400">No release clauses</div>
                         )}
                       </div>
-                      <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
-                        <div className="text-[10px] uppercase text-slate-400">
+                      <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5">
+                        <div className="text-2xs uppercase text-slate-400">
                           Match Bonuses
                         </div>
                         <div className="mt-0.5 space-y-0.5 font-mono text-slate-200">
@@ -1964,10 +1964,10 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
 
                     {contractNotes.length > 0 && (
                       <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 space-y-1 text-amber-200">
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-amber-300">
+                        <div className="text-2xs font-bold uppercase tracking-wider text-amber-300">
                           Playbook v2.0 Contract Notes
                         </div>
-                        <ul className="list-disc pl-4 space-y-0.5 text-[11px]">
+                        <ul className="list-disc pl-4 space-y-0.5 text-micro">
                           {contractNotes.map((note, idx) => (
                             <li key={idx}>{note}</li>
                           ))}
@@ -1989,7 +1989,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     {seasonHistory.map((h, i) => (
                       <div
                         key={`m-${h.season}-${h.club}-${i}`}
-                        className="rounded-lg border border-slate-800/80 bg-slate-900/60 px-3 py-2 flex items-center justify-between gap-2 text-xs"
+                        className="rounded-lg border border-slate-800/80 bg-slate-900/70 px-3 py-2 flex items-center justify-between gap-2 text-xs"
                       >
                         <div className="min-w-0">
                           <div className="font-mono font-semibold text-white">
@@ -1998,7 +1998,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                               · {h.club}
                             </span>
                           </div>
-                          <div className="text-[11px] font-mono text-slate-400 tabular-nums">
+                          <div className="text-micro font-mono text-slate-400 tabular-nums">
                             {h.apps} apps · {h.goals}G · {h.assists}A
                           </div>
                         </div>
@@ -2011,7 +2011,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                   {/* Desktop table (sm:+) */}
                   <div className="hidden sm:block overflow-x-auto">
                     <table className="w-full text-xs text-left text-slate-300">
-                      <thead className="bg-slate-900/90 text-[10px] uppercase text-slate-400">
+                      <thead className="bg-slate-900/95 text-2xs uppercase text-slate-400">
                         <tr>
                           <th className="px-2.5 py-2">Season</th>
                           <th className="px-2.5 py-2">Club</th>

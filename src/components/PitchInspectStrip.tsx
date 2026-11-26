@@ -44,7 +44,7 @@ export const PitchInspectStrip: React.FC<PitchInspectStripProps> = ({
         ? 'border-sky-500/35 bg-sky-950/35 text-sky-200'
         : restNode?.category === 'ATTACKING_OUTLET'
           ? 'border-purple-500/35 bg-purple-950/35 text-purple-200'
-          : 'border-slate-700 bg-slate-900/80 text-slate-300';
+          : 'border-slate-700 bg-slate-900/70 text-slate-300';
 
   const durToneClass =
     dur?.label === 'Ironman'
@@ -58,20 +58,20 @@ export const PitchInspectStrip: React.FC<PitchInspectStripProps> = ({
   return (
     <div
       data-testid="pitch-inspect-strip"
-      className="rounded-xl border border-emerald-500/35 bg-slate-950/90 p-3 space-y-2.5"
+      className="rounded-xl border border-emerald-500/35 bg-slate-950/85 p-3 space-y-2.5"
     >
       {/* Top Identity Row */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="rounded bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] font-mono font-bold text-emerald-300">
+            <span className="rounded-md bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.5 text-2xs font-mono font-bold text-emerald-300">
               {slot.label}
             </span>
             <span className="text-sm font-bold text-white truncate">
               {player ? player.name : 'Unassigned Slot'}
             </span>
             {player && (
-              <span className="font-mono text-[11px] font-bold text-amber-400 tabular-nums shrink-0">
+              <span className="font-mono text-micro font-bold text-amber-400 tabular-nums shrink-0">
                 {(player.ability || 0).toFixed(1)}★
                 <span className="text-slate-500 font-normal">
                   /{(player.potential || 0).toFixed(1)}★
@@ -81,17 +81,17 @@ export const PitchInspectStrip: React.FC<PitchInspectStripProps> = ({
           </div>
 
           {player && dur && (
-            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
-              <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-300">
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-micro">
+              <span className="rounded-md bg-slate-800 px-1.5 py-0.5 font-mono text-2xs text-slate-300">
                 {player.position}
               </span>
               <span
-                className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${durToneClass}`}
+                className={`rounded-md border px-1.5 py-0.5 text-2xs font-semibold ${durToneClass}`}
               >
                 {dur.label} · Sta {dur.stamina} / NF {dur.naturalFitness}
               </span>
               {dur.sharpness !== null && (
-                <span className="font-mono text-[10px] text-slate-400">
+                <span className="font-mono text-2xs text-slate-400">
                   Sharp {dur.sharpness}%
                 </span>
               )}
@@ -129,7 +129,7 @@ export const PitchInspectStrip: React.FC<PitchInspectStripProps> = ({
       {/* Dual-Phase IP & OOP Role Grid */}
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded-lg border border-emerald-500/30 bg-emerald-950/20 px-2.5 py-1.5 min-w-0">
-          <div className="flex items-center justify-between gap-1 text-[10px] font-mono uppercase tracking-wider text-emerald-400">
+          <div className="flex items-center justify-between gap-1 text-2xs font-mono uppercase tracking-wider text-emerald-400">
             <span>In Possession</span>
             {player && <span className="font-bold tabular-nums">{slot.ipFitPct}%</span>}
           </div>
@@ -139,7 +139,7 @@ export const PitchInspectStrip: React.FC<PitchInspectStripProps> = ({
         </div>
 
         <div className="rounded-lg border border-sky-500/30 bg-sky-950/20 px-2.5 py-1.5 min-w-0">
-          <div className="flex items-center justify-between gap-1 text-[10px] font-mono uppercase tracking-wider text-sky-400">
+          <div className="flex items-center justify-between gap-1 text-2xs font-mono uppercase tracking-wider text-sky-400">
             <span>Out of Poss.</span>
             {player && <span className="font-bold tabular-nums">{slot.oopFitPct}%</span>}
           </div>
@@ -151,7 +151,7 @@ export const PitchInspectStrip: React.FC<PitchInspectStripProps> = ({
 
       {/* Plain-English Rest Defence Job */}
       {restNode && (
-        <div className={`rounded-lg border px-2.5 py-1.5 text-[11px] leading-snug ${restToneClass}`}>
+        <div className={`rounded-lg border px-2.5 py-1.5 text-micro leading-snug ${restToneClass}`}>
           <div className="flex items-center gap-1.5 font-bold">
             <Shield className="w-3 h-3 shrink-0" />
             <span>
@@ -166,7 +166,7 @@ export const PitchInspectStrip: React.FC<PitchInspectStripProps> = ({
 
       {/* Natural Position / Warning Callout */}
       {hasWarning && (
-        <div className="rounded-lg border border-amber-500/40 bg-amber-950/30 px-2.5 py-1.5 text-[11px] text-amber-200 flex items-start gap-1.5">
+        <div className="rounded-lg border border-amber-500/40 bg-amber-950/30 px-2.5 py-1.5 text-micro text-amber-200 flex items-start gap-1.5">
           <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
           <span>
             {slot.warnings.length > 0
