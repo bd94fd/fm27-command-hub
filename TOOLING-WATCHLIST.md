@@ -30,6 +30,8 @@ Purpose: remember tools and skills worth adding later, so we do not search for t
 | `fm27-save-safety` | Project skill | Backup, restore, fixture and re-sync checks. | 25 Nov 2026 |
 | `fm27-performance-audit` | Project skill | Android-first save benchmark and memory checks. | 25 Nov 2026 |
 | `fm27-release-check` | Project skill | Full release gate and file-scope guard. | 25 Nov 2026 |
+| Playwright MCP (`playwright`) | MCP server | Live UI inspection, clicking, screenshots and console checks. | 26 Nov 2026 |
+| Chrome DevTools MCP (`chrome-devtools`) | MCP server | Performance traces, long tasks, memory and network diagnostics. | 26 Nov 2026 |
 
 ## Add at a specific roadmap item
 
@@ -47,8 +49,6 @@ Purpose: remember tools and skills worth adding later, so we do not search for t
 | Chromatic, Percy or BackstopJS | R29 or R30 | Visual regression across screens and states. | https://github.com/garris/BackstopJS | MIT for BackstopJS | Hosted tools cost money. Start with Playwright screenshots if possible. |
 | Storybook and its a11y addon | R26, if a component library grows | Component states and accessibility in one place. | https://storybook.js.org/addons/@storybook/addon-a11y | MIT | Only worth it if shared components become a real system. |
 | Sentry or OpenTelemetry | R06 Error reporting | Real error reports with redaction. | https://github.com/getsentry/sentry-javascript | MIT for the SDK | Do a privacy review before sending any save data. |
-| Playwright MCP | R28 or R29, if the skill is not enough | Lets the agent drive a live browser through MCP. | https://github.com/microsoft/playwright-mcp | Apache-2.0 | The Playwright skill already covers most needs. Add only if live MCP control is useful. |
-| Chrome DevTools MCP | R05, R14 or R45, if available | Performance traces and insight analysis. | https://github.com/ChromeDevTools/chrome-devtools-mcp | Apache-2.0 | Check that the runtime supports it before relying on it. |
 | `verify-regression-tests` | R03 and R41 | Counterfactual check that a regression guard fails for the intended drift and passes again after restore. | https://github.com/aiopshwang/verify-regression-tests | MIT | Skill-only, no runtime dependency. Use when a new regression guard is added; the manual known-bad check is enough for the current fingerprint test. |
 | `emilkowalski/skills` | R27 Motion and feedback | Motion review, animation performance and mobile-native guidance. | https://github.com/emilkowalski/skills | MIT | Add only the motion skills, not the whole design set. |
 | Vercel `react-best-practices` | R18, R39 and R40 | React performance and bundle rules from Vercel Engineering. | https://github.com/vercel-labs/agent-skills | MIT | Some rules target Next.js and do not apply to Vite. Filter them. |
@@ -58,6 +58,12 @@ Purpose: remember tools and skills worth adding later, so we do not search for t
 | `nextlevelbuilder/ui-ux-pro-max-skill` | R26, for new design work | Design generation and styling intelligence. | https://github.com/nextlevelbuilder/ui-ux-pro-max-skill | MIT | It generates designs; it does not audit an existing screen. |
 | `Nutlope/hallmark` | R22 or R26 | Anti-AI-slop design guidance. | https://github.com/Nutlope/hallmark | MIT | A style skill, not a measured audit. |
 
+## MCP status
+
+- `playwright` — enabled, pinned to `@playwright/mcp@0.0.86`, headless and isolated, smoke-tested with 25 tools.
+- `chrome-devtools` — enabled, pinned to `chrome-devtools-mcp@1.14.0`, headless and isolated, CrUX/usage reporting disabled, tool list smoke-tested.
+- MCP settings are account-level. Changes apply to new conversations only. See `docs/mcp-setup.md`.
+
 ## Decision log
 
 - 25 Nov 2026: added Playwright, the addyosmani web quality set and the small UI/UX audit rubric.
@@ -65,6 +71,7 @@ Purpose: remember tools and skills worth adding later, so we do not search for t
 - 25 Nov 2026: reviewed `pbakaus/impeccable`. It is popular and capable, so it was added with a pinned engine, checksum verification, no hook and no live mode. See `.agents/skills/impeccable/FM27-SETUP.md`.
 - 25 Nov 2026: trialled Impeccable on the loaded Staff and Hub screens. Staff had 135 mobile and 106 desktop findings, mostly the same 9px card labels repeated. Hub had 12 findings. Verdict: useful for targeted audits with JSON and dedupe, not yet a blocking CI gate.
 - 25 Nov 2026: searched for regression-test skills while starting R03. Added `verify-regression-tests` to the candidate list. It was not installed because the real-save fingerprint guard needed a small manual known-bad check, not a new runtime dependency.
+- 26 Nov 2026: enabled Playwright MCP and Chrome DevTools MCP for new conversations. Pinned both versions, disabled Chrome DevTools CrUX/usage reporting, and documented the selection rule in `AGENTS.md` and `docs/mcp-setup.md`.
 
 ## Rejected for now
 

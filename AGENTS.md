@@ -24,8 +24,9 @@
 
 ## Start-of-task gate
 
-- Before planning or changing code, read `ROADMAP.md`, `TOOLING-WATCHLIST.md`, and the available skill/MCP list.
+- Before planning or changing code, read `ROADMAP.md`, `TOOLING-WATCHLIST.md`, `docs/mcp-setup.md`, and the available skill/MCP list.
 - Name the applicable skills and MCP servers in one line, and invoke every matching skill. If none applies, say why once.
+- Use `playwright` MCP for live UI interaction, `chrome-devtools` MCP for performance traces, and the Playwright skill for repeatable scripted checks. Do not use two of them for the same check.
 - Prefer an installed skill or MCP tool over an ad-hoc script when it covers the job.
 - If a missing tool would clearly help, add it to `TOOLING-WATCHLIST.md` with the roadmap item, source, licence and risk. When the roadmap item needs it, add it to the repo in the same PR or a small prep PR, with lockfile and tests. Do not stop at a note.
 - For host-level tools such as MCP servers, check whether they are available. If they are not, record the exact setup step and tell the user once; do not pretend to use them.
@@ -43,7 +44,8 @@
 - Design critique, audit, polish, layout, adapt or anti-slop work: use `impeccable` after reading `.agents/skills/impeccable/FM27-SETUP.md`. Do not run its live mode or installer hooks without explicit approval.
 - Accessibility or WCAG work: use `accessibility`.
 - Lighthouse, Core Web Vitals or page quality work: use `web-quality-audit`, `performance` and `core-web-vitals`.
-- Browser automation, screenshots or end-to-end checks: use `playwright-skill`.
+- Browser automation, screenshots or end-to-end checks: use `playwright-skill` for repeatable scripts, or the `playwright` MCP server for live interaction.
+- Performance traces, long tasks or memory checks: use the `chrome-devtools` MCP server and `fm27-performance-audit`.
 - GitHub repository, PR, issue or workflow work: use `github` and `github-actions`.
 - Security, privacy, secrets or data handling: use `security` and `best-practices`.
 - Feature planning before code: use `prd`.
