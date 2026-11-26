@@ -871,9 +871,9 @@ function startAsyncNativeFmDecodeJob(
     job.checkpointPayloadJson = undefined;
     job.checkpointDelivered = true;
 
-    // Render free tier is capped at 512 MB. The kernel SIGKILLs the Python child
-    // when the cgroup limit is hit; surface that as a 507 so the client falls
-    // back to Pyodide/Fast Sync immediately instead of polling to the timeout.
+    // The hosting memory cgroup SIGKILLs the Python child when its limit is hit.
+    // Surface that as a 507 so the client falls back to Pyodide/Fast Sync
+    // immediately instead of polling to the timeout.
     const wasOomKilled = code === 137 || signal === 'SIGKILL';
     if (wasOomKilled) {
       cleanupOutputFile();
@@ -882,7 +882,7 @@ function startAsyncNativeFmDecodeJob(
       job.errorCode = 'SERVER_OOM';
       job.httpStatus = 507;
       job.error =
-        'The server ran out of memory (512 MB Render free tier) while decoding this .fm save. Switching automatically to the local browser decoder — enable "Fast Sync" for very large saves.';
+        'The server ran out of memory while decoding this .fm save. Switching automatically to the local browser decoder; large saves use Fast Sync there to protect device memory.';
       job.finishedAt = Date.now();
       job.updatedAt = job.finishedAt;
       return;
