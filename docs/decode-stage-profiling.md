@@ -75,6 +75,21 @@ A direct decoder run on the slow save isolates the cause:
 
 Conclusion: the slow save is not a JSON, transfer or React problem. The Hub is paying for a second full layout attempt on an older build.
 
+## Follow-up: bounded fallbacks no longer repeat the full decode
+
+Date: 26 November 2026
+
+The 27.0.1 save produces three bounded fallbacks (`squad_planner`, `managed_club`, `scouting_budget`) and an unavailable league table. A forced 27.1 pass produced exactly the same summary, so the second attempt cannot improve it.
+
+Auto-try now starts a second decode only when a critical section (`players`, `staff`, `finances`, `tactics`, `fixtures`) is unavailable, or when the first summary is clearly worse than a bounded set of fallbacks (more than one unavailable section or more than three fallbacks).
+
+| Run | Wall time | Chosen base | Compatibility summary |
+| --- | ---: | --- | --- |
+| Before | 51.7 s | 27.0 | 12 clean, 3 fallback, 1 unavailable |
+| After | **25.3 s** | 27.0 | 12 clean, 3 fallback, 1 unavailable |
+
+The slow save keeps the same data and warnings, but first useful data and full ready both drop by roughly 25 seconds. The other two saves already had clean first passes and were unaffected.
+
 ## Next step
 
 R14 is measurement only, so it does not change the decode path. The next decode optimisation should:
