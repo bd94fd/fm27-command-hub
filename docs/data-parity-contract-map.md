@@ -158,6 +158,7 @@ flowchart LR
 | `buildClubFinancesPanel` | `src/components/AutoSyncWorkspace.tsx` | `src/utils/tacticalAnalystContext.ts` uses `buildSponsorshipPanelRows` |
 | `buildSponsorshipPanelRows` | `src/components/AutoSyncWorkspace.tsx` through the panel | `src/utils/tacticalAnalystContext.ts` |
 | `resolveSaveCompatibility` | `src/components/AutoSyncWorkspace.tsx` → `SaveCompatibilityPanel` | `src/utils/tacticalAnalystContext.ts` `save_compatibility` |
+| `mergeAnalystCitations` | `src/components/AutoSyncWorkspace.tsx` Grounded in footer | `server/prompts.ts` citation law + `sourceCitations[]` |
 
 ## Known gaps
 
@@ -201,5 +202,5 @@ These are UI-only by design. They are not gaps, and the Analyst should not inven
 ## Verification
 
 - `src/utils/dataParityContract.test.ts` checks the shared-selector tripwires, the required table sections, and the roadmap link.
-- Existing parity tests cover the individual domains: `financesStaffOverhaul.test.ts`, `phase5AnalystAndConsistency.test.ts`, `staffRatings.test.ts`, `clubFinances.test.ts`, and `fmSaveHydrator.test.ts`. `crossTabConsistency.test.ts` checks staff ratings, staff payroll, finance totals, squad pool counts, expiry windows and journey wage totals across Hub, Squad, Staff and Analyst. `fm27SaveCompatibility.test.ts` checks the matrix, the UI panel, the Analyst block and the unsupported-save message. `playerCardAnalysis.test.ts` checks role weights, thresholds, missing attributes and the nearest alternative.
+- Existing parity tests cover the individual domains: `financesStaffOverhaul.test.ts`, `phase5AnalystAndConsistency.test.ts`, `staffRatings.test.ts`, `clubFinances.test.ts`, and `fmSaveHydrator.test.ts`. `crossTabConsistency.test.ts` checks staff ratings, staff payroll, finance totals, squad pool counts, expiry windows and journey wage totals across Hub, Squad, Staff and Analyst. `fm27SaveCompatibility.test.ts` checks the matrix, the UI panel, the Analyst block and the unsupported-save message. `playerCardAnalysis.test.ts` checks role weights, thresholds, missing attributes and the nearest alternative. `analystCitations.test.ts` checks the prompt law, schema field, inline extraction, persisted citations, offline citations and the response footer.
 - R03's real-save regression suite covers the decoder fingerprint separately.

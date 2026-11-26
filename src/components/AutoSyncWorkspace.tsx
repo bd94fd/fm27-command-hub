@@ -28,6 +28,7 @@ import {
   Copy,
   Check,
   ClipboardPaste,
+  BookOpen,
 } from 'lucide-react';
 import {
   MatchLogEntry,
@@ -107,6 +108,7 @@ import {
   filterUsableSponsorshipDeals,
 } from '../utils/clubFinances';
 import { resolveSaveCompatibility } from '../utils/fm27SaveCompatibility';
+import { mergeAnalystCitations } from '../utils/analystCitations';
 import { SaveCompatibilityPanel } from './SaveCompatibilityPanel';
 
 export { isUsableSponsorshipDeal, filterUsableSponsorshipDeals } from '../utils/clubFinances';
@@ -751,6 +753,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         analysisMarkdown: offlineData.analysisMarkdown,
         immediateClicks: offlineData.immediateClicks,
         followUpQuestions: offlineData.followUpQuestions,
+        sourceCitations: offlineData.sourceCitations,
         chronicleTitle: offlineData.chronicleTitle,
         chronicleOutcomeMetric: offlineData.chronicleOutcomeMetric,
         eventNumber: nextEventNum,
@@ -1059,6 +1062,10 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         followUpQuestions: Array.isArray(data.followUpQuestions)
           ? data.followUpQuestions
           : [],
+        sourceCitations: mergeAnalystCitations(
+          data.sourceCitations,
+          data.analysisMarkdown
+        ),
         chronicleTitle: data.chronicleTitle || data.screenDetected,
         chronicleOutcomeMetric: data.chronicleOutcomeMetric || 'Updated',
         eventNumber: assignedEventNum,
@@ -1473,6 +1480,13 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           .map((c: string, i: number) => `${i + 1}. ${c}`)
           .join('\n')}`
       );
+    }
+    const citations = mergeAnalystCitations(
+      turn.sourceCitations,
+      turn.analysisMarkdown
+    );
+    if (citations.length > 0) {
+      parts.push(`Grounded in: ${citations.join(' · ')}`);
     }
     return parts.join('\n\n').trim();
   };
@@ -2269,6 +2283,11 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                 );
               }
 
+              const turnCitations = mergeAnalystCitations(
+                turn.sourceCitations,
+                turn.analysisMarkdown
+              );
+
               return (
                 <div
                   key={turn.id}
@@ -2408,6 +2427,25 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                           </li>
                         ))}
                       </ol>
+                    </div>
+                  )}
+
+                  {turnCitations.length > 0 && (
+                    <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-1">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                        <BookOpen className="h-3 w-3 shrink-0" />
+                        Grounded in
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {turnCitations.map((citation) => (
+                          <span
+                            key={citation}
+                            className="rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-1.5 py-0.5 text-[11px] text-slate-600 dark:text-slate-300"
+                          >
+                            {citation}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   )}
 

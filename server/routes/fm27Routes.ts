@@ -33,6 +33,7 @@ import {
   extractStructuredJsonObject,
   normalizeTacticalChatHistory,
 } from '../jsonExtractor.ts';
+import { mergeAnalystCitations } from '../../src/utils/analystCitations.ts';
 
 export interface Fm27RoutesOptions {
   geminiService?: GeminiService;
@@ -198,7 +199,14 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
           error: 'The Tactical Analyst returned malformed JSON. Please retry.',
         });
       }
-      return res.json(extracted.value);
+      const payload = extracted.value as Record<string, unknown>;
+      payload.sourceCitations = mergeAnalystCitations(
+        payload.sourceCitations,
+        typeof payload.analysisMarkdown === 'string'
+          ? payload.analysisMarkdown
+          : null
+      );
+      return res.json(payload);
     } catch (error: unknown) {
       return respondFailure(req, res, error);
     }
@@ -318,7 +326,14 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
           error: 'The Tactical Analyst returned malformed JSON. Please retry.',
         });
       }
-      return res.json(extracted.value);
+      const payload = extracted.value as Record<string, unknown>;
+      payload.sourceCitations = mergeAnalystCitations(
+        payload.sourceCitations,
+        typeof payload.analysisMarkdown === 'string'
+          ? payload.analysisMarkdown
+          : null
+      );
+      return res.json(payload);
     } catch (error: unknown) {
       return respondFailure(req, res, error);
     }
@@ -385,7 +400,14 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
           error: 'The Tactical Analyst returned malformed debrief JSON.',
         });
       }
-      return res.json(extracted.value);
+      const payload = extracted.value as Record<string, unknown>;
+      payload.sourceCitations = mergeAnalystCitations(
+        payload.sourceCitations,
+        typeof payload.analysisMarkdown === 'string'
+          ? payload.analysisMarkdown
+          : null
+      );
+      return res.json(payload);
     } catch (error: unknown) {
       return respondFailure(req, res, error);
     }
