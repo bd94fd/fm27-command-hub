@@ -31,6 +31,15 @@ Use this skill with `fm27-data-parity` before changing any save persistence or r
 4. Confirm the app does not duplicate players or staff, lose history, or overwrite newer values with older ones.
 5. Confirm the Analyst sees the same values as the UI after each import.
 
+## Real-save regression check
+
+1. Never commit a real `.fm` save, a decoded payload, or a manifest that contains raw names.
+2. Keep the files in `.agents_tmp/uploads/` or point `FM27_REAL_SAVE_DIR` at them.
+3. Run `python3 -m unittest tests.python.test_real_save_regression -v` with fmsave 0.14.4 installed.
+4. The manifest stores counts, totals, and one-way hashes only. It covers the decoder output, not a re-implementation.
+5. After an intentional decoder change, regenerate the manifest with `scripts/real-save-manifest.py`, review every changed fingerprint, and commit only the manifest.
+6. CI runs the same test only when `FM27_REAL_SAVE_DIR` and `FM27_REAL_SAVE_RUNNER` are configured. A skipped job is not evidence; a local run or a configured CI run is.
+
 ## Evidence to report
 
 - Save name and size.
@@ -39,3 +48,4 @@ Use this skill with `fm27-data-parity` before changing any save persistence or r
 - What was restored.
 - What matched and what did not.
 - Any data that was lost, duplicated or made stale.
+- For a real-save regression run: the manifest file names, builds, and the number of saves that passed.

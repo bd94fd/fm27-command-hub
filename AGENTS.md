@@ -17,6 +17,7 @@
 - Before changing code, run a skill check: name the skills that apply and invoke them. Do not silently skip a matching skill.
 - Save data, Analyst, staff, finances, or decoder work: use `fm27-data-parity`.
 - Backup, restore, fixture or re-sync work: use `fm27-save-safety`.
+- Real-save regression work: use `fm27-save-safety` and `docs/real-save-regression.md`. Never commit `.fm` files or decoded payloads; keep only the safe fingerprint manifest.
 - Save-load speed, memory, bundle or performance-budget work: use `fm27-performance-audit`.
 - Any screen, layout, or mobile change: use `fm27-ui-ux-review` and `web-design-guidelines`.
 - Measured UI audit for contrast, tap targets, spacing or alignment: use `ui-ux-audit` as a supporting rubric after `fm27-ui-ux-review` and `accessibility`.

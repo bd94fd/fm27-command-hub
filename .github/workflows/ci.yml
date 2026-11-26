@@ -90,3 +90,27 @@ jobs:
             echo "**Total \`dist/\` size:** $(du -sh dist | cut -f1)"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  real-save-regression:
+    if: ${{ vars.FM27_REAL_SAVE_DIR != '' && vars.FM27_REAL_SAVE_RUNNER != '' }}
+    runs-on: ${{ vars.FM27_REAL_SAVE_RUNNER }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+
+      - name: Install pinned fmsave
+        run: python -m pip install --disable-pip-version-check fmsave==0.14.4
+
+      - name: Decode real saves against the fingerprint manifest
+        env:
+          FM27_REAL_SAVE_DIR: ${{ vars.FM27_REAL_SAVE_DIR }}
+          FM27_REAL_SAVE_REQUIRED: '1'
+        run: python -m unittest tests.python.test_real_save_regression -v
+

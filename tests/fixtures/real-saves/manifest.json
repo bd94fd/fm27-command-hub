@@ -1,0 +1,527 @@
+{
+  "schemaVersion": 1,
+  "saves": [
+    {
+      "id": "auto_save",
+      "fileName": "auto_save.fm",
+      "sizeBytes": 264540047,
+      "sha256": "5d2a264e221bae9329dc21d8b41dc8aa6883c90e1769843d0fb936419ede6cca",
+      "fingerprint": {
+        "meta": {
+          "game": "FM27",
+          "build": "27.1.0+2505117",
+          "gameDateIso": "2027-09-15",
+          "knownBuild": true,
+          "balance": -802198,
+          "scoutingBudget": 3900,
+          "scoutingBudgetRemaining": 0
+        },
+        "compatibility": {
+          "layoutBase": "27.1",
+          "layoutStatus": "known",
+          "dynamicBuildRegistered": false,
+          "isFm27": true,
+          "isUntestedBuild": false,
+          "runtimePatchesApplied": true,
+          "sections": [
+            {
+              "id": "binary_forensics",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "club_table",
+              "status": "patched",
+              "fallbacks": 0
+            },
+            {
+              "id": "finances",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "fixtures",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "governance",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "league_table",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "managed_club",
+              "status": "fallback",
+              "fallbacks": 1
+            },
+            {
+              "id": "players",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "scouting_budget",
+              "status": "fallback",
+              "fallbacks": 1
+            },
+            {
+              "id": "season_stats",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "selections",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "set_pieces",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "squad_planner",
+              "status": "fallback",
+              "fallbacks": 1
+            },
+            {
+              "id": "staff",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "tactics",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "tactics_set_piece",
+              "status": "patched",
+              "fallbacks": 0
+            }
+          ]
+        },
+        "finances": {
+          "month": "2027-08-01",
+          "balance": -749475,
+          "wagePayrollWeekly": 10257,
+          "wageBudgetWeekly": 10203,
+          "transferBudgetRemaining": 1435
+        },
+        "extractionManifest": {
+          "seniorSquad": 28,
+          "youthReserves": 19,
+          "totalPlayers": 47,
+          "shortlistScouted": 77,
+          "staff": 40,
+          "playedMatches": 15,
+          "upcomingFixtures": 8,
+          "activeInjuries": 0,
+          "activeSuspensions": 1,
+          "playerMatchStats": 21,
+          "playerSeasonHistory": 28,
+          "teamMatchStats": 21,
+          "tactics": 3,
+          "tacticInstructionsCount": 50,
+          "squadPlannerSlots": 65,
+          "setPieceRoutines": 7,
+          "mentoringGroups": 3,
+          "sponsorships": 2,
+          "hasFinances": true,
+          "hasLeagueStanding": true,
+          "hasManagerContract": true,
+          "hasBoardConfidence": false,
+          "hasSupporterConfidence": false,
+          "hasBoardObjectives": false,
+          "promisesCount": 0,
+          "warningsCount": 0,
+          "fastSync": false
+        },
+        "totals": {
+          "squadWageWeekly": 7975,
+          "squadMarketValue": 308318,
+          "staffWageWeekly": 11171,
+          "targetWageWeekly": 26828,
+          "targetTransferValue": 4457168
+        },
+        "hashes": {
+          "players": "624661a6a14f79b4794105efd676389f2731dbfc4f992fe2ba93ba821adce207",
+          "staff": "418bcbbfca85ade91ef493d13024ab874f57bcc95c65163441dba9dd8fc686c6",
+          "targets": "2d6de46704d6a3186a244e544420ba41834eff0216058ebdf29b872e3873b8ae",
+          "matches": "2116e11f80c3b996511702c56147b9741b5f2fb34762c85f8d03df784e6d733e",
+          "sponsorships": "540d703cdec299137ec8746a4e6e0dd6ac0db8e79616731e10171a8d8eb2235f",
+          "squadPlanner": "933041beec7a7e5872459a5e212c04046619cc357eb27d663bb9d0bfd199499f",
+          "selections": "e093d5be7d8da174fa2d733c4b2bbb7f531c0c0ea1fa3899d11c766f80fa1889",
+          "tactics": "a9ea7a2379135b4cc7e70564f65354ffe05b957758d557ecc20a3fe8304a1eda",
+          "setPieces": "b47b0c748cca145a433164e52a968a06bda8636b4634c403b1633120381286c8",
+          "training": "9bb2c94f481b598f2ba6cee4219f0d31afc13c3334c9c810f8e30c89b8995868",
+          "competitionRules": "b6c65b8b156d196cb77dd897800c4c9b780a9ae37adebaa53adde2f612f216f2",
+          "transferWindows": "8bd08d908f30dd33aaa9ebed114547ef7c89b10560bc7f298c425721e370fe8e",
+          "facilities": "296d3cd0098db95bb4aa27170a8df3b78f34d0804ce3fb6be0d83cdc0014b0dd",
+          "jobVacancies": "c87765b06fe92f2479f364e96086ddf4a73547fc1357a22849b6350a9ce7b4eb",
+          "leagueStanding": "c7e0f5b0e0c106941daa11b97e07b71d2fdbd82b2bf6569a7f32de069d32adc9",
+          "governance": "59ce3ab3a1a55ef3558c3aa97d7c972c129d32637875d7f0ff191affea2e2e85",
+          "monthlyFinances": "3e29173f3d00f6cc42aae1765b8197abe0e4dba3523158c313ba0dbf29c7a9a8",
+          "activeInjuries": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "activeSuspensions": "c7a21664c8dc2855f539b6878925ad806ea0caac646a622b8355525bb1bbbac5",
+          "playerMatchStats": "47f2aed269803df7296cc6d9e53595e90939bcb8cc5b1ced128d64e3343a73ec",
+          "playerSeasonHistory": "e774eb5e69680891a7db40f74a8c6efe12dc7c0cf7d8e675f0ca25fd2cadd9dd",
+          "teamMatchStats": "0e36455833e09f3ff5ef33fbd815c4e8faa58068e4829537f435b73655fdc083"
+        }
+      }
+    },
+    {
+      "id": "auto_save_v03_",
+      "fileName": "auto_save_v03_.fm",
+      "sizeBytes": 253756557,
+      "sha256": "57ee7300382a141d5b850cbba4f40c5f5df89b4972e7c3ae1a317fec5a4fa592",
+      "fingerprint": {
+        "meta": {
+          "game": "FM27",
+          "build": "27.0.1+2503222",
+          "gameDateIso": "2027-08-11",
+          "knownBuild": false,
+          "balance": -674023,
+          "scoutingBudget": 3900,
+          "scoutingBudgetRemaining": 1133
+        },
+        "compatibility": {
+          "layoutBase": "27.0",
+          "layoutStatus": "dynamic",
+          "dynamicBuildRegistered": true,
+          "isFm27": true,
+          "isUntestedBuild": true,
+          "runtimePatchesApplied": true,
+          "sections": [
+            {
+              "id": "binary_forensics",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "club_table",
+              "status": "patched",
+              "fallbacks": 0
+            },
+            {
+              "id": "finances",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "fixtures",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "governance",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "league_table",
+              "status": "unavailable",
+              "fallbacks": 0
+            },
+            {
+              "id": "managed_club",
+              "status": "fallback",
+              "fallbacks": 1
+            },
+            {
+              "id": "players",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "scouting_budget",
+              "status": "fallback",
+              "fallbacks": 1
+            },
+            {
+              "id": "season_stats",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "selections",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "set_pieces",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "squad_planner",
+              "status": "fallback",
+              "fallbacks": 1
+            },
+            {
+              "id": "staff",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "tactics",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "tactics_set_piece",
+              "status": "patched",
+              "fallbacks": 0
+            }
+          ]
+        },
+        "finances": {
+          "month": "2027-07-01",
+          "balance": -631197,
+          "wagePayrollWeekly": 10604,
+          "wageBudgetWeekly": 10203,
+          "transferBudgetRemaining": 0
+        },
+        "extractionManifest": {
+          "seniorSquad": 29,
+          "youthReserves": 20,
+          "totalPlayers": 49,
+          "shortlistScouted": 65,
+          "staff": 38,
+          "playedMatches": 15,
+          "upcomingFixtures": 8,
+          "activeInjuries": 0,
+          "activeSuspensions": 1,
+          "playerMatchStats": 31,
+          "playerSeasonHistory": 29,
+          "teamMatchStats": 14,
+          "tactics": 3,
+          "tacticInstructionsCount": 51,
+          "squadPlannerSlots": 65,
+          "setPieceRoutines": 4,
+          "mentoringGroups": 3,
+          "sponsorships": 1,
+          "hasFinances": true,
+          "hasLeagueStanding": false,
+          "hasManagerContract": true,
+          "hasBoardConfidence": false,
+          "hasSupporterConfidence": false,
+          "hasBoardObjectives": false,
+          "promisesCount": 0,
+          "warningsCount": 1,
+          "fastSync": false
+        },
+        "totals": {
+          "squadWageWeekly": 8090,
+          "squadMarketValue": 334105,
+          "staffWageWeekly": 10643,
+          "targetWageWeekly": 21377,
+          "targetTransferValue": 3354395
+        },
+        "hashes": {
+          "players": "a2a8d108657a0b811cc162ee328aae42cb592a7d950aa033cd111b411df72fcc",
+          "staff": "0963c62973d2941e8ff9e1d3001a7365070c673c261e6ea3c91e6e109162c8b8",
+          "targets": "00c3c1175b79d2141596cf21429b34f395e64656f3310723e827e89e65dd3350",
+          "matches": "e9c4349a75eecdb11290a367c485bee4826c14e0ac4b2d01672cd9eebd2c8c0e",
+          "sponsorships": "a6d92313f3e576349ba2b3d7b7316ef20b8c129ac3abe2dfc4ced2cc2d04d0ff",
+          "squadPlanner": "5020aa5027015c12320fbd815e18a97bc21a4a453d97a39766adda85b6ef7110",
+          "selections": "5b57c3be7ed6ffc5066facd5cfaa2330198f91cf119b9ebf0dba7b647b98d208",
+          "tactics": "b2969938809fa5330cf2e9e5346efd78cb7fca91cdb91271d4440b032f62abf6",
+          "setPieces": "ff6ebf904330d931eab38ee59b8947477456591d54c2ac10f7a23f9e96905721",
+          "training": "ed744adb41d417b2cdd2444cf6b7441768dd58835ffbfd324837368322deaba2",
+          "competitionRules": "565d74e7b40ef83876ea4383ea7eee8c0aaad34a45acad4c029a1861b890a2e3",
+          "transferWindows": "5e9209aa43d9fec8aa0721fb331d344f32a20cb9bb0a6a7de23f02add3c7ca17",
+          "facilities": "296d3cd0098db95bb4aa27170a8df3b78f34d0804ce3fb6be0d83cdc0014b0dd",
+          "jobVacancies": "87c11c7d9195113df9bc20c024e538d430c43d4e86f5fc0df5f88e9ef983f1d0",
+          "leagueStanding": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "governance": "72f009c2c2e45073edf094a5ee2b0c99fd4ce4f3868fde9368b07df10690f0bf",
+          "monthlyFinances": "7798e6436ed34837901846d237e84a6aa642a606c00fbcd4315a43f0abcd99a5",
+          "activeInjuries": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "activeSuspensions": "c7a21664c8dc2855f539b6878925ad806ea0caac646a622b8355525bb1bbbac5",
+          "playerMatchStats": "6252ed1eb7d36b07b3a9cb3e5df7ba8afef8606933151cf0636f91c941a3af4b",
+          "playerSeasonHistory": "efaceb761de47e06bab117c7356eff731bfbcee21479cc9a9ad4e2a3cc4684d3",
+          "teamMatchStats": "befcd43c89f738cb624edfebc73c67c7779bd8ada61d6b84d3f5403a2983b867"
+        }
+      }
+    },
+    {
+      "id": "last_save_overwrite_backup",
+      "fileName": "last_save_overwrite_backup.fm",
+      "sizeBytes": 263389632,
+      "sha256": "2a9b72b99a57105294475be991ff81c0521da5cfaf8de366b20e5442f2e4bb15",
+      "fingerprint": {
+        "meta": {
+          "game": "FM27",
+          "build": "27.1.0+2505117",
+          "gameDateIso": "2027-09-15",
+          "knownBuild": true,
+          "balance": -801036,
+          "scoutingBudget": 3900,
+          "scoutingBudgetRemaining": 0
+        },
+        "compatibility": {
+          "layoutBase": "27.1",
+          "layoutStatus": "known",
+          "dynamicBuildRegistered": false,
+          "isFm27": true,
+          "isUntestedBuild": false,
+          "runtimePatchesApplied": true,
+          "sections": [
+            {
+              "id": "binary_forensics",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "club_table",
+              "status": "patched",
+              "fallbacks": 0
+            },
+            {
+              "id": "finances",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "fixtures",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "governance",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "league_table",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "managed_club",
+              "status": "fallback",
+              "fallbacks": 1
+            },
+            {
+              "id": "players",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "scouting_budget",
+              "status": "fallback",
+              "fallbacks": 1
+            },
+            {
+              "id": "season_stats",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "selections",
+              "status": "unavailable",
+              "fallbacks": 0
+            },
+            {
+              "id": "set_pieces",
+              "status": "unavailable",
+              "fallbacks": 0
+            },
+            {
+              "id": "squad_planner",
+              "status": "fallback",
+              "fallbacks": 1
+            },
+            {
+              "id": "staff",
+              "status": "clean",
+              "fallbacks": 0
+            },
+            {
+              "id": "tactics",
+              "status": "unavailable",
+              "fallbacks": 0
+            },
+            {
+              "id": "tactics_set_piece",
+              "status": "patched",
+              "fallbacks": 0
+            }
+          ]
+        },
+        "finances": {
+          "month": "2027-08-01",
+          "balance": -749475,
+          "wagePayrollWeekly": 10257,
+          "wageBudgetWeekly": 10203,
+          "transferBudgetRemaining": 1435
+        },
+        "extractionManifest": {
+          "seniorSquad": 28,
+          "youthReserves": 19,
+          "totalPlayers": 47,
+          "shortlistScouted": 77,
+          "staff": 40,
+          "playedMatches": 15,
+          "upcomingFixtures": 8,
+          "activeInjuries": 0,
+          "activeSuspensions": 1,
+          "playerMatchStats": 21,
+          "playerSeasonHistory": 28,
+          "teamMatchStats": 20,
+          "tactics": 0,
+          "tacticInstructionsCount": 0,
+          "squadPlannerSlots": 65,
+          "setPieceRoutines": 0,
+          "mentoringGroups": 3,
+          "sponsorships": 2,
+          "hasFinances": true,
+          "hasLeagueStanding": true,
+          "hasManagerContract": true,
+          "hasBoardConfidence": false,
+          "hasSupporterConfidence": false,
+          "hasBoardObjectives": false,
+          "promisesCount": 0,
+          "warningsCount": 1,
+          "fastSync": false
+        },
+        "totals": {
+          "squadWageWeekly": 7975,
+          "squadMarketValue": 308318,
+          "staffWageWeekly": 11171,
+          "targetWageWeekly": 26828,
+          "targetTransferValue": 4457168
+        },
+        "hashes": {
+          "players": "624661a6a14f79b4794105efd676389f2731dbfc4f992fe2ba93ba821adce207",
+          "staff": "418bcbbfca85ade91ef493d13024ab874f57bcc95c65163441dba9dd8fc686c6",
+          "targets": "2d6de46704d6a3186a244e544420ba41834eff0216058ebdf29b872e3873b8ae",
+          "matches": "64b2fafc385f34e170227be3967662dea8fcaf67096ec4ebec01139faa1e8e04",
+          "sponsorships": "540d703cdec299137ec8746a4e6e0dd6ac0db8e79616731e10171a8d8eb2235f",
+          "squadPlanner": "933041beec7a7e5872459a5e212c04046619cc357eb27d663bb9d0bfd199499f",
+          "selections": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "tactics": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "setPieces": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "training": "9bb2c94f481b598f2ba6cee4219f0d31afc13c3334c9c810f8e30c89b8995868",
+          "competitionRules": "b6c65b8b156d196cb77dd897800c4c9b780a9ae37adebaa53adde2f612f216f2",
+          "transferWindows": "8bd08d908f30dd33aaa9ebed114547ef7c89b10560bc7f298c425721e370fe8e",
+          "facilities": "296d3cd0098db95bb4aa27170a8df3b78f34d0804ce3fb6be0d83cdc0014b0dd",
+          "jobVacancies": "d916c082ef533be874bce1fa087027309e9f07f508bfd95f7974836be6aa2ee5",
+          "leagueStanding": "097f041e1f9ce346921fcd750c10ea598ed804f80a409e5385e5389e02265aad",
+          "governance": "59ce3ab3a1a55ef3558c3aa97d7c972c129d32637875d7f0ff191affea2e2e85",
+          "monthlyFinances": "3e29173f3d00f6cc42aae1765b8197abe0e4dba3523158c313ba0dbf29c7a9a8",
+          "activeInjuries": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "activeSuspensions": "c7a21664c8dc2855f539b6878925ad806ea0caac646a622b8355525bb1bbbac5",
+          "playerMatchStats": "81bb634476a66bb4dc615a946e68a32889b122900c26cc849fe03f995c9c6e9b",
+          "playerSeasonHistory": "e774eb5e69680891a7db40f74a8c6efe12dc7c0cf7d8e675f0ca25fd2cadd9dd",
+          "teamMatchStats": "a8d2b65185cb3de8d957a0f8e23a7d7a12482330a70314275ecabe5641f3dfba"
+        }
+      }
+    }
+  ]
+}

@@ -32,12 +32,13 @@ Within a wave, higher user impact and lower risk come first.
 A quick scan on 25 November 2026 found:
 
 - 193 source files and 67 test files.
-- 420 JavaScript and TypeScript tests, plus 52 Python tests.
+- 422 JavaScript and TypeScript tests, plus 55 Python tests.
 - CI runs type-check, tests and production build from the lockfile.
 - Dependabot config covers npm, GitHub Actions and Docker; alerts still need owner enablement.
 - Issue templates, a pull request template and a security policy are present. End-to-end browser tests, coverage reports, a linter beyond TypeScript and automated accessibility checks are still missing.
 - The repository has several very large files, including the Analyst context, save hydrator, Hub workspace and player modal.
 - `main` is unprotected. The available token can read that state but cannot change it. See `docs/github-repository-health.md`.
+- A real-save fingerprint guard covers three local saves, including FM27 27.1.0 and 27.0.1. The CI job is opt-in because save files stay private.
 
 ## Current target and constraints
 
@@ -153,6 +154,7 @@ A quick scan on 25 November 2026 found:
 
 - R01 Backup and restore drill: Done. A real 253 MB save restored 47 players, 40 staff, finances, 77 targets, a tracked target and a save-history checkpoint after a full reset. Export now prefers full IndexedDB state and includes the tracked-target and save-history stores.
 - R02 GitHub repository health audit: In progress. Audit recorded in `docs/github-repository-health.md`. Issue templates, security policy, release-note categories, CI lockfile install and roadmap-gate hardening are in. Branch protection, required checks, Dependabot alerts and merge settings need GitHub owner access.
+- R03 Real-save regression set: In progress. A safe fingerprint manifest covers three local saves across FM27 27.1.0 and 27.0.1; the local run passes. The corpus is one club, so a second club is still needed. The CI job is opt-in because the save corpus is private, so CI execution still needs `FM27_REAL_SAVE_DIR` and `FM27_REAL_SAVE_RUNNER`. See `docs/real-save-regression.md`.
 - R25 Mobile touch, contrast and focus audit: In progress. Staff, Hub finances and the audited controls pass; the app-wide keyboard sweep remains.
 - R26 Design system and visual consistency: In progress. Staff and Hub finances typography are aligned; the remaining screens are pending.
 - R27 Motion, feedback and undo: In progress. Clear Chat has a confirmation step and a 5-second undo window; other destructive actions are pending.
