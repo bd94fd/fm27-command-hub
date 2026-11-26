@@ -1700,6 +1700,7 @@ export default function App() {
               <AutoSyncWorkspace
                 panel={hubPanel}
                 onPanelChange={handleHubPanelChange}
+                onNavigate={handleSelectTab}
                 matches={matches}
                 players={players}
                 staff={staff}

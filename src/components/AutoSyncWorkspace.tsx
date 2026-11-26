@@ -13,6 +13,16 @@ import {
   type HubPanel,
 } from '../utils/navigationUrl';
 import {
+  DECODE_HELP,
+  FAST_SYNC_HELP,
+  FIRST_TASKS,
+  ONBOARDING_INTRO,
+  ONBOARDING_STEPS,
+  ONBOARDING_TITLE,
+  SAVE_FILE_FALLBACK,
+  SAVE_FILE_LOCATIONS,
+} from '../utils/onboardingCopy';
+import {
   Send,
   Upload,
   Sparkles,
@@ -24,6 +34,7 @@ import {
   Zap,
   ChevronDown,
   ChevronUp,
+  ChevronRight,
   Clock,
   Shield,
   Briefcase,
@@ -215,6 +226,8 @@ interface AutoSyncWorkspaceProps {
   /** Panel the address bar asked for; the mobile Hub applies it on first paint. */
   panel?: HubPanel;
   onPanelChange?: (panel: HubPanel) => void;
+  /** Lets the first-run tasks send the user to the tab they describe. */
+  onNavigate?: (tab: 'sync' | 'squad' | 'tactics' | 'recruitment' | 'matches' | 'staff') => void;
   currentSaveDate: string;
   clubName?: string;
   managerName?: string;
@@ -265,6 +278,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   snapshotResetNonce = 0,
   panel,
   onPanelChange,
+  onNavigate,
   currentSaveDate: saveDateProp,
   clubName,
   managerName,
@@ -1869,8 +1883,8 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   const showSyncStatusControl = hasLoadedSave || hasTimingOrNotes;
   const localDecodeLabel =
     typeof navigator !== 'undefined' && isMobileUserAgent(navigator.userAgent)
-      ? 'On this phone (recommended)'
-      : 'On this device (recommended)';
+      ? 'On this phone'
+      : 'On this device';
 
   return (
     <div
@@ -1888,24 +1902,22 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     >
       {/* FIRST-ENTRY HERO (shown cleanly when no save & no chat yet) */}
       {!hasLoadedSave && turns.length === 0 && !fmDecodeStage ? (
-        <div className="p-6 sm:p-10 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950/60 text-center space-y-6">
-          <div className="space-y-2.5 max-w-xl mx-auto">
+        <div className="p-5 sm:p-8 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950/60">
+          <div className="max-w-xl mx-auto space-y-4 text-center">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-[11px] font-semibold text-emerald-300">
               <Sparkles className="w-3.5 h-3.5" />
-              Football Manager 27 · Patch 27.1.0 Ready
+              Football Manager 27 · Patch 27.1.0 ready
             </div>
-            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-              Your FM27 Tactical Command Hub
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-              Drop your <span className="font-mono text-emerald-300">.fm</span> save
-              file to unlock your live squad analytics, dual-phase IP/OOP pitch
-              builder, smart transfer audit, backroom staff ratings, and AI
-              tactical co-pilot.
-            </p>
-          </div>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <div className="space-y-2">
+              <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight text-white">
+                {ONBOARDING_TITLE}
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                {ONBOARDING_INTRO}
+              </p>
+            </div>
+
             <label
               htmlFor="welcome-fm-upload"
               onClick={() => {
@@ -1914,7 +1926,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                   mod.warmBrowserDecoder()
                 );
               }}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 rounded-xl shadow-lg shadow-emerald-500/20 cursor-pointer transition"
+              className="w-full inline-flex min-h-[48px] items-center justify-center gap-2 px-6 py-3 text-sm font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 rounded-xl shadow-lg shadow-emerald-500/20 cursor-pointer transition"
             >
               <Upload className="w-4 h-4" />
               <span>Import .fm Save File</span>
@@ -1928,93 +1940,145 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               />
             </label>
 
-            <label
-              htmlFor="fm-fast-sync-welcome-toggle"
-              className={`w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3.5 py-2.5 text-xs font-medium rounded-xl border cursor-pointer transition select-none ${
-                fastSync
-                  ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
-                  : 'bg-slate-900/80 text-slate-300 border-slate-700 hover:border-slate-500'
-              }`}
-            >
-              <input
-                id="fm-fast-sync-welcome-toggle"
-                type="checkbox"
-                checked={fastSync}
-                onChange={(e) => {
-                  fastSyncManuallyToggledRef.current = true;
-                  setFastSync(e.target.checked);
-                }}
-                className="accent-amber-500 w-3.5 h-3.5 cursor-pointer"
-              />
-              <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span>Fast Sync (Quick Preview)</span>
-            </label>
-          </div>
+            <details className="group text-left rounded-xl border border-slate-700 bg-slate-900/70">
+              <summary className="flex min-h-[44px] list-none cursor-pointer items-center justify-between gap-2 px-3.5 text-xs font-semibold text-slate-200 [&::-webkit-details-marker]:hidden">
+                <span>Where is my save file?</span>
+                <ChevronDown className="w-4 h-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="space-y-2 px-3.5 pb-3 text-[11px] leading-relaxed text-slate-400">
+                <ul className="space-y-1.5">
+                  {SAVE_FILE_LOCATIONS.map((location) => (
+                    <li key={location.platform}>
+                      <span className="font-semibold text-slate-300">
+                        {location.platform}:
+                      </span>{' '}
+                      <span className="font-mono break-words">{location.path}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p>{SAVE_FILE_FALLBACK}</p>
+              </div>
+            </details>
 
-          <div className="flex flex-col items-center gap-1.5">
-            <div
-              role="group"
-              aria-label="Where to decode the save"
-              className="inline-flex items-center rounded-xl border border-slate-700 bg-slate-900/80 p-1"
-            >
-              <button
-                type="button"
-                aria-pressed={decodeTarget === 'local'}
-                onClick={() => setDecodeTarget('local')}
-                className={`min-h-[36px] px-3.5 text-xs font-bold rounded-lg transition cursor-pointer ${
-                  decodeTarget === 'local'
-                    ? 'bg-emerald-400 text-slate-950 shadow-sm'
-                    : 'text-slate-300 hover:text-white'
+            <div className="space-y-2 text-left">
+              <h3 className="text-xs font-bold text-slate-300">What happens next</h3>
+              <ol className="space-y-2">
+                {ONBOARDING_STEPS.map((step, index) => (
+                  <li
+                    key={step.id}
+                    className="flex gap-2.5 rounded-xl border border-slate-800 bg-slate-900/70 p-3"
+                  >
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-[11px] font-bold text-emerald-300">
+                      {index + 1}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-xs font-bold text-slate-100">
+                        {step.title}
+                      </span>
+                      <span className="mt-0.5 block text-[11px] leading-relaxed text-slate-400">
+                        {step.body}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+
+            <div className="space-y-2 text-left">
+              <div
+                role="group"
+                aria-label="Where to decode the save"
+                className="grid grid-cols-2 gap-1.5 rounded-xl border border-slate-700 bg-slate-900/80 p-1"
+              >
+                <button
+                  type="button"
+                  aria-pressed={decodeTarget === 'local'}
+                  onClick={() => setDecodeTarget('local')}
+                  className={`min-h-[44px] inline-flex items-center justify-center gap-1.5 px-2 text-xs font-bold rounded-lg transition cursor-pointer ${
+                    decodeTarget === 'local'
+                      ? 'bg-emerald-400 text-slate-950 shadow-sm'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  {decodeTarget === 'local' && (
+                    <Check className="w-3.5 h-3.5 shrink-0" />
+                  )}
+                  {localDecodeLabel}
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={decodeTarget === 'server'}
+                  onClick={() => setDecodeTarget('server')}
+                  className={`min-h-[44px] inline-flex items-center justify-center gap-1.5 px-2 text-xs font-semibold rounded-lg transition cursor-pointer ${
+                    decodeTarget === 'server'
+                      ? 'bg-emerald-400 text-slate-950 shadow-sm'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  {decodeTarget === 'server' && (
+                    <Check className="w-3.5 h-3.5 shrink-0" />
+                  )}
+                  Server backup
+                </button>
+              </div>
+              <p className="text-[11px] leading-relaxed text-slate-400">
+                {decodeTarget === 'local' ? DECODE_HELP.local : DECODE_HELP.server}
+              </p>
+
+              <label
+                htmlFor="fm-fast-sync-welcome-toggle"
+                className={`flex min-h-[44px] items-start gap-2.5 rounded-xl border p-3 cursor-pointer transition select-none ${
+                  fastSync
+                    ? 'bg-amber-500/10 border-amber-500/40'
+                    : 'bg-slate-900/70 border-slate-800 hover:border-slate-600'
                 }`}
               >
-                {localDecodeLabel}
-              </button>
-              <button
-                type="button"
-                aria-pressed={decodeTarget === 'server'}
-                onClick={() => setDecodeTarget('server')}
-                className={`min-h-[36px] px-3.5 text-xs font-semibold rounded-lg transition cursor-pointer ${
-                  decodeTarget === 'server'
-                    ? 'bg-slate-200 text-slate-950 shadow-sm'
-                    : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                Server backup
-              </button>
+                <input
+                  id="fm-fast-sync-welcome-toggle"
+                  type="checkbox"
+                  checked={fastSync}
+                  onChange={(e) => {
+                    fastSyncManuallyToggledRef.current = true;
+                    setFastSync(e.target.checked);
+                  }}
+                  className="mt-0.5 accent-amber-500 w-4 h-4 cursor-pointer"
+                />
+                <span className="min-w-0">
+                  <span className="flex items-center gap-1 text-xs font-bold text-slate-100">
+                    <Zap className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                    Fast Sync
+                  </span>
+                  <span className="mt-0.5 block text-[11px] leading-relaxed text-slate-400">
+                    {FAST_SYNC_HELP}
+                  </span>
+                </span>
+              </label>
             </div>
-            <p className="text-[11px] text-slate-400 text-center max-w-md">
-              On-device keeps the save on your device and starts Full Sync
-              without an upload. Server backup uploads the save to Render.
-            </p>
-          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl mx-auto pt-2 text-left">
-            <div className="p-3.5 rounded-xl bg-slate-900/75 border border-slate-800 space-y-1">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-300">
-                <Shield className="w-4 h-4" />
-                Live Dual-Phase Tactics
+            <div className="space-y-2 text-left">
+              <h3 className="text-xs font-bold text-slate-300">
+                After it loads, start with
+              </h3>
+              <div className="grid grid-cols-1 gap-1.5">
+                {FIRST_TASKS.map((task) => (
+                  <button
+                    key={task.id}
+                    type="button"
+                    onClick={() => onNavigate?.(task.tab)}
+                    className="flex min-h-[44px] items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2 text-left transition cursor-pointer hover:border-emerald-500/50"
+                  >
+                    <span className="min-w-0">
+                      <span className="block text-xs font-bold text-slate-100">
+                        {task.label}
+                      </span>
+                      <span className="block text-[11px] leading-relaxed text-slate-400">
+                        {task.hint}
+                      </span>
+                    </span>
+                    <ChevronRight className="w-4 h-4 shrink-0 text-emerald-300" />
+                  </button>
+                ))}
               </div>
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                Starts on your last-match XI with separate IP/OOP roles, corners, and rest-defence checks.
-              </p>
-            </div>
-            <div className="p-3.5 rounded-xl bg-slate-900/75 border border-slate-800 space-y-1">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-sky-300">
-                <Briefcase className="w-4 h-4" />
-                Transfers &amp; Scouting
-              </div>
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                Contract horizons, wage savings, youth promotion, and 500-target Club DNA scouting.
-              </p>
-            </div>
-            <div className="p-3.5 rounded-xl bg-slate-900/75 border border-slate-800 space-y-1">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
-                <MessageSquare className="w-4 h-4" />
-                AI Tactical Analyst
-              </div>
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                Ask matchday questions or drop screenshots for instant Playbook v2.0 advice.
-              </p>
             </div>
           </div>
         </div>
@@ -2859,7 +2923,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                     }
                     className="accent-emerald-500 w-3.5 h-3.5 cursor-pointer"
                   />
-                  <span>On-device decode (recommended)</span>
+                  <span>On-device decode</span>
                 </label>
                 <label
                   htmlFor="fm-fast-sync-composer-toggle"
