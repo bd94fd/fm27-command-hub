@@ -62,6 +62,8 @@ import {
   startSaveLoadBenchmark,
 } from '../utils/saveLoadBenchmark';
 import { assertValidDecodedFmSavePayload } from '../utils/fmSaveValidation';
+import { buildSaveDataQualityReport } from '../utils/saveDataQuality';
+import { DataQualityPanel } from './DataQualityPanel';
 import type {
   FmSaveProgressStage,
   FmImportScope,
@@ -317,7 +319,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     );
   const lastSnapshotResetNonceRef = useRef<number>(snapshotResetNonce);
   const [mobileHubView, setMobileHubView] = useState<
-    'chat' | 'finances' | 'journey'
+    'chat' | 'finances' | 'journey' | 'data'
   >('chat');
   const [clearChatArmed, setClearChatArmed] = useState<boolean>(false);
   const clearChatTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1545,6 +1547,11 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     });
   }, [hydratedFmSave, balance, wageSpend, staff, players]);
 
+  const dataQualityReport = useMemo(() => {
+    const decoded = hydratedFmSave?.decodedPayload;
+    return decoded ? buildSaveDataQualityReport(decoded) : null;
+  }, [hydratedFmSave]);
+
   const handleTextareaPaste = async (
     e: React.ClipboardEvent<HTMLTextAreaElement>
   ) => {
@@ -2073,13 +2080,13 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         </div>
       )}
 
-      {/* MOBILE HUB VIEW SPLIT: Analyst Chat | Save Journey (< md only) */}
+      {/* MOBILE HUB VIEW SPLIT: Chat | Finances | Journey | Data (< md only) */}
       <div
         role="tablist"
         aria-label="Mobile Hub view"
         className="md:hidden px-3.5 pt-3 pb-1 border-b border-slate-200 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-950/50"
       >
-        <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-slate-200/70 dark:bg-slate-900 border border-slate-300 dark:border-slate-800">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 rounded-xl bg-slate-200/70 dark:bg-slate-900 border border-slate-300 dark:border-slate-800">
           <button
             type="button"
             role="tab"
@@ -2130,6 +2137,26 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               <span
                 aria-hidden="true"
                 className="w-2 h-2 rounded-full bg-sky-500 dark:bg-sky-400 shrink-0"
+              />
+            )}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mobileHubView === 'data'}
+            onClick={() => setMobileHubView('data')}
+            className={`min-h-[44px] inline-flex min-w-0 items-center justify-center gap-1 rounded-lg px-1.5 text-[11px] sm:text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+              mobileHubView === 'data'
+                ? 'bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-500/40 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4 shrink-0" />
+            <span className="truncate">Data Quality</span>
+            {dataQualityReport && dataQualityReport.checks.missing > 0 && (
+              <span
+                aria-hidden="true"
+                className="w-2 h-2 rounded-full bg-amber-500 dark:bg-amber-400 shrink-0"
               />
             )}
           </button>
@@ -2723,6 +2750,17 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
               )}
             </div>
           </section>
+        </div>
+      )}
+
+      {/* SAVE DATA QUALITY PANEL — mobile sub-tab, always visible on desktop */}
+      {(isDesktopViewport || mobileHubView === 'data') && dataQualityReport && (
+        <div
+          className={
+            mobileHubView === 'data' ? 'block p-3.5 md:p-0' : 'hidden md:block'
+          }
+        >
+          <DataQualityPanel report={dataQualityReport} />
         </div>
       )}
 
