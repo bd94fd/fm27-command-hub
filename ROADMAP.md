@@ -151,4 +151,10 @@ A quick scan on 25 November 2026 found:
 
 ## Status
 
-All items are proposed. Nothing in this file is in progress yet.
+- R25 Mobile touch, contrast and focus audit: In progress. Staff, Hub finances and the audited controls pass; the app-wide keyboard sweep remains.
+- R26 Design system and visual consistency: In progress. Staff and Hub finances typography are aligned; the remaining screens are pending.
+- R27 Motion, feedback and undo: In progress. Clear Chat has a confirmation step and a 5-second undo window; other destructive actions are pending.
+- R42 CI and release automation: In progress. A roadmap-reference gate is in place; broader release automation is pending.
+- R43 Documentation refresh: In progress. Roadmap discipline is recorded in `AGENTS.md`; the remaining documentation refresh is pending.
+
+All other items are proposed.
