@@ -57,7 +57,7 @@ Existing skills that also support the roadmap:
 | ---: | --- | --- | --- | --- |
 | 1 | R01 Backup and restore drill | `fm27-save-safety` | `qa-changes`, `fm27-data-parity` | None. |
 | 2 | R02 GitHub repository health audit | `github` | `github-actions`, `security` | None. |
-| 3 | R03 Real-save regression set | `fm27-save-safety` | `fm27-data-parity`, `github-actions` | None. |
+| 3 | R03 Real-save regression set | `fm27-save-safety` | `fm27-data-parity`, `github-actions`, `security` | None. |
 | 4 | R04 Data parity contract map | `fm27-data-parity` | `technical-writing`, `show-me` | None. |
 | 5 | R05 Save-load benchmark baseline | `fm27-performance-audit` | `qa-changes`, `playwright-skill` | None. |
 | 6 | R06 Error reporting with redaction | `security` | `qa-changes`, `github-actions` | None. |

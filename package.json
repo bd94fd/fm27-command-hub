@@ -11,6 +11,9 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test": "node --import tsx --test src/**/*.test.ts server/**/*.test.ts",
+    "test:python": "python3 -m unittest discover -s tests/python -v",
+    "test:real-saves": "python3 -m unittest tests.python.test_real_save_regression -v",
+    "real-saves:update": "python3 scripts/real-save-manifest.py",
     "ui:audit": "node scripts/ui-audit.mjs"
   },
   "dependencies": {
