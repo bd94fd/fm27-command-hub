@@ -19,6 +19,11 @@ import {
 import { MatchXgMomentumChart } from './charts/MatchXgMomentumChart';
 import { MatchLogCard } from './MatchLogCard';
 import { nextWindowLimit, takeLeadingWindow } from '../utils/listWindow';
+import {
+  browserViewStorage,
+  readViewPreference,
+  writeViewPreference,
+} from '../utils/viewPreferences';
 
 export interface PostMatchDebriefData {
   headlineVerdict: string;
@@ -157,7 +162,15 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
     return seasons[0] || 'ALL';
   }, [saveDate, seasons]);
 
-  const [selectedSeason, setSelectedSeason] = useState<string>('');
+  const [selectedSeason, setSelectedSeason] = useState<string>(
+    () => readViewPreference(browserViewStorage(), 'matchesSeason') ?? ''
+  );
+
+  useEffect(() => {
+    if (selectedSeason) {
+      writeViewPreference(browserViewStorage(), 'matchesSeason', selectedSeason);
+    }
+  }, [selectedSeason]);
   const [compFilter, setCompFilter] = useState<MatchCompetitionFilter | null>(null);
   const [openDebriefMatchId, setOpenDebriefMatchId] = useState<string | null>(
     null

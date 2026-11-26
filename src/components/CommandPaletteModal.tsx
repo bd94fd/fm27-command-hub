@@ -7,6 +7,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BookOpen,
   Briefcase,
+  Clock3,
   Command,
   Crosshair,
   MessageSquare,
@@ -26,6 +27,8 @@ import {
 } from '../utils/bestXiSolver';
 import { MobileSheetFrame } from './MobileSheetFrame';
 import { formatAge } from '../utils/squadViewHelpers';
+import { rankPaletteItems } from '../utils/paletteSearch';
+import type { RecentView } from '../utils/viewPreferences';
 
 export type CommandTabId =
   | 'sync'
@@ -38,7 +41,13 @@ export type CommandTabId =
 
 export interface CommandPaletteItem {
   id: string;
-  category: 'Navigation' | 'Formation Preset' | 'Squad Player' | 'Staff' | 'Scout Target';
+  category:
+    | 'Navigation'
+    | 'Formation Preset'
+    | 'Squad Player'
+    | 'Staff'
+    | 'Scout Target'
+    | 'Recent';
   title: string;
   subtitle: string;
   badge?: string;
@@ -57,6 +66,9 @@ export interface CommandPaletteModalProps {
   onSelectStaff: (staffMember: StaffRecord) => void;
   onChangeShape: (shape: FormationPresetKey) => void;
   onOpenKnowledgeBase: () => void;
+  /** Most recent sections, newest first. Shown when nothing is typed. */
+  recentViews?: RecentView[];
+  onOpenRecentView?: (href: string) => void;
 }
 
 export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
@@ -71,6 +83,8 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
   onSelectStaff,
   onChangeShape,
   onOpenKnowledgeBase,
+  recentViews = [],
+  onOpenRecentView,
 }) => {
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
@@ -261,20 +275,34 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
     onClose,
   ]);
 
-  const filteredItems = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) {
-      return allItems.slice(0, 28);
-    }
-    return allItems
-      .filter(
-        (item) =>
-          item.title.toLowerCase().includes(q) ||
-          item.subtitle.toLowerCase().includes(q) ||
-          item.category.toLowerCase().includes(q)
-      )
-      .slice(0, 35);
-  }, [allItems, query]);
+  const recentItems = useMemo<CommandPaletteItem[]>(
+    () =>
+      recentViews.slice(0, 4).map((view) => ({
+        id: `recent-${view.href}`,
+        category: 'Recent',
+        title: view.label,
+        subtitle: 'Pick up where you left off',
+        onSelect: () => {
+          onOpenRecentView?.(view.href);
+          onClose();
+        },
+      })),
+    [recentViews, onOpenRecentView, onClose]
+  );
+
+  const searchableItems = useMemo(
+    () => [...recentItems, ...allItems],
+    [recentItems, allItems]
+  );
+
+  const filteredItems = useMemo(
+    () =>
+      query.trim()
+        ? // Typing is a search: recent shortcuts would only crowd the real hits.
+          rankPaletteItems(allItems, query, { totalLimit: 35, perCategoryLimit: 8 })
+        : rankPaletteItems(searchableItems, '', { emptyLimit: 28 }),
+    [searchableItems, allItems, query]
+  );
 
   useEffect(() => {
     setActiveIndex(0);
@@ -322,6 +350,8 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
         return <UserCheck className="h-4 w-4 text-purple-300 shrink-0" />;
       case 'Scout Target':
         return <Briefcase className="h-4 w-4 text-teal-300 shrink-0" />;
+      case 'Recent':
+        return <Clock3 className="h-4 w-4 text-slate-300 shrink-0" />;
     }
   };
 

@@ -11,6 +11,21 @@ export type PositionalNeed = SquadAudit['positionalNeeds'][number];
 
 export type AuditView = 'advice' | 'loans' | 'contracts' | 'depth' | 'shortlist';
 
+export const AUDIT_VIEWS: readonly AuditView[] = [
+  'advice',
+  'loans',
+  'contracts',
+  'depth',
+  'shortlist',
+];
+
+/** Falls back to the default view for anything that is not a known view. */
+export function coerceAuditView(value: string | null): AuditView {
+  return value && (AUDIT_VIEWS as readonly string[]).includes(value)
+    ? (value as AuditView)
+    : 'advice';
+}
+
 export type ContractHorizonTier =
   | 'ALL'
   | 'CRITICAL_6M'

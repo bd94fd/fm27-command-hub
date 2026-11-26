@@ -48,6 +48,12 @@ import {
 } from '../utils/squadViewHelpers';
 import { STATS_SORT_KEYS } from './squad/squadTableConfig';
 import type { ListDisplayMode, SquadViewMode } from './squad/squadTableConfig';
+import {
+  browserViewStorage,
+  readViewPreference,
+  writeViewPreference,
+} from '../utils/viewPreferences';
+import { coerceSquadViewMode } from './squad/squadTableConfig';
 import { SquadListView } from './squad/SquadListView';
 import { SelectionCompareDock } from './recruitment/SelectionCompareDock';
 import { SquadSubViewSkeleton } from './WorkspaceSkeletons';
@@ -101,7 +107,13 @@ export const SquadAnalyticsTable: React.FC<SquadAnalyticsTableProps> = ({
   playedMatchesCount,
   onSelectPlayer,
 }) => {
-  const [viewMode, setViewMode] = useState<SquadViewMode>('table');
+  const [viewMode, setViewMode] = useState<SquadViewMode>(() =>
+    coerceSquadViewMode(readViewPreference(browserViewStorage(), 'squadView'))
+  );
+
+  useEffect(() => {
+    writeViewPreference(browserViewStorage(), 'squadView', viewMode);
+  }, [viewMode]);
   const [activePresetId, setActivePresetId] = useState<SquadViewPresetId>('overview');
   const [customColumnsMap, setCustomColumnsMap] = useState<PersistedColumnMap>(() =>
     loadPersistedSquadColumns()
