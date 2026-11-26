@@ -61,6 +61,7 @@ import {
   markSaveLoadStage,
   startSaveLoadBenchmark,
 } from '../utils/saveLoadBenchmark';
+import { assertValidDecodedFmSavePayload } from '../utils/fmSaveValidation';
 import type {
   FmSaveProgressStage,
   FmImportScope,
@@ -1210,49 +1211,59 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             progressPct: 0,
             paused: false,
           });
-          const decoded = await decodeFmSaveFile(
-            file,
-            (stage) => {
-              const uploadFinished =
-                stage.transport === 'server_decode' ||
-                stage.transport === 'browser_worker' ||
-                (stage.transport === 'server_upload' &&
-                  Boolean(stage.totalBytes) &&
-                  Number(stage.bytesUploaded || 0) >= Number(stage.totalBytes));
-              if (!markedDecodeStart && uploadFinished) {
-                markedDecodeStart = true;
-                markSaveLoadStage(benchmarkId, 'upload_complete');
-                markSaveLoadStage(benchmarkId, 'decode_start');
-              }
-              setFmDecodeStage(stage);
-              onBackgroundSyncStatusChange?.({
-                label: stage.label,
-                clubCoreReady: interimHydrated,
-                progressPct: stage.progressPct,
-                paused: stage.paused,
-              });
-            },
-            {
-              scope: importScope,
-              fastSync,
-              uploadControl,
-              benchmarkId,
-              onCheckpoint: (cp) => {
-                if (onApplyDecodedFmSave && cp.payload?.players?.length > 0) {
-                  interimHydrated = true;
-                  setClubCoreReadyDuringDecode(true);
-                  void onApplyDecodedFmSave(cp.payload, {
-                    isInterimCheckpoint: true,
-                    benchmarkId,
-                  });
-                  onBackgroundSyncStatusChange?.({
-                    label:
-                      'Squad, staff & tactics ready — finishing fixtures, match xG & season stats…',
-                    clubCoreReady: true,
-                  });
+          const decoded = assertValidDecodedFmSavePayload(
+            await decodeFmSaveFile(
+              file,
+              (stage) => {
+                const uploadFinished =
+                  stage.transport === 'server_decode' ||
+                  stage.transport === 'browser_worker' ||
+                  (stage.transport === 'server_upload' &&
+                    Boolean(stage.totalBytes) &&
+                    Number(stage.bytesUploaded || 0) >= Number(stage.totalBytes));
+                if (!markedDecodeStart && uploadFinished) {
+                  markedDecodeStart = true;
+                  markSaveLoadStage(benchmarkId, 'upload_complete');
+                  markSaveLoadStage(benchmarkId, 'decode_start');
                 }
+                setFmDecodeStage(stage);
+                onBackgroundSyncStatusChange?.({
+                  label: stage.label,
+                  clubCoreReady: interimHydrated,
+                  progressPct: stage.progressPct,
+                  paused: stage.paused,
+                });
               },
-            }
+              {
+                scope: importScope,
+                fastSync,
+                uploadControl,
+                benchmarkId,
+                onCheckpoint: (cp) => {
+                  let checkpointPayload: DecodedFmSavePayload;
+                  try {
+                    checkpointPayload = assertValidDecodedFmSavePayload(cp.payload, {
+                      mode: 'checkpoint',
+                    });
+                  } catch {
+                    return;
+                  }
+                  if (onApplyDecodedFmSave && checkpointPayload.players.length > 0) {
+                    interimHydrated = true;
+                    setClubCoreReadyDuringDecode(true);
+                    void onApplyDecodedFmSave(checkpointPayload, {
+                      isInterimCheckpoint: true,
+                      benchmarkId,
+                    });
+                    onBackgroundSyncStatusChange?.({
+                      label:
+                        'Squad, staff & tactics ready — finishing fixtures, match xG & season stats…',
+                      clubCoreReady: true,
+                    });
+                  }
+                },
+              }
+            )
           );
           markSaveLoadStage(benchmarkId, 'decode_complete');
           uploadControlRef.current = null;
