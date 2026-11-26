@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Roadmap and current priorities
+    url: https://github.com/bd94fd/fm27-command-hub/blob/main/ROADMAP.md
+    about: See what is planned before opening a feature request.
+  - name: Security policy
+    url: https://github.com/bd94fd/fm27-command-hub/blob/main/SECURITY.md
+    about: Report vulnerabilities privately, not in a public issue.

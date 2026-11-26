@@ -1,0 +1,31 @@
+changelog:
+  exclude:
+    labels:
+      - duplicate
+      - invalid
+      - wontfix
+  categories:
+    - title: Breaking changes
+      labels:
+        - breaking-change
+    - title: Features
+      labels:
+        - enhancement
+    - title: Fixes
+      labels:
+        - bug
+    - title: Accessibility
+      labels:
+        - accessibility
+    - title: Documentation
+      labels:
+        - documentation
+    - title: Dependencies and maintenance
+      labels:
+        - dependencies
+        - github_actions
+        - javascript
+        - docker
+    - title: Other changes
+      labels:
+        - "*"

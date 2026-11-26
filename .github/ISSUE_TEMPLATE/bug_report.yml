@@ -1,0 +1,68 @@
+name: Bug report
+description: Something in FM27 Command Hub is broken or confusing.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Do **not** attach a real `.fm` save, API key, token, or personal data. Describe the club and save date instead.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Tell us what you expected and what happened instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Tap ...
+        3. See ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Save import or restore
+        - Hub and finances
+        - Squad
+        - Staff
+        - Tactics and corners
+        - Transfers and scouting
+        - Matches
+        - Analyst chat
+        - Install or offline mode
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device and browser
+      placeholder: Android Chrome 141, installed PWA / desktop Chrome
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: App version or commit
+      placeholder: The version in the footer, or the commit if you know it
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: I have not attached a save file, API key, token, or personal data.
+          required: true
