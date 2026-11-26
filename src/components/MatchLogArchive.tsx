@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Calendar, Filter, Trophy } from 'lucide-react';
+import { EmptyStatePanel } from './EmptyStatePanel';
+import { EMPTY_STATES } from '../utils/emptyStateCopy';
 import { MatchLogEntry } from '../types/fm27';
 import {
   buildMatchMomentumSummary,
@@ -122,6 +124,7 @@ interface MatchLogArchiveProps {
   saveDate?: string;
   activeShape?: string;
   activeTacticSummary?: string | null;
+  onRequestImport?: () => void;
 }
 
 export function getFootballSeasonLabel(dateStr: string): string {
@@ -136,6 +139,7 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
   saveDate,
   activeShape = '4-3-3 DM Wide',
   activeTacticSummary = null,
+  onRequestImport,
 }) => {
   const seasons = useMemo(() => {
     const set = new Set<string>();
@@ -685,7 +689,7 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
             <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
               {liveSaveFileName
                 ? `Synced from ${liveSaveFileName} · Separated by season (Jul–Jun) and competition`
-                : 'Awaiting .fm Save — Import your .fm save file to populate played fixtures and results'}
+                : 'No save loaded yet. Import your save to fill in results and scorers.'}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs font-mono tabular-nums text-slate-700 dark:text-slate-300">
@@ -782,16 +786,12 @@ export const MatchLogArchive: React.FC<MatchLogArchiveProps> = ({
         )}
 
         {matches.length === 0 ? (
-          <div className="py-12 text-center space-y-2">
-            <Trophy className="w-8 h-8 text-emerald-500 mx-auto" />
-            <div className="text-sm font-bold text-slate-900 dark:text-slate-100">
-              Awaiting .fm Save — 0 Played Matches Loaded
-            </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xl mx-auto">
-              Zero pre-filled matches or guessed xG figures. Drop your{' '}
-              <span className="font-mono text-emerald-400">.fm</span> save file
-              in the <strong>Hub</strong> tab to populate all played matches.
-            </p>
+          <div className="py-6">
+            <EmptyStatePanel
+              copy={EMPTY_STATES.matches}
+              onRequestImport={onRequestImport}
+              icon={<Trophy className="h-5 w-5" />}
+            />
           </div>
         ) : filteredMatches.length === 0 ? (
           <div className="py-10 text-center text-xs text-slate-400">

@@ -8,6 +8,8 @@ import {
   Smartphone,
 } from 'lucide-react';
 import { PLAYBOOK_V2_REFERENCE_RULES } from '../data/matchAndTacticsData';
+import { EmptyStatePanel } from './EmptyStatePanel';
+import { EMPTY_STATES } from '../utils/emptyStateCopy';
 import { PlayerRecord } from '../types/fm27';
 import {
   ActiveSuspensionRecord,
@@ -34,6 +36,7 @@ interface TacticalWarRoomProps {
   saveDate: string;
   nextFixture: string;
   clubName: string;
+  onRequestImport?: () => void;
   activeSuspensions?: ActiveSuspensionRecord[];
   competitionRules?: CompetitionRegistrationRules | null;
   hydratedFmSave?: HydratedSaveState | null;
@@ -58,6 +61,7 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
   saveDate,
   nextFixture,
   clubName,
+  onRequestImport,
   activeSuspensions = EMPTY_SUSPENSIONS,
   competitionRules = null,
   hydratedFmSave = null,
@@ -262,17 +266,11 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
       {/* SUB-TAB 1: INTERACTIVE PITCH XI */}
       <div className={subTab === 'pitch' ? 'space-y-4' : 'hidden'}>
         {!hasSquad ? (
-          <div className="p-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-center space-y-3">
-            <Shield className="w-8 h-8 text-emerald-500 mx-auto" />
-            <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
-              Awaiting .fm Save — Tactical Pitch Builder
-            </h2>
-            <p className="text-xs text-slate-600 dark:text-slate-400 max-w-xl mx-auto leading-relaxed">
-              Import your <span className="font-mono text-emerald-400">.fm</span> save
-              in the <strong>Hub</strong> tab to load your last-match XI, dual-phase
-              In-Possession / Out-of-Possession roles, and Rest-Defense Matrix.
-            </p>
-          </div>
+          <EmptyStatePanel
+            copy={EMPTY_STATES.tactics}
+            onRequestImport={onRequestImport}
+            icon={<Shield className="h-5 w-5" />}
+          />
         ) : (
           <>
             {combinedSuspensions.length > 0 && (() => {
@@ -385,6 +383,7 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
             hydratedFmSave={hydratedFmSave}
             activeSuspensions={combinedSuspensions}
             clubName={clubName}
+            onRequestImport={onRequestImport}
           />
         </div>
       )}
@@ -396,6 +395,7 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
           saveDate={saveDate}
           upcomingFixtures={hydratedFmSave?.decodedPayload.upcomingFixtures || []}
           clubName={clubName}
+          onRequestImport={onRequestImport}
         />
       )}
 
