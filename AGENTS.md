@@ -38,6 +38,7 @@
 
 - Before changing code, run a skill check: name the skills that apply and invoke them. Do not silently skip a matching skill.
 - Save data, Analyst, staff, finances, or decoder work: use `fm27-data-parity`. Before changing a core field, read `docs/data-parity-contract-map.md` and update its row in the same change.
+- Finance projections (scenarios, what-if, forecasting): start from `buildClubFinancesPanel` values and put the arithmetic in one pure selector under `src/utils/`. The "before" side of a projection must show the same runway label the card shows, and the panel must say why when the two bases differ. Scenarios are user input, not save data: do not send them to the Analyst.
 - Backup, restore, fixture or re-sync work: use `fm27-save-safety`.
 - Real-save regression work: use `fm27-save-safety` and `docs/real-save-regression.md`. Never commit `.fm` files or decoded payloads; keep only the safe fingerprint manifest.
 - Save-load speed, memory, bundle or performance-budget work: use `fm27-performance-audit`.

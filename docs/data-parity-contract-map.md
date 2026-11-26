@@ -173,6 +173,7 @@ R11 closed the build-compatibility gap: `resolveSaveCompatibility` gives the Hub
 | Scouting budget | `meta.scoutingBudget` and `meta.scoutingBudgetRemaining` are decoded and typed, but no selector or surface reads them. | The user cannot see the scouting budget in the Hub or ask the Analyst about it. | R09 follow-up |
 | Full match detail in the live Analyst | `recent_matches` carries result and xG; possession, shots, CCC, and pass completion stay in the Matches tab and the import prompt. | A question about a match's possession or chance creation can get a shallower answer than the Matches tab shows. | R13 |
 | Training plan in the live Analyst | The decoder returns `training`, but the live context has no training block. | The Analyst cannot quote the save's current training schedule; it can only recommend one. | R13 |
+| 91 | Finances | What-if projection (balance, monthly net, runway, wage headroom) | `monthlyFinances[].netCashflow`, `finances.balance`, `finances.wagePayrollWeekly`, `finances.wageBudgetWeekly` via `buildClubFinancesPanel` | `projectFinanceScenario` (`src/utils/financeScenarios.ts`) | Hub Finances — What if… | Not sent | UI only: user-entered deltas are not save data, and the prompt keeps quoting the decoded snapshot, not a projection |
 
 ## Deliberate omissions
 
