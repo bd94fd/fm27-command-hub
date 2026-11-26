@@ -1403,8 +1403,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
                         benchmarkId,
                       });
                       onBackgroundSyncStatusChange?.({
-                        label:
-                          'Squad, staff & tactics ready — finishing fixtures, match xG & season stats…',
+                        label: 'Squad, staff, finances & tactics ready',
                         clubCoreReady: true,
                       });
                     }
