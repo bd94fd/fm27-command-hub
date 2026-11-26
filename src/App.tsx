@@ -36,6 +36,14 @@ import {
   type HubPanel,
   type TacticsPanel,
 } from './utils/navigationUrl';
+import { sectionHref, sectionLabel } from './utils/sectionLabels';
+import {
+  browserViewStorage,
+  readRecentViews,
+  recordRecentView,
+  writeRecentViews,
+  type RecentView,
+} from './utils/viewPreferences';
 import { useMobileKeyboard } from './hooks/useMobileKeyboard';
 import { useSectionHistory, useSheetHistory } from './hooks/useHistoryNavigation';
 import { clearAllChatHistory } from './services/chatStorage';
@@ -398,6 +406,23 @@ export default function App() {
           : defaultPanelForTab(activeTab),
   };
 
+  const [recentViews, setRecentViews] = useState<RecentView[]>(() =>
+    readRecentViews(browserViewStorage())
+  );
+
+  useEffect(() => {
+    const href = sectionHref(navSection.tab, navSection.panel);
+    setRecentViews((prev) => {
+      if (prev[0]?.href === href) return prev;
+      const next = recordRecentView(prev, {
+        href,
+        label: sectionLabel(navSection.tab, navSection.panel),
+      });
+      writeRecentViews(browserViewStorage(), next);
+      return next;
+    });
+  }, [navSection.tab, navSection.panel]);
+
   const { pushSection: pushNavSection, replaceSection: replaceNavSection } =
     useSectionHistory(navSection, (next) => {
       const tab = next.tab as ActiveTab;
@@ -406,6 +431,19 @@ export default function App() {
       if (tab === 'tactics' && next.panel) setTacticsSubTab(next.panel as TacticsPanel);
       handleScrollToTop();
     });
+
+  const handleOpenRecentView = useCallback(
+    (href: string) => {
+      const { tab, panel } = parseNavigationParams(href);
+      if (!tab) return;
+      setActiveTab(tab);
+      if (tab === 'sync' && panel) setHubPanel(panel as HubPanel);
+      if (tab === 'tactics' && panel) setTacticsSubTab(panel as TacticsPanel);
+      pushNavSection({ tab, panel: panel ?? defaultPanelForTab(tab) });
+      handleScrollToTop();
+    },
+    [pushNavSection, handleScrollToTop]
+  );
 
   const handleSelectTab = (tab: ActiveTab) => {
     const nextTab: ActiveTab = tab === 'setpieces' ? 'tactics' : tab;
@@ -2140,6 +2178,8 @@ export default function App() {
             onSelectTab={handleSelectTab}
             onSelectPlayer={setSelectedPlayer}
             onSelectStaff={setSelectedStaff}
+            recentViews={recentViews}
+            onOpenRecentView={handleOpenRecentView}
             onChangeShape={(shape) => {
               setActiveShape(shape);
               showGlobalToast(`Switched active formation to ${shape}`);

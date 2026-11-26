@@ -2,6 +2,20 @@ import type { PlayerRecord } from '../../types/fm27';
 import type { SquadSortKey } from '../../utils/squadViewHelpers';
 
 export type SquadViewMode = 'table' | 'analytics' | 'compare' | 'progression';
+
+export const SQUAD_VIEW_MODES: readonly SquadViewMode[] = [
+  'table',
+  'analytics',
+  'compare',
+  'progression',
+];
+
+/** Falls back to the default view for anything that is not a known mode. */
+export function coerceSquadViewMode(value: string | null): SquadViewMode {
+  return value && (SQUAD_VIEW_MODES as readonly string[]).includes(value)
+    ? (value as SquadViewMode)
+    : 'table';
+}
 export type ListDisplayMode = 'cards' | 'table';
 
 export const COMPARE_ROWS: Array<{

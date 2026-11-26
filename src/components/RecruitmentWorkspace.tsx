@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useDeferredValue } from 'react';
+import React, { useEffect, useMemo, useState, useDeferredValue } from 'react';
 import { EmptyStatePanel } from './EmptyStatePanel';
 import { EMPTY_STATES } from '../utils/emptyStateCopy';
 import { CheckCircle2 } from 'lucide-react';
@@ -50,6 +50,12 @@ import { CompareTargetModal } from './recruitment/CompareTargetModal';
 import { SelectionCompareDock } from './recruitment/SelectionCompareDock';
 import { useCompareTray } from '../context/CompareTrayContext';
 import type { AuditView } from './recruitment/recruitmentTypes';
+import { coerceAuditView } from './recruitment/recruitmentTypes';
+import {
+  browserViewStorage,
+  readViewPreference,
+  writeViewPreference,
+} from '../utils/viewPreferences';
 
 interface RecruitmentWorkspaceProps {
   onRequestImport?: () => void;
@@ -104,7 +110,13 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
   onAddCase,
   onSelectPlayer,
 }) => {
-  const [view, setView] = useState<AuditView>('advice');
+  const [view, setView] = useState<AuditView>(() =>
+    coerceAuditView(readViewPreference(browserViewStorage(), 'recruitmentView'))
+  );
+
+  useEffect(() => {
+    writeViewPreference(browserViewStorage(), 'recruitmentView', view);
+  }, [view]);
   const [shortlistInitialFilter, setShortlistInitialFilter] = useState<'ALL' | 'LOAN'>('ALL');
   const [includeYouthInAudit, setIncludeYouthInAudit] = useState<boolean>(false);
   const [verdictFilter, setVerdictFilter] = useState<
