@@ -41,6 +41,7 @@ interface TacticalWarRoomProps {
   customSlots?: PersistedCustomSlot[];
   applyToAnalystOnly?: boolean;
   initialSubTab?: TacticsSubTab;
+  onSubTabChange?: (tab: TacticsSubTab) => void;
   onChangeShape?: (shape: FormationPresetKey) => void;
   onChangeCustomSlots?: (slots: PersistedCustomSlot[]) => void;
   onChangeApplyToAnalystOnly?: (val: boolean) => void;
@@ -64,6 +65,7 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
   customSlots: controlledCustomSlots,
   applyToAnalystOnly: controlledApplyOnly,
   initialSubTab = 'pitch',
+  onSubTabChange,
   onChangeShape,
   onChangeCustomSlots,
   onChangeApplyToAnalystOnly,
@@ -185,7 +187,10 @@ export const TacticalWarRoom: React.FC<TacticalWarRoomProps> = ({
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setSubTab(tab.id)}
+                onClick={() => {
+                  setSubTab(tab.id);
+                  onSubTabChange?.(tab.id);
+                }}
                 className={`inline-flex items-center justify-center gap-1.5 min-h-[36px] rounded-lg px-2.5 py-2 text-xs font-semibold border transition cursor-pointer ${
                   active
                     ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'

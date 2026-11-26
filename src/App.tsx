@@ -30,8 +30,14 @@ import {
   parsePwaLaunchParams,
   usePwaLifecycle,
 } from './hooks/usePwaLifecycle';
+import {
+  defaultPanelForTab,
+  parseNavigationParams,
+  type HubPanel,
+  type TacticsPanel,
+} from './utils/navigationUrl';
 import { useMobileKeyboard } from './hooks/useMobileKeyboard';
-import { useSheetHistory, useTabHistory } from './hooks/useHistoryNavigation';
+import { useSectionHistory, useSheetHistory } from './hooks/useHistoryNavigation';
 import { clearAllChatHistory } from './services/chatStorage';
 import { PwaStatusBanners } from './components/PwaStatusBanners';
 import { MobileBottomNav } from './components/MobileBottomNav';
@@ -164,10 +170,19 @@ type ActiveTab =
 const DEFAULT_ACTIVE_SHAPE: FormationPresetKey = '4-3-3 DM Wide';
 
 export default function App() {
+  const initialNav =
+    typeof window === 'undefined'
+      ? { tab: null, panel: null }
+      : parseNavigationParams(window.location.search);
+
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
+    if (initialNav.tab) return initialNav.tab;
     if (typeof window === 'undefined') return 'sync';
     return (parsePwaLaunchParams(window.location.search).initialTab as ActiveTab | null) ?? 'sync';
   });
+  const [hubPanel, setHubPanel] = useState<HubPanel>(
+    () => (initialNav.panel as HubPanel | null) ?? 'analyst'
+  );
   const [matches, setMatches] = useState<MatchLogEntry[]>(
     COMPETITIVE_MATCH_LOGS
   );
@@ -363,7 +378,9 @@ export default function App() {
     return () => window.removeEventListener('keydown', onGlobalKeyDown);
   }, []);
 
-  const [tacticsSubTab, setTacticsSubTab] = useState<'pitch' | 'prep' | 'setpieces' | 'playbook'>('pitch');
+  const [tacticsSubTab, setTacticsSubTab] = useState<TacticsPanel>(
+    () => (initialNav.panel as TacticsPanel | null) ?? 'pitch'
+  );
 
   const handleScrollToTop = useCallback(() => {
     if (typeof window !== 'undefined') {
@@ -371,14 +388,35 @@ export default function App() {
     }
   }, []);
 
-  const { pushTab: pushTabHistory, replaceTab: replaceTabHistory } =
-    useTabHistory<ActiveTab>(activeTab, (tab) => {
+  const navSection = {
+    tab: activeTab as string,
+    panel:
+      activeTab === 'sync'
+        ? hubPanel
+        : activeTab === 'tactics'
+          ? tacticsSubTab
+          : defaultPanelForTab(activeTab),
+  };
+
+  const { pushSection: pushNavSection, replaceSection: replaceNavSection } =
+    useSectionHistory(navSection, (next) => {
+      const tab = next.tab as ActiveTab;
       setActiveTab(tab);
+      if (tab === 'sync' && next.panel) setHubPanel(next.panel as HubPanel);
+      if (tab === 'tactics' && next.panel) setTacticsSubTab(next.panel as TacticsPanel);
       handleScrollToTop();
     });
 
   const handleSelectTab = (tab: ActiveTab) => {
     const nextTab: ActiveTab = tab === 'setpieces' ? 'tactics' : tab;
+    const nextPanel =
+      tab === 'setpieces'
+        ? 'setpieces'
+        : nextTab === 'tactics'
+          ? 'pitch'
+          : nextTab === 'sync'
+            ? hubPanel
+            : defaultPanelForTab(nextTab);
     const hadOpenOverlay =
       showMoreSheet ||
       showCommandPalette ||
@@ -394,14 +432,31 @@ export default function App() {
     }
     // A tab chosen while an overlay is open replaces that overlay's history entry
     // instead of stacking a stale entry behind the new tab.
+    const nextSection = { tab: nextTab as string, panel: nextPanel };
     if (hadOpenOverlay) {
-      replaceTabHistory(nextTab);
+      replaceNavSection(nextSection);
     } else {
-      pushTabHistory(nextTab);
+      pushNavSection(nextSection);
     }
     setActiveTab(nextTab);
     handleScrollToTop();
   };
+
+  const handleHubPanelChange = useCallback(
+    (panel: HubPanel) => {
+      setHubPanel(panel);
+      pushNavSection({ tab: 'sync', panel });
+    },
+    [pushNavSection]
+  );
+
+  const handleTacticsSubTabChange = useCallback(
+    (panel: TacticsPanel) => {
+      setTacticsSubTab(panel);
+      pushNavSection({ tab: 'tactics', panel });
+    },
+    [pushNavSection]
+  );
 
   // These three overlays do not use MobileSheetFrame, so App owns their Back entries.
   useSheetHistory(showMoreSheet, () => setShowMoreSheet(false));
@@ -1643,6 +1698,8 @@ export default function App() {
           <AppErrorBoundary scopeLabel="Hub & AI Analyst">
             <Suspense fallback={<TabWorkspaceSkeleton variant="sync" label="Hub & AI Analyst" />}>
               <AutoSyncWorkspace
+                panel={hubPanel}
+                onPanelChange={handleHubPanelChange}
                 matches={matches}
                 players={players}
                 staff={staff}
@@ -1707,6 +1764,7 @@ export default function App() {
                 customSlots={customSlots}
                 applyToAnalystOnly={applyToAnalystOnly}
                 initialSubTab={tacticsSubTab}
+                onSubTabChange={handleTacticsSubTabChange}
                 onChangeShape={setActiveShape}
                 onChangeCustomSlots={setCustomSlots}
                 onChangeApplyToAnalystOnly={setApplyToAnalystOnly}

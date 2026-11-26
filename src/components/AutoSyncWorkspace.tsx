@@ -8,6 +8,11 @@ import React, {
   useCallback,
 } from 'react';
 import {
+  HUB_PANEL_TO_VIEW,
+  VIEW_TO_HUB_PANEL,
+  type HubPanel,
+} from '../utils/navigationUrl';
+import {
   Send,
   Upload,
   Sparkles,
@@ -207,6 +212,9 @@ interface AutoSyncWorkspaceProps {
   onJourneyReportChange?: (report: DeepJourneyReport | null) => void;
   getLatestJourneyReportAsync?: () => Promise<DeepJourneyReport | null>;
   snapshotResetNonce?: number;
+  /** Panel the address bar asked for; the mobile Hub applies it on first paint. */
+  panel?: HubPanel;
+  onPanelChange?: (panel: HubPanel) => void;
   currentSaveDate: string;
   clubName?: string;
   managerName?: string;
@@ -255,6 +263,8 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   onJourneyReportChange,
   getLatestJourneyReportAsync,
   snapshotResetNonce = 0,
+  panel,
+  onPanelChange,
   currentSaveDate: saveDateProp,
   clubName,
   managerName,
@@ -335,9 +345,24 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       [updateTurnsForClub]
     );
   const lastSnapshotResetNonceRef = useRef<number>(snapshotResetNonce);
-  const [mobileHubView, setMobileHubView] = useState<
+  const [mobileHubView, setMobileHubViewLocal] = useState<
     'chat' | 'finances' | 'journey' | 'data'
-  >('chat');
+  >(() => (panel ? HUB_PANEL_TO_VIEW[panel] : 'chat'));
+  const setMobileHubView = useCallback(
+    (view: 'chat' | 'finances' | 'journey' | 'data') => {
+      setMobileHubViewLocal(view);
+      onPanelChange?.(VIEW_TO_HUB_PANEL[view]);
+    },
+    [onPanelChange]
+  );
+
+  useEffect(() => {
+    if (panel && HUB_PANEL_TO_VIEW[panel] !== mobileHubView) {
+      setMobileHubViewLocal(HUB_PANEL_TO_VIEW[panel]);
+    }
+    // Follow the address bar only; the view stays the local source of truth.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panel]);
   const [clearChatArmed, setClearChatArmed] = useState<boolean>(false);
   const clearChatTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [importScope] = useState<FmImportScope>('club_and_division');
