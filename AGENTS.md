@@ -26,7 +26,9 @@
 
 - Before planning or changing code, read `ROADMAP.md`, `TOOLING-WATCHLIST.md`, and the available skill/MCP list.
 - Name the applicable skills and MCP servers in one line, and invoke every matching skill. If none applies, say why once.
-- Prefer an installed skill or MCP tool over an ad-hoc script when it covers the job. If a missing tool would clearly help, add it to `TOOLING-WATCHLIST.md` with the roadmap item, source, licence and risk.
+- Prefer an installed skill or MCP tool over an ad-hoc script when it covers the job.
+- If a missing tool would clearly help, add it to `TOOLING-WATCHLIST.md` with the roadmap item, source, licence and risk. When the roadmap item needs it, add it to the repo in the same PR or a small prep PR, with lockfile and tests. Do not stop at a note.
+- For host-level tools such as MCP servers, check whether they are available. If they are not, record the exact setup step and tell the user once; do not pretend to use them.
 - Every PR body and final summary includes `Skills applied:` and `MCP checked:` lines.
 
 ## Skills
