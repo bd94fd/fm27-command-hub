@@ -4,6 +4,10 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  isUpdateCheckDue,
+  resolveForegroundUpdateIntervalMs,
+} from '../utils/pwaUpdateCheck';
 
 export const PWA_INSTALL_DISMISSED_KEY = 'fm27_pwa_install_dismissed_v1';
 
@@ -159,6 +163,7 @@ export function usePwaLifecycle(options?: { isBusy?: boolean }): PwaLifecycleSta
 
   const waitingWorkerRef = useRef<ServiceWorker | null>(null);
   const reloadingRef = useRef<boolean>(false);
+  const lastUpdateCheckAtRef = useRef<number>(Number.POSITIVE_INFINITY);
 
   const isIosSafari =
     typeof navigator !== 'undefined'
@@ -262,9 +267,37 @@ export function usePwaLifecycle(options?: { isBusy?: boolean }): PwaLifecycleSta
       handleControllerChange
     );
 
+    const checkForUpdateOnForeground = () => {
+      if (cancelled) return;
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+        return;
+      }
+      const reg = registrationRef;
+      if (!reg) return;
+      const now = Date.now();
+      if (
+        !isUpdateCheckDue(
+          lastUpdateCheckAtRef.current,
+          now,
+          resolveForegroundUpdateIntervalMs()
+        )
+      ) {
+        return;
+      }
+      lastUpdateCheckAtRef.current = now;
+      void reg.update().catch(() => {
+        // Offline or the host refused the check; the next foreground visit retries.
+      });
+    };
+
+    document.addEventListener('visibilitychange', checkForUpdateOnForeground);
+
     const attachRegistration = (reg: ServiceWorkerRegistration | undefined) => {
       if (cancelled || !reg) return;
       registrationRef = reg;
+      // The browser already checked during this load, so wait a full interval before
+      // asking again. A waiting worker from an earlier session still prompts now.
+      lastUpdateCheckAtRef.current = Date.now();
       if (reg.waiting && navigator.serviceWorker.controller) {
         markWaiting(reg.waiting);
       }
@@ -288,6 +321,7 @@ export function usePwaLifecycle(options?: { isBusy?: boolean }): PwaLifecycleSta
 
     return () => {
       cancelled = true;
+      document.removeEventListener('visibilitychange', checkForUpdateOnForeground);
       navigator.serviceWorker.removeEventListener(
         'controllerchange',
         handleControllerChange

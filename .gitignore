@@ -23,3 +23,7 @@ __pycache__/
 *.pyo
 *.pyd
 .pytest_cache/
+
+# Playwright skill install artifacts
+.agents/skills/*/node_modules/
+.agents/skills/*/package-lock.json
