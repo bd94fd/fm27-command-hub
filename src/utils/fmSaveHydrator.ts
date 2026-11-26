@@ -8,6 +8,10 @@ import {
   resolveCanonicalBalanceNum,
 } from './clubFinances';
 import {
+  buildSaveDataQualityReport,
+  formatSaveDataQualityForAnalyst,
+} from './saveDataQuality';
+import {
   ActiveSuspensionRecord,
   BinaryForensicsSnapshot,
   ClubFacilitiesSummary,
@@ -1831,6 +1835,10 @@ export function hydrateAppFromDecodedFmSave(
 
   const usedFastSync = Boolean(decoded.fastSync ?? decoded.meta?.fastSync ?? false);
 
+  const dataQualityBlock = formatSaveDataQualityForAnalyst(
+    buildSaveDataQualityReport(decoded)
+  );
+
   const analystPromptContext = `[LIVE FULL .FM SAVE DECODED VIA FMSAVE ${decoded.meta.fmsaveVersion} — PASS 0 & PASS 1 TIER-1 REAL IN-GAME DATA${usedFastSync ? ' · FAST SYNC MODE' : ''}]
 Game: ${decoded.meta.game} (Build ${decoded.meta.build}) | Save: ${decoded.meta.saveName}
 EXACT CURRENT IN-GAME DATE: ${saveDateLabel}
@@ -1843,7 +1851,7 @@ ${facilitiesLine}
 ${sponsorshipLine}
 ${rulesLine}
 ${vacanciesLine}
-
+${dataQualityBlock}
 === DIFFS AUTO-APPLIED TO SQUAD DATABASE (${changedPlayers.length} PLAYERS UPDATED, ${removedPlayers.length} REMOVED, ${newlyAddedCount} NEW MATCHES LOGGED) ===
 ${diffLines}
 

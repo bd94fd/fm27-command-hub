@@ -334,6 +334,8 @@ test('hydrateAppFromDecodedFmSave updates squad stats/attributes, logs new match
   assert.match(hydrated.analystPromptContext, /EXACT CURRENT IN-GAME DATE: 19\/09\/2027/);
   assert.match(hydrated.analystPromptContext, /KFC Dessel Sport/);
   assert.match(hydrated.analystPromptContext, /Mbey Epolo/);
+  assert.match(hydrated.analystPromptContext, /=== SAVE DATA QUALITY/);
+  assert.match(hydrated.analystPromptContext, /Field coverage:/);
   assert.doesNotMatch(hydrated.analystPromptContext, /CA \d+\/PA \d+/i);
 });
 
