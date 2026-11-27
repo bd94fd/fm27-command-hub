@@ -86,6 +86,8 @@ row in `docs/data-parity-contract-map.md`.
 | `src/utils/hydrateAnalystContext.ts` | — | 338 (the analyst's save briefing, competition rules and reader warnings) |
 | `src/utils/hydratePlayerMerge.ts` | — | 699 (squad matching, stale removal, new signings, and the status/attribute helpers that feed them) |
 | `src/utils/hydrateMatchLog.ts` | — | 160 (match log build: save rows, team match stats enrichment, existing-report merge) |
+| `src/utils/hydrateStaff.ts` | — | 56 (staff directory rows, neutral attributes, placeholder text) |
+| `src/utils/hydrateFinances.ts` | — | 102 (canonical balance, wage summary, financial runway) |
 | `src/utils/playerDetailFormat.ts` | — | 52 |
 
 ## Still large, and next in line
@@ -94,7 +96,7 @@ row in `docs/data-parity-contract-map.md`.
 | --- | --- | --- | --- |
 | `src/App.tsx` | 1,328 | Chrome, routing, persistence, backup, squad deltas and the `.fm` import pipeline are out; what remains is the shared tab state, the derived summaries and the render tree | Split the render tree by tab, starting with the Hub and Analyst workspace |
 | `src/components/PlayerDetailModal.tsx` | 608 | The sheet chrome, the derived model, the tab bar and the shortlist action | Nothing left to split; the five panels and the PNG export are out |
-| `src/utils/fmSaveHydrator.ts` | 865 | Decoder output to UI records: staff, finances, governance and the payload it hands on | Split the remaining staff and finance blocks |
+| `src/utils/fmSaveHydrator.ts` | 737 | Decoder output to UI records: governance, executive strip labels and the payload it hands on | Split the executive strip labels |
 | `src/services/saveCache.ts` | 1,830 | IndexedDB snapshots plus journey reports | Split snapshot storage from journey reporting |
 
 `src/App.tsx` changes most often after the workspace, so it stays the next
