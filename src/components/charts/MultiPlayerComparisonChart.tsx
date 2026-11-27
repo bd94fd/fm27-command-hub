@@ -7,7 +7,6 @@ import {
   getPaddedRadialViewBox,
   resolveTouchTooltipSelection,
 } from "../../utils/mobileChartHelpers";
-import { useCompactChartViewport } from "../ChartRankedListToggle";
 
 export interface MultiPlayerComparisonChartProps {
   dataset: MultiPlayerComparisonDataset;

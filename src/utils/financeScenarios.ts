@@ -87,7 +87,7 @@ function runwayMonthsFor(balance: number, monthlyNet: number): number | null {
   return Math.max(0, Number((balance / Math.abs(monthlyNet)).toFixed(1)));
 }
 
-function runwayLabel(balance: number, monthlyNet: number, months: number | null): string {
+function runwayLabel(balance: number, months: number | null): string {
   if (balance <= 0) return 'overdrawn';
   if (months === null) return 'not burning';
   return `${months} months`;
@@ -163,9 +163,9 @@ export function projectFinanceScenario(
   const runwayBeforeLabel =
     hasBaselineOverride && input.baselineRunwayLabel
       ? input.baselineRunwayLabel
-      : runwayLabel(balance, monthlyNetBefore, latestMonthRunway);
+      : runwayLabel(balance, latestMonthRunway);
   const runwayMonthsAfter = runwayMonthsFor(balanceAfter, monthlyNetAfter);
-  const runwayAfterLabel = runwayLabel(balanceAfter, monthlyNetAfter, runwayMonthsAfter);
+  const runwayAfterLabel = runwayLabel(balanceAfter, runwayMonthsAfter);
   const statusAfter = runwayStatus(balanceAfter, runwayMonthsAfter);
   const basisNote =
     hasBaselineOverride && latestMonthRunway !== null && runwayMonthsBefore !== null &&

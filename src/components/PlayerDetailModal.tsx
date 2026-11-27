@@ -703,7 +703,6 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     </span>
                   )}
                   {(() => {
-                    const meta = evaluatePlayerMetaScore(player);
                     const dual = evaluateDualPhaseRoles(player, 1);
                     return (
                       <>

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, Check, ClipboardCopy, RefreshCw, RotateCcw } from 'lucide-react';
 import { clearPersistedFmState } from '../services/fmStorage';
 import {
@@ -31,7 +31,7 @@ export class AppErrorBoundary extends Component<
   AppErrorBoundaryProps,
   AppErrorBoundaryState
 > {
-  public state: AppErrorBoundaryState = {
+  public override state: AppErrorBoundaryState = {
     hasError: false,
     errorMessage: '',
     lastReport: null,
@@ -47,7 +47,7 @@ export class AppErrorBoundary extends Component<
     };
   }
 
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+  public override componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     const report = buildErrorReport({
       error,
       scope: this.props.scopeLabel || 'Command Hub Workspace',
@@ -106,7 +106,7 @@ export class AppErrorBoundary extends Component<
     }
   };
 
-  public render(): ReactNode {
+  public override render(): ReactNode {
     if (!this.state.hasError) {
       return this.props.children;
     }

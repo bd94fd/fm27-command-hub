@@ -1,5 +1,4 @@
 import React, { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { PlayerRecord } from "../../types/fm27";
 import type { LastMatchTacticBlueprint, SquadPlannerSlot } from "../../types/fmSave";
 import type { PositionalSigningNeed } from "../../utils/transferAudit";

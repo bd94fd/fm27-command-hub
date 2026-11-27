@@ -15,7 +15,6 @@ import {
   buildXgMomentumRankedRows,
   describeMatchXgVerdict,
   getResponsiveChartBox,
-  resolveTouchTooltipSelection,
   type ChartViewMode,
 } from "../../utils/mobileChartHelpers";
 import {

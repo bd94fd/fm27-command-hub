@@ -28,7 +28,6 @@ import {
 } from './bestXiSolver';
 import { buildAiResearchContextBlock } from './fmfShortlistExporter';
 import type { DeepJourneyReport } from '../services/saveCache';
-import { evaluateScoutTargetCard } from './cardIntelligenceEngine';
 import {
   filterMeaningfulInstructions,
   resolveSquadPlannerSlotMeta,

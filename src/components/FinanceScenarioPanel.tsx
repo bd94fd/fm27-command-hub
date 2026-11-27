@@ -2,7 +2,6 @@ import React, { useMemo, useState } from 'react';
 import { Calculator, RotateCcw, TrendingDown, TrendingUp } from 'lucide-react';
 import { formatClubMoney } from '../utils/clubFinances';
 import {
-  EMPTY_FINANCE_SCENARIO,
   FinanceScenarioDeltas,
   FinanceScenarioProjection,
   projectFinanceScenario,

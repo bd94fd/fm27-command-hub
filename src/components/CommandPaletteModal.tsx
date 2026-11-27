@@ -5,18 +5,13 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  BookOpen,
   Briefcase,
   Clock3,
   Command,
-  Crosshair,
-  MessageSquare,
   Search,
   Shield,
-  Trophy,
   User,
   UserCheck,
-  Users,
   X,
 } from 'lucide-react';
 import { PlayerRecord, StaffRecord } from '../types/fm27';

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import type { PlayerRecord } from "../../types/fm27";
 import type { PercentilePizzaSlice } from "../../utils/cardIntelligenceEngine";
 import type { PlayerProgressionPoint } from "../../utils/progressionDiff";

@@ -1,7 +1,6 @@
 import { PlayerRecord } from '../types/fm27';
 import {
   MISSING_VALUE,
-  formatContractExpiry,
   isPlaceholderValue,
 } from './displayValue';
 import { formatClubMoney } from './clubFinances';
