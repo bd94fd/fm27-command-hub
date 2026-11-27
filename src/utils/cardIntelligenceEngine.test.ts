@@ -191,7 +191,7 @@ test('evaluateScoutTargetCard scores free agents, critical gaps, and age 30+ ris
   assert.equal(summary.verdictLabel, 'Priority Signing');
   assert.equal(summary.tone, 'emerald');
   assert.equal(summary.pizzaSlices.length, 8);
-  assert.match(summary.cost3YrLabel, /£62k \/ 3y/);
+  assert.match(summary.cost3YrLabel, /£62K \/ 3y/);
 
   const veteran = evaluateScoutTargetCard({ ...target, age: 32 }, squad);
   assert.match(veteran.primaryRisk, /Age 32/);

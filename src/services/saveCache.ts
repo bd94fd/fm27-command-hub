@@ -6,7 +6,7 @@
  * Inspired by aitester2025tgl-collab/fm27-explorer (MIT) and mavarobli/FMSuperScout (MIT).
  */
 import { formatAge } from '../utils/squadViewHelpers';
-import { computeSquadWageSubtotal } from '../utils/clubFinances';
+import { computeSquadWageSubtotal, formatSignedClubMoney } from '../utils/clubFinances';
 
 import { MatchLogEntry, PlayerRecord } from '../types/fm27';
 import type { CompactBinaryDiffSnapshot } from '../utils/fm27BinaryDictionary';
@@ -573,14 +573,6 @@ function parseDmyOrder(dmy: string): number {
   return Number.isFinite(iso) ? iso : 0;
 }
 
-function formatCompactMoneyDelta(val: number): string {
-  const sign = val >= 0 ? '+' : '-';
-  const abs = Math.abs(val);
-  if (abs >= 1_000_000) return `${sign}£${(abs / 1_000_000).toFixed(2)}M`;
-  if (abs >= 1_000) return `${sign}£${Math.round(abs / 1_000)}K`;
-  return `${sign}£${Math.round(abs)}`;
-}
-
 /**
  * Generates an instant deterministic Deep Save-to-Save Journey Report across
  * two snapshots (plus chronological timeline across all stored save points).
@@ -894,7 +886,7 @@ export function buildDeepJourneyReport(
         category: 'finances',
         title: balDelta > 0 ? 'Club bank balance improved' : 'Cash balance declined',
         detail: `Balance shifted from ${previous.balance || 'N/A'} to ${current.balance || 'N/A'}.`,
-        deltaLabel: formatCompactMoneyDelta(balDelta),
+        deltaLabel: formatSignedClubMoney(balDelta),
       };
       (balDelta > 0 ? improved : worsened).push(item);
     }

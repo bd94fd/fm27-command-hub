@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
 import {
   buildClubFinancesPanel,
@@ -7,7 +9,9 @@ import {
   computeSquadWageSubtotal,
   filterUsableSponsorshipDeals,
   formatClubMoney,
+  formatSignedClubMoney,
   formatWageComplianceSummary,
+  formatWeeklyAmount,
   parseSignedMoneyValue,
   parseWageSpendTriple,
   resolveCanonicalBalanceNum,
@@ -47,7 +51,7 @@ test('formatClubMoney stays exact and formatWeeklyWage is the single shared wage
   assert.equal(formatClubMoney(null), '--');
 
   // Imported from squadViewHelpers: clubFinances no longer exports a competing formatter.
-  assert.equal(formatWeeklyWage(10_257), '£10.3k/wk');
+  assert.equal(formatWeeklyWage(10_257), '£10.3K/wk');
   assert.equal(formatWeeklyWage(450), '£450/wk');
   assert.equal(formatWeeklyWage(0), '--');
   assert.equal(formatWeeklyWage(undefined), '--');
@@ -279,4 +283,54 @@ test('buildClubFinancesPanel degrades to explicit gaps when the save has no fina
   assert.equal(panel.payroll.staffPayrollLabel, '--');
   assert.equal(panel.payroll.squadWageSubtotalLabel, '--');
   assert.deepEqual(panel.sponsorships, []);
+});
+
+test('formatWeeklyAmount prints an exact weekly figure and refuses to invent one', () => {
+  assert.equal(formatWeeklyAmount(1234), '£1,234/wk');
+  assert.equal(formatWeeklyAmount(1234.6), '£1,235/wk');
+  assert.equal(formatWeeklyAmount(0), '£0/wk');
+  assert.equal(formatWeeklyAmount(2000, '€'), '€2,000/wk');
+  assert.equal(formatWeeklyAmount(null), '--');
+  assert.equal(formatWeeklyAmount(undefined), '--');
+  assert.equal(formatWeeklyAmount(Number.NaN), '--');
+});
+
+test('formatSignedClubMoney marks the direction of a change in compact money', () => {
+  assert.equal(formatSignedClubMoney(12_400), '+£12K');
+  assert.equal(formatSignedClubMoney(1_200_000), '+£1.20M');
+  assert.equal(formatSignedClubMoney(950), '+£950');
+  assert.equal(formatSignedClubMoney(0), '+£0');
+  assert.equal(formatSignedClubMoney(-802_000), '-£802K');
+  assert.equal(formatSignedClubMoney(null), '--');
+  assert.equal(formatSignedClubMoney(Number.NaN), '--');
+});
+
+test('money and attribute formatting stay in one place', () => {
+  const root = process.cwd();
+  const walk = (dir: string): string[] =>
+    fs.readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap((entry) => {
+      const rel = path.join(dir, entry.name);
+      if (entry.isDirectory()) return walk(rel);
+      return /\.(ts|tsx)$/.test(entry.name) ? [rel] : [];
+    });
+
+  const files = walk('src').filter((rel) => !/\.test\.tsx?$/.test(rel));
+  const offenders: string[] = [];
+  for (const rel of files) {
+    const text = fs.readFileSync(path.join(root, rel), 'utf8');
+    const isMoneyHome = rel === path.join('src', 'utils', 'clubFinances.ts');
+    const isClampHome = rel === path.join('src', 'types', 'fmSave.ts');
+    if (!isMoneyHome && /function format(?:CompactMoney|CompactMoneyDelta|WeeklyExact|WeeklyMoney)\b/.test(text)) {
+      offenders.push(`${rel} defines its own compact or weekly money formatter`);
+    }
+    if (!isClampHome && /Math\.max\(1,\s*Math\.min\(20,\s*Math\.round\(/.test(text)) {
+      offenders.push(`${rel} repeats the 1-20 attribute clamp`);
+    }
+    for (const line of text.split('\n')) {
+      if (line.includes('£${') && /[)}]k(?=\/wk|\s\/\s?(?:3y|1y)|\sper\b)/.test(line)) {
+        offenders.push(`${rel} prints a lowercase money unit: ${line.trim()}`);
+      }
+    }
+  }
+  assert.deepEqual(offenders, []);
 });

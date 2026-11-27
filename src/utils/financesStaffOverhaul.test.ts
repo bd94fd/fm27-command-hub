@@ -162,7 +162,6 @@ test('audited controls expose focus-visible rings instead of bare focus:outline-
   for (const relPath of [
     'src/components/LastMatchTacticBlueprintCard.tsx',
     'src/components/KnowledgeBasePanel.tsx',
-    'src/components/recruitment/ScoutTargetFilters.tsx',
   ]) {
     const src = readSrc(relPath);
     assert.doesNotMatch(src, /focus:outline-none/, `${relPath} still has bare focus:outline-none`);

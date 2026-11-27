@@ -122,7 +122,7 @@ A quick scan on 26 November 2026 found:
 
 | Rank | ID | Option | Why it matters | Effort |
 | ---: | --- | --- | --- | --- |
-| 38 | R38 | Dead code and duplicate utility audit | Find unused files, repeated formatters, selectors and constants. Fewer copies mean fewer places for bugs to hide. | M |
+| 38 | R38 | Dead code and duplicate utility audit | Find unused files, repeated formatters, selectors and constants. Fewer copies mean fewer places for bugs to hide. **Done.** Removed two orphan components (`ScoutTargetCard`, `ScoutTargetFilters`, 615 lines that nothing imported). Money formatting now has one home: `formatClubMoney`, the new `formatSignedClubMoney` and the new `formatWeeklyAmount` in `clubFinances.ts` replace five private copies (`formatCompactMoney`, `formatCompactMoneyDelta`, `formatWeeklyExact`, `formatCompactCurrency`'s internals, and the hand-rolled `M`/`k` branches in the scout cards). Every money figure now uses capital `K` and `M`. The 1–20 attribute clamp now uses `clampAttributeValue` everywhere instead of four inline `Math.min(20, Math.max(1, …))` copies. A guard test fails if a second money formatter or attribute clamp reappears. The audit record, including what was deliberately left alone, is in `docs/dead-code-audit.md`. | M |
 | 39 | R39 | Type safety and runtime validation | Reduce `any`, tighten boundaries and validate data at the edges. This turns runtime surprises into build-time errors. | L |
 | 40 | R40 | Large component split | Break the biggest files into smaller pieces with clear ownership. This makes future changes safer and easier to review. | L |
 | 41 | R41 | Test coverage and quality | Add a coverage report and target the engines with the least coverage. Focus on real behaviour, not test count. | M |

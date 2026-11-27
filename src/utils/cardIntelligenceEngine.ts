@@ -5,6 +5,7 @@ import {
   LastMatchTacticBlueprint,
   RecruitmentTarget,
 } from '../types/fmSave';
+import { formatClubMoney } from './clubFinances';
 import { evaluatePlayerClubDna } from './clubDnaEngine';
 import {
   buildScoutTargetPlayerRecord,
@@ -389,9 +390,7 @@ export function evaluateScoutTargetCard(
   const cost3YrLabel =
     weeklyWage === 0
       ? 'Wage TBD'
-      : annual3Yr >= 1_000_000
-        ? `£${(annual3Yr / 1_000_000).toFixed(2)}M / 3y`
-        : `£${Math.round(annual3Yr / 1000)}k / 3y`;
+      : `${formatClubMoney(annual3Yr)} / 3y`;
 
   const valueTag = target.isFreeAgent
     ? 'Free Agent'

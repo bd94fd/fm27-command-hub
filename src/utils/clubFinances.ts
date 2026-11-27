@@ -384,9 +384,23 @@ export interface ClubFinancesPanelData {
   sponsorships: SponsorshipPanelRow[];
 }
 
-function formatWeeklyMoney(amount: number | null, currencySymbol: string): string {
-  if (amount === null || !Number.isFinite(amount)) return '--';
+/** Exact weekly amount, e.g. `£1,234/wk`. Returns `--` when the save has no figure. */
+export function formatWeeklyAmount(
+  amount: number | null | undefined,
+  currencySymbol = '£'
+): string {
+  if (amount === null || amount === undefined || !Number.isFinite(amount)) return '--';
   return `${currencySymbol}${Math.round(amount).toLocaleString()}/wk`;
+}
+
+/** Compact money with an explicit sign, for change labels such as `+£12K` or `-£1.20M`. */
+export function formatSignedClubMoney(
+  amount: number | null | undefined,
+  currencySymbol = '£'
+): string {
+  if (amount === null || amount === undefined || !Number.isFinite(amount)) return '--';
+  const sign = amount >= 0 ? '+' : '-';
+  return `${sign}${formatClubMoney(Math.abs(amount), currencySymbol)}`;
 }
 
 const SPONSOR_PLACEHOLDERS = new Set(['', '--', 'unknown', 'n/a', 'none']);
@@ -606,9 +620,9 @@ export function buildClubFinancesPanel(
       runwayWarning,
     },
     payroll: {
-      clubPayrollLabel: formatWeeklyMoney(canonical.wagePayrollWeekly, currencySymbol),
+      clubPayrollLabel: formatWeeklyAmount(canonical.wagePayrollWeekly, currencySymbol),
       wagePayrollWeekly: canonical.wagePayrollWeekly,
-      wageBudgetLabel: formatWeeklyMoney(canonical.wageBudgetWeekly, currencySymbol),
+      wageBudgetLabel: formatWeeklyAmount(canonical.wageBudgetWeekly, currencySymbol),
       wageBudgetWeekly: canonical.wageBudgetWeekly,
       wageComplianceLabel: canonical.wageComplianceLabel,
       wageHeadroomLabel,

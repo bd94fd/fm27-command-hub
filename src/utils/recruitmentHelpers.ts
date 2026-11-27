@@ -1,5 +1,6 @@
 import { PlayerRecord } from '../types/fm27';
-import { RecruitmentTarget } from '../types/fmSave';
+import { RecruitmentTarget, clampAttributeValue } from '../types/fmSave';
+import { formatClubMoney } from './clubFinances';
 import {
   IN_POSSESSION_ROLES,
   doesPlayerMatchRolePositionGroup,
@@ -175,12 +176,12 @@ function readTargetAttr(
   const attrs = target.attributes || {};
   const direct = attrs[primaryKey];
   if (typeof direct === 'number' && Number.isFinite(direct) && direct > 0) {
-    return Math.min(20, Math.max(1, Math.round(direct)));
+    return clampAttributeValue(direct);
   }
   for (const fk of fallbackKeys) {
     const val = attrs[fk];
     if (typeof val === 'number' && Number.isFinite(val) && val > 0) {
-      return Math.min(20, Math.max(1, Math.round(val)));
+      return clampAttributeValue(val);
     }
   }
   return 10;
@@ -631,7 +632,7 @@ export function evaluatePlaybookArchetype(
   const val = (key: string, ...fallbacks: string[]): number => {
     const direct = raw[key];
     if (typeof direct === 'number' && Number.isFinite(direct) && direct > 0) {
-      return Math.min(20, Math.max(1, Math.round(direct)));
+      return clampAttributeValue(direct);
     }
     for (const fb of fallbacks) {
       const fv = raw[fb];
@@ -1007,13 +1008,11 @@ export function computeMoneyballValueScore(params: {
 
   const periodSuffix = target.isLoanCandidate ? '/ 1y loan' : '/ 3y';
   const costLabel =
-    threeYearCostEur >= 1_000_000
-      ? `£${(threeYearCostEur / 1_000_000).toFixed(2)}M ${periodSuffix}`
-      : threeYearCostEur > 0
-        ? `£${Math.round(threeYearCostEur / 1000)}k ${periodSuffix}`
-        : target.isLoanCandidate
-          ? '0% Wage Loan'
-          : 'Trial / Low Wage';
+    threeYearCostEur > 0
+      ? `${formatClubMoney(threeYearCostEur)} ${periodSuffix}`
+      : target.isLoanCandidate
+        ? '0% Wage Loan'
+        : 'Trial / Low Wage';
 
   const summary = `${tier} (${score}/100) · ${costLabel}`;
   return { score, tier, threeYearCostEur, costLabel, summary };
