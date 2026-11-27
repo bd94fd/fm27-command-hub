@@ -88,6 +88,27 @@ test('the recent match line keeps the xG and shot detail the analyst is allowed 
   assert.match(prompt, /xG 1\.84 - 1\.12 \| Poss 52% \| Shots 12 vs 9 \| CCC 3-2/);
 });
 
+test('a match with no xG from the reader is listed without xG instead of crashing the import', () => {
+  const withoutXg = {
+    ...decoded,
+    playedMatches: [
+      {
+        dateIso: '2027-02-15',
+        dateDmy: '15 Feb 2027',
+        competition: 'Jupiler Pro League',
+        opponent: 'Gent',
+        venue: 'H',
+        result: 'D',
+        score: '1-1',
+        xGFor: undefined,
+      },
+    ],
+  } as unknown as DecodedFmSavePayload;
+  const prompt = buildAnalystSaveContext({ ...baseInput(), decoded: withoutXg });
+  assert.match(prompt, /15 Feb 2027 \[Jupiler Pro League\] vs Gent \(H\): D 1-1$/m);
+  assert.ok(!prompt.includes('xG undefined'));
+});
+
 test('a ban in the next fixture competition is marked do-not-start', () => {
   const input = baseInput();
   input.suspensions = [

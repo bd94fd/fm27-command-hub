@@ -84,6 +84,7 @@ row in `docs/data-parity-contract-map.md`.
 | `src/utils/playerCardExport.ts` | — | 227 (player card PNG model and canvas drawing) |
 | `src/utils/hydrateAvailability.ts` | — | 72 (bans deduplicated by uid, injuries by uid or normalised name) |
 | `src/utils/hydrateAnalystContext.ts` | — | 338 (the analyst's save briefing, competition rules and reader warnings) |
+| `src/utils/hydratePlayerMerge.ts` | — | 699 (squad matching, stale removal, new signings, and the status/attribute helpers that feed them) |
 | `src/utils/playerDetailFormat.ts` | — | 52 |
 
 ## Still large, and next in line
@@ -92,7 +93,7 @@ row in `docs/data-parity-contract-map.md`.
 | --- | --- | --- | --- |
 | `src/App.tsx` | 1,328 | Chrome, routing, persistence, backup, squad deltas and the `.fm` import pipeline are out; what remains is the shared tab state, the derived summaries and the render tree | Split the render tree by tab, starting with the Hub and Analyst workspace |
 | `src/components/PlayerDetailModal.tsx` | 608 | The sheet chrome, the derived model, the tab bar and the shortlist action | Nothing left to split; the five panels and the PNG export are out |
-| `src/utils/fmSaveHydrator.ts` | 1,631 | Decoder output to UI records: player matching, match log, staff, and the payload it hands on | Split the player merge loop and the match-log build; the analyst prompt and availability index are out |
+| `src/utils/fmSaveHydrator.ts` | 996 | Decoder output to UI records: match log, staff, and the payload it hands on | Split the match-log build |
 | `src/services/saveCache.ts` | 1,830 | IndexedDB snapshots plus journey reports | Split snapshot storage from journey reporting |
 
 `src/App.tsx` changes most often after the workspace, so it stays the next
