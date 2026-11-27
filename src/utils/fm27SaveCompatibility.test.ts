@@ -182,7 +182,11 @@ test('Data tab shows the compatibility panel without adding a seventh nav tab', 
   );
   assert.match(source, /resolveSaveCompatibility\(hydratedFmSave\?\.decodedPayload\?\.meta\)/);
   assert.match(source, /<SaveCompatibilityPanel compatibility=\{saveCompatibility\} \/>/);
-  assert.ok(source.includes('Data Quality'));
+  const tabs = readFileSync(
+    new URL('../components/analyst/MobileHubTabs.tsx', import.meta.url),
+    'utf8'
+  );
+  assert.ok(tabs.includes('Data Quality'));
   assert.doesNotMatch(source, /id: 'compatibility' as const, label:/);
 });
 

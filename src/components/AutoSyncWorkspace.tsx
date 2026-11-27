@@ -25,7 +25,6 @@ import {
   SAVE_FILE_LOCATIONS,
 } from '../utils/onboardingCopy';
 import {
-  Send,
   Upload,
   Sparkles,
   X,
@@ -38,13 +37,8 @@ import {
   ChevronUp,
   ChevronRight,
   Clock,
-  Wallet,
-  MessageSquare,
-  History,
   Copy,
   Check,
-  ClipboardPaste,
-  BookOpen,
 } from 'lucide-react';
 import {
   MatchLogEntry,
@@ -52,7 +46,6 @@ import {
   RecruitmentCase,
   StaffRecord,
 } from '../types/fm27';
-import { checkFm27ResponseWarnings } from '../utils/fm27AccuracyCheck';
 import type { DeepJourneyReport } from '../services/saveCache';
 import {
   isDecodedCacheSyncModeCompatible,
@@ -107,8 +100,8 @@ import {
 import type {
   AnalystReasoningMode,
   ExtendedPlayerAutoUpdate,
-  PreFlightPayloadValidationResult,
 } from '../utils/tacticalAnalystContext';
+import type { PreFlightPayloadValidationResult } from '../utils/analystPayload';
 import type { FormationPresetKey } from '../utils/bestXiSolver';
 import {
   AnalystChatResponse,
@@ -135,6 +128,10 @@ import {
   shouldPrewarmLocalDecoder,
   type DecodeTarget,
 } from '../utils/decodeTarget';
+import { AnalystChatFeed } from './analyst/AnalystChatFeed';
+import { AnalystComposer } from './analyst/AnalystComposer';
+import { HubFinancesPanel } from './analyst/HubFinancesPanel';
+import { MobileHubTabs, MobileHubView } from './analyst/MobileHubTabs';
 import { recordFm27BuildRun } from '../utils/fm27BuildMemory';
 import {
   buildFinancesPanelFromSave,
@@ -142,8 +139,6 @@ import {
 import { resolveSaveCompatibility } from '../utils/fm27SaveCompatibility';
 import { mergeAnalystCitations } from '../utils/analystCitations';
 import { SaveCompatibilityPanel } from './SaveCompatibilityPanel';
-import { FinanceScenarioPanel } from './FinanceScenarioPanel';
-import { TransferPlanSandbox } from './TransferPlanSandbox';
 
 export { isUsableSponsorshipDeal, filterUsableSponsorshipDeals } from '../utils/clubFinances';
 
@@ -159,30 +154,6 @@ const FmUploadProgressCard = lazy(() =>
   }))
 );
 
-const FinancesStat: React.FC<{
-  label: string;
-  value: string;
-  hint?: string;
-  valueClassName?: string;
-}> = ({ label, value, hint, valueClassName }) => (
-  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 p-2.5 min-w-0">
-    <div className="text-micro font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 leading-tight">
-      {label}
-    </div>
-    <div
-      className={`mt-0.5 font-mono text-sm font-bold break-words tabular-nums ${
-        valueClassName || 'text-slate-900 dark:text-white'
-      }`}
-    >
-      {value}
-    </div>
-    {hint && (
-      <div className="text-xs text-slate-500 dark:text-slate-400 break-words">
-        {hint}
-      </div>
-    )}
-  </div>
-);
 
 async function probeServerDecodeAvailability(): Promise<boolean> {
   const controller =
@@ -364,11 +335,11 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       [updateTurnsForClub]
     );
   const lastSnapshotResetNonceRef = useRef<number>(snapshotResetNonce);
-  const [mobileHubView, setMobileHubViewLocal] = useState<
-    'chat' | 'finances' | 'journey' | 'data'
-  >(() => (panel ? HUB_PANEL_TO_VIEW[panel] : 'chat'));
+  const [mobileHubView, setMobileHubViewLocal] = useState<MobileHubView>(() =>
+    panel ? HUB_PANEL_TO_VIEW[panel] : 'chat'
+  );
   const setMobileHubView = useCallback(
-    (view: 'chat' | 'finances' | 'journey' | 'data') => {
+    (view: MobileHubView) => {
       setMobileHubViewLocal(view);
       onPanelChange?.(VIEW_TO_HUB_PANEL[view]);
     },
@@ -498,7 +469,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     }
     let cancelled = false;
     const runValidation = () => {
-      void import('../utils/tacticalAnalystContext')
+      void import('../utils/analystPayload')
         .then(({ runPreFlightAnalystValidation }) => {
           if (cancelled) return;
           const { validation } = runPreFlightAnalystValidation({
@@ -904,11 +875,11 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     };
 
     try {
-      const {
-        buildLiveTacticalAnalystContext,
-        buildConversationTranscript,
-        runPreFlightAnalystValidation,
-      } = await import('../utils/tacticalAnalystContext');
+      const { buildLiveTacticalAnalystContext, buildConversationTranscript } =
+        await import('../utils/tacticalAnalystContext');
+      const { runPreFlightAnalystValidation } = await import(
+        '../utils/analystPayload'
+      );
       const contextInput = {
         clubName: effectiveClubName,
         managerName: effectiveManagerName,
@@ -1906,6 +1877,24 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
   const activePreFlightValidation = hasLoadedSave
     ? preFlightDispatchValidation ?? livePreFlightValidation
     : null;
+
+  const composerSyncStatus = useMemo(() => {
+    if (activePreFlightValidation && !activePreFlightValidation.valid) {
+      return {
+        label: `Sync Status: ${activePreFlightValidation.missingFields.length} core field(s) missing — re-import advised`,
+        warning: true,
+      };
+    }
+    return {
+      label:
+        decodeTarget === 'local'
+          ? 'On-device Sync Selected'
+          : serverDecodeAvailable
+            ? 'Server Sync Ready'
+            : 'Local Reader Ready',
+      warning: false,
+    };
+  }, [activePreFlightValidation, decodeTarget, serverDecodeAvailable]);
   const preFlightSignature = activePreFlightValidation
     ? `${activePreFlightValidation.missingFields.join(',')}:${currentSaveDate}:${players.length}`
     : null;
@@ -2452,87 +2441,15 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
       )}
 
       {/* MOBILE HUB VIEW SPLIT: Chat | Finances | Journey | Data (< md only) */}
-      <div
-        role="tablist"
-        aria-label="Mobile Hub view"
-        className="md:hidden px-3.5 pt-3 pb-1 border-b border-slate-200 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-950/60"
-      >
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 rounded-xl bg-slate-200/70 dark:bg-slate-900 border border-slate-300 dark:border-slate-800">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mobileHubView === 'chat'}
-            onClick={() => setMobileHubView('chat')}
-            className={`min-h-[44px] inline-flex min-w-0 items-center justify-center gap-1 rounded-lg px-1.5 text-micro sm:text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
-              mobileHubView === 'chat'
-                ? 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-500/40 shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
-            }`}
-          >
-            <MessageSquare className="w-4 h-4 shrink-0" />
-            <span className="truncate">Analyst Chat</span>
-            {turns.length > 0 && (
-              <span className="rounded-md bg-emerald-500/20 px-1.5 py-0.5 font-mono text-2xs leading-none text-emerald-800 dark:text-emerald-300 tabular-nums">
-                {turns.length}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mobileHubView === 'finances'}
-            onClick={() => setMobileHubView('finances')}
-            className={`min-h-[44px] inline-flex min-w-0 items-center justify-center gap-1 rounded-lg px-1.5 text-micro sm:text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
-              mobileHubView === 'finances'
-                ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
-            }`}
-          >
-            <Wallet className="w-4 h-4 shrink-0" />
-            <span className="truncate">Finances</span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mobileHubView === 'journey'}
-            onClick={() => setMobileHubView('journey')}
-            className={`min-h-[44px] inline-flex min-w-0 items-center justify-center gap-1 rounded-lg px-1.5 text-micro sm:text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
-              mobileHubView === 'journey'
-                ? 'bg-sky-500/20 text-sky-700 dark:text-sky-300 border border-sky-500/40 shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
-            }`}
-          >
-            <History className="w-4 h-4 shrink-0" />
-            <span className="truncate">Save Journey</span>
-            {latestJourneyReport && (
-              <span
-                aria-hidden="true"
-                className="w-2 h-2 rounded-full bg-sky-500 dark:bg-sky-400 shrink-0"
-              />
-            )}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mobileHubView === 'data'}
-            onClick={() => setMobileHubView('data')}
-            className={`min-h-[44px] inline-flex min-w-0 items-center justify-center gap-1 rounded-lg px-1.5 text-micro sm:text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
-              mobileHubView === 'data'
-                ? 'bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-500/40 shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
-            }`}
-          >
-            <ShieldCheck className="w-4 h-4 shrink-0" />
-            <span className="truncate">Data Quality</span>
-            {dataQualityReport && dataQualityReport.checks.missing > 0 && (
-              <span
-                aria-hidden="true"
-                className="w-2 h-2 rounded-full bg-amber-500 dark:bg-amber-400 shrink-0"
-              />
-            )}
-          </button>
-        </div>
-      </div>
+      <MobileHubTabs
+        view={mobileHubView}
+        onViewChange={setMobileHubView}
+        turnCount={turns.length}
+        hasJourneyReport={Boolean(latestJourneyReport)}
+        dataQualityMissing={
+          dataQualityReport ? dataQualityReport.checks.missing : null
+        }
+      />
 
       {/* MAIN CHAT BODY + COMPOSER */}
       <div
@@ -2584,261 +2501,16 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           ))}
         </div>
 
-        {/* Scrollable Chat Feed (bounded dvh height so mobile page adapts to browser bars & keyboard) */}
-        {(turns.length > 0 || isSending) && (
-          <div className="space-y-3 max-h-[52dvh] md:max-h-[55dvh] overflow-y-auto pr-1">
-            {turns.map((turn) => {
-              if (turn.role === 'user') {
-                return (
-                  <div
-                    key={turn.id}
-                    className="ml-auto max-w-2xl p-3.5 rounded-xl bg-emerald-950/50 border border-emerald-500/30 text-slate-100"
-                  >
-                    <div className="flex items-center justify-between gap-2 text-2xs font-mono text-emerald-400 mb-1">
-                      <span>{displayManagerLabel}</span>
-                      <div className="flex items-center gap-2 min-w-0">
-                        {turn.imageNames && turn.imageNames.length > 0 && (
-                          <span className="truncate">
-                            {turn.imageNames.join(', ')}
-                          </span>
-                        )}
-                        {turn.userText && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleCopyText(turn.id, formatTurnForCopy(turn))
-                            }
-                            title="Copy message"
-                            className="inline-flex items-center gap-1 min-h-[36px] md:min-h-[24px] px-2 rounded-md bg-emerald-900/60 hover:bg-emerald-800/70 text-emerald-200 transition cursor-pointer shrink-0"
-                          >
-                            {copiedId === turn.id ? (
-                              <>
-                                <Check className="w-3 h-3" />
-                                Copied
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="w-3 h-3" />
-                                Copy
-                              </>
-                            )}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <p className="text-xs leading-relaxed whitespace-pre-wrap">
-                      {turn.userText}
-                    </p>
-                  </div>
-                );
-              }
-
-              const turnCitations = mergeAnalystCitations(
-                turn.sourceCitations,
-                turn.analysisMarkdown
-              );
-
-              return (
-                <div
-                  key={turn.id}
-                  className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-3"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-200 dark:border-slate-800">
-                    <span className="text-xs font-mono font-semibold text-emerald-600 dark:text-emerald-400">
-                      Tactical Analyst{turn.screenDetected ? ` · ${turn.screenDetected}` : ''}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      {turn.inGameDate && turn.inGameDate !== '--' && (
-                        <span className="text-2xs font-mono text-slate-500">
-                          {turn.inGameDate}
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleCopyText(turn.id, formatTurnForCopy(turn))
-                        }
-                        title="Copy this Analyst reply"
-                        className="inline-flex items-center gap-1 min-h-[36px] md:min-h-[24px] px-2 rounded-md text-micro font-medium bg-slate-200/80 dark:bg-slate-800 hover:bg-emerald-500/20 text-slate-700 dark:text-slate-200 hover:text-emerald-300 border border-slate-300 dark:border-slate-700 transition cursor-pointer"
-                      >
-                        {copiedId === turn.id ? (
-                          <>
-                            <Check className="w-3 h-3 text-emerald-400" />
-                            Copied
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3 h-3" />
-                            Copy
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  {turn.playerUpdatesApplied &&
-                    turn.playerUpdatesApplied.length > 0 && (
-                      <div className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-micro text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
-                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                        <span className="min-w-0 break-words">
-                          Updated Squad:{' '}
-                          <strong>
-                            {turn.playerUpdatesApplied.slice(0, 8).join(', ')}
-                            {turn.playerUpdatesApplied.length > 8
-                              ? ` (+${turn.playerUpdatesApplied.length - 8} more)`
-                              : ''}
-                          </strong>
-                        </span>
-                      </div>
-                    )}
-
-                  {turn.analysisMarkdown && (() => {
-                    const check = checkFm27ResponseWarnings(turn.analysisMarkdown);
-                    if (check.passed) return null;
-                    return (
-                      <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-micro text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
-                        <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-                        <span className="min-w-0 break-words">Notice: {check.warnings.join(' · ')}</span>
-                      </div>
-                    );
-                  })()}
-
-                  <div className="space-y-1.5 text-xs text-slate-800 dark:text-slate-200 leading-relaxed min-w-0 break-words">
-                    {(turn.analysisMarkdown || '')
-                      .split('\n')
-                      .map((rawLine, lineIdx) => {
-                        const line = rawLine.trim();
-                        if (!line) return <div key={lineIdx} className="h-1" />;
-
-                        const renderInlineBold = (text: string) => {
-                          const parts = text.split(/(\*\*[^*]+\*\*)/g);
-                          return parts.map((part, pIdx) => {
-                            if (part.startsWith('**') && part.endsWith('**')) {
-                              return (
-                                <strong
-                                  key={pIdx}
-                                  className="font-semibold text-slate-950 dark:text-white"
-                                >
-                                  {part.slice(2, -2)}
-                                </strong>
-                              );
-                            }
-                            return <span key={pIdx}>{part}</span>;
-                          });
-                        };
-
-                        if (line.startsWith('### ')) {
-                          return (
-                            <h3
-                              key={lineIdx}
-                              className="text-sm font-bold text-emerald-700 dark:text-emerald-400 pt-1"
-                            >
-                              {renderInlineBold(line.replace(/^###\s+/, ''))}
-                            </h3>
-                          );
-                        }
-                        if (line.startsWith('#### ')) {
-                          return (
-                            <h4
-                              key={lineIdx}
-                              className="text-xs font-bold uppercase tracking-wide text-slate-900 dark:text-slate-100 pt-1.5"
-                            >
-                              {renderInlineBold(line.replace(/^####\s+/, ''))}
-                            </h4>
-                          );
-                        }
-                        if (line.startsWith('* ') || line.startsWith('- ')) {
-                          return (
-                            <div
-                              key={lineIdx}
-                              className="flex items-start gap-2 pl-1.5"
-                            >
-                              <span className="text-emerald-500 font-bold">•</span>
-                              <div className="flex-1">
-                                {renderInlineBold(line.replace(/^[*-]\s+/, ''))}
-                              </div>
-                            </div>
-                          );
-                        }
-                        return <p key={lineIdx}>{renderInlineBold(line)}</p>;
-                      })}
-                  </div>
-
-                  {turn.immediateClicks && turn.immediateClicks.length > 0 && (
-                    <div className="p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                      <div className="text-xs font-bold text-emerald-700 dark:text-emerald-400 mb-1.5 flex items-center gap-1.5">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        Immediate In-Game Actions
-                      </div>
-                      <ol className="list-decimal pl-4 space-y-1 text-xs text-slate-700 dark:text-slate-300">
-                        {turn.immediateClicks.map((clickItem, idx) => (
-                          <li key={idx}>
-                            {clickItem.replace(/^\s*\d+[.)]\s+/, '')}
-                          </li>
-                        ))}
-                      </ol>
-                    </div>
-                  )}
-
-                  {turnCitations.length > 0 && (
-                    <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-1">
-                      <div className="text-2xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                        <BookOpen className="h-3 w-3 shrink-0" />
-                        Grounded in
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {turnCitations.map((citation) => (
-                          <span
-                            key={citation}
-                            className="rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-1.5 py-0.5 text-micro text-slate-600 dark:text-slate-300"
-                          >
-                            {citation}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {turn.followUpQuestions &&
-                    turn.followUpQuestions.length > 0 && (
-                      <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex flex-wrap gap-1.5">
-                        {turn.followUpQuestions.map((q, qIdx) => (
-                          <button
-                            key={qIdx}
-                            type="button"
-                            disabled={isSending}
-                            onClick={() => handleSendToAnalyst(undefined, q)}
-                            className="min-h-[44px] sm:min-h-0 px-3 py-2 sm:px-2.5 sm:py-1.5 text-micro font-medium text-left text-emerald-800 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-lg transition cursor-pointer disabled:opacity-50"
-                          >
-                            {q}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                </div>
-              );
-            })}
-
-            {isSending && (
-              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2.5 text-xs text-slate-600 dark:text-slate-300">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <Sparkles className="w-4 h-4 text-emerald-500 animate-spin motion-reduce:animate-none shrink-0" />
-                  <span className="min-w-0 break-words">
-                    Analysing your club &amp; preparing tactical advice...
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => analystAbortRef.current?.abort()}
-                  className="min-h-[44px] sm:min-h-[32px] px-3 sm:px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-200/80 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 transition cursor-pointer shrink-0"
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
-            <div ref={feedEndRef} />
-          </div>
-        )}
+        <AnalystChatFeed
+          turns={turns}
+          isSending={isSending}
+          copiedId={copiedId}
+          displayManagerLabel={displayManagerLabel}
+          feedEndRef={feedEndRef}
+          onCopyTurn={(turn) => handleCopyText(turn.id, formatTurnForCopy(turn))}
+          onAsk={(prompt) => void handleSendToAnalyst(undefined, prompt)}
+          onCancel={() => analystAbortRef.current?.abort()}
+        />
 
         {chatFallbackNotice && (
           <div
@@ -2908,116 +2580,26 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         )}
 
         {/* Compact Composer Bar */}
-        <form onSubmit={(e) => handleSendToAnalyst(e)} className="space-y-2">
-          <div className="flex items-end gap-1.5 sm:gap-2">
-            <label
-              htmlFor="chat-multi-file-upload"
-              title="Import .fm save or attach a screenshot"
-              onClick={() => {
-                if (decodeTarget !== 'local') return;
-                void import('../services/fmSaveReader').then((mod) =>
-                  mod.warmBrowserDecoder()
-                );
-              }}
-              className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 rounded-xl cursor-pointer transition shrink-0"
-            >
-              <Upload className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <span className="hidden sm:inline">Import .fm / Image</span>
-              <input
-                id="chat-multi-file-upload"
-                type="file"
-                accept=".fm,image/*,.csv,.html,.htm,.rtf,.txt"
-                multiple
-                onChange={handleFilesSelected}
-                className="hidden"
-              />
-            </label>
-
-            <button
-              type="button"
-              onClick={handlePasteButtonClick}
-              title="Paste text or a screenshot from your clipboard"
-              className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 rounded-xl cursor-pointer transition shrink-0"
-            >
-              <ClipboardPaste className="w-4 h-4 text-sky-600 dark:text-sky-400" />
-              <span className="hidden md:inline">Paste</span>
-            </button>
-
-            <textarea
-              rows={2}
-              aria-label="Message your FM27 Tactical Analyst"
-              placeholder="Ask tactics, drop a .fm save, or paste text/screenshots…"
-              value={messageInput}
-              onChange={(e) => setMessageInput(e.target.value)}
-              onPaste={handleTextareaPaste}
-              className="flex-1 min-w-0 min-h-[44px] px-3 py-2 text-base md:text-xs leading-relaxed bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
-            />
-
-            <button
-              type="submit"
-              aria-label="Send message"
-              disabled={isSending || Boolean(fmDecodeStage)}
-              className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2.5 text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 rounded-xl transition cursor-pointer shrink-0 disabled:opacity-50"
-            >
-              <Send className="w-4 h-4" />
-              <span className="hidden sm:inline">Send</span>
-            </button>
-          </div>
-
-          {hasLoadedSave && (
-            <div className="flex flex-wrap items-center justify-between gap-2 text-micro text-slate-600 dark:text-slate-400">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <label
-                  htmlFor="fm-ondevice-composer-toggle"
-                  className="inline-flex min-h-[36px] items-center gap-1.5 cursor-pointer select-none hover:text-slate-900 dark:hover:text-slate-200"
-                >
-                  <input
-                    id="fm-ondevice-composer-toggle"
-                    type="checkbox"
-                    checked={decodeTarget === 'local'}
-                    onChange={(e) =>
-                      setDecodeTarget(e.target.checked ? 'local' : 'server')
-                    }
-                    className="accent-emerald-500 w-3.5 h-3.5 cursor-pointer"
-                  />
-                  <span>On-device decode</span>
-                </label>
-                <label
-                  htmlFor="fm-fast-sync-composer-toggle"
-                  className="inline-flex min-h-[36px] items-center gap-1.5 cursor-pointer select-none hover:text-slate-900 dark:hover:text-slate-200"
-                >
-                  <input
-                    id="fm-fast-sync-composer-toggle"
-                    type="checkbox"
-                    checked={fastSync}
-                    onChange={(e) => {
-                      fastSyncManuallyToggledRef.current = true;
-                      setFastSync(e.target.checked);
-                    }}
-                    className="accent-amber-500 w-3.5 h-3.5 cursor-pointer"
-                  />
-                  <Zap className="w-3 h-3 text-amber-400" />
-                  <span>Fast Sync on next .fm upload</span>
-                </label>
-              </div>
-              <span
-                className={
-                  activePreFlightValidation && !activePreFlightValidation.valid
-                    ? 'text-amber-300 font-medium'
-                    : undefined
-                }
-              >
-                {activePreFlightValidation && !activePreFlightValidation.valid
-                  ? `Sync Status: ${activePreFlightValidation.missingFields.length} core field(s) missing — re-import advised`
-                  : decodeTarget === 'local'
-                    ? 'On-device Sync Selected'
-                    : serverDecodeAvailable
-                      ? 'Server Sync Ready'
-                      : 'Local Reader Ready'}
-              </span>
-            </div>
-          )}
-        </form>
+        <AnalystComposer
+          messageInput={messageInput}
+          onMessageInputChange={setMessageInput}
+          onSubmit={handleSendToAnalyst}
+          isSending={isSending}
+          isDecoding={Boolean(fmDecodeStage)}
+          hasLoadedSave={hasLoadedSave}
+          decodeTarget={decodeTarget}
+          onDecodeTargetChange={setDecodeTarget}
+          fastSync={fastSync}
+          onFastSyncToggle={(checked) => {
+            fastSyncManuallyToggledRef.current = true;
+            setFastSync(checked);
+          }}
+          onFilesSelected={handleFilesSelected}
+          onPasteButtonClick={handlePasteButtonClick}
+          onTextareaPaste={handleTextareaPaste}
+          syncStatusLabel={composerSyncStatus.label}
+          syncStatusWarning={composerSyncStatus.warning}
+        />
       </div>
 
       {/* CLUB FINANCES PANEL — mobile sub-tab, always visible on desktop */}
@@ -3027,191 +2609,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             mobileHubView === 'finances' ? 'block p-3.5 md:p-0' : 'hidden md:block'
           }
         >
-          <section
-            aria-labelledby="hub-finances-heading"
-            className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/60 p-4 sm:p-5 space-y-4"
-          >
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="min-w-0">
-                <h3
-                  id="hub-finances-heading"
-                  className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2"
-                >
-                  <Wallet className="h-4 w-4 text-amber-500 dark:text-amber-400 shrink-0" />
-                  Club Finances
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Cash, payroll &amp; sponsorship decoded from the save — the same
-                  selectors the Analyst uses.
-                </p>
-              </div>
-              <span
-                className={`rounded-md border px-2 py-0.5 font-mono text-micro font-semibold tabular-nums ${
-                  financesPanel.payroll.wageSeverity === 'over'
-                    ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40'
-                    : financesPanel.payroll.wageSeverity === 'minor_over'
-                      ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40'
-                      : financesPanel.payroll.wageSeverity === 'under'
-                        ? 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border-emerald-500/40'
-                        : 'bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700'
-                }`}
-              >
-                {financesPanel.payroll.wageComplianceLabel}
-              </span>
-            </div>
-
-            <div className="space-y-2">
-              <h4 className="text-micro font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Cash &amp; Runway
-              </h4>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                <FinancesStat
-                  label="Bank Balance"
-                  value={financesPanel.cash.balanceLabel}
-                  valueClassName={
-                    financesPanel.cash.isInDebt
-                      ? 'text-rose-600 dark:text-rose-300'
-                      : 'text-emerald-600 dark:text-emerald-300'
-                  }
-                />
-                <FinancesStat
-                  label="Latest Monthly Net"
-                  value={financesPanel.cash.monthlyNetLabel}
-                  valueClassName={
-                    financesPanel.cash.monthlyNetAmount !== null &&
-                    financesPanel.cash.monthlyNetAmount < 0
-                      ? 'text-rose-600 dark:text-rose-300'
-                      : 'text-emerald-600 dark:text-emerald-300'
-                  }
-                />
-                <FinancesStat
-                  label="Financial Runway"
-                  value={financesPanel.cash.runwayLabel}
-                  valueClassName={
-                    financesPanel.cash.runwayStatus === 'Critical'
-                      ? 'text-rose-600 dark:text-rose-300'
-                      : financesPanel.cash.runwayStatus === 'Warning'
-                        ? 'text-amber-600 dark:text-amber-300'
-                        : 'text-emerald-600 dark:text-emerald-300'
-                  }
-                />
-              </div>
-              {financesPanel.cash.runwayWarning && (
-                <p
-                  role="status"
-                  aria-live="polite"
-                  className="flex items-start gap-1.5 rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1.5 text-micro text-amber-700 dark:text-amber-200"
-                >
-                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                  <span>{financesPanel.cash.runwayWarning}</span>
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2 border-t border-slate-200 dark:border-slate-800 pt-3">
-              <FinanceScenarioPanel
-                balance={financesPanel.cash.balanceAmount}
-                monthlyNet={financesPanel.cash.monthlyNetAmount}
-                monthlyBurnRate={financesPanel.cash.monthlyBurnRate}
-                wagePayrollWeekly={financesPanel.payroll.wagePayrollWeekly}
-                wageBudgetWeekly={financesPanel.payroll.wageBudgetWeekly}
-                currencySymbol={financesPanel.currencySymbol}
-                baselineRunwayMonths={financesPanel.cash.runwayMonths}
-                baselineRunwayLabel={financesPanel.cash.runwayLabel}
-              />
-              <div className="border-t border-slate-200 dark:border-slate-800 pt-3">
-                <TransferPlanSandbox
-                  squad={players}
-                  finance={{
-                    balance: financesPanel.cash.balanceAmount,
-                    monthlyNet: financesPanel.cash.monthlyNetAmount,
-                    monthlyBurnRate: financesPanel.cash.monthlyBurnRate,
-                    wagePayrollWeekly: financesPanel.payroll.wagePayrollWeekly,
-                    wageBudgetWeekly: financesPanel.payroll.wageBudgetWeekly,
-                    currencySymbol: financesPanel.currencySymbol,
-                    baselineRunwayMonths: financesPanel.cash.runwayMonths,
-                    baselineRunwayLabel: financesPanel.cash.runwayLabel,
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <h4 className="text-micro font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Weekly Payroll Breakdown
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <FinancesStat
-                  label="Player Wage Bill (Canonical)"
-                  value={financesPanel.payroll.clubPayrollLabel}
-                  hint="FM27 finance table player wage spend — staff wages are separate and not included"
-                />
-                <FinancesStat
-                  label="Player Wage Budget"
-                  value={financesPanel.payroll.wageBudgetLabel}
-                  hint={financesPanel.payroll.wageHeadroomLabel}
-                />
-                <FinancesStat
-                  label="Weekly Staff Payroll"
-                  value={financesPanel.payroll.staffPayrollLabel}
-                  hint="Backroom staff contracts only — separate from the player wage bill; board/executives without contracts excluded"
-                />
-                <FinancesStat
-                  label="Squad Wage Subtotal"
-                  value={financesPanel.payroll.squadWageSubtotalLabel}
-                  hint="Sum of individual player contracts — a subset of the player wage bill, not a club total"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <h4 className="text-micro font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Sponsorship Deals
-              </h4>
-              {financesPanel.sponsorships.length === 0 ? (
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  No decoded sponsorship amounts in this save.
-                </p>
-              ) : (
-                <ul className="space-y-1.5">
-                  {financesPanel.sponsorships.map((deal, idx) => (
-                    <li
-                      key={`${deal.name}-${idx}`}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 px-2.5 py-1.5 text-xs"
-                    >
-                      <div className="min-w-0">
-                        <div className="font-semibold text-slate-900 dark:text-white truncate">
-                          {deal.name}
-                        </div>
-                        <div className="text-slate-500 dark:text-slate-400 truncate">
-                          {deal.type}
-                          {deal.expires && deal.expires !== '--'
-                            ? ` · exp ${deal.expires}`
-                            : ''}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {deal.datesReordered && (
-                          <span
-                            title="fmsave reversed the stored dates of this ended contract — start and end are swapped"
-                            className="inline-flex items-center gap-0.5 rounded-md border border-amber-500/40 bg-amber-500/15 px-1.5 py-0.5 text-micro font-semibold text-amber-700 dark:text-amber-300"
-                          >
-                            <AlertTriangle className="h-2.5 w-2.5" />
-                            Dates reordered
-                          </span>
-                        )}
-                        <span className="font-mono font-bold text-emerald-600 dark:text-emerald-300 tabular-nums">
-                          {deal.annualValueLabel === '--'
-                            ? '--'
-                            : `${deal.annualValueLabel}/yr`}
-                        </span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </section>
+          <HubFinancesPanel data={financesPanel} players={players} />
         </div>
       )}
 
