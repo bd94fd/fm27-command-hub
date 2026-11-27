@@ -1,10 +1,5 @@
 import { MatchLogEntry, PlayerRecord, StaffJobRatings, StaffRecord } from '../types/fm27';
-import {
-  formatClubMoney,
-  formatWageComplianceSummary,
-  normalizeSponsorshipDeal,
-  resolveCanonicalBalanceNum,
-} from './clubFinances';
+import { normalizeSponsorshipDeal } from './clubFinances';
 import {
   ActiveSuspensionRecord,
   BinaryForensicsSnapshot,
@@ -33,7 +28,6 @@ import {
   SquadPlannerSlot,
   TeamMatchStat,
   TransferWindowInfo,
-  clampAttributeValue,
 } from '../types/fmSave';
 import { normalizePlayerName } from './fmFileImporter';
 import {
@@ -51,13 +45,16 @@ import {
   collectExtractionWarnings,
   resolveCompetitionRules,
 } from './hydrateAnalystContext';
-import { MISSING_VALUE } from './squadViewHelpers';
 import {
   clampPlayerAttributesRecord,
   deriveQualitativeScoutBadges,
   mergeSquadWithSave,
 } from './hydratePlayerMerge';
 import { buildMatchLog } from './hydrateMatchLog';
+import { buildFinanceSnapshot } from './hydrateFinances';
+import { hydrateStaff } from './hydrateStaff';
+
+export { calculateFinancialRunway } from './hydrateFinances';
 
 export {
   aggregateRecentMatchProduction,
@@ -81,59 +78,6 @@ export interface HydrationDiffResult {
   removedPlayers: HydratedSquadPlayer[];
   addedPlayers: HydratedSquadPlayer[];
   matchedCount: number;
-}
-
-export function calculateFinancialRunway(
-  finances: MonthlyFinance[],
-  canonicalBalanceOverride?: number | null
-): FinancialRunway {
-  if (!finances || finances.length === 0) {
-    const fallbackBal =
-      typeof canonicalBalanceOverride === 'number' &&
-      Number.isFinite(canonicalBalanceOverride)
-        ? canonicalBalanceOverride
-        : 0;
-    return {
-      currentBalance: fallbackBal,
-      monthlyBurnRate: 0,
-      runwayMonths: 0,
-      status: 'Critical',
-    };
-  }
-  const currentBalance =
-    typeof canonicalBalanceOverride === 'number' &&
-    Number.isFinite(canonicalBalanceOverride)
-      ? canonicalBalanceOverride
-      : finances[finances.length - 1].balance;
-  const negativeCashflows = finances
-    .map((f) => f.netCashflow)
-    .filter((cashflow) => cashflow < 0);
-
-  let monthlyBurnRate = 0;
-  if (negativeCashflows.length > 0) {
-    const totalBurn = negativeCashflows.reduce(
-      (acc, val) => acc + Math.abs(val),
-      0
-    );
-    monthlyBurnRate = totalBurn / negativeCashflows.length;
-  }
-
-  let runwayMonths = 999;
-  if (monthlyBurnRate > 0) {
-    runwayMonths = Math.max(
-      0,
-      Number((currentBalance / monthlyBurnRate).toFixed(1))
-    );
-  }
-
-  let status: 'Critical' | 'Warning' | 'Healthy' = 'Healthy';
-  if (currentBalance <= 0 || runwayMonths < 3) {
-    status = 'Critical';
-  } else if (runwayMonths < 6) {
-    status = 'Warning';
-  }
-
-  return { currentBalance, monthlyBurnRate, runwayMonths, status };
 }
 
 export function hydratePass0Payload(rawJson: string): Pass0ExtractionPayload {
@@ -558,10 +502,6 @@ export interface HydratedSaveState {
   decodedPayload: DecodedFmSavePayload;
 }
 
-function formatMoney(amount: number | null | undefined): string {
-  return formatClubMoney(amount, '£');
-}
-
 /**
  * Hydrates the entire FM27 Command Hub (Squad Database, Staff Directory, Match Log,
  * Recruitment Targets, Financial Runway, Executive KPI strip, and AI Tactical Analyst context)
@@ -706,32 +646,8 @@ export function hydrateAppFromDecodedFmSave(
     tacticSubLabel = `${decoded.activeInjuries.length} Active Injur${decoded.activeInjuries.length === 1 ? 'y' : 'ies'} · ${decoded.mentoring.length} Mentoring Groups`;
   }
 
-  let wageComplianceLabel: string | null = null;
-  const canonicalBalanceNum = resolveCanonicalBalanceNum({
-    financesBalance: decoded.finances?.balance ?? null,
-    metaBalance: decoded.meta.balance ?? null,
-    monthlyFinances: decoded.monthlyFinances ?? null,
-  });
-  const balanceLabel: string | null =
-    canonicalBalanceNum !== null ? formatMoney(canonicalBalanceNum) : null;
-
-  if (decoded.finances) {
-    if (
-      decoded.finances.wagePayrollWeekly !== null &&
-      decoded.finances.wageBudgetWeekly !== null
-    ) {
-      wageComplianceLabel = formatWageComplianceSummary(
-        decoded.finances.wagePayrollWeekly,
-        decoded.finances.wageBudgetWeekly,
-        '£'
-      );
-    }
-  }
-
-  const financialRunway =
-    decoded.monthlyFinances && decoded.monthlyFinances.length > 0
-      ? calculateFinancialRunway(decoded.monthlyFinances, canonicalBalanceNum)
-      : null;
+  const { canonicalBalanceNum, balanceLabel, wageComplianceLabel, financialRunway } =
+    buildFinanceSnapshot(decoded);
 
   // Group 4: Sanitized recruitment targets (zero raw CA/PA)
   const recruitmentTargets: RecruitmentTarget[] = (
@@ -746,52 +662,7 @@ export function hydrateAppFromDecodedFmSave(
       return cleanRecord as unknown as RecruitmentTarget;
     });
 
-  // Group 3: Staff Hydration
-  const updatedStaff: StaffRecord[] = (decoded.staff || []).map((s, idx) => ({
-    id: `fm-staff-${s.uid || idx}`,
-    uid: s.uid,
-    name: s.name?.trim() || MISSING_VALUE,
-    role: s.role?.trim() || MISSING_VALUE,
-    age:
-      s.age !== null &&
-      s.age !== undefined &&
-      Number.isFinite(Number(s.age)) &&
-      Number(s.age) > 0
-        ? Number(s.age)
-        : NaN,
-    nation: s.nation?.trim() || MISSING_VALUE,
-    club: s.club || decoded.meta.clubName || '',
-    wagePw:
-      typeof s.wagePw === 'number' && Number.isFinite(s.wagePw) ? s.wagePw : null,
-    expires: s.expires?.trim() || MISSING_VALUE,
-    secondaryJob: s.secondaryJob ?? null,
-    jobRatings: s.jobRatings ?? null,
-    attributes: s.attributes || {
-      attacking: clampAttributeValue(s.coachingAttacking ?? 10),
-      defending: clampAttributeValue(s.coachingDefending ?? 10),
-      fitness: 10,
-      goalkeeping: 10,
-      mental: 10,
-      possession: 10,
-      set_pieces: 10,
-      tactical: clampAttributeValue(s.coachingTactical ?? 10),
-      technical: 10,
-      working_with_youngsters: 10,
-      adaptability: 10,
-      authority: 10,
-      determination: 10,
-      judging_player_ability: clampAttributeValue(s.judgingAbility ?? 10),
-      judging_player_potential: clampAttributeValue(s.judgingPotential ?? 10),
-      judging_staff_ability: 10,
-      man_management: 10,
-      motivating: 10,
-      negotiating: 10,
-      physiotherapy: 10,
-      sports_science: 10,
-      tactical_knowledge: 10,
-      analysing_data: 10,
-    },
-  }));
+  const updatedStaff: StaffRecord[] = hydrateStaff(decoded);
 
   // 4. Build Rich Ground-Truth Context for Tactical Analyst (ZERO raw CA/PA or raw hidden numbers!)
   const typedRules = resolveCompetitionRules(decoded);
