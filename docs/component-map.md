@@ -76,6 +76,9 @@ row in `docs/data-parity-contract-map.md`.
 | `src/hooks/useFmSaveImport.ts` | — | 205 |
 | `src/utils/saveHistoryPoint.ts` | — | 120 |
 | `src/components/player-detail/AttributesTab.tsx` | — | 319 (attributes tab, extracted from `PlayerDetailModal.tsx`) |
+| `src/components/player-detail/RolesTab.tsx` | — | 92 (roles and pitch tab) |
+| `src/components/player-detail/EngineTab.tsx` | — | 154 (engine and charts tab) |
+| `src/utils/pitchFamiliarity.ts` | — | 69 (pitch slot map and familiarity score) |
 | `src/utils/playerDetailFormat.ts` | — | 52 |
 
 ## Still large, and next in line
@@ -83,7 +86,7 @@ row in `docs/data-parity-contract-map.md`.
 | File | Lines | Why it is still one file | Plan |
 | --- | --- | --- | --- |
 | `src/App.tsx` | 1,328 | Chrome, routing, persistence, backup, squad deltas and the `.fm` import pipeline are out; what remains is the shared tab state, the derived summaries and the render tree | Split the render tree by tab, starting with the Hub and Analyst workspace |
-| `src/components/PlayerDetailModal.tsx` | 1,781 | The sheet chrome, the derived model and four tab panels | Split the role, engine and contract panels into `src/components/player-detail/` |
+| `src/components/PlayerDetailModal.tsx` | 1,507 | The sheet chrome, the derived model, the Overview and Stats & Contract panels | Split the contract panel into `src/components/player-detail/` |
 | `src/utils/fmSaveHydrator.ts` | 1,939 | Decoder output to UI records in one pass | Split by source table (club, squad, staff, fixtures) |
 | `src/services/saveCache.ts` | 1,830 | IndexedDB snapshots plus journey reports | Split snapshot storage from journey reporting |
 

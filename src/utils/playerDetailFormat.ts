@@ -50,3 +50,21 @@ export function formatFootLabel(player: PlayerRecord): string {
   }
   return `${pref} Foot`;
 }
+
+export function tierBadgeClass(tier: 'Natural Fit' | 'Solid' | 'Makeshift'): string {
+  return tier === 'Natural Fit'
+    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+    : tier === 'Solid'
+      ? 'bg-sky-500/15 border-sky-500/40 text-sky-300'
+      : 'bg-amber-500/15 border-amber-500/40 text-amber-300';
+}
+
+export function durabilityBadgeClass(tier: string): string {
+  return tier === 'Ironman'
+    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+    : tier === 'Reliable'
+      ? 'bg-sky-500/15 border-sky-500/40 text-sky-300'
+      : tier === 'Manage Load'
+        ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+        : 'bg-rose-500/15 border-rose-500/40 text-rose-300';
+}
