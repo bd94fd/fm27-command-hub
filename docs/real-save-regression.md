@@ -65,3 +65,9 @@ The job installs the pinned fmsave version, sets `FM27_REAL_SAVE_REQUIRED=1`, an
 ## Privacy and failure output
 
 The test prints file names, counts, totals, and hashes only. It does not print decoded player or staff data. A failure lists the fingerprint path that changed, such as `fingerprint.extractionManifest.staff`, so the cause is visible without exposing the save.
+
+## What the corpus has caught
+
+On 27 November 2026 the 27.1.0 save stopped matching its recorded fingerprint. The squad-scoped season-stats walk assumed the section stores player keys in ascending order and returned as soon as it met a key above the highest wanted one. On this build the keys are not in that order, so only 6 of 47 squad players matched and 3 kept their season totals and last-five ratings.
+
+The walk now reads the whole frame and keeps only the wanted records. The same save returns 21 players with minutes and 21 last-five form sets, the recorded fingerprint matches with no manifest change, and the season-stats step costs 616 ms instead of 312 ms on a 264 MB save. This is the case the corpus exists for: the UI looked plausible with 3 players' form and 44 blank rows, and only the recorded fingerprint noticed.

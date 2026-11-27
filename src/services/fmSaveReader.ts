@@ -107,10 +107,30 @@ export function warmBrowserDecoder(): void {
   if (decoderWarmupPosted || isJobActive) return;
   if (typeof Worker === 'undefined' || typeof window === 'undefined') return;
   decoderWarmupPosted = true;
-  getFmSaveWorker().postMessage({
-    type: 'warmup',
-    origin: window.location.origin,
-  });
+  const postWarmup = () => {
+    if (isJobActive) return;
+    getFmSaveWorker().postMessage({
+      type: 'warmup',
+      origin: window.location.origin,
+    });
+  };
+  const serviceWorker = typeof navigator === 'undefined' ? undefined : navigator.serviceWorker;
+  if (!serviceWorker || serviceWorker.controller) {
+    postWarmup();
+    return;
+  }
+  // A worker created before the service worker controls the page downloads Pyodide
+  // outside Cache Storage, so an offline phone loses the decoder when the browser
+  // evicts its HTTP cache. Wait for control, but never hold the warmup for long.
+  const fallbackTimer = setTimeout(postWarmup, 5000);
+  serviceWorker.addEventListener(
+    'controllerchange',
+    () => {
+      clearTimeout(fallbackTimer);
+      postWarmup();
+    },
+    { once: true }
+  );
 }
 
 /**

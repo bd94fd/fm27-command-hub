@@ -16,9 +16,9 @@ import { WORKER_CACHE_BUSTER } from './fmSaveHydrator';
  */
 const EXPECTED = {
   'public/fm-save-worker.js':
-    'bb0e3b537e2c96ee7c65d18ab8ca41218b33a08171dd78e7183759da86f8c0b0',
+    '8573b0ca8555c1602b4734cbefdc474e74aa90becd92926c87757e8038714247',
   'public/fm-save-mapper.py':
-    '20e8a87724c81ef772aa52a1aba395f4c0f7409ef423391b7254dc057176f7c1',
+    '7aa5e3ca08a5f3f93e99516a0e88e016a7278ec8b369f34d7c682149e86d46e3',
   'public/fm_layout_patcher.py':
     'f9b5c9adb74b18e982852132463489e7516da503780924808949a5223b7b1a34',
 };

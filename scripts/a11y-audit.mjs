@@ -228,6 +228,14 @@ async function runProfile(client, browserSend, profile, args, axeSource, savePat
   await browserSend('Page.bringToFront').catch(() => null);
   await browserSend('Network.enable');
   await browserSend('Network.setCacheDisabled', { cacheDisabled: true });
+  // Another gate may have left this browser offline; a stale emulation makes the
+  // save import below fail for reasons that have nothing to do with accessibility.
+  await browserSend('Network.emulateNetworkConditions', {
+    offline: false,
+    latency: 0,
+    downloadThroughput: -1,
+    uploadThroughput: -1,
+  }).catch(() => null);
   await browserSend('Emulation.setDeviceMetricsOverride', {
     width: profile.viewport.width,
     height: profile.viewport.height,
@@ -242,14 +250,13 @@ async function runProfile(client, browserSend, profile, args, axeSource, savePat
     await browserSend('Emulation.setUserAgentOverride', { userAgent: profile.userAgent });
   }
 
-  await client.navigate(args.url, 1500);
-  await client.evaluate(`(async () => {
-    try { localStorage.clear(); } catch {}
-    try { (await navigator.serviceWorker?.getRegistrations?.() ?? []).forEach((r) => r.unregister()); } catch {}
-    try { (await caches?.keys?.() ?? []).forEach((k) => caches.delete(k)); } catch {}
-    return true;
-  })()`).catch(() => null);
-  await client.navigate(args.url, 2500);
+  // Clear from the browser side: deleting IndexedDB from inside the page leaves the
+  // app's own connection half-closed, and the import that follows cannot save.
+  await browserSend('Storage.clearDataForOrigin', {
+    origin: new URL(args.url).origin,
+    storageTypes: 'all',
+  }).catch(() => null);
+  await client.navigate(args.url, 3000);
   await client.evaluate(axeSource);
 
   await audit('first run');
@@ -264,13 +271,19 @@ async function runProfile(client, browserSend, profile, args, axeSource, savePat
   await client
     .waitFor(
       `(() => {
-        const text = (document.querySelector('main')?.innerText || '').replace(/\\s+/g, ' ');
+        const text = (document.body.innerText || '').replace(/\\s+/g, ' ');
         return /(\\d+)\\s*First Team/.test(text) ? true : false;
       })()`,
       { timeout: args.timeout, interval: 1500, label: 'the squad after import' }
     )
     .catch(() => null);
-  const loaded = await client.evaluate(`/First Team/.test(document.body.innerText || '')`);
+  const loaded = await client.evaluate(`/(\\d+)\\s*First Team/.test(document.body.innerText || '')`);
+  if (!loaded) {
+    const visible = await client.evaluate(
+      `(document.body.innerText || '').replace(/\\s+/g, ' ').slice(0, 300)`
+    );
+    console.log(`  save did not load; the page shows: ${visible}`);
+  }
   check('save loaded for the tab audits', loaded);
   await client.evaluate(axeSource);
 

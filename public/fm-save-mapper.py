@@ -49,7 +49,7 @@ try:
 except Exception:
     _layout_patcher = None  # type: ignore[assignment]
 
-MAPPER_CACHE_BUSTER = "?v=25"
+MAPPER_CACHE_BUSTER = "?v=26"
 
 # FM27 27.1.0 native 64-bit in/out-of-possession role bit tables. Bits already claimed by
 # _FM27_ROLE_DUTY_MASK are duty bits, not role bits, and are masked out before decoding.
@@ -6702,8 +6702,8 @@ def _walk_season_stats_for_keys(
     """Walk the season-statistics records but keep only the squad's player keys.
 
     The section can hold 160k+ records. The old reader built a RawSeasonRecord for every
-    one of them, which dominates phone time. Keys are stored in order, so the walk stops at
-    the highest wanted key; only the ~50 wanted records allocate tuples.
+    one of them, which dominates phone time. This walk skips the payload of unwanted
+    records, so only the ~50 wanted records allocate tuples.
     """
     from fmsave.readers.season_stats import (
         RawSeasonRecord,
@@ -6749,7 +6749,6 @@ def _walk_season_stats_for_keys(
             raise ValueError("season stats count above maximum")
         return count
 
-    max_wanted = max(wanted_keys) if wanted_keys else -1
     records: list[Any] = []
     position = _SECTION_HEADER_BYTES
     while True:
@@ -6761,8 +6760,6 @@ def _walk_season_stats_for_keys(
         if marker != _RECORD_PRESENT or position + 1 + 4 + header_bytes > end:
             raise ValueError(f"{file_name}: season stats record header invalid")
         key = _U32.unpack_from(body, position + 1)[0]
-        if key > max_wanted:
-            return records
         keep = key in wanted_keys
         position += 1 + 4 + header_bytes
         own_lines, position = read_slots(position, own_slot_count, keep)
@@ -6788,8 +6785,6 @@ def _walk_season_stats_for_keys(
         position += 1 + form_entries * layout.form_entry_bytes
         if keep:
             records.append(RawSeasonRecord(key, own_lines or (), tuple(other_teams)))
-            if len(records) >= len(wanted_keys):
-                return records
     footer_end = position + 1 + layout.footer_bytes
     if footer_end != end:
         raise ValueError(f"{file_name}: season stats footer mismatch")

@@ -46,3 +46,7 @@ Automated checks catch roughly a third of real barriers. Before calling an acces
 3. Open and close the Analytics, Staff and player sheets with the keyboard only. Focus must go in, stay in, and come back to where it started.
 4. Run a Full Sync and an Analyst question with the screen reader on. The result has to be announced.
 5. Test text at 200% (Chrome's text-size setting, not browser zoom) on a 320px phone.
+
+## The gate resets state before it measures
+
+`npm run a11y:audit` starts each profile from a clean slate: local storage, Cache Storage and IndexedDB are cleared, the service worker is unregistered, and network emulation is reset to online. Without that, a save left behind by another gate made the "save loaded" check pass without an import, and a browser another gate left offline made it fail. A failed load now prints the text the page is showing, so the next failure explains itself.

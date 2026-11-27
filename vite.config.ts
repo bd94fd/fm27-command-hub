@@ -62,6 +62,10 @@ export default defineConfig(({command, mode}) => {
         manifest: false,
         workbox: {
           cleanupOutdatedCaches: true,
+          // Claim the first page as soon as the worker activates. Without this the
+          // page stays uncontrolled until the next visit, so the decoder warmup that
+          // runs on the welcome screen downloads Pyodide outside Cache Storage.
+          clientsClaim: true,
           globPatterns: ['**/*.{js,css,html,svg,png,woff2,json}'],
           // Keep the worker + Python runtime scripts and any bytecode out of the
           // precache: worker/Python files use a manual ?v= cache buster.
