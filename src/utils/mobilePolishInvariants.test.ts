@@ -38,7 +38,7 @@ test('MatchLogCard uses crisp 1px hairline framing (zero border-l-4) and >= 44px
 });
 
 test('Mobile sticky chrome (header + MobileBottomNav) stays strictly within <= 15% of 360x800–430x932 viewports', () => {
-  const appSrc = readSrc('src/App.tsx');
+  const appSrc = readSrc('src/components/shell/AppHeader.tsx');
   const navSrc = readSrc('src/components/MobileBottomNav.tsx');
 
   // Verify tightened header and bottom nav classes exist in source

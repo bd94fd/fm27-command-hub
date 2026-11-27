@@ -25,6 +25,26 @@ The rule that keeps it that way: the workspace owns state and passes props
 down. A panel does not reach into the workspace, and a new panel gets its own
 file under `src/components/analyst/`.
 
+## The app shell
+
+`src/App.tsx` used to hold the whole page: the header, the save receipt above
+the tabs, the sync pill, the tab panels and every overlay. The chrome now lives
+in `src/components/shell/`, so the shell component keeps state and routing.
+
+| File | Owns |
+| --- | --- |
+| `src/App.tsx` | Launch URLs, tab routing, save and chat state, overlay history, persistence and restore |
+| `src/components/shell/AppHeader.tsx` | Skip link, brand, desktop section nav, the header actions and the hidden file inputs |
+| `src/components/shell/ClubBaselineStrip.tsx` | The save receipt: date and file name, the club title, the four headline numbers, the verification card and the governance banner |
+| `src/components/shell/BackgroundSyncPill.tsx` | The "still reading your save" pill shown on the other tabs |
+| `src/components/shell/backgroundSync.ts` | The `BackgroundSyncStatus` shape shared by the header button and the pill |
+
+`src/components/MobileBottomNav.tsx` was already its own file and stays the
+owner of the phone tab bar; `MobileMoreSheet` owns the sheet behind it.
+
+The same rule applies: a shell component takes props and holds no app state.
+The header does not read the save; it is told the counts and the callbacks.
+
 ## What moved out of `tacticalAnalystContext.ts`
 
 Payload diagnostics and pre-flight validation are about the payload, not about
@@ -36,23 +56,27 @@ If you change a payload field, edit `analystPayload.ts`. If you change what the
 Analyst is told about the save, edit `tacticalAnalystContext.ts` and check the
 row in `docs/data-parity-contract-map.md`.
 
-## Sizes after this pass
+## Sizes after these passes
 
-| File | Before | After |
+| File | Before R40 | Now |
 | --- | --- | --- |
 | `src/components/AutoSyncWorkspace.tsx` | 3,257 | 2,655 |
 | `src/utils/tacticalAnalystContext.ts` | 2,976 | 2,033 |
 | `src/utils/analystPayload.ts` | — | 956 |
 | `src/components/analyst/*` | — | 757 across four files |
+| `src/App.tsx` | 2,296 | 1,894 |
+| `src/components/shell/*` | — | 595 across four files |
 
 ## Still large, and next in line
 
 | File | Lines | Why it is still one file | Plan |
 | --- | --- | --- | --- |
-| `src/App.tsx` | 2,296 | It is the app shell: launch URLs, tab routing, overlay history, persistence and restore all sit together | Pull persistence and restore into a `useFmHubPersistence` hook, then navigation into a `useHubNavigation` hook |
+| `src/App.tsx` | 1,894 | The chrome is out, but launch URLs, tab routing, overlay history, persistence and restore still sit together | Pull persistence and restore into a `useFmHubPersistence` hook, then navigation into a `useHubNavigation` hook |
 | `src/components/PlayerDetailModal.tsx` | 2,047 | One modal with several stacked panels | Split the role, attribute and contract panels into `src/components/player/` |
 | `src/utils/fmSaveHydrator.ts` | 1,939 | Decoder output to UI records in one pass | Split by source table (club, squad, staff, fixtures) |
 | `src/services/saveCache.ts` | 1,830 | IndexedDB snapshots plus journey reports | Split snapshot storage from journey reporting |
 
-`src/App.tsx` changes most often after the workspace, so it is the next target.
-The others are split as they are touched, not for their own sake.
+`src/App.tsx` changes most often after the workspace, so it stays the next
+target: the remaining work there is logic, not markup, so it moves in hooks
+rather than in components. The others are split as they are touched, not for
+their own sake.

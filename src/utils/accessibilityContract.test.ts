@@ -27,11 +27,11 @@ test('keyboard focus has a ring that utility classes cannot remove', () => {
 });
 
 test('the desktop tab strip meets the 24px minimum target size', () => {
-  const app = read('src/App.tsx');
-  const tabClass = app.match(/inline-flex items-center min-h-\[36px\][^`]*/);
+  const header = read('src/components/shell/AppHeader.tsx');
+  const tabClass = header.match(/inline-flex items-center min-h-\[36px\][^`]*/);
   assert.ok(tabClass, 'tab buttons should carry an explicit minimum height');
-  assert.match(app, /md:min-h-\[36px\] flex items-center/, 'brand link needs the same floor');
-  assert.doesNotMatch(app, /md:min-h-0 flex items-center text-base/, 'the old 28px brand link is gone');
+  assert.match(header, /md:min-h-\[36px\] flex items-center/, 'brand link needs the same floor');
+  assert.doesNotMatch(header, /md:min-h-0 flex items-center text-base/, 'the old 28px brand link is gone');
 });
 
 test('filled emerald pills keep readable text in both themes', () => {
