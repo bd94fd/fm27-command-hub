@@ -159,6 +159,15 @@ async function main() {
     const controlled = await evaluate(`Boolean(navigator.serviceWorker?.controller)`);
     check('the page is controlled by the service worker before importing', Boolean(controlled));
 
+    // The cache check below is about the phone decoder. With the server reachable a
+    // desktop browser uploads instead, so ask for on-device decoding first.
+    await evaluate(`localStorage.setItem('fm27_decode_target_v1', 'local')`);
+    await client.navigate(URL_BASE, 3000);
+    check(
+      'the app decodes on the device for the cache check',
+      Boolean(await evaluate(`localStorage.getItem('fm27_decode_target_v1') === 'local'`))
+    );
+
     await client.setFileInput('input[accept=".fm"]', savePath);
     const imported = await client
       .waitFor(SQUAD_LOADED, { timeout: 300000, interval: 1500, label: 'the save to import' })

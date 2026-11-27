@@ -11,7 +11,7 @@
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve as resolvePath } from 'node:path';
 
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -171,18 +171,30 @@ export async function connect(cdp, { listeners = [] } = {}) {
 
   /** Attaches a real file to a hidden <input type="file">, the way a user's picker would. */
   const setFileInput = async (selector, filePath) => {
-    const document = await send('DOM.getDocument', { depth: -1 });
+    // Chromium resolves the path against its own working directory, which may differ
+    // from this script's when an earlier gate started the browser.
+    const absolutePath = resolvePath(filePath);
+    const document = await send('DOM.getDocument', { depth: -1, pierce: true });
     const found = await send('DOM.querySelector', {
       nodeId: document.result?.root?.nodeId,
       selector,
     });
     const nodeId = found.result?.nodeId;
     if (!nodeId) throw new Error(`No element matched ${selector}`);
-    const described = await send('DOM.describeNode', { nodeId });
-    await send('DOM.setFileInputFiles', {
-      files: [filePath],
-      backendNodeId: described.result?.node?.backendNodeId,
-    });
+    let response = await send('DOM.setFileInputFiles', { files: [absolutePath], nodeId });
+    if (response.error) {
+      // A re-render can leave the resolved node stale, so resolve the live element and
+      // set the files through its object id instead.
+      const handle = await send('Runtime.evaluate', {
+        expression: `document.querySelector(${JSON.stringify(selector)})`,
+      });
+      const objectId = handle.result?.result?.objectId;
+      if (!objectId) throw new Error(`No element matched ${selector}`);
+      response = await send('DOM.setFileInputFiles', { files: [absolutePath], objectId });
+    }
+    if (response.error) {
+      throw new Error(`Could not attach ${absolutePath}: ${response.error.message}`);
+    }
     await sleep(300);
   };
 

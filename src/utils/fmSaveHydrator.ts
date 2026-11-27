@@ -61,7 +61,7 @@ export {
 } from './hydratePlayerMerge';
 export { deriveQualitativeScoutBadges, clampPlayerAttributesRecord } from './hydratePlayerMerge';
 
-export const WORKER_CACHE_BUSTER = '?v=25';
+export const WORKER_CACHE_BUSTER = '?v=26';
 
 export {
   shouldDefaultFastSync,

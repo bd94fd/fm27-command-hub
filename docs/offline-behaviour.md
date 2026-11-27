@@ -52,3 +52,9 @@ npm run offline:check -- --save=/path/to/save.fm
 ```
 
 It refuses to guess: a missing save, a missing service worker or a missing control fails the run rather than skipping.
+
+## The decoder must be fetched while the page is controlled
+
+The phone decoder is a Python runtime downloaded from jsDelivr. A worker created before the service worker controls the page fetches those files outside Cache Storage, so an offline phone could lose its decoder whenever the browser evicted its HTTP cache.
+
+Two things keep it: the service worker claims the first page (`clientsClaim` in `vite.config.ts`), and `warmBrowserDecoder` waits for `controllerchange` before it starts the decoder worker. The gate asks for on-device decoding before it imports, because with the server reachable a desktop browser uploads the save instead and never touches the phone decoder. The run reports how many Pyodide files are cached; the current build caches 6.
