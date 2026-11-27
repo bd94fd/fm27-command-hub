@@ -25,6 +25,9 @@ import { useSheetHistory } from './hooks/useHistoryNavigation';
 import { useAppNavigation, type ActiveTab } from './hooks/useAppNavigation';
 import { useSavePersistence } from './hooks/useSavePersistence';
 import { useShareSummary } from './hooks/useShareSummary';
+import { useBackupTransfer } from './hooks/useBackupTransfer';
+import { useSquadDeltaUpdates } from './hooks/useSquadDeltaUpdates';
+import { selectHydratedHeaderLabels } from './utils/hydratedLabels';
 import { selectJourneyPair } from './utils/saveJourneyTimeline';
 import { clearAllChatHistory } from './services/chatStorage';
 import { PwaStatusBanners } from './components/PwaStatusBanners';
@@ -36,26 +39,19 @@ import {
   markSaveLoadStage,
 } from './utils/saveLoadBenchmark';
 import type {
-  ParsedPlayerDelta,
-  SquadMergeResult,
-} from './utils/fmFileImporter';
-import type {
   DecodedFmSavePayload,
   HydratedSaveState,
 } from './utils/fmSaveHydrator';
-import type { PlayerAutoUpdate } from './components/AutoSyncWorkspace';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
 import { SharedReportView } from './components/SharedReportView';
 import { TabWorkspaceSkeleton } from './components/WorkspaceSkeletons';
 import {
   clearPersistedFmState,
   recordPreviousSnapshot,
-  exportFmStateBackupJson,
-  buildFmStateBackupJson,
-  importFmStateBackupJson,
+
   isScoutTargetTracked,
-  loadTrackedScoutTargets,
   toggleTrackedScoutTarget,
+  loadTrackedScoutTargets,
   PersistedCustomSlot,
   FmHubPersistedState,
 } from './services/fmStorage';
@@ -569,100 +565,34 @@ export default function App() {
     }, 0);
   };
 
-  const handleExportBackup = async () => {
-    let json = await exportFmStateBackupJson();
-    // Fall back to live in-memory React state for large saves persisted in IndexedDB only
-    if (
-      !json &&
-      (players.length > 0 ||
-        matches.length > 0 ||
-        staff.length > 0 ||
-        recruitmentCases.length > 0 ||
-        shortlists.length > 0)
-    ) {
-      const saveHistory = await import('./services/saveCache')
-        .then(({ listSaveHistoryPoints }) => listSaveHistoryPoints())
-        .catch(() => []);
-      json = buildFmStateBackupJson(
-        {
-          version: 1,
-          lastSyncedAt: new Date().toISOString(),
-          saveDate,
-          nextFixture,
-          leagueStandingSub,
-          wageSpend,
-          balance,
-          clubName: hydratedFmSave?.decodedPayload?.meta?.clubName,
-          players,
-          matches,
-          staff,
-          recruitmentCases,
-          shortlists,
-          hydratedFmSave,
-          activeShape,
-          customSlots,
-          applyToAnalystOnly,
-        },
-        {
-          trackedScoutTargets: loadTrackedScoutTargets(),
-          saveHistory,
-        }
+  const { exportBackup, importBackup } = useBackupTransfer({
+    snapshot: snapshotToPersist,
+    onExported: () => showGlobalToast('Campaign JSON backup exported'),
+    onImport: (imported) => {
+      setPlayers(imported.players);
+      setMatches(imported.matches);
+      setStaff(imported.staff || []);
+      setRecruitmentCases(imported.recruitmentCases || []);
+      setShortlists(imported.shortlists || []);
+      setSaveDate(imported.saveDate);
+      setNextFixture(imported.nextFixture);
+      setLeagueStandingSub(imported.leagueStandingSub);
+      setWageSpend(imported.wageSpend);
+      setBalance(imported.balance);
+      setHydratedFmSave(imported.hydratedFmSave);
+      if (imported.activeShape) setActiveShape(imported.activeShape);
+      setCustomSlots(imported.customSlots ?? []);
+      setApplyToAnalystOnly(Boolean(imported.applyToAnalystOnly));
+      setIsRestoredFromMemory(true);
+      showGlobalToast(
+        `Restored campaign snapshot (${imported.players.length} players)`
       );
-    }
-    if (!json) {
-      emitFeedback({ text: 'No loaded save data to back up yet', tone: 'info' });
-      return;
-    }
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `fm27-hub-backup-${saveDate.replace(/\//g, '-')}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showGlobalToast('Campaign JSON backup exported');
-  };
-
-  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const text = event.target?.result as string;
-      if (!text) return;
-      try {
-        const imported = await importFmStateBackupJson(text);
-        if (imported) {
-          setPlayers(imported.players);
-          setMatches(imported.matches);
-          setStaff(imported.staff || []);
-          setRecruitmentCases(imported.recruitmentCases || []);
-          setShortlists(imported.shortlists || []);
-          setSaveDate(imported.saveDate);
-          setNextFixture(imported.nextFixture);
-          setLeagueStandingSub(imported.leagueStandingSub);
-          setWageSpend(imported.wageSpend);
-          setBalance(imported.balance);
-          setHydratedFmSave(imported.hydratedFmSave);
-          if (imported.activeShape) setActiveShape(imported.activeShape);
-          setCustomSlots(imported.customSlots ?? []);
-          setApplyToAnalystOnly(Boolean(imported.applyToAnalystOnly));
-          setIsRestoredFromMemory(true);
-          showGlobalToast(
-            `Restored campaign snapshot (${imported.players.length} players)`
-          );
-        } else {
-          emitFeedback({ text: 'Invalid FM27 backup file format.', tone: 'error' });
-        }
-      } catch (err) {
-        console.warn('Failed to import FM27 backup:', err);
-        emitFeedback({ text: 'Invalid FM27 backup file format.', tone: 'error' });
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-  };
+    },
+    onImportFailed: () =>
+      emitFeedback({ text: 'Invalid FM27 backup file format.', tone: 'error' }),
+  });
+  const handleExportBackup = exportBackup;
+  const handleImportBackup = importBackup;
 
   const handleAddMatch = (newMatch: MatchLogEntry) => {
     setMatches((prev) => [newMatch, ...prev]);
@@ -855,25 +785,12 @@ export default function App() {
     if (!isInterim || hydrated.updatedMatches.length > 0) {
       setMatches(hydrated.updatedMatches);
     }
-    setSaveDate(hydrated.saveDateLabel);
-    if (
-      hydrated.nextFixtureLabel &&
-      (!isInterim || hydrated.nextFixtureLabel !== '--')
-    ) {
-      setNextFixture(hydrated.nextFixtureLabel);
-    }
-    if (
-      hydrated.leagueStandingLabel &&
-      (!isInterim || hydrated.leagueStandingLabel !== '--')
-    ) {
-      setLeagueStandingSub(hydrated.leagueStandingLabel);
-    }
-    if (hydrated.wageComplianceLabel) {
-      setWageSpend(hydrated.wageComplianceLabel);
-    }
-    if (hydrated.balanceLabel) {
-      setBalance(hydrated.balanceLabel);
-    }
+    const labels = selectHydratedHeaderLabels(hydrated, isInterim);
+    setSaveDate(labels.saveDate);
+    if (labels.nextFixture !== undefined) setNextFixture(labels.nextFixture);
+    if (labels.leagueStanding !== undefined) setLeagueStandingSub(labels.leagueStanding);
+    if (labels.wageSpend !== undefined) setWageSpend(labels.wageSpend);
+    if (labels.balance !== undefined) setBalance(labels.balance);
 
     if (options?.benchmarkId) {
       const benchmarkId = options.benchmarkId;
@@ -906,29 +823,12 @@ export default function App() {
     return hydrated;
   };
 
-  const handleBulkMergePlayers = async (
-    parsedPlayers: ParsedPlayerDelta[]
-  ): Promise<SquadMergeResult> => {
-    const { mergeParsedPlayersIntoSquad } = await import(
-      './utils/fmFileImporter'
-    );
-    const result = mergeParsedPlayersIntoSquad(players, parsedPlayers);
-    if (result.matchedCount > 0) {
-      setPlayers(result.updatedSquad);
-    }
-    return result;
-  };
-
-  const handleApplyPlayerUpdates = (updates: PlayerAutoUpdate[]) => {
-    if (!updates || updates.length === 0) return;
-    void import('./utils/tacticalAnalystContext').then(
-      ({ applyAnalystPlayerUpdates }) => {
-        setPlayers(
-          (prev) => applyAnalystPlayerUpdates(prev, updates).updatedPlayers
-        );
-      }
-    );
-  };
+  const { bulkMergePlayers, applyPlayerUpdates } = useSquadDeltaUpdates({
+    players,
+    setPlayers,
+  });
+  const handleBulkMergePlayers = bulkMergePlayers;
+  const handleApplyPlayerUpdates = applyPlayerUpdates;
 
   // Recruitment & Shortlist handlers
   const handleAddRecruitmentCase = (
