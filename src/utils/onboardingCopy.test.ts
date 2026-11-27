@@ -89,7 +89,7 @@ test('every first task points at a tab that exists', () => {
 
 test('the Hub renders the first-run copy instead of its own hardcoded pitch', () => {
   const hub = readSrc('src/components/AutoSyncWorkspace.tsx');
-  const app = readSrc('src/App.tsx');
+  const app = readSrc('src/components/shell/AppMainContent.tsx');
 
   assert.match(hub, /ONBOARDING_TITLE/);
   assert.match(hub, /ONBOARDING_STEPS\.map/);
@@ -97,7 +97,7 @@ test('the Hub renders the first-run copy instead of its own hardcoded pitch', ()
   assert.match(hub, /FIRST_TASKS\.map/);
   assert.match(hub, /onNavigate\?\.\(task\.tab\)/);
   assert.match(hub, /<summary[\s\S]{0,200}Where is my save file\?/);
-  assert.match(app, /onNavigate=\{handleSelectTab\}/);
+  assert.match(app, /onNavigate=\{onSelectTab\}/);
   assert.doesNotMatch(hub, /500-target Club DNA scouting/);
   assert.doesNotMatch(hub, /dual-phase IP\/OOP pitch/);
 });

@@ -84,7 +84,7 @@
 
 - Analyst UI goes in `src/components/analyst/`. The workspace passes props down; a panel does not reach back into it, and a new panel gets its own file.
 - Payload diagnostics and pre-flight validation live in `src/utils/analystPayload.ts`, which imports from `tacticalAnalystContext.ts` and never the reverse. Do not re-export across the two, or the cycle comes back.
-- App chrome goes in `src/components/shell/`: header, save receipt strip and the background sync pill. `App.tsx` keeps state, routing and persistence, and passes counts and callbacks down.
+- App chrome goes in `src/components/shell/`: header, save receipt strip, the background sync pill and `AppMainContent` (the tab workspace). `App.tsx` keeps state, routing and persistence, and passes counts and callbacks down.
 - `docs/component-map.md` says which file owns what, and which big files are still unsplit. Read it before adding to a large component.
 
 ## Verification on this machine

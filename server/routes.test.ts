@@ -356,9 +356,13 @@ describe('server routes & JSON 404', () => {
     assert.match(serverSrc, /no-cache,\s*no-store,\s*must-revalidate/);
 
     const appSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/App.tsx'), 'utf8');
-    assert.match(appSrc, /const TacticalWarRoom = lazy\(/);
-    assert.match(appSrc, /const StaffDirectory = lazy\(/);
-    assert.match(appSrc, /const MatchLogArchive = lazy\(/);
+    const mainContentSrc = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/components/shell/AppMainContent.tsx'),
+      'utf8'
+    );
+    assert.match(mainContentSrc, /const TacticalWarRoom = lazy\(/);
+    assert.match(mainContentSrc, /const StaffDirectory = lazy\(/);
+    assert.match(mainContentSrc, /const MatchLogArchive = lazy\(/);
     assert.match(appSrc, /const PlayerDetailModal = lazy\(/);
     assert.match(appSrc, /const StaffDetailModal = lazy\(/);
 

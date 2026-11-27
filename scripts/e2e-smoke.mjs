@@ -388,6 +388,14 @@ async function runProfile(client, browserSend, profile, args, savePath, results,
   const importSeconds = Math.round((Date.now() - importStarted) / 1000);
   check('import finishes and shows a squad', loaded > 0, `${loaded} first team, ${importSeconds}s, ${toMb(statSync(savePath).size)} save`);
 
+  // The debounced auto-save lands about a second after the squad renders. Wait for it,
+  // otherwise the stored-state check below is skipped by a race instead of asserted.
+  for (let attempt = 0; attempt < 25; attempt += 1) {
+    const stored = await client.evaluate(`Boolean(localStorage.getItem('${STATE_KEY}'))`);
+    if (stored) break;
+    await sleep(200);
+  }
+
   const summary = await readSummary(client);
   const club = summary.stored?.clubName || summary.club;
   check('header names the club and the in-game date', Boolean(summary.date && club), `${summary.date || 'no date'} · ${club || 'no club'}`);

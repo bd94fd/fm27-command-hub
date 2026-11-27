@@ -43,7 +43,7 @@ Nothing is added to `package.json` dependencies.
 | Damaged save | a save truncated to 3 MB, as if copied mid-write, is refused with a readable message and does not half-load the app |
 | Import | attaching the real `.fm` file produces a squad (29 first team from the seeded save) |
 | Import | header shows the in-game date and the club |
-| Import | the squad reaches stored state, so a reload will not lose it |
+| Import | the squad reaches stored state, so a reload will not lose it (the run waits up to 5 seconds for the debounced save, so the check is always asserted) |
 | Route | desktop uploads for server decode; mobile decodes on the phone and uploads nothing |
 | Sections | all six sections open and render with the save (not an empty state) |
 | Analyst | the composer becomes ready, accepts a message, and shows the question |
