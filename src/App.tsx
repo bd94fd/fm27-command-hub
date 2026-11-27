@@ -3,9 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef, Suspense, lazy, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { EMPTY_CLUB_META, SQUAD_PLAYERS } from './data/squadData';
-import { FeedbackToast } from './components/FeedbackToast';
 import { emitFeedback, feedback, subscribeFeedback, type FeedbackMessage } from './utils/feedbackBus';
 import { CompareTrayProvider } from './context/CompareTrayContext';
 import { COMPETITIVE_MATCH_LOGS } from './data/matchAndTacticsData';
@@ -30,14 +29,11 @@ import { useBackupTransfer } from './hooks/useBackupTransfer';
 import { useSquadDeltaUpdates } from './hooks/useSquadDeltaUpdates';
 import { clearAllChatHistory } from './services/chatStorage';
 import { PwaStatusBanners } from './components/PwaStatusBanners';
-import { MobileBottomNav } from './components/MobileBottomNav';
 import { computeCompetitiveSummary } from './utils/competitiveSummary';
 import { formatNation } from './utils/displayValue';
 import type { HydratedSaveState } from './utils/fmSaveHydrator';
-import { SharedReportView } from './components/SharedReportView';
 import {
   clearPersistedFmState,
-  isScoutTargetTracked,
   toggleTrackedScoutTarget,
   loadTrackedScoutTargets,
   PersistedCustomSlot,
@@ -55,43 +51,9 @@ import type { CalibrationLabTab } from './components/Fm27BinaryCalibrationLab';
 import type { BackgroundSyncStatus } from './components/shell/backgroundSync';
 import { AppHeader } from './components/shell/AppHeader';
 import { AppMainContent } from './components/shell/AppMainContent';
+import { AppOverlays } from './components/shell/AppOverlays';
 
-const MobileMoreSheet = lazy(() =>
-  import('./components/MobileMoreSheet').then((m) => ({
-    default: m.MobileMoreSheet,
-  }))
-);
-const ShareReportModal = lazy(() =>
-  import('./components/ShareReportModal').then((m) => ({
-    default: m.ShareReportModal,
-  }))
-);
 
-const PlayerDetailModal = lazy(() =>
-  import('./components/PlayerDetailModal').then((m) => ({
-    default: m.PlayerDetailModal,
-  }))
-);
-const StaffDetailModal = lazy(() =>
-  import('./components/StaffDetailModal').then((m) => ({
-    default: m.StaffDetailModal,
-  }))
-);
-const KnowledgeBasePanel = lazy(() =>
-  import('./components/KnowledgeBasePanel').then((m) => ({
-    default: m.KnowledgeBasePanel,
-  }))
-);
-const CommandPaletteModal = lazy(() =>
-  import('./components/CommandPaletteModal').then((m) => ({
-    default: m.CommandPaletteModal,
-  }))
-);
-const Fm27BinaryCalibrationLab = lazy(() =>
-  import('./components/Fm27BinaryCalibrationLab').then((m) => ({
-    default: m.Fm27BinaryCalibrationLab,
-  }))
-);
 
 const DEFAULT_ACTIVE_SHAPE: FormationPresetKey = '4-3-3 DM Wide';
 
@@ -845,189 +807,63 @@ export default function App() {
         </span>
       </footer>
 
-      {/* Fixed Thumb-Friendly 5-Tab Mobile Bottom Navigation Bar */}
-      <MobileBottomNav
+      <AppOverlays
         activeTab={activeTab}
-        isMoreOpen={showMoreSheet}
-        hasActiveSync={Boolean(backgroundSyncStatus)}
-        isSyncPaused={Boolean(backgroundSyncStatus?.paused)}
-        hasUpdateAvailable={pwa.updateAvailable}
-        hidden={isKeyboardOpen}
-        onSelectPrimaryTab={(tab) => handleSelectTab(tab)}
+        isKeyboardOpen={isKeyboardOpen}
+        showMoreSheet={showMoreSheet}
+        showShareModal={showShareModal}
+        showKnowledgeBase={showKnowledgeBase}
+        showCommandPalette={showCommandPalette}
+        calibrationLabOpen={calibrationLabOpen}
+        calibrationLabTab={calibrationLabTab}
+        selectedPlayer={selectedPlayer}
+        selectedStaff={selectedStaff}
+        feedbackMessage={feedbackMessage}
+        confirmResetPending={confirmResetPending}
+        isRestoredFromMemory={isRestoredFromMemory}
+        backgroundSyncStatus={backgroundSyncStatus}
+        pwa={pwa}
+        hydratedFmSave={hydratedFmSave}
+        liveGovernance={liveGovernance}
+        liveLastMatchTactic={liveLastMatchTactic}
+        players={players}
+        staff={staff}
+        matches={matches}
+        shortlists={shortlists}
+        trackedTargets={trackedTargets}
+        clubName={clubName}
+        saveDate={saveDate}
+        activeShape={activeShape}
+        recentViews={recentViews}
+        shareFinancesPanel={shareFinancesPanel}
+        shareToken={shareToken}
+        sharedSummary={sharedSummary}
+        hasLoadedSave={Boolean(hydratedFmSave || players.length > 0)}
+        hasBackupableData={players.length > 0 || recruitmentCases.length > 0}
+        onSetMoreOpen={setShowMoreSheet}
+        onSetShareOpen={setShowShareModal}
+        onSetKnowledgeBaseOpen={setShowKnowledgeBase}
+        onSetCommandPaletteOpen={setShowCommandPalette}
+        onSetCalibrationLabOpen={setCalibrationLabOpen}
+        onSetSelectedPlayer={setSelectedPlayer}
+        onSetSelectedStaff={setSelectedStaff}
+        onSelectTab={handleSelectTab}
         onScrollToTop={handleScrollToTop}
-        onToggleMore={() => setShowMoreSheet((open) => !open)}
-        onCloseMore={() => setShowMoreSheet(false)}
-      />
-
-      {/* Slide-Up Mobile More Sheet (lazy-loaded when opened) */}
-      {showMoreSheet && (
-        <Suspense fallback={null}>
-          <MobileMoreSheet
-            isOpen={showMoreSheet}
-            onClose={() => setShowMoreSheet(false)}
-            activeTab={activeTab}
-            onSelectSecondaryTab={(tab) => handleSelectTab(tab)}
-            onOpenKnowledgeBase={() => setShowKnowledgeBase(true)}
-            matchesCount={matches.length}
-            staffCount={staff.length}
-            playersCount={players.length}
-            hasLoadedSave={Boolean(hydratedFmSave || players.length > 0)}
-            hasBackupableData={players.length > 0 || recruitmentCases.length > 0}
-            clubName={clubName}
-            saveDate={saveDate}
-            isOnline={pwa.isOnline}
-            isRestoredFromMemory={isRestoredFromMemory}
-            isInstalled={pwa.isInstalled}
-            canPromptInstall={pwa.canPromptInstall}
-            isIosSafari={pwa.isIosSafari}
-            updateAvailable={pwa.updateAvailable}
-            onPromptInstall={() => {
-              void pwa.promptInstall().then((outcome) => {
-                if (outcome === 'accepted') {
-                  showGlobalToast('FM27 Hub installed to your home screen.');
-                }
-              });
-            }}
-            onApplyUpdate={pwa.applyUpdate}
-            onExportBackup={handleExportBackup}
-            onOpenShare={() => setShowShareModal(true)}
-            onRequestRestore={() => backupFileInputRef.current?.click()}
-            confirmResetPending={confirmResetPending}
-            onResetMemory={() => {
-              void handleClearMemory();
-            }}
-          />
-        </Suspense>
-      )}
-
-      {/* Share & export sheet (lazy-loaded when opened) */}
-      {showShareModal && (
-        <Suspense fallback={null}>
-          <ShareReportModal
-            isOpen={showShareModal}
-            onClose={() => setShowShareModal(false)}
-            clubName={clubName}
-            saveDate={saveDate}
-            players={players}
-            staff={staff}
-            matches={matches}
-            finances={shareFinancesPanel}
-            onToast={showGlobalToast}
-          />
-        </Suspense>
-      )}
-
-      {/* Read-only view for a link someone shared. Never reads or writes the local save. */}
-      {shareToken && (
-        <SharedReportView
-          summary={sharedSummary}
-          rawToken={shareToken}
-          onOpenOwnHub={handleOpenOwnHub}
-        />
-      )}
-
-      {/* Global Floating Toast Notification */}
-      <FeedbackToast
-        message={feedbackMessage}
-        onDismiss={(id) =>
+        onExportBackup={handleExportBackup}
+        onRequestRestore={() => backupFileInputRef.current?.click()}
+        onClearMemory={handleClearMemory}
+        onOpenOwnHub={handleOpenOwnHub}
+        onDismissToast={(id) =>
           setFeedbackMessage((prev) => (prev && prev.id === id ? null : prev))
         }
+        onToast={showGlobalToast}
+        onTrackPlayer={handleTrackPlayerInRecruitment}
+        onToggleTrack={handleToggleTrackPlayerFromModal}
+        onAddToShortlist={handleAddPlayerToShortlist}
+        onOpenRecentView={handleOpenRecentView}
+        onChangeShape={setActiveShape}
+        onDictionaryChanged={() => setDictionaryVersion((v) => v + 1)}
       />
-
-      {/* Global Modals & Drawers */}
-      {selectedPlayer && (
-        <Suspense fallback={null}>
-          <PlayerDetailModal
-            player={selectedPlayer}
-            squadPlayers={players}
-            divisionBenchmarks={hydratedFmSave?.divisionBenchmarks ?? null}
-            governance={liveGovernance ?? hydratedFmSave?.governance ?? null}
-            lastMatchTactic={liveLastMatchTactic ?? hydratedFmSave?.lastMatchTactic ?? null}
-            nextCompetitionName={
-              hydratedFmSave?.decodedPayload?.upcomingFixtures?.[0]?.competition ??
-              null
-            }
-            isFastSync={Boolean(hydratedFmSave?.fastSync)}
-            playedMatchesCount={
-              hydratedFmSave?.decodedPayload?.playedMatches?.length ?? matches.length
-            }
-            shortlists={shortlists}
-            isManagedClubPlayer={Boolean(
-              selectedPlayer && players.some((p) => p.id === selectedPlayer.id)
-            )}
-            isTracked={Boolean(
-              selectedPlayer &&
-                isScoutTargetTracked(trackedTargets, {
-                  uid: selectedPlayer.uid || 0,
-                  name: selectedPlayer.name,
-                })
-            )}
-            onClose={() => setSelectedPlayer(null)}
-            onAddRecruitment={handleTrackPlayerInRecruitment}
-            onToggleTrack={handleToggleTrackPlayerFromModal}
-            onAddToShortlist={handleAddPlayerToShortlist}
-          />
-        </Suspense>
-      )}
-
-      {selectedStaff && (
-        <Suspense fallback={null}>
-          <StaffDetailModal
-            staff={selectedStaff}
-            onClose={() => setSelectedStaff(null)}
-          />
-        </Suspense>
-      )}
-
-      {showKnowledgeBase && (
-        <Suspense fallback={null}>
-          <KnowledgeBasePanel
-            isOpen={showKnowledgeBase}
-            onClose={() => setShowKnowledgeBase(false)}
-            players={players}
-          />
-        </Suspense>
-      )}
-
-      {showCommandPalette && (
-        <Suspense fallback={null}>
-          <CommandPaletteModal
-            isOpen={showCommandPalette}
-            onClose={() => setShowCommandPalette(false)}
-            players={players}
-            staff={staff}
-            scoutTargets={
-              hydratedFmSave?.recruitmentTargets ??
-              hydratedFmSave?.decodedPayload?.recruitmentTargets ??
-              []
-            }
-            activeShape={activeShape}
-            onSelectTab={handleSelectTab}
-            onSelectPlayer={setSelectedPlayer}
-            onSelectStaff={setSelectedStaff}
-            recentViews={recentViews}
-            onOpenRecentView={handleOpenRecentView}
-            onChangeShape={(shape) => {
-              setActiveShape(shape);
-              showGlobalToast(`Switched active formation to ${shape}`);
-            }}
-            onOpenKnowledgeBase={() => setShowKnowledgeBase(true)}
-          />
-        </Suspense>
-      )}
-
-      {calibrationLabOpen && (
-        <Suspense fallback={null}>
-          <Fm27BinaryCalibrationLab
-            isOpen={calibrationLabOpen}
-            initialTab={calibrationLabTab}
-            decodedPayload={hydratedFmSave?.decodedPayload ?? null}
-            players={players}
-            onClose={() => setCalibrationLabOpen(false)}
-            onDictionaryChanged={() => setDictionaryVersion((v) => v + 1)}
-          />
-        </Suspense>
-      )}
       </div>
     </CompareTrayProvider>
   );
