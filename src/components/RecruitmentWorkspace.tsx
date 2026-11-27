@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useDeferredValue } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useDeferredValue } from 'react';
 import { EmptyStatePanel } from './EmptyStatePanel';
 import { EMPTY_STATES } from '../utils/emptyStateCopy';
 import { CheckCircle2 } from 'lucide-react';
@@ -6,6 +6,7 @@ import {
   PlayerRecord,
   RecruitmentCase,
   ShortlistRecord,
+  StaffRecord,
 } from '../types/fm27';
 import {
   ClubGovernanceState,
@@ -44,6 +45,16 @@ import { RecruitmentHeader } from './recruitment/RecruitmentHeader';
 import { SquadAdviceView } from './recruitment/SquadAdviceView';
 import { LoanStrategyView } from './recruitment/LoanStrategyView';
 import { ContractHorizonView } from './recruitment/ContractHorizonView';
+import { ContractExpiryCentre } from './recruitment/ContractExpiryCentre';
+import {
+  buildContractExpiryCentre,
+  ContractDecision,
+} from '../utils/contractExpiryCentre';
+import {
+  readContractPlan,
+  writeContractDecision,
+} from '../services/contractPlan';
+import { resolveChatClubKey } from '../services/chatStorage';
 import { PositionalDepthView } from './recruitment/PositionalDepthView';
 import { ShortlistView } from './recruitment/ShortlistView';
 import { CompareTargetModal } from './recruitment/CompareTargetModal';
@@ -62,6 +73,7 @@ interface RecruitmentWorkspaceProps {
   cases: RecruitmentCase[];
   shortlists: ShortlistRecord[];
   players: PlayerRecord[];
+  staff?: StaffRecord[];
   saveDate: string;
   wageSpend?: string;
   balance?: string;
@@ -91,6 +103,7 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
   onRequestImport,
   cases,
   players,
+  staff = [],
   saveDate,
   wageSpend = '--',
   balance = '--',
@@ -385,6 +398,57 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
     };
   }, [scopedPlayerAdvice, contractHorizonTier]);
 
+  const planClubKey = useMemo(
+    () => resolveChatClubKey(clubName ?? null, null),
+    [clubName]
+  );
+  const planStorage = useMemo(
+    () => (typeof window === 'undefined' ? null : window.localStorage),
+    []
+  );
+  const [contractDecisions, setContractDecisions] = useState<Record<string, ContractDecision>>(
+    () => readContractPlan(planStorage, planClubKey)
+  );
+
+  useEffect(() => {
+    setContractDecisions(readContractPlan(planStorage, planClubKey));
+  }, [planStorage, planClubKey]);
+
+  const contractCentre = useMemo(
+    () =>
+      buildContractExpiryCentre({
+        players: scopedPlayerAdvice,
+        staff,
+        saveDate,
+        decisions: contractDecisions,
+      }),
+    [scopedPlayerAdvice, staff, saveDate, contractDecisions]
+  );
+
+  const handleSetContractDecision = useCallback(
+    (rowKey: string, decision: ContractDecision | null) => {
+      setContractDecisions(
+        writeContractDecision(planStorage, planClubKey, rowKey, decision)
+      );
+    },
+    [planStorage, planClubKey]
+  );
+
+  const handleClearContractPlan = useCallback(() => {
+    for (const rowKey of Object.keys(contractDecisions)) {
+      writeContractDecision(planStorage, planClubKey, rowKey, null);
+    }
+    setContractDecisions({});
+  }, [contractDecisions, planStorage, planClubKey]);
+
+  const handleSelectPlayerById = useCallback(
+    (playerId: string) => {
+      const player = players.find((entry) => entry.id === playerId);
+      if (player) onSelectPlayer(player);
+    },
+    [players, onSelectPlayer]
+  );
+
   const thinPositions = useMemo(
     () => audit.positionalNeeds.filter((b) => b.status === 'Need Signing'),
     [audit.positionalNeeds]
@@ -530,12 +594,20 @@ export const RecruitmentWorkspace: React.FC<RecruitmentWorkspaceProps> = ({
 
           {/* VIEW 2: PHASE 2.3 (v3.0) CONTRACT HORIZON & WAGE RISK MONITOR */}
           {view === 'contracts' && (
-            <ContractHorizonView
-              contractHorizonSummary={contractHorizonSummary}
-              contractHorizonTier={contractHorizonTier}
-              setContractHorizonTier={setContractHorizonTier}
-              onSelectPlayer={onSelectPlayer}
-            />
+            <div className="space-y-3">
+              <ContractExpiryCentre
+                summary={contractCentre}
+                onSetDecision={handleSetContractDecision}
+                onSelectPlayer={handleSelectPlayerById}
+                onClearAll={handleClearContractPlan}
+              />
+              <ContractHorizonView
+                contractHorizonSummary={contractHorizonSummary}
+                contractHorizonTier={contractHorizonTier}
+                setContractHorizonTier={setContractHorizonTier}
+                onSelectPlayer={onSelectPlayer}
+              />
+            </div>
           )}
 
           {/* VIEW 3: 4-3-3 POSITIONAL DEPTH & SUCCESSION (with embedded Shortlist Gap Fillers) */}
