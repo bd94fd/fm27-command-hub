@@ -13,6 +13,8 @@ flowchart LR
   A[".fm save"] --> B["public/fm-save-mapper.py<br/>_build_current_payload()"]
   B --> C["DecodedFmSavePayload"]
   C --> D["hydrateAppFromDecodedFmSave()<br/>fmSaveHydrator.ts"]
+  D --> D1["buildAvailabilityIndex()<br/>hydrateAvailability.ts"]
+  D --> D2["buildAnalystSaveContext()<br/>hydrateAnalystContext.ts"]
   D --> E["PlayerRecord / StaffRecord<br/>MatchLogEntry / HydratedSaveState"]
   E --> F["UI tabs"]
   E --> G["buildLiveTacticalAnalystContext()"]
@@ -25,7 +27,7 @@ flowchart LR
 - **Decoder** is the key in the payload returned by `_build_current_payload()` in `public/fm-save-mapper.py`. Raw CA/PA and hidden personality values are scrubbed before the payload leaves the decoder.
 - **Hydrator / selector** is the TypeScript field or shared function that turns decoded data into the app value. A selector named here must be imported by both sides, not reimplemented in the prompt.
 - **UI** is the component that shows the value to the user.
-- **Analyst** is the block in `buildLiveTacticalAnalystContext()` that carries the value. `Import prompt` means the value appears only in `hydratedFmSave.analystPromptContext` from `hydrateAppFromDecodedFmSave()`.
+- **Analyst** is the block in `buildLiveTacticalAnalystContext()` that carries the value. `Import prompt` means the value appears only in `hydratedFmSave.analystPromptContext`, which `hydrateAppFromDecodedFmSave()` now assembles through `buildAnalystSaveContext()` in `hydrateAnalystContext.ts`.
 - **Status** is one of:
   - `Shared selector`: the same function is imported by the UI and the Analyst.
   - `Shared state`: the Analyst reads the hydrated field or label built by the same selector as the UI.
