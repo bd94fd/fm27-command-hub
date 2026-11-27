@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { EMPTY_CLUB_META, SQUAD_PLAYERS } from './data/squadData';
-import { emitFeedback, feedback, subscribeFeedback, type FeedbackMessage } from './utils/feedbackBus';
+import { emitFeedback, subscribeFeedback, type FeedbackMessage } from './utils/feedbackBus';
 import { CompareTrayProvider } from './context/CompareTrayContext';
 import { COMPETITIVE_MATCH_LOGS } from './data/matchAndTacticsData';
 import {
@@ -25,16 +25,15 @@ import { useAppNavigation, type ActiveTab } from './hooks/useAppNavigation';
 import { useSavePersistence } from './hooks/useSavePersistence';
 import { useShareSummary } from './hooks/useShareSummary';
 import { useFmSaveImport } from './hooks/useFmSaveImport';
+import { useRecruitmentState } from './hooks/useRecruitmentState';
 import { useBackupTransfer } from './hooks/useBackupTransfer';
 import { useSquadDeltaUpdates } from './hooks/useSquadDeltaUpdates';
 import { clearAllChatHistory } from './services/chatStorage';
 import { PwaStatusBanners } from './components/PwaStatusBanners';
 import { computeCompetitiveSummary } from './utils/competitiveSummary';
-import { formatNation } from './utils/displayValue';
 import type { HydratedSaveState } from './utils/fmSaveHydrator';
 import {
   clearPersistedFmState,
-  toggleTrackedScoutTarget,
   loadTrackedScoutTargets,
   PersistedCustomSlot,
   FmHubPersistedState,
@@ -292,47 +291,6 @@ export default function App() {
   useSheetHistory(showKnowledgeBase, () => setShowKnowledgeBase(false));
   useSheetHistory(calibrationLabOpen, () => setCalibrationLabOpen(false));
 
-  const handleToggleTrackTarget = (target: RecruitmentTarget): boolean => {
-    const previous = trackedTargets;
-    const { targets: next, tracked } = toggleTrackedScoutTarget(target, previous);
-    setTrackedTargets(next);
-    if (tracked) {
-      feedback.success(`Added ${target.name} to Shortlist`);
-    } else {
-      feedback.undo(`Removed ${target.name} from Shortlist`, () => setTrackedTargets(previous));
-    }
-    return tracked;
-  };
-
-  const handleToggleTrackPlayerFromModal = (player: PlayerRecord) => {
-    const scoutPool =
-      hydratedFmSave?.recruitmentTargets ??
-      hydratedFmSave?.decodedPayload?.recruitmentTargets ??
-      [];
-    const matched = scoutPool.find(
-      (t) =>
-        (typeof player.uid === 'number' && t.uid === player.uid) ||
-        t.name.trim().toLowerCase() === player.name.trim().toLowerCase()
-    );
-    const targetToToggle: RecruitmentTarget = matched || {
-      uid: player.uid || 0,
-      name: player.name,
-      age: player.age,
-      nationality: formatNation(player.nation),
-      primaryPosition: player.position,
-      isFreeAgent:
-        player.wagePw === 0 ||
-        (player.expires || '').toLowerCase().includes('free'),
-      contractExpiryMonths: player.contractExpiryMonths ?? 6,
-      expires: player.expires,
-      demandedWageEur: player.wagePw || 0,
-      scoutBadges: player.scoutBadges,
-      traits: player.traits,
-      attributes: player.attributes,
-    };
-    handleToggleTrackTarget(targetToToggle);
-  };
-
   const handleAskAnalystPrompt = (prompt: string) => {
     setPendingAnalystPrompt(prompt);
     handleSelectTab('sync');
@@ -568,107 +526,34 @@ export default function App() {
 
   const handleApplyDecodedFmSave = applyDecodedSave;
 
+  const recruitment = useRecruitmentState({
+    recruitmentCases,
+    setRecruitmentCases,
+    shortlists,
+    setShortlists,
+    trackedTargets,
+    setTrackedTargets,
+    hydratedFmSave,
+    onSelectTab: handleSelectTab,
+    onSelectPlayer: setSelectedPlayer,
+  });
+  const handleAddRecruitmentCase = recruitment.addCase;
+  const handleTrackPlayerInRecruitment = recruitment.trackPlayer;
+  const handleUpdateRecruitmentCase = recruitment.updateCase;
+  const handleDeleteRecruitmentCase = recruitment.deleteCase;
+  const handleCreateShortlist = recruitment.createShortlist;
+  const handleDeleteShortlist = recruitment.deleteShortlist;
+  const handleAddPlayerToShortlist = recruitment.addPlayerToShortlist;
+  const handleRemovePlayerFromShortlist = recruitment.removePlayerFromShortlist;
+  const handleToggleTrackTarget = recruitment.toggleTrackTarget;
+  const handleToggleTrackPlayerFromModal = recruitment.toggleTrackPlayerFromModal;
+
   const { bulkMergePlayers, applyPlayerUpdates } = useSquadDeltaUpdates({
     players,
     setPlayers,
   });
   const handleBulkMergePlayers = bulkMergePlayers;
   const handleApplyPlayerUpdates = applyPlayerUpdates;
-
-  // Recruitment & Shortlist handlers
-  const handleAddRecruitmentCase = (
-    entry: Omit<RecruitmentCase, 'id' | 'updatedAt'>
-  ) => {
-    const created: RecruitmentCase = {
-      ...entry,
-      id: `rec-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      updatedAt: new Date().toISOString(),
-    };
-    setRecruitmentCases((prev) => [created, ...prev]);
-  };
-
-  const handleTrackPlayerInRecruitment = (player: PlayerRecord) => {
-    const exists = recruitmentCases.some(
-      (c) =>
-        c.playerId === player.id ||
-        c.playerName.toLowerCase() === player.name.toLowerCase()
-    );
-    if (!exists) {
-      handleAddRecruitmentCase({
-        playerId: player.id,
-        playerName: player.name,
-        position: player.position,
-        age: player.age,
-        currentClub: hydratedFmSave?.decodedPayload?.meta?.clubName || 'Managed Squad',
-        targetIpRole: player.ipRole,
-        targetOopRole: player.oopRole,
-        interest: 'Interested',
-        stage: 'Shortlisted',
-        estimatedFee: 'In-Squad / Renewal',
-        estimatedWagePw: player.wagePw,
-        expiresOn: player.expires,
-        notes: player.notes,
-      });
-    }
-    setSelectedPlayer(null);
-    setActiveTab('recruitment');
-  };
-
-  const handleUpdateRecruitmentCase = (
-    id: string,
-    patch: Partial<RecruitmentCase>
-  ) => {
-    setRecruitmentCases((prev) =>
-      prev.map((c) =>
-        c.id === id ? { ...c, ...patch, updatedAt: new Date().toISOString() } : c
-      )
-    );
-  };
-
-  const handleDeleteRecruitmentCase = (id: string) => {
-    setRecruitmentCases((prev) => prev.filter((c) => c.id !== id));
-  };
-
-  const handleCreateShortlist = (name: string, description: string) => {
-    const created: ShortlistRecord = {
-      id: `sl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      name,
-      description,
-      playerIds: [],
-      createdAt: new Date().toISOString(),
-    };
-    setShortlists((prev) => [created, ...prev]);
-  };
-
-  const handleDeleteShortlist = (id: string) => {
-    setShortlists((prev) => prev.filter((s) => s.id !== id));
-  };
-
-  const handleAddPlayerToShortlist = (
-    shortlistId: string,
-    playerId: string
-  ) => {
-    setShortlists((prev) =>
-      prev.map((s) =>
-        s.id === shortlistId && !s.playerIds.includes(playerId)
-          ? { ...s, playerIds: [...s.playerIds, playerId] }
-          : s
-      )
-    );
-  };
-
-  const handleRemovePlayerFromShortlist = (
-    shortlistId: string,
-    playerId: string
-  ) => {
-    setShortlists((prev) =>
-      prev.map((s) =>
-        s.id === shortlistId
-          ? { ...s, playerIds: s.playerIds.filter((id) => id !== playerId) }
-          : s
-      )
-    );
-  };
 
   const getLatestJourneyReportAsync = async () => {
     if (latestJourneyPromiseRef.current) {

@@ -66,7 +66,7 @@ row in `docs/data-parity-contract-map.md`.
 | `src/utils/tacticalAnalystContext.ts` | 2,976 | 2,033 |
 | `src/utils/analystPayload.ts` | — | 956 |
 | `src/components/analyst/*` | — | 757 across four files |
-| `src/App.tsx` | 2,296 | 870 |
+| `src/App.tsx` | 2,296 | 755 |
 | `src/components/shell/*` | — | 1,479 across six files |
 | `src/hooks/useAppNavigation.ts` | — | 208 |
 | `src/hooks/useSavePersistence.ts` | — | 163 |
@@ -76,6 +76,9 @@ row in `docs/data-parity-contract-map.md`.
 | `src/hooks/useSquadDeltaUpdates.ts` | — | 54 |
 | `src/utils/hydratedLabels.ts` | — | 40 |
 | `src/hooks/useFmSaveImport.ts` | — | 205 |
+| `src/hooks/useRecruitmentState.ts` | — | 165 |
+| `src/utils/recruitmentLists.ts` | — | 77 |
+| `src/utils/scoutTargetFromPlayer.ts` | — | 42 |
 | `src/utils/saveHistoryPoint.ts` | — | 120 |
 | `src/components/player-detail/AttributesTab.tsx` | — | 319 (attributes tab, extracted from `PlayerDetailModal.tsx`) |
 | `src/components/player-detail/RolesTab.tsx` | — | 92 (roles and pitch tab) |
@@ -98,17 +101,17 @@ row in `docs/data-parity-contract-map.md`.
 
 | File | Lines | Why it is still one file | Plan |
 | --- | --- | --- | --- |
-| `src/App.tsx` | 870 | Chrome, routing, persistence, backup, squad deltas, the `.fm` import pipeline, the tab workspace and the overlays are out; what remains is the shared state, the derived summaries and the callbacks that join them | Split the save and chat state into hooks |
+| `src/App.tsx` | 755 | Chrome, routing, persistence, backup, squad deltas, the `.fm` import pipeline, the tab workspace, the overlays and the recruitment domain are out; what remains is the shared state, the derived summaries and the callbacks that join them | Split the save and chat state into hooks |
 | `src/components/PlayerDetailModal.tsx` | 608 | The sheet chrome, the derived model, the tab bar and the shortlist action | Nothing left to split; the five panels and the PNG export are out |
 | `src/utils/fmSaveHydrator.ts` | 634 | Decoder output to UI records: availability, squad merge, match log, labels, staff, finances, governance and the payload it hands on | Nothing left to split; the hydrator now delegates every build to its own module |
 | `src/services/saveCache.ts` | 917 | IndexedDB payload caches and snapshot history; the journey report now lives in `src/utils/saveJourneyReport.ts` | Split the payload caches from snapshot history |
 
 `src/App.tsx` changes most often after the workspace, so it stays the next
-target. Seven passes have taken the chrome, the section routing, the save
+target. Eight passes have taken the chrome, the section routing, the save
 persistence, the backup and squad-delta handlers, the `.fm` import pipeline, the
-tab workspace and the overlays out of it; what is left is shared state, the
-derived summaries and the callbacks that join them, so the next move is the
-state hooks.
+tab workspace, the overlays and the recruitment domain out of it; what is left
+is the save state and the callbacks that join it, so the next move is the save
+state hook.
 The others are split as they are touched, not for their own sake.
 
 ## Where the App logic lives now
@@ -126,4 +129,5 @@ The others are split as they are touched, not for their own sake.
 | Parsed squad merges and Analyst player write-back | `src/hooks/useSquadDeltaUpdates.ts` |
 | Which header labels an interim checkpoint may write | `src/utils/hydratedLabels.ts` |
 | Turning a decoded `.fm` payload into app state, interim pass and final pass | `src/hooks/useFmSaveImport.ts` |
+| Recruitment cases, shortlists and tracked scout targets, and the handlers that change them | `src/hooks/useRecruitmentState.ts` |
 | Which fields a Journey snapshot keeps from one save | `src/utils/saveHistoryPoint.ts` |
