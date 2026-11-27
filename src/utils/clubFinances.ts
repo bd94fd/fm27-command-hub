@@ -490,6 +490,58 @@ export function buildSponsorshipPanelRows(
 }
 
 /**
+ * Sources a Finances panel can be built from, in the shape the app already holds after a
+ * decode. Both the Hub panel and the share/export modal use this so a report can never
+ * quote a different balance from the card on screen.
+ */
+export interface FinancesPanelSaveSources {
+  hydratedSave?: {
+    balanceLabel?: string | null;
+    wageComplianceLabel?: string | null;
+    financialRunway?: FinancialRunway | null;
+    updatedStaff?: ReadonlyArray<{ wagePw?: number | null }> | null;
+    decodedPayload?: {
+      finances?: {
+        balance?: number | null;
+        wagePayrollWeekly?: number | null;
+        wageBudgetWeekly?: number | null;
+        transferBudgetRemaining?: number | null;
+      } | null;
+      meta?: { balance?: number | null } | null;
+      monthlyFinances?: MonthlyFinance[] | null;
+      sponsorships?: ReadonlyArray<SponsorshipDeal> | null;
+    } | null;
+  } | null;
+  players: ReadonlyArray<{ wagePw?: number | null }>;
+  staff?: ReadonlyArray<{ wagePw?: number | null }> | null;
+  balanceLabel?: string | null;
+  wageSpendLabel?: string | null;
+}
+
+export function buildFinancesPanelFromSave(
+  sources: FinancesPanelSaveSources
+): ClubFinancesPanelData {
+  const decoded = sources.hydratedSave?.decodedPayload ?? null;
+  return buildClubFinancesPanel({
+    financesBalance: decoded?.finances?.balance ?? null,
+    metaBalance: decoded?.meta?.balance ?? null,
+    monthlyFinances: decoded?.monthlyFinances ?? null,
+    balanceLabel: sources.hydratedSave?.balanceLabel ?? sources.balanceLabel ?? null,
+    wagePayrollWeekly: decoded?.finances?.wagePayrollWeekly ?? null,
+    wageBudgetWeekly: decoded?.finances?.wageBudgetWeekly ?? null,
+    wageSpendLabel: sources.hydratedSave?.wageComplianceLabel ?? sources.wageSpendLabel ?? null,
+    transferBudgetRemaining: decoded?.finances?.transferBudgetRemaining ?? null,
+    financialRunway: sources.hydratedSave?.financialRunway ?? null,
+    staff:
+      (sources.staff && sources.staff.length > 0
+        ? sources.staff
+        : sources.hydratedSave?.updatedStaff) ?? [],
+    playerWages: sources.players.map((player) => player.wagePw),
+    sponsorships: filterUsableSponsorshipDeals(decoded?.sponsorships),
+  });
+}
+
+/**
  * Builds every number the Hub Finances panel shows. Both the UI and the Analyst read the
  * same `resolveCanonicalClubFinances` and `staffRatings` payroll selectors, so a wage or
  * balance question cannot get two answers.

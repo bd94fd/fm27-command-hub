@@ -136,6 +136,7 @@ import {
 import { recordFm27BuildRun } from '../utils/fm27BuildMemory';
 import {
   buildClubFinancesPanel,
+  buildFinancesPanelFromSave,
   filterUsableSponsorshipDeals,
 } from '../utils/clubFinances';
 import { resolveSaveCompatibility } from '../utils/fm27SaveCompatibility';
@@ -1783,24 +1784,17 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
     disarmClearChat();
   }, [chatClubKey, setTurns, disarmClearChat]);
 
-  const financesPanel = useMemo(() => {
-    const decoded = hydratedFmSave?.decodedPayload ?? null;
-    return buildClubFinancesPanel({
-      financesBalance: decoded?.finances?.balance ?? null,
-      metaBalance: decoded?.meta?.balance ?? null,
-      monthlyFinances: decoded?.monthlyFinances ?? null,
-      balanceLabel: hydratedFmSave?.balanceLabel ?? balance,
-      wagePayrollWeekly: decoded?.finances?.wagePayrollWeekly ?? null,
-      wageBudgetWeekly: decoded?.finances?.wageBudgetWeekly ?? null,
-      wageSpendLabel: hydratedFmSave?.wageComplianceLabel ?? wageSpend,
-      transferBudgetRemaining: decoded?.finances?.transferBudgetRemaining ?? null,
-      financialRunway: hydratedFmSave?.financialRunway ?? null,
-      staff:
-        staff.length > 0 ? staff : hydratedFmSave?.updatedStaff ?? [],
-      playerWages: players.map((p) => p.wagePw),
-      sponsorships: filterUsableSponsorshipDeals(decoded?.sponsorships),
-    });
-  }, [hydratedFmSave, balance, wageSpend, staff, players]);
+  const financesPanel = useMemo(
+    () =>
+      buildFinancesPanelFromSave({
+        hydratedSave: hydratedFmSave,
+        players,
+        staff,
+        balanceLabel: balance,
+        wageSpendLabel: wageSpend,
+      }),
+    [hydratedFmSave, balance, wageSpend, staff, players]
+  );
 
   const dataQualityReport = useMemo(() => {
     const decoded = hydratedFmSave?.decodedPayload;

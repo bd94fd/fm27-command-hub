@@ -13,6 +13,7 @@ import {
   Download,
   RefreshCw,
   Share,
+  Share2,
   Smartphone,
   Trash2,
   Trophy,
@@ -52,6 +53,7 @@ interface MobileMoreSheetProps {
   onPromptInstall: () => void;
   onApplyUpdate: () => void;
   onExportBackup: () => void;
+  onOpenShare: () => void;
   onRequestRestore: () => void;
   confirmResetPending: boolean;
   onResetMemory: () => void;
@@ -86,6 +88,7 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
   onPromptInstall,
   onApplyUpdate,
   onExportBackup,
+  onOpenShare,
   onRequestRestore,
   confirmResetPending,
   onResetMemory,
@@ -520,6 +523,24 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* Share & export: a clean report for outside the app */}
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenShare();
+                }}
+                className="w-full min-h-[48px] px-3.5 py-2.5 rounded-xl border border-slate-700/80 bg-slate-800/70 hover:bg-slate-800 text-slate-100 flex items-center gap-3 text-left transition-colors cursor-pointer"
+              >
+                <Share2 className="w-4 h-4 text-indigo-400 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold">Share &amp; Export</div>
+                  <div className="text-micro text-slate-400">
+                    CSV, a PNG card, a print or PDF sheet, or a read-only link
+                  </div>
+                </div>
+              </button>
 
               {/* Export Backup (when save or recruitment data is present) */}
               {hasBackupableData && (

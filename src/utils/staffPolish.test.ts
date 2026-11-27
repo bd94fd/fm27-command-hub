@@ -163,7 +163,10 @@ test('matrix header explains the absolute star scale and overload rule', () => {
 });
 
 test('Hub finances uses filtered sponsorships and the compact empty note', () => {
-  const src = readSrc('src/components/AutoSyncWorkspace.tsx');
-  assert.match(src, /filterUsableSponsorshipDeals\(decoded\?\.sponsorships\)/);
-  assert.match(src, /No decoded sponsorship amounts in this save/);
+  const panel = readSrc('src/components/AutoSyncWorkspace.tsx');
+  // The panel and the share/export report share one builder, so they cannot disagree.
+  assert.match(panel, /buildFinancesPanelFromSave\(/);
+  assert.match(panel, /No decoded sponsorship amounts in this save/);
+  const builder = readSrc('src/utils/clubFinances.ts');
+  assert.match(builder, /filterUsableSponsorshipDeals\(decoded\?\.sponsorships\)/);
 });
