@@ -296,7 +296,7 @@ export const MetaRatingBadge: React.FC<MetaRatingBadgeProps> = ({
           if (!supportsHover() || pinned) return;
           close();
         }}
-        className={`rounded-md bg-emerald-500/15 border border-emerald-500/35 px-2 py-0.5 text-xs font-semibold text-emerald-300 inline-flex items-center gap-1 cursor-pointer hover:bg-emerald-500/25 hover:border-emerald-400/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60 transition ${className}`}
+        className={`rounded-md bg-emerald-500/15 border border-emerald-500/35 px-2 py-0.5 min-h-[36px] text-xs font-semibold text-emerald-300 inline-flex items-center justify-center gap-1 cursor-pointer hover:bg-emerald-500/25 hover:border-emerald-400/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60 transition ${className}`}
         title="Tap or hover to see how the Meta rating works"
       >
         <span className="whitespace-nowrap">

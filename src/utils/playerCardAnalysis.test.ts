@@ -225,9 +225,9 @@ test('missing role attributes are labelled and do not appear as supporting stren
   assert.ok(best.topSupporting.every((item) => !missing.some((m) => m.label === item.label)));
 });
 
-test('PlayerDetailModal renders the role-fit explanation instead of only a score', () => {
+test('the player sheet overview renders the role-fit explanation, not only a score', () => {
   const source = readFileSync(
-    new URL('../components/PlayerDetailModal.tsx', import.meta.url),
+    new URL('../components/player-detail/OverviewTab.tsx', import.meta.url),
     'utf8'
   );
   assert.match(source, /RoleFitExplainability/);
