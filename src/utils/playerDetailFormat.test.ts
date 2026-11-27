@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   attrColorClass,
+  durabilityBadgeClass,
   formatFootLabel,
   normalizeAttrKey,
   pitchBadgeClass,
   readOptionalAttr,
+  tierBadgeClass,
 } from './playerDetailFormat.ts';
 import type { PlayerRecord } from '../types/fm27';
 
@@ -47,4 +49,18 @@ test('a two-footed player shows both foot strengths', () => {
 test('a one-footed player shows the preferred foot only', () => {
   assert.equal(formatFootLabel({ preferredFoot: 'Right' } as PlayerRecord), 'Right Foot');
   assert.equal(formatFootLabel({} as PlayerRecord), 'Right Foot');
+});
+
+test('role fit tiers get their own badge colours', () => {
+  assert.match(tierBadgeClass('Natural Fit'), /emerald/);
+  assert.match(tierBadgeClass('Solid'), /sky/);
+  assert.match(tierBadgeClass('Makeshift'), /amber/);
+});
+
+test('durability tiers get their own badge colours', () => {
+  assert.match(durabilityBadgeClass('Ironman'), /emerald/);
+  assert.match(durabilityBadgeClass('Reliable'), /sky/);
+  assert.match(durabilityBadgeClass('Manage Load'), /amber/);
+  assert.match(durabilityBadgeClass('Fragile'), /rose/);
+  assert.match(durabilityBadgeClass('something new'), /rose/);
 });

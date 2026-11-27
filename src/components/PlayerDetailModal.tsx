@@ -11,12 +11,15 @@ import {
 } from 'lucide-react';
 import { MobileSheetFrame } from './MobileSheetFrame';
 import { AttributesTab } from './player-detail/AttributesTab';
+import { RolesTab } from './player-detail/RolesTab';
+import { EngineTab } from './player-detail/EngineTab';
 import {
   attrColorClass,
+  durabilityBadgeClass,
   formatFootLabel,
   normalizeAttrKey,
-  pitchBadgeClass,
   readOptionalAttr,
+  tierBadgeClass,
 } from '../utils/playerDetailFormat';
 import {
   PlayerOverviewKpiStrip,
@@ -55,17 +58,8 @@ import {
   type RankedRoleFit,
 } from '../utils/playerCardAnalysis';
 import { isSuspensionActiveForCompetition } from '../utils/bestXiSolver';
-import {
-  AttributeRadarChart,
-  PercentilePizzaChart,
-  PlayerProgressionSparkline,
-  RolePercentilePizzaChart,
-} from './charts/PlayerRadarAndPizzaCharts';
+import { PercentilePizzaChart } from './charts/PlayerRadarAndPizzaCharts';
 import { formatDynamicCurrency } from './charts/chartScaleHelpers';
-import {
-  buildPlayerProgressionSeries,
-  loadProgressionArchive,
-} from '../utils/progressionDiff';
 import { evaluatePlayerMetaScore } from '../utils/metaScoreEngine';
 import { MetaRatingBadge } from './meta/MetaRatingBadge';
 import { evaluateDualPhaseRoles } from '../utils/dualPhaseRoleEngine';
@@ -137,31 +131,6 @@ const RoleFitExplainability: React.FC<{ fit: RankedRoleFit }> = ({ fit }) => (
     )}
   </div>
 );
-
-const PITCH_ROWS: Array<Array<{ code: string; label: string }>> = [
-  [{ code: 'ST', label: 'ST' }],
-  [
-    { code: 'AML', label: 'AML' },
-    { code: 'AMC', label: 'AMC' },
-    { code: 'AMR', label: 'AMR' },
-  ],
-  [
-    { code: 'ML', label: 'ML' },
-    { code: 'MC', label: 'MC' },
-    { code: 'MR', label: 'MR' },
-  ],
-  [
-    { code: 'WBL', label: 'WBL' },
-    { code: 'DM', label: 'DM' },
-    { code: 'WBR', label: 'WBR' },
-  ],
-  [
-    { code: 'DL', label: 'DL' },
-    { code: 'DC', label: 'DC' },
-    { code: 'DR', label: 'DR' },
-  ],
-  [{ code: 'GK', label: 'GK' }],
-];
 
 export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
   player,
@@ -380,37 +349,6 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
   const formTrend = player.last5Form;
   const seasonHistory = player.seasonHistory || [];
 
-  const getPositionScore = (code: string): number => {
-    if (player.positionRatings) {
-      if (typeof player.positionRatings[code] === 'number') {
-        return player.positionRatings[code];
-      }
-      const upper = code.toUpperCase();
-      if (upper === 'ST' && typeof player.positionRatings['STC'] === 'number') {
-        return player.positionRatings['STC'];
-      }
-      if (upper === 'STC' && typeof player.positionRatings['ST'] === 'number') {
-        return player.positionRatings['ST'];
-      }
-      const matchedKey = Object.keys(player.positionRatings).find(
-        (k) => k.toUpperCase() === upper
-      );
-      if (matchedKey && typeof player.positionRatings[matchedKey] === 'number') {
-        return player.positionRatings[matchedKey];
-      }
-    }
-    const posUpper = player.position.toUpperCase();
-    if (posUpper.includes(code)) return 19;
-    if (code === 'DC' && /\bD\s*\([^)]*C/.test(posUpper)) return 19;
-    if (code === 'DL' && /\bD\s*\([^)]*L/.test(posUpper)) return 18;
-    if (code === 'DR' && /\bD\s*\([^)]*R/.test(posUpper)) return 18;
-    if (code === 'AML' && /AM\s*\([^)]*L/.test(posUpper)) return 18;
-    if (code === 'AMR' && /AM\s*\([^)]*R/.test(posUpper)) return 18;
-    if (code === 'AMC' && /AM\s*\([^)]*C/.test(posUpper)) return 18;
-    if (code === 'MC' && /\bM\s*\([^)]*C/.test(posUpper)) return 18;
-    return 1;
-  };
-
   const handleShortlistAdd = () => {
     const targetId = selectedShortlistId || shortlists[0]?.id;
     if (!targetId) return;
@@ -588,21 +526,6 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
     setTimeout(() => setExportFeedback(null), 2200);
   };
 
-  const durabilityBadgeClass =
-    analysis.physical.durability.tier === 'Ironman'
-      ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-      : analysis.physical.durability.tier === 'Reliable'
-        ? 'bg-sky-500/15 border-sky-500/40 text-sky-300'
-        : analysis.physical.durability.tier === 'Manage Load'
-          ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
-          : 'bg-rose-500/15 border-rose-500/40 text-rose-300';
-
-  const tierBadgeClass = (tier: 'Natural Fit' | 'Solid' | 'Makeshift') =>
-    tier === 'Natural Fit'
-      ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-      : tier === 'Solid'
-        ? 'bg-sky-500/15 border-sky-500/40 text-sky-300'
-        : 'bg-amber-500/15 border-amber-500/40 text-amber-300';
 
   return (
     <MobileSheetFrame
@@ -851,7 +774,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                 player={player}
                 analysis={analysis}
                 cardIntel={cardIntel}
-                durabilityBadgeClass={durabilityBadgeClass}
+                durabilityBadgeClass={durabilityBadgeClass(analysis.physical.durability.tier)}
               />
 
               {/* Scouting Verdict */}
@@ -1122,7 +1045,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                       Durability &amp; Workload
                     </span>
                     <span
-                      className={`rounded-md border px-2 py-0.5 text-2xs font-semibold ${durabilityBadgeClass}`}
+                      className={`rounded-md border px-2 py-0.5 text-2xs font-semibold ${durabilityBadgeClass(analysis.physical.durability.tier)}`}
                     >
                       {analysis.physical.durability.tier}
                     </span>
@@ -1217,219 +1140,22 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
           )}
 
           {/* TAB 3: ROLES & PITCH */}
-          {activeTab === 'positions' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
-              <div className="rounded-xl border border-emerald-900/50 bg-gradient-to-b from-emerald-950/40 to-slate-950 p-3.5 sm:p-4 space-y-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-300 text-center">
-                  FM27 Positional Familiarity Map
-                </h4>
-                <div className="space-y-2.5">
-                  {PITCH_ROWS.map((row, rIdx) => (
-                    <div key={rIdx} className="flex items-center justify-center gap-2 sm:gap-3">
-                      {row.map((pos) => {
-                        const score = getPositionScore(pos.code);
-                        return (
-                          <div
-                            key={pos.code}
-                            className={`w-16 rounded-lg border px-2 py-1.5 text-center ${pitchBadgeClass(
-                              score
-                            )}`}
-                          >
-                            <div className="text-micro font-bold">{pos.label}</div>
-                            <div className="text-2xs font-mono opacity-80">{score}/20</div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
-                </div>
-                <p className="text-2xs text-slate-400 text-center">
-                  18–20 = Natural · 15–17 = Accomplished · 12–14 = Competent
-                </p>
-              </div>
-
-              <div className="space-y-3">
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 sm:p-4 space-y-2.5">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                    Top In-Possession (IP) Roles
-                  </h4>
-                  <div className="space-y-1.5">
-                    {analysis.topIpRoles.map((r) => (
-                      <div
-                        key={r.role.name}
-                        className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/70 px-3 py-2 text-xs"
-                      >
-                        <span className="font-medium text-slate-200 min-w-0 truncate">{r.role.name}</span>
-                        <span
-                          className={`rounded-md border px-2 py-0.5 text-2xs font-mono font-semibold shrink-0 ${tierBadgeClass(
-                            r.tier
-                          )}`}
-                        >
-                          {r.fitPct}% · {r.tier}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 sm:p-4 space-y-2.5">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-sky-400">
-                    Top Out-of-Possession (OOP) Roles
-                  </h4>
-                  <div className="space-y-1.5">
-                    {analysis.topOopRoles.map((r) => (
-                      <div
-                        key={r.role.name}
-                        className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/70 px-3 py-2 text-xs"
-                      >
-                        <span className="font-medium text-slate-200 min-w-0 truncate">{r.role.name}</span>
-                        <span
-                          className={`rounded-md border px-2 py-0.5 text-2xs font-mono font-semibold shrink-0 ${tierBadgeClass(
-                            r.tier
-                          )}`}
-                        >
-                          {r.fitPct}% · {r.tier}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 sm:p-4">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                    Scout &amp; Tactical Notes
-                  </h4>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    {player.notes || 'Synced directly from FM27 save.'}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
+          {activeTab === 'positions' && <RolesTab player={player} analysis={analysis} />}
 
           {/* TAB 4: ENGINE & CHARTS */}
           {activeTab === 'metrics' && (
-            <div className="space-y-4 sm:space-y-5">
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 sm:p-4 space-y-1 min-w-0">
-                  <div className="flex flex-wrap items-center justify-between gap-1">
-                    <span className="text-2xs uppercase tracking-wider text-slate-400">
-                      Physical
-                    </span>
-                    <span className="rounded-md bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 text-3xs sm:text-2xs font-semibold text-emerald-300">
-                      {analysis.physical.tier}
-                    </span>
-                  </div>
-                  <div className="text-xl sm:text-2xl font-bold text-emerald-400 font-mono tabular-nums">
-                    {analysis.physical.score}/100
-                  </div>
-                  <div className="text-micro text-slate-400 leading-snug">
-                    {analysis.physical.explanation}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 sm:p-4 space-y-1 min-w-0">
-                  <div className="text-2xs uppercase tracking-wider text-slate-400">
-                    Top Sprint Speed
-                  </div>
-                  <div className="text-xl sm:text-2xl font-bold text-sky-300 font-mono tabular-nums">
-                    {analysis.physical.topSpeedKmh} <span className="text-xs sm:text-sm font-normal">km/h</span>
-                  </div>
-                  <div className="text-micro text-slate-300 leading-snug">
-                    {analysis.physical.speedVerdict}
-                  </div>
-                  <div className="text-2xs text-slate-500 font-mono">
-                    {analysis.physical.topSpeedMps} m/s · Pace {a.pace} · Acc {a.acceleration}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 sm:p-4 space-y-1 min-w-0">
-                  <div className="text-2xs uppercase tracking-wider text-slate-400">
-                    Aerial Reach
-                  </div>
-                  <div className="text-xl sm:text-2xl font-bold text-amber-300 font-mono tabular-nums">
-                    +{analysis.physical.jumpHeightMeters} m
-                  </div>
-                  <div className="text-micro text-slate-300 leading-snug">
-                    {analysis.physical.aerialVerdict}
-                  </div>
-                  <div className="text-2xs text-slate-500 font-mono">
-                    Jump {a.jumpingReach}/20 · Head {a.heading ?? '—'}/20
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 sm:p-4 space-y-1 min-w-0">
-                  <div className="flex flex-wrap items-center justify-between gap-1">
-                    <span className="text-2xs uppercase tracking-wider text-slate-400">
-                      Durability
-                    </span>
-                    <span
-                      className={`rounded-md border px-1.5 py-0.5 text-3xs sm:text-2xs font-semibold ${durabilityBadgeClass}`}
-                    >
-                      {analysis.physical.durability.tier}
-                    </span>
-                  </div>
-                  <div className="text-xl sm:text-2xl font-bold text-slate-100 font-mono tabular-nums">
-                    {analysis.physical.durability.stamina}
-                    <span className="text-xs sm:text-sm font-normal text-slate-400"> / </span>
-                    {analysis.physical.durability.naturalFitness ?? '—'}
-                  </div>
-                  <div className="text-micro text-slate-300 leading-snug">
-                    {analysis.physical.durability.headline}
-                  </div>
-                  <div className="text-2xs text-slate-500">
-                    Stamina / Natural Fitness
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 sm:p-4 flex items-center justify-center min-w-0">
-                  <RolePercentilePizzaChart
-                    player={player}
-                    squadPlayers={squadPlayers}
-                    ipRoleName={effectiveIpRole}
-                    oopRoleName={effectiveOopRole}
-                    highlightedPrimaryKeys={highlightedKeys.keySet}
-                  />
-                </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 sm:p-4 flex flex-col items-center justify-center space-y-2 min-w-0">
-                  <div className="w-full flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-xs font-bold text-slate-200">
-                      6-Axis Comparison Radar
-                    </div>
-                    {compareCandidates.length > 0 && (
-                      <select
-                        value={comparePlayerId}
-                        onChange={(e) => setComparePlayerId(e.target.value)}
-                        aria-label="Compare with teammate"
-                        className="w-full sm:w-auto sm:max-w-[210px] min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1 text-micro text-slate-200"
-                      >
-                        {analysis.squadDepth?.bestTeammate && (
-                          <option value="__AUTO__">
-                            vs {analysis.squadDepth.bestTeammate.name} (Best {analysis.squadDepth.positionLabel.split(' ')[0]})
-                          </option>
-                        )}
-                        <option value="__NONE__">No comparison</option>
-                        {compareCandidates.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            vs {c.name} ({c.position})
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                  <AttributeRadarChart
-                    player={player}
-                    comparePlayer={resolvedComparePlayer}
-                  />
-                </div>
-              </div>
-              <PlayerProgressionSparkline
-                points={buildPlayerProgressionSeries(player.uid, loadProgressionArchive())}
-                playerName={player.name}
-              />
-            </div>
+            <EngineTab
+              player={player}
+              analysis={analysis}
+              squadPlayers={squadPlayers}
+              effectiveIpRole={effectiveIpRole}
+              effectiveOopRole={effectiveOopRole}
+              highlightedPrimaryKeys={highlightedKeys.keySet}
+              compareCandidates={compareCandidates}
+              comparePlayerId={comparePlayerId}
+              onComparePlayerChange={setComparePlayerId}
+              resolvedComparePlayer={resolvedComparePlayer}
+            />
           )}
 
           {/* TAB 5: STATS & CONTRACT */}
