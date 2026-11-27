@@ -215,3 +215,34 @@ test('buildLastMatchTacticBlueprint returns null without tactics and never fabri
   assert.equal(bp.starters[1].lastMatchRating ?? null, null);
   assert.deepEqual(bp.teamInstructions.inPossession, ['Play Out of Defence']);
 });
+
+test('a staff row with no name cannot crash the manager contract lookup', () => {
+  const decoded = {
+    meta: { clubName: 'KVV Zelzate', managerName: 'Bobby Dean', gameDateDmy: '15/11/2027' },
+    staff: [
+      { uid: 98, role: 'Scout', wagePw: 400, expires: '30/06/2028', age: 51, nation: 'Belgium' },
+      { uid: 99, role: 'Manager', wagePw: 1200, expires: '30/06/2029', age: 34, nation: 'England' },
+    ],
+  } as unknown as DecodedFmSavePayload;
+
+  const gov = buildClubGovernanceState(decoded, [makePlayer()], createSeedFm27BinaryDictionary());
+
+  assert.equal(gov.managerContract.available, true);
+  assert.equal(gov.managerContract.wagePw, 1200);
+});
+
+test('an unnamed staff row does not stop a named manager from being matched', () => {
+  const decoded = {
+    meta: { clubName: 'KVV Zelzate', managerName: 'Bobby Dean', gameDateDmy: '15/11/2027' },
+    staff: [
+      { uid: 98, role: 'Scout', wagePw: 400 },
+      { uid: 99, name: 'Bobby Dean', role: 'Manager', wagePw: 1200, expires: '30/06/2029' },
+    ],
+  } as unknown as DecodedFmSavePayload;
+
+  const gov = buildClubGovernanceState(decoded, [makePlayer()], createSeedFm27BinaryDictionary());
+
+  assert.equal(gov.managerContract.available, true);
+  assert.equal(gov.managerContract.wagePw, 1200);
+  assert.equal(gov.managerContract.expires, '30/06/2029');
+});

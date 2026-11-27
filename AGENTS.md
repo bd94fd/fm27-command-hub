@@ -90,6 +90,7 @@
 ## Verification on this machine
 
 - A browser gate must clear storage from the browser side (`Storage.clearDataForOrigin`). Deleting IndexedDB from inside the page leaves the app's own connection half-closed, and the import that follows cannot save. A save left by another gate also makes a save-load check pass without an import.
+- A page with a live upload guard raises a beforeunload prompt, and the navigation that follows never completes until it is answered. `scripts/lib/browser.mjs` accepts that prompt for every gate; do not remove it.
 - Browser gates read `dist/` from a production server on port 12000. Both harnesses now disable the HTTP cache; before that, a cached bundle could pass for a build that no longer existed.
 - `npm test` shows one failure here that CI does not see: `fm_layout_patcher classifies tested vs untested 27.x builds without fmsave` asserts no fmsave is installed, and this container has it so server decode works. Do not "fix" the assertion; check it still fails with your changes stashed.
 - `npm run smoke:e2e` is the flow gate (see `docs/e2e-smoke.md`). It needs the newest `.fm` in `.agents_tmp/uploads/` and about 40 seconds per profile.

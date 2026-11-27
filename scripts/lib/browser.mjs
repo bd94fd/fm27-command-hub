@@ -102,6 +102,13 @@ export async function connect(cdp, { listeners = [] } = {}) {
         httpErrors.push(`${response.status} ${response.url.slice(0, 140)}`);
       }
     }
+    if (message.method === 'Page.javascriptDialogOpening' && message.params?.type === 'beforeunload') {
+      // A live upload guard asks before the page unloads. Answer it, or the navigation
+      // that follows never completes.
+      ws.send(
+        JSON.stringify({ id: ++nextId, method: 'Page.handleJavaScriptDialog', params: { accept: true } })
+      );
+    }
     for (const listener of listeners) listener(message);
     for (const listener of extraListeners) listener(message);
     const resolve = pending.get(message.id);

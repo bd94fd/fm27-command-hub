@@ -107,7 +107,7 @@ export function buildClubGovernanceState(
         (s) =>
           mgrLower &&
           mgrLower !== 'manager' &&
-          s.name.trim().toLowerCase() === mgrLower
+          (s.name || '').trim().toLowerCase() === mgrLower
       ) ||
       decoded.staff.find((s) =>
         /^(manager|head coach|first team manager)$/i.test((s.role || '').trim())
