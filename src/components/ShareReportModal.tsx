@@ -169,7 +169,11 @@ export const ShareReportModal: React.FC<ShareReportModalProps> = ({
           <h3 className="text-micro font-semibold uppercase tracking-wider text-slate-400">
             Report
           </h3>
-          <div role="group" aria-label="Report to export" className="flex flex-wrap gap-1.5">
+          <div
+            role="group"
+            aria-label="Report to export"
+            className="grid grid-cols-3 gap-1.5 sm:flex sm:flex-wrap"
+          >
             {REPORT_KINDS.map((option) => {
               const selected = option === kind;
               return (
