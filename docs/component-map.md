@@ -64,19 +64,34 @@ row in `docs/data-parity-contract-map.md`.
 | `src/utils/tacticalAnalystContext.ts` | 2,976 | 2,033 |
 | `src/utils/analystPayload.ts` | — | 956 |
 | `src/components/analyst/*` | — | 757 across four files |
-| `src/App.tsx` | 2,296 | 1,894 |
+| `src/App.tsx` | 2,296 | 1,612 |
 | `src/components/shell/*` | — | 595 across four files |
+| `src/hooks/useAppNavigation.ts` | — | 208 |
+| `src/hooks/useSavePersistence.ts` | — | 163 |
+| `src/hooks/useShareSummary.ts` | — | 45 |
+| `src/utils/saveJourneyTimeline.ts` | — | 58 |
 
 ## Still large, and next in line
 
 | File | Lines | Why it is still one file | Plan |
 | --- | --- | --- | --- |
-| `src/App.tsx` | 1,894 | The chrome is out, but launch URLs, tab routing, overlay history, persistence and restore still sit together | Pull persistence and restore into a `useFmHubPersistence` hook, then navigation into a `useHubNavigation` hook |
+| `src/App.tsx` | 1,612 | Chrome, routing and persistence are out; what remains is the state the tabs share, the import pipeline and the render tree | Pull the import and backup handlers into hooks, then split the render tree by tab |
 | `src/components/PlayerDetailModal.tsx` | 2,047 | One modal with several stacked panels | Split the role, attribute and contract panels into `src/components/player/` |
 | `src/utils/fmSaveHydrator.ts` | 1,939 | Decoder output to UI records in one pass | Split by source table (club, squad, staff, fixtures) |
 | `src/services/saveCache.ts` | 1,830 | IndexedDB snapshots plus journey reports | Split snapshot storage from journey reporting |
 
 `src/App.tsx` changes most often after the workspace, so it stays the next
-target: the remaining work there is logic, not markup, so it moves in hooks
-rather than in components. The others are split as they are touched, not for
-their own sake.
+target. Three passes have taken the chrome, the section routing and the save
+persistence out of it; what is left is shared state, the import pipeline and the
+render tree, so the next move is the import and backup handlers into hooks.
+The others are split as they are touched, not for their own sake.
+
+## Where the App logic lives now
+
+| Concern | Owner |
+| --- | --- |
+| Active tab, hub panel, tactics panel, recent views, URL and Back behaviour | `src/hooks/useAppNavigation.ts` |
+| Cold-start restore, IndexedDB recency check, debounced auto-save, reset pause/cancel | `src/hooks/useSavePersistence.ts` |
+| `?share=` token, decoded share summary, leaving the shared view | `src/hooks/useShareSummary.ts` |
+| Which two saves a Journey report compares | `src/utils/saveJourneyTimeline.ts` |
+| Overlay Back entries for the More sheet, knowledge base and calibration lab | `src/hooks/useHistoryNavigation.ts` |
