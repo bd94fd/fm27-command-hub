@@ -83,9 +83,10 @@ test('Hub Finances panel is driven by clubFinances and staffRatings selectors', 
   const analyst = readSrc('src/utils/tacticalAnalystContext.ts');
   assert.doesNotMatch(analyst, /all players in every squad plus all staff/);
   assert.match(analyst, /Staff wages are separate and can exceed it/);
-  const saveCache = readSrc('src/services/saveCache.ts');
-  assert.doesNotMatch(saveCache, /players \+ staff/);
-  assert.match(saveCache, /It does NOT include staff wages/);
+  const journeyReport = readSrc('src/utils/saveJourneyReport.ts');
+  assert.doesNotMatch(journeyReport, /players \+ staff/);
+  assert.match(journeyReport, /It does NOT include staff wages/);
+  assert.doesNotMatch(readSrc('src/services/saveCache.ts'), /players \+ staff/);
   // Finances stays a Hub sub-tab; it must not become a 7th top-level nav tab.
   assert.doesNotMatch(src, /id: 'finances' as const, label:/);
 });
