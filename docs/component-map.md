@@ -64,7 +64,7 @@ row in `docs/data-parity-contract-map.md`.
 | `src/utils/tacticalAnalystContext.ts` | 2,976 | 2,033 |
 | `src/utils/analystPayload.ts` | — | 956 |
 | `src/components/analyst/*` | — | 757 across four files |
-| `src/App.tsx` | 2,296 | 1,512 |
+| `src/App.tsx` | 2,296 | 1,328 |
 | `src/components/shell/*` | — | 595 across four files |
 | `src/hooks/useAppNavigation.ts` | — | 208 |
 | `src/hooks/useSavePersistence.ts` | — | 163 |
@@ -73,21 +73,23 @@ row in `docs/data-parity-contract-map.md`.
 | `src/hooks/useBackupTransfer.ts` | — | 92 |
 | `src/hooks/useSquadDeltaUpdates.ts` | — | 54 |
 | `src/utils/hydratedLabels.ts` | — | 40 |
+| `src/hooks/useFmSaveImport.ts` | — | 205 |
+| `src/utils/saveHistoryPoint.ts` | — | 120 |
 
 ## Still large, and next in line
 
 | File | Lines | Why it is still one file | Plan |
 | --- | --- | --- | --- |
-| `src/App.tsx` | 1,512 | Chrome, routing, persistence, backup and squad deltas are out; what remains is the shared tab state, the `.fm` import pipeline and the render tree | Move `handleApplyDecodedFmSave` into a hook with a deps snapshot, then split the render tree by tab |
+| `src/App.tsx` | 1,328 | Chrome, routing, persistence, backup, squad deltas and the `.fm` import pipeline are out; what remains is the shared tab state, the derived summaries and the render tree | Split the render tree by tab, starting with the Hub and Analyst workspace |
 | `src/components/PlayerDetailModal.tsx` | 2,047 | One modal with several stacked panels | Split the role, attribute and contract panels into `src/components/player/` |
 | `src/utils/fmSaveHydrator.ts` | 1,939 | Decoder output to UI records in one pass | Split by source table (club, squad, staff, fixtures) |
 | `src/services/saveCache.ts` | 1,830 | IndexedDB snapshots plus journey reports | Split snapshot storage from journey reporting |
 
 `src/App.tsx` changes most often after the workspace, so it stays the next
-target. Four passes have taken the chrome, the section routing, the save
-persistence and the backup and squad-delta handlers out of it; what is left is
-shared tab state, the `.fm` import pipeline and the render tree, so the next move
-is `handleApplyDecodedFmSave`.
+target. Five passes have taken the chrome, the section routing, the save
+persistence, the backup and squad-delta handlers and the `.fm` import pipeline out
+of it; what is left is shared tab state, the derived summaries and the render tree,
+so the next move is splitting the render tree by tab.
 The others are split as they are touched, not for their own sake.
 
 ## Where the App logic lives now
@@ -102,3 +104,5 @@ The others are split as they are touched, not for their own sake.
 | Campaign backup out and back in, and the backup file name | `src/hooks/useBackupTransfer.ts` |
 | Parsed squad merges and Analyst player write-back | `src/hooks/useSquadDeltaUpdates.ts` |
 | Which header labels an interim checkpoint may write | `src/utils/hydratedLabels.ts` |
+| Turning a decoded `.fm` payload into app state, interim pass and final pass | `src/hooks/useFmSaveImport.ts` |
+| Which fields a Journey snapshot keeps from one save | `src/utils/saveHistoryPoint.ts` |
