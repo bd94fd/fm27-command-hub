@@ -251,7 +251,9 @@ async function runProfile(client, browserSend, profile, args, axeSource, savePat
   }
 
   // Clear from the browser side: deleting IndexedDB from inside the page leaves the
-  // app's own connection half-closed, and the import that follows cannot save.
+  // app's own connection half-closed, and the import that follows cannot save. Leave the
+  // page first, or the clear waits for a connection the live app never releases.
+  await client.navigate('about:blank', 500).catch(() => null);
   await browserSend('Storage.clearDataForOrigin', {
     origin: new URL(args.url).origin,
     storageTypes: 'all',

@@ -201,13 +201,24 @@ test('a short save keeps the older log entries instead of dropping them', () => 
   assert.equal(matches[1].id, 'old-1');
 });
 
-test('a short save keeps the existing log row as-is rather than merging the save numbers into it', () => {
+test('a short save merges the save numbers into a row the log already has', () => {
   const { matches } = buildMatchLog({
     decoded: decodedWith([played({ xGFor: 1.84 })]),
     currentMatches: [logEntry({ xGFor: null })],
   });
   assert.equal(matches.length, 1);
-  assert.equal(matches[0].xGFor, null);
+  assert.equal(matches[0].xGFor, 1.84);
+  assert.equal(matches[0].potm, 'Tom Peeters');
+});
+
+test('a short save refreshes the score of a row already in the log', () => {
+  const { matches } = buildMatchLog({
+    decoded: decodedWith([played({ score: '3-0' })]),
+    currentMatches: [logEntry({ score: '2-1' })],
+  });
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0].score, '3-0');
+  assert.equal(matches[0].goalTimeline, 'Human report');
 });
 
 test('an empty save leaves the log alone', () => {

@@ -146,15 +146,14 @@ export function buildMatchLog({ decoded, currentMatches }: MatchLogBuildInput): 
     }
 
     const fmNewestFirst = [...fmHydratedMatches].reverse();
-    const updatedMatches =
-      decoded.playedMatches.length >= 4
-        ? fmNewestFirst
-        : [
-            ...fmNewestFirst.filter(
-              (fm) => !currentMatches.some((cm) => cm.id === fm.id)
-            ),
-            ...currentMatches,
-          ];
-
-    return { matches: updatedMatches, newlyAddedCount };
+    if (decoded.playedMatches.length >= 4) {
+      return { matches: fmNewestFirst, newlyAddedCount };
+    }
+    // A short save can hold only the most recent matches, so older log rows stay.
+    // A match the save does hold takes the save's numbers, as it does for a full log.
+    const fmIds = new Set(fmNewestFirst.map((fm) => fm.id));
+    return {
+      matches: [...fmNewestFirst, ...currentMatches.filter((cm) => !fmIds.has(cm.id))],
+      newlyAddedCount,
+    };
 }
