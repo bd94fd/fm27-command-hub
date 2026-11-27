@@ -4,6 +4,7 @@ import {
   Briefcase,
   Clock,
   Layers,
+  Network,
   Search,
   Star,
   UserCheck,
@@ -15,6 +16,7 @@ import { StaffRecord } from '../types/fm27';
 import { formatContractExpiry, formatWeeklyWage } from '../utils/squadViewHelpers';
 import { JobVacancyEntry } from '../types/fmSave';
 import { normalizeJobVacancy } from '../utils/jobVacancies';
+import { StaffOrgChartView } from './staff/StaffOrgChartView';
 import {
   buildUnifiedStaffMatrix,
   classifyStaffDepartment,
@@ -35,7 +37,7 @@ interface StaffDirectoryProps {
   onRequestImport?: () => void;
 }
 
-type StaffDirectoryView = 'directory' | 'matrix';
+type StaffDirectoryView = 'directory' | 'matrix' | 'chart';
 type StaffDirectoryFilter = 'all' | StaffDepartmentGroup | 'expiring';
 
 const FILTER_ORDER: StaffDirectoryFilter[] = [
@@ -256,6 +258,11 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
               label: 'Training & Dept Matrix',
               icon: <Layers className="h-3.5 w-3.5" />,
             },
+            {
+              id: 'chart' as const,
+              label: 'Org Chart',
+              icon: <Network className="h-3.5 w-3.5" />,
+            },
           ]
         ).map((tab) => (
           <button
@@ -276,7 +283,13 @@ export const StaffDirectory: React.FC<StaffDirectoryProps> = ({
         ))}
       </div>
 
-      {activeView === 'directory' ? (
+      {activeView === 'chart' ? (
+        <StaffOrgChartView
+          staff={staff}
+          saveDate={saveDate ?? ''}
+          onSelectStaff={onSelectStaff}
+        />
+      ) : activeView === 'directory' ? (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative w-full sm:w-72">
