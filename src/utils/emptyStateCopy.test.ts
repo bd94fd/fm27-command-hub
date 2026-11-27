@@ -66,8 +66,8 @@ test('every tab renders the shared panel instead of its own wording', () => {
 });
 
 test('the tabs reach the Hub through the shared navigation, not a hardcoded link', () => {
-  const app = readSrc('src/App.tsx');
-  const hubPasses = app.match(/onRequestImport=\{\(\) => handleSelectTab\('sync'\)\}/g) ?? [];
+  const app = readSrc('src/components/shell/AppMainContent.tsx');
+  const hubPasses = app.match(/onRequestImport=\{\(\) => onSelectTab\('sync'\)\}/g) ?? [];
   assert.equal(hubPasses.length, 5, 'squad, tactics, recruitment, staff, matches');
   const tactics = readSrc('src/components/TacticalWarRoom.tsx');
   assert.match(tactics, /onRequestImport=\{onRequestImport\}/);

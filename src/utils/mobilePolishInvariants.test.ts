@@ -66,7 +66,7 @@ test('Mobile sticky chrome (header + MobileBottomNav) stays strictly within <= 1
 });
 
 test('Lazy-loaded Phase 2 modules use geometry-matched Suspense skeletons instead of bare Loading text', () => {
-  const appSrc = readSrc('src/App.tsx');
+  const appSrc = readSrc('src/components/shell/AppMainContent.tsx');
   const hubSrc = readSrc('src/components/AutoSyncWorkspace.tsx');
   const squadSrc = readSrc('src/components/SquadAnalyticsTable.tsx');
   const skeletonsSrc = readSrc('src/components/WorkspaceSkeletons.tsx');

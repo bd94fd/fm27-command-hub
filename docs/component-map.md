@@ -34,6 +34,7 @@ in `src/components/shell/`, so the shell component keeps state and routing.
 | File | Owns |
 | --- | --- |
 | `src/App.tsx` | Launch URLs, tab routing, save and chat state, overlay history, persistence and restore |
+| `src/components/shell/AppMainContent.tsx` | The section container under the header: the executive strip, the sync pill and one lazy view per section |
 | `src/components/shell/AppHeader.tsx` | Skip link, brand, desktop section nav, the header actions and the hidden file inputs |
 | `src/components/shell/ClubBaselineStrip.tsx` | The save receipt: date and file name, the club title, the four headline numbers, the verification card and the governance banner |
 | `src/components/shell/BackgroundSyncPill.tsx` | The "still reading your save" pill shown on the other tabs |
@@ -64,8 +65,8 @@ row in `docs/data-parity-contract-map.md`.
 | `src/utils/tacticalAnalystContext.ts` | 2,976 | 2,033 |
 | `src/utils/analystPayload.ts` | — | 956 |
 | `src/components/analyst/*` | — | 757 across four files |
-| `src/App.tsx` | 2,296 | 1,328 |
-| `src/components/shell/*` | — | 595 across four files |
+| `src/App.tsx` | 2,296 | 1,034 |
+| `src/components/shell/*` | — | 1,119 across five files |
 | `src/hooks/useAppNavigation.ts` | — | 208 |
 | `src/hooks/useSavePersistence.ts` | — | 163 |
 | `src/hooks/useShareSummary.ts` | — | 45 |
@@ -96,16 +97,16 @@ row in `docs/data-parity-contract-map.md`.
 
 | File | Lines | Why it is still one file | Plan |
 | --- | --- | --- | --- |
-| `src/App.tsx` | 1,328 | Chrome, routing, persistence, backup, squad deltas and the `.fm` import pipeline are out; what remains is the shared tab state, the derived summaries and the render tree | Split the render tree by tab, starting with the Hub and Analyst workspace |
+| `src/App.tsx` | 1,034 | Chrome, routing, persistence, backup, squad deltas, the `.fm` import pipeline and the tab workspace are out; what remains is the shared tab state, the derived summaries and the overlays | Split the remaining overlay wiring from the state |
 | `src/components/PlayerDetailModal.tsx` | 608 | The sheet chrome, the derived model, the tab bar and the shortlist action | Nothing left to split; the five panels and the PNG export are out |
 | `src/utils/fmSaveHydrator.ts` | 634 | Decoder output to UI records: availability, squad merge, match log, labels, staff, finances, governance and the payload it hands on | Nothing left to split; the hydrator now delegates every build to its own module |
 | `src/services/saveCache.ts` | 917 | IndexedDB payload caches and snapshot history; the journey report now lives in `src/utils/saveJourneyReport.ts` | Split the payload caches from snapshot history |
 
 `src/App.tsx` changes most often after the workspace, so it stays the next
-target. Five passes have taken the chrome, the section routing, the save
-persistence, the backup and squad-delta handlers and the `.fm` import pipeline out
-of it; what is left is shared tab state, the derived summaries and the render tree,
-so the next move is splitting the render tree by tab.
+target. Six passes have taken the chrome, the section routing, the save
+persistence, the backup and squad-delta handlers, the `.fm` import pipeline and
+the tab workspace out of it; what is left is shared tab state, the derived
+summaries and the overlay wiring, so the next move is the overlays.
 The others are split as they are touched, not for their own sake.
 
 ## Where the App logic lives now
@@ -113,6 +114,7 @@ The others are split as they are touched, not for their own sake.
 | Concern | Owner |
 | --- | --- |
 | Active tab, hub panel, tactics panel, recent views, URL and Back behaviour | `src/hooks/useAppNavigation.ts` |
+| The tab workspace markup, the executive strip and the per-section lazy views | `src/components/shell/AppMainContent.tsx` |
 | Cold-start restore, IndexedDB recency check, debounced auto-save, reset pause/cancel | `src/hooks/useSavePersistence.ts` |
 | `?share=` token, decoded share summary, leaving the shared view | `src/hooks/useShareSummary.ts` |
 | Which two saves a Journey report compares | `src/utils/saveJourneyTimeline.ts` |
