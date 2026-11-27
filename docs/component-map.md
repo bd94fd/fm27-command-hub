@@ -89,6 +89,7 @@ row in `docs/data-parity-contract-map.md`.
 | `src/utils/hydrateStaff.ts` | — | 56 (staff directory rows, neutral attributes, placeholder text) |
 | `src/utils/hydrateFinances.ts` | — | 102 (canonical balance, wage summary, financial runway) |
 | `src/utils/hydrateExecutiveLabels.ts` | — | 149 (executive strip: save date, next fixture, league record and standing, squad output, tactic headline) |
+| `src/utils/saveJourneyReport.ts` | — | 942 (snapshot diff, journey findings, timeline and the AI payload) |
 | `src/utils/playerDetailFormat.ts` | — | 52 |
 
 ## Still large, and next in line
@@ -98,7 +99,7 @@ row in `docs/data-parity-contract-map.md`.
 | `src/App.tsx` | 1,328 | Chrome, routing, persistence, backup, squad deltas and the `.fm` import pipeline are out; what remains is the shared tab state, the derived summaries and the render tree | Split the render tree by tab, starting with the Hub and Analyst workspace |
 | `src/components/PlayerDetailModal.tsx` | 608 | The sheet chrome, the derived model, the tab bar and the shortlist action | Nothing left to split; the five panels and the PNG export are out |
 | `src/utils/fmSaveHydrator.ts` | 634 | Decoder output to UI records: availability, squad merge, match log, labels, staff, finances, governance and the payload it hands on | Nothing left to split; the hydrator now delegates every build to its own module |
-| `src/services/saveCache.ts` | 1,830 | IndexedDB snapshots plus journey reports | Split snapshot storage from journey reporting |
+| `src/services/saveCache.ts` | 917 | IndexedDB payload caches and snapshot history; the journey report now lives in `src/utils/saveJourneyReport.ts` | Split the payload caches from snapshot history |
 
 `src/App.tsx` changes most often after the workspace, so it stays the next
 target. Five passes have taken the chrome, the section routing, the save

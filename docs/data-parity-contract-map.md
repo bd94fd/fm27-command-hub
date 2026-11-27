@@ -21,7 +21,8 @@ flowchart LR
   D --> D6["buildExecutiveLabels()<br/>hydrateExecutiveLabels.ts"]
   D --> D2["buildAnalystSaveContext()<br/>hydrateAnalystContext.ts"]
   D --> E["PlayerRecord / StaffRecord<br/>MatchLogEntry / HydratedSaveState"]
-  E --> F["UI tabs"]
+  E --> J["diffSaveHistoryPoints() / buildDeepJourneyReport()<br/>saveJourneyReport.ts"]
+  J --> F
   E --> G["buildLiveTacticalAnalystContext()"]
   H["Shared selectors<br/>staffRatings, clubFinances,<br/>squadViewHelpers, matchScopeHelpers,<br/>metaScoreEngine, transferAudit, ..."] --> F
   H --> G
