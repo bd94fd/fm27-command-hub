@@ -4,18 +4,6 @@
  */
 
 import React, { useState, useEffect, useRef, Suspense, lazy, useCallback, useMemo } from 'react';
-import {
-  BookOpen,
-  ChevronDown,
-  ChevronUp,
-  Database,
-  Download,
-  RefreshCw,
-  Search,
-  Share2,
-  Trash2,
-  Upload,
-} from 'lucide-react';
 import { EMPTY_CLUB_META, SQUAD_PLAYERS } from './data/squadData';
 import { FeedbackToast } from './components/FeedbackToast';
 import { emitFeedback, feedback, subscribeFeedback, type FeedbackMessage } from './utils/feedbackBus';
@@ -99,20 +87,14 @@ import type {
 } from './services/saveCache';
 import type { CompactBinaryDiffSnapshot } from './utils/fm27BinaryDictionary';
 import type { CalibrationLabTab } from './components/Fm27BinaryCalibrationLab';
+import type { BackgroundSyncStatus } from './components/shell/backgroundSync';
+import { AppHeader } from './components/shell/AppHeader';
+import { ClubBaselineStrip } from './components/shell/ClubBaselineStrip';
+import { BackgroundSyncPill } from './components/shell/BackgroundSyncPill';
 
 const AutoSyncWorkspace = lazy(() =>
   import('./components/AutoSyncWorkspace').then((m) => ({
     default: m.AutoSyncWorkspace,
-  }))
-);
-const LiveFmSaveProofCard = lazy(() =>
-  import('./components/LiveFmSaveProofCard').then((m) => ({
-    default: m.LiveFmSaveProofCard,
-  }))
-);
-const ClubGovernanceBanner = lazy(() =>
-  import('./components/ClubGovernanceBanner').then((m) => ({
-    default: m.ClubGovernanceBanner,
   }))
 );
 const MobileMoreSheet = lazy(() =>
@@ -344,12 +326,8 @@ export default function App() {
   const liveLastMatchTactic = hydratedFmSave
     ? derivedLastMatchTactic ?? hydratedFmSave.lastMatchTactic ?? null
     : null;
-  const [backgroundSyncStatus, setBackgroundSyncStatus] = useState<{
-    label: string;
-    clubCoreReady: boolean;
-    progressPct?: number;
-    paused?: boolean;
-  } | null>(null);
+  const [backgroundSyncStatus, setBackgroundSyncStatus] =
+    useState<BackgroundSyncStatus | null>(null);
   const [workspaceBusy, setWorkspaceBusy] = useState<boolean>(false);
   const [quickPickedFmFile, setQuickPickedFmFile] = useState<File | null>(null);
   const pwa = usePwaLifecycle({
@@ -778,6 +756,11 @@ export default function App() {
   const summary = useMemo(
     () => computeCompetitiveSummary(matches, saveDate),
     [matches, saveDate]
+  );
+
+  const playerBasicWeekly = useMemo(
+    () => players.reduce((sum, p) => sum + (p.wagePw || 0), 0),
+    [players]
   );
 
   // Chat-logged matches are not part of the .fm snapshot, so the live header must
@@ -1327,212 +1310,27 @@ export default function App() {
   return (
     <CompareTrayProvider>
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col">
-      <a
-        href="#main-content"
-        onClick={(event) => {
-          // Focus the target directly and keep the hash out of the URL: sheet
-          // history handling re-applies a fragment on close and would pull
-          // focus back to <main> from whatever opened the sheet.
-          event.preventDefault();
-          const main = document.getElementById('main-content');
-          if (main) {
-            main.focus();
-            main.scrollIntoView({ block: 'start' });
-          }
-        }}
-        className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-lg focus:bg-emerald-600 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white"
-      >
-        Skip to main content
-      </a>
-
-      {/* Top Navigation Shell (mobile header ~56.6px + BottomNav ~55.8px = ~112.4px <= 15% of 800px) */}
-      <header
-        className="sticky top-0 z-30 flex items-center justify-between gap-x-2.5 sm:gap-x-4 px-3.5 sm:px-6 pb-1.5 sm:pb-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800"
-        style={{
-          paddingTop: 'calc(0.35rem + env(safe-area-inset-top, 0px))',
-        }}
-      >
-        <a
-          href="#top"
-          onClick={(e) => {
-            e.preventDefault();
-            handleSelectTab('sync');
-          }}
-          className="min-h-[44px] md:min-h-[36px] flex items-center text-base sm:text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100 min-w-0 flex-1 md:flex-initial"
-        >
-          <span className="truncate">{clubName}</span>
-        </a>
-
-        {/* Desktop Navigation Tabs (mobile uses 5-tab fixed bottom bar + More sheet below) */}
-        <nav
-          aria-label="Primary sections"
-          className="hidden md:flex items-center gap-4 lg:gap-5 text-xs lg:text-sm font-medium text-slate-600 dark:text-slate-400 overflow-x-auto"
-        >
-          {[
-            { id: 'sync' as const, label: 'Hub & Analyst' },
-            { id: 'squad' as const, label: `Squad (${players.length})` },
-            { id: 'tactics' as const, label: 'Tactics & Corners' },
-            { id: 'recruitment' as const, label: 'Transfers' },
-            { id: 'matches' as const, label: `Matches (${matches.length})` },
-            {
-              id: 'staff' as const,
-              label: staff.length > 0 ? `Staff (${staff.length})` : 'Staff',
-            },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => handleSelectTab(tab.id)}
-              className={`inline-flex items-center min-h-[36px] px-1.5 hover:text-slate-900 dark:hover:text-slate-100 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                activeTab === tab.id
-                  ? 'text-emerald-700 dark:text-emerald-400 underline underline-offset-4 font-semibold'
-                  : ''
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-
-        {/* Actions: Mobile stays uncluttered (1-Tap Sync .fm + Quick Search); KB/Backup/Restore/Reset move to More sheet on mobile */}
-        <div className="flex items-center gap-2 shrink-0">
-          <input
-            ref={quickFmFileInputRef}
-            type="file"
-            accept=".fm"
-            onChange={handleQuickFmFilePicked}
-            className="hidden"
-          />
-          <input
-            ref={backupFileInputRef}
-            type="file"
-            accept=".json"
-            onChange={handleImportBackup}
-            className="hidden"
-          />
-
-          {/* Always-visible 1-tap mobile Sync .fm CTA (44px+ touch target) */}
-          <button
-            type="button"
-            onClick={handleMobileQuickSyncClick}
-            title={
-              backgroundSyncStatus
-                ? 'View active .fm save upload progress'
-                : 'Pick a .fm save file to sync immediately'
-            }
-            className={`md:hidden inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3 py-2 text-xs font-bold rounded-xl transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-              backgroundSyncStatus
-                ? backgroundSyncStatus.paused
-                  ? 'text-slate-950 bg-amber-400 hover:bg-amber-300'
-                  : 'text-slate-950 bg-emerald-400 hover:bg-emerald-300'
-                : 'text-slate-950 bg-emerald-400 hover:bg-emerald-300 shadow-sm shadow-emerald-500/20'
-            }`}
-          >
-            {backgroundSyncStatus ? (
-              <RefreshCw
-                className={`w-3.5 h-3.5 shrink-0 ${
-                  backgroundSyncStatus.paused ? '' : 'animate-spin motion-reduce:animate-none'
-                }`}
-              />
-            ) : (
-              <Upload className="w-3.5 h-3.5 shrink-0" />
-            )}
-            <span>
-              {backgroundSyncStatus
-                ? backgroundSyncStatus.paused
-                  ? 'Paused'
-                  : typeof backgroundSyncStatus.progressPct === 'number'
-                    ? `${backgroundSyncStatus.progressPct}%`
-                    : 'Syncing'
-                : 'Sync .fm'}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowCommandPalette(true)}
-            aria-label="Quick Search players, staff, and scout targets"
-            title="Quick Search players, staff, and scout targets"
-            className="inline-flex items-center justify-center gap-1.5 min-h-[44px] min-w-[44px] md:min-h-[38px] md:min-w-[38px] px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 rounded-xl md:rounded-lg transition-colors cursor-pointer whitespace-nowrap"
-          >
-            <Search className="w-4 h-4 md:w-3.5 md:h-3.5 text-emerald-600 dark:text-emerald-400" />
-            <span className="hidden md:inline">Search</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowKnowledgeBase(true)}
-            aria-label="FM27 KB: open the Patch 27.1.0 knowledge base"
-            title="Open FM27 Patch 27.1.0 Knowledge Base"
-            className="hidden md:inline-flex items-center justify-center gap-1 min-h-[38px] min-w-[38px] px-2.5 py-1.5 text-xs font-semibold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
-          >
-            <BookOpen className="w-3.5 h-3.5" />
-            <span>FM27 KB</span>
-          </button>
-
-          {players.length > 0 || recruitmentCases.length > 0 ? (
-            <>
-              <button
-                type="button"
-                onClick={() => setShowShareModal(true)}
-                aria-label="Share and export a clean report"
-                title="Share and export: CSV, PNG card, print or PDF, read-only link"
-                className="hidden md:inline-flex items-center justify-center gap-1 min-h-[38px] min-w-[38px] px-2 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer"
-              >
-                <Share2 className="w-3.5 h-3.5 text-indigo-400" />
-                <span className="hidden lg:inline">Share</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleExportBackup}
-                aria-label="Export campaign snapshot as JSON backup"
-                title="Export campaign snapshot as JSON backup"
-                className="hidden md:inline-flex items-center justify-center gap-1 min-h-[38px] min-w-[38px] px-2 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="hidden lg:inline">Backup</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleClearMemory}
-                aria-label={
-                  confirmResetPending
-                    ? 'Confirm Reset?'
-                    : 'Reset: clear saved memory'
-                }
-                title={
-                  confirmResetPending
-                    ? 'Click again to wipe saved memory and return to Awaiting .fm Save'
-                    : 'Clear saved memory and return to clean Awaiting Save state'
-                }
-                className={`hidden md:inline-flex items-center justify-center gap-1 min-h-[38px] min-w-[38px] px-2 py-1.5 text-xs font-medium rounded-lg border transition-colors cursor-pointer ${
-                  confirmResetPending
-                    ? 'text-rose-200 bg-rose-950/80 border-rose-500/60 hover:bg-rose-900/80'
-                    : 'text-slate-400 hover:text-red-400 bg-slate-800/70 hover:bg-red-950/40 border-slate-700/80 hover:border-red-800/50'
-                }`}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span className={confirmResetPending ? 'inline' : 'hidden lg:inline'}>
-                  {confirmResetPending ? 'Confirm Reset?' : 'Reset'}
-                </span>
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={() => backupFileInputRef.current?.click()}
-              aria-label="Restore previous campaign from a JSON backup file"
-              title="Restore previous campaign from a JSON backup file"
-              className="hidden md:inline-flex items-center justify-center gap-1 min-h-[38px] min-w-[38px] px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer"
-            >
-              <Upload className="w-3.5 h-3.5 text-blue-400" />
-              <span>Restore</span>
-            </button>
-          )}
-        </div>
-      </header>
+      <AppHeader
+        clubName={clubName}
+        activeTab={activeTab}
+        squadCount={players.length}
+        matchCount={matches.length}
+        staffCount={staff.length}
+        hasData={players.length > 0 || recruitmentCases.length > 0}
+        backgroundSync={backgroundSyncStatus}
+        confirmResetPending={confirmResetPending}
+        quickFmInputRef={quickFmFileInputRef}
+        backupInputRef={backupFileInputRef}
+        onSelectTab={handleSelectTab}
+        onQuickSync={handleMobileQuickSyncClick}
+        onQuickFmPicked={handleQuickFmFilePicked}
+        onImportBackup={handleImportBackup}
+        onOpenSearch={() => setShowCommandPalette(true)}
+        onOpenKnowledgeBase={() => setShowKnowledgeBase(true)}
+        onOpenShare={() => setShowShareModal(true)}
+        onExportBackup={handleExportBackup}
+        onResetMemory={handleClearMemory}
+      />
 
       {/* PWA Status Banners: Offline Notice, Safe Update Prompt, Android/iOS Install */}
       <PwaStatusBanners
@@ -1567,234 +1365,34 @@ export default function App() {
             : 'pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))]'
         } md:pb-8 space-y-4 sm:space-y-5`}
       >
-        {/* Live Background Sync Pill when user is already exploring Squad/Tactics/Staff/Transfers */}
-        {backgroundSyncStatus && activeTab !== 'sync' && (
-          <div
-            className={`rounded-xl border px-3.5 py-2 flex items-center justify-between gap-2 text-xs ${
-              backgroundSyncStatus.paused
-                ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
-                : 'border-emerald-500/35 bg-emerald-500/10 text-emerald-200'
-            }`}
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              <RefreshCw
-                className={`w-3.5 h-3.5 shrink-0 ${
-                  backgroundSyncStatus.paused
-                    ? 'text-amber-500 dark:text-amber-400'
-                    : 'text-emerald-600 dark:text-emerald-400 animate-spin motion-reduce:animate-none'
-                }`}
-              />
-              <span className="truncate">
-                {backgroundSyncStatus.clubCoreReady
-                  ? `Club core live — finishing in background: ${backgroundSyncStatus.label}`
-                  : backgroundSyncStatus.label}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleSelectTab('sync')}
-              className={`shrink-0 min-h-[44px] md:min-h-[32px] px-3 md:px-2.5 py-1 rounded-lg md:rounded-md text-xs md:text-micro font-semibold border cursor-pointer whitespace-nowrap ${
-                backgroundSyncStatus.paused
-                  ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-900 dark:text-amber-100 border-amber-500/40'
-                  : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-900 dark:text-emerald-100 border-emerald-500/40'
-              }`}
-            >
-              {backgroundSyncStatus.paused ? 'Resume' : 'View Sync'}
-            </button>
-          </div>
+        {activeTab !== 'sync' && (
+          <BackgroundSyncPill
+            status={backgroundSyncStatus}
+            onOpenSync={() => handleSelectTab('sync')}
+          />
         )}
 
-        {/* Compact Status Bar (shown once a save is loaded so first-entry welcome hero stays clean) */}
-        {(hydratedFmSave || players.length > 0) && (
-          <div className="md:hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3.5 py-2 flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
-                <span className="truncate">
-                  {saveDate} · {hydratedFmSave?.leagueRecordLabel || `${players.length} Players`}
-                </span>
-              </div>
-              <div className="text-micro text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                Next: {nextFixture} · Bal: {balance}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowMobileDetails((v) => !v)}
-              className="inline-flex items-center gap-1 shrink-0 min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 whitespace-nowrap cursor-pointer"
-            >
-              {showMobileDetails ? (
-                <>
-                  Hide <ChevronUp className="w-3.5 h-3.5 shrink-0" />
-                </>
-              ) : (
-                <>
-                  Club KPIs <ChevronDown className="w-3.5 h-3.5 shrink-0" />
-                </>
-              )}
-            </button>
-          </div>
-        )}
-
-        {/* Executive Club & Save Baseline Strip (shown once a save is loaded; expandable on mobile) */}
-        {(hydratedFmSave || players.length > 0) && (
-        <div className={showMobileDetails ? 'space-y-4' : 'hidden md:block space-y-5'}>
-          <section className="p-4 sm:p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-5">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-              <div>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                  <span>
-                    {hydratedFmSave
-                      ? `${hydratedFmSave?.decodedPayload?.meta?.clubName} (${hydratedFmSave?.decodedPayload?.meta?.game} Build ${hydratedFmSave?.decodedPayload?.meta?.build})`
-                      : 'Football Manager 27 · Local Browser Engine'}
-                  </span>
-                  <span>&middot;</span>
-                  <span>
-                    Save Date:{' '}
-                    <span className="font-mono font-semibold text-slate-900 dark:text-emerald-300">
-                      {saveDate}
-                    </span>
-                  </span>
-                  <span
-                    className={`px-2 py-0.5 text-2xs font-mono font-semibold rounded-md border ${
-                      hydratedFmSave
-                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/40'
-                        : 'bg-slate-800 text-slate-400 border-slate-700'
-                    }`}
-                  >
-                    {hydratedFmSave
-                      ? `LIVE .FM SYNCED (${hydratedFmSave?.decodedPayload?.meta?.fileName || hydratedFmSave?.decodedPayload?.meta?.saveName || '.fm'})`
-                      : 'AWAITING .FM SAVE — DROP .FM SAVE TO SYNC'}
-                  </span>
-
-                  {isRestoredFromMemory && players.length > 0 && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-2xs font-mono font-semibold rounded-md bg-blue-500/15 text-blue-300 border border-blue-500/30">
-                      <Database className="w-3 h-3 text-blue-400" />
-                      MEMORY ACTIVE
-                    </span>
-                  )}
-                </div>
-                <h1 className="text-xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100 mt-1">
-                  {hydratedFmSave
-                    ? `${hydratedFmSave?.decodedPayload?.meta?.clubName} Command Hub`
-                    : 'FM27 Command Hub & AI Tactical Co-Pilot'}
-                </h1>
-              </div>
-
-              <div className="text-xs text-slate-600 dark:text-slate-400 lg:text-right space-y-1">
-                <div className="font-semibold text-emerald-700 dark:text-emerald-400">
-                  Next Fixture: {nextFixture}
-                </div>
-                <div>
-                  {hydratedFmSave
-                    ? `Manager: ${managerName} · Decoded locally via fmsave ${hydratedFmSave?.decodedPayload?.meta?.fmsaveVersion}`
-                    : 'Status: Zero Mock Baseline · Verified Patch 27.1.0 KB Ready'}
-                </div>
-              </div>
-            </div>
-
-            {/* 4-Column Quantitative KPI Strip */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-4 border-t border-slate-200 dark:border-slate-800">
-              <div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">
-                  {hydratedFmSave
-                    ? `Live League Standing (${hydratedFmSave?.decodedPayload?.leagueStanding?.competitionName || 'League'})`
-                    : 'League Standing'}
-                </div>
-                <div className="text-lg font-bold font-mono tabular-nums text-slate-900 dark:text-slate-100 mt-0.5">
-                  {(hasManualMatches ? null : hydratedFmSave?.leagueRecordLabel) ||
-                    (summary.played > 0
-                      ? `${summary.played} GP · ${summary.wins}W-${summary.draws}D-${summary.losses}L · ${summary.points} Pts`
-                      : '--')}
-                </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  {hasManualMatches
-                    ? hydratedFmSave
-                      ? `Includes ${manualMatchCount} chat-logged match${manualMatchCount === 1 ? '' : 'es'} not yet in the .fm save`
-                      : 'Awaiting .fm save'
-                    : hydratedFmSave?.leagueStandingLabel ||
-                      (summary.played > 0
-                        ? leagueStandingSub
-                        : hydratedFmSave
-                          ? '0 competitive matches played yet'
-                          : 'Awaiting .fm save')}
-                </div>
-              </div>
-
-              <div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">
-                  {hydratedFmSave?.squadOutputLabel
-                    ? 'Live Squad Season Output (All Comp)'
-                    : 'Cumulative Expected Goals'}
-                </div>
-                <div className="text-lg font-bold font-mono tabular-nums text-emerald-700 dark:text-emerald-400 mt-0.5">
-                  {hydratedFmSave?.squadOutputLabel ||
-                    (summary.played > 0
-                      ? `${summary.totalXgFor.toFixed(2)} xGF vs ${summary.totalXgAgainst.toFixed(2)} xGA`
-                      : '--')}
-                </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  {hydratedFmSave?.squadOutputSubLabel ||
-                    (summary.played > 0
-                      ? `Net Quality Differential: ${summary.xgDiff >= 0 ? '+' : ''}${summary.xgDiff.toFixed(2)} xG`
-                      : 'Awaiting .fm save')}
-                </div>
-              </div>
-
-              <div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">
-                  {hydratedFmSave
-                    ? 'Live Active Tactic, Injuries & Mentoring'
-                    : 'Dual-Phase Tactic & Setup'}
-                </div>
-                <div className="text-lg font-bold font-mono tabular-nums text-slate-900 dark:text-slate-100 mt-0.5">
-                  {hydratedFmSave?.tacticHeadlineLabel || '--'}
-                </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  {hydratedFmSave?.tacticSubLabel || 'Awaiting .fm save'}
-                </div>
-              </div>
-
-              <div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">
-                  Player Wage Bill &amp; Wage Compliance
-                </div>
-                <div className="text-lg font-bold font-mono tabular-nums text-slate-900 dark:text-slate-100 mt-0.5">
-                  {wageSpend}
-                </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Balance: {balance} · {players.length}-Man Squad
-                  {(() => {
-                    const basicSum = players.reduce((sum, p) => sum + (p.wagePw || 0), 0);
-                    const clubPayroll = hydratedFmSave?.decodedPayload?.finances?.wagePayrollWeekly;
-                    if (basicSum <= 0) return null;
-                    if (typeof clubPayroll === 'number' && Math.abs(clubPayroll - basicSum) < 5) {
-                      return null;
-                    }
-                    return ` · Player Basic: £${basicSum.toLocaleString()}/wk`;
-                  })()}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* Live .fm Save Verification Receipt & Club Governance Banner */}
-          {hydratedFmSave && (
-            <Suspense fallback={null}>
-              <LiveFmSaveProofCard hydrated={hydratedFmSave} />
-            </Suspense>
-          )}
-          {hydratedFmSave && liveGovernance && (
-            <Suspense fallback={null}>
-              <ClubGovernanceBanner
-                governance={liveGovernance}
-                extractionManifest={hydratedFmSave?.decodedPayload?.extractionManifest ?? null}
-                onAskAnalyst={handleAskAnalystPrompt}
-                onOpenCalibrationLab={handleOpenCalibrationLab}
-              />
-            </Suspense>
-          )}
-        </div>
-        )}
+        <ClubBaselineStrip
+          hydrated={hydratedFmSave}
+          hasSave={Boolean(hydratedFmSave || players.length > 0)}
+          saveDate={saveDate}
+          nextFixture={nextFixture}
+          managerName={managerName}
+          balance={balance}
+          wageSpend={wageSpend}
+          squadSize={players.length}
+          playerBasicWeekly={playerBasicWeekly}
+          summary={summary}
+          leagueStandingSub={leagueStandingSub}
+          hasManualMatches={hasManualMatches}
+          manualMatchCount={manualMatchCount}
+          isRestoredFromMemory={isRestoredFromMemory}
+          showMobileDetails={showMobileDetails}
+          liveGovernance={liveGovernance}
+          onToggleMobileDetails={() => setShowMobileDetails((v) => !v)}
+          onAskAnalystPrompt={handleAskAnalystPrompt}
+          onOpenCalibrationLab={handleOpenCalibrationLab}
+        />
 
         {/* Active View Area (AutoSyncWorkspace stays mounted so chat history persists across tabs) */}
         <div className={activeTab === 'sync' ? '' : 'hidden'}>
