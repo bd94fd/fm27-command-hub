@@ -44,15 +44,15 @@ test('selling wages and banking a fee lengthens runway with the same arithmetic 
     },
   });
 
-  // -120,000 + (-8,000 × 52/12) = -154,666.67 → rounded once, at the end.
-  assert.equal(projection.monthlyNetAfter, -154_667);
+  // -120,000 + (8,000 × 52/12) = -85,333.33 → rounded once, at the end.
+  assert.equal(projection.monthlyNetAfter, -85_333);
   assert.equal(projection.balanceAfter, 2_500_000);
   assert.equal(projection.runwayMonthsBefore, 4.2);
-  assert.equal(projection.runwayMonthsAfter, 16.2);
+  assert.equal(projection.runwayMonthsAfter, 29.3);
   assert.equal(projection.statusAfter, 'Healthy');
   assert.match(projection.verdict, /Saving £8,000\/wk of wages/);
   assert.match(projection.verdict, /banking £2\.00M in fees/);
-  assert.match(projection.verdict, /from 4\.2 months to 16\.2 months/);
+  assert.match(projection.verdict, /from 4\.2 months to 29\.3 months/);
 });
 
 test('signing wages and paying a fee shortens runway and flags the wage cap', () => {
@@ -68,11 +68,11 @@ test('signing wages and paying a fee shortens runway and flags the wage cap', ()
     },
   });
 
-  // -50,000 + (3,000 × 52/12) = -37,000.
-  assert.equal(projection.monthlyNetAfter, -37_000);
+  // -50,000 - (3,000 × 52/12) = -63,000.
+  assert.equal(projection.monthlyNetAfter, -63_000);
   assert.equal(projection.balanceAfter, 150_000);
-  assert.equal(projection.runwayMonthsAfter, 4.1);
-  assert.equal(projection.statusAfter, 'Warning');
+  assert.equal(projection.runwayMonthsAfter, 2.4);
+  assert.equal(projection.statusAfter, 'Critical');
   assert.equal(projection.wageHeadroomAfterWeekly, -1_000);
   assert.match(projection.verdict, /£1,000\/wk over the cap/);
 });
@@ -169,9 +169,9 @@ test('the card runway is the "before" side, and a differing basis is explained',
 
   assert.equal(projection.runwayMonthsBefore, 26.7);
   assert.equal(projection.runwayBeforeLabel, 'Healthy · 26.7 months');
-  // -50,000 + (2,000 × 52/12) = -41,333 → 2,000,000 / 41,333 = 48.4
-  assert.equal(projection.runwayMonthsAfter, 48.4);
-  assert.match(projection.verdict, /from Healthy · 26\.7 months to 48\.4 months/);
+  // -50,000 - (2,000 × 52/12) = -58,667 → 2,000,000 / 58,667 = 34.1
+  assert.equal(projection.runwayMonthsAfter, 34.1);
+  assert.match(projection.verdict, /from Healthy · 26\.7 months to 34\.1 months/);
   assert.match(projection.basisNote ?? '', /averages your losing months/);
 });
 
@@ -185,4 +185,18 @@ test('no basis note when the two runway methods agree', () => {
   });
   assert.equal(projection.basisNote, null);
   assert.equal(projection.runwayBeforeLabel, 'Healthy · 20 months');
+});
+
+test('a wage rise must worsen the monthly net and a wage saving must improve it', () => {
+  const rise = projectFinanceScenario({
+    ...baseInput,
+    deltas: { ...EMPTY_FINANCE_SCENARIO, wageDeltaWeekly: 1_000 },
+  });
+  const cut = projectFinanceScenario({
+    ...baseInput,
+    deltas: { ...EMPTY_FINANCE_SCENARIO, wageDeltaWeekly: -1_000 },
+  });
+  assert.ok(rise.monthlyNetAfter! < baseInput.monthlyNet, 'a wage rise costs cash');
+  assert.ok(cut.monthlyNetAfter! > baseInput.monthlyNet, 'a wage saving frees cash');
+  assert.ok(rise.runwayMonthsAfter! < cut.runwayMonthsAfter!, 'signing shortens the runway');
 });
