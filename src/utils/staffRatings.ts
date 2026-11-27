@@ -690,6 +690,21 @@ export const STAFF_CONTRACT_EXPIRY_WINDOW_DAYS = 190;
  * Flags staff contracts expiring within STAFF_CONTRACT_EXPIRY_WINDOW_DAYS of the save date
  * (or in the current save year when only a year can be parsed).
  */
+/**
+ * Days between the save date and a staff contract expiry. Null when the date cannot be
+ * parsed, so a caller can show "unknown" instead of inventing a number. Shares the same
+ * parser and reference date as `isStaffContractExpiringSoon`.
+ */
+export function staffContractDaysRemaining(
+  expires: string | undefined,
+  saveDate?: string
+): number | null {
+  const parsedExp = parseFmDate(expires);
+  if (!parsedExp) return null;
+  const refDate = parseFmDate(saveDate) ?? new Date();
+  return Math.round((parsedExp.getTime() - refDate.getTime()) / (1000 * 60 * 60 * 24));
+}
+
 export function isStaffContractExpiringSoon(
   expires: string | undefined,
   saveDate?: string

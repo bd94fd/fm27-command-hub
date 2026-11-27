@@ -1888,6 +1888,7 @@ export default function App() {
                 cases={recruitmentCases}
                 shortlists={shortlists}
                 players={players}
+                staff={staff}
                 saveDate={saveDate}
                 wageSpend={hydratedFmSave?.wageComplianceLabel || wageSpend}
                 balance={hydratedFmSave?.balanceLabel || balance}
