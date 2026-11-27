@@ -125,7 +125,7 @@ export function buildAnalystSaveContext({
     .map(
       (m) =>
         `- ${m.dateDmy || m.dateIso} [${m.competition}] vs ${m.opponent} (${m.venue}): ${m.result} ${m.score}` +
-        (m.xGFor !== null
+        (typeof m.xGFor === 'number'
           ? ` | xG ${m.xGFor.toFixed(2)} - ${(m.xGAgainst ?? 0).toFixed(2)} | Poss ${m.possession ?? '?'}% | Shots ${m.shotsFor ?? '?'} vs ${m.shotsAgainst ?? '?'} | CCC ${m.cccFor ?? '?'}-${m.cccAgainst ?? '?'}`
           : '')
     )
