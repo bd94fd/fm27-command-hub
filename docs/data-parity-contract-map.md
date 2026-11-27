@@ -18,6 +18,7 @@ flowchart LR
   D --> D3["buildMatchLog()<br/>hydrateMatchLog.ts"]
   D --> D4["buildFinanceSnapshot()<br/>hydrateFinances.ts"]
   D --> D5["hydrateStaff()<br/>hydrateStaff.ts"]
+  D --> D6["buildExecutiveLabels()<br/>hydrateExecutiveLabels.ts"]
   D --> D2["buildAnalystSaveContext()<br/>hydrateAnalystContext.ts"]
   D --> E["PlayerRecord / StaffRecord<br/>MatchLogEntry / HydratedSaveState"]
   E --> F["UI tabs"]
