@@ -79,6 +79,9 @@ row in `docs/data-parity-contract-map.md`.
 | `src/components/player-detail/RolesTab.tsx` | — | 92 (roles and pitch tab) |
 | `src/components/player-detail/EngineTab.tsx` | — | 154 (engine and charts tab) |
 | `src/utils/pitchFamiliarity.ts` | — | 69 (pitch slot map and familiarity score) |
+| `src/components/player-detail/OverviewTab.tsx` | — | 426 (overview tab: KPI strip, verdict, strengths, role fit, DNA) |
+| `src/components/player-detail/ContractTab.tsx` | — | 365 (stats and contract tab: production, clauses, season history) |
+| `src/utils/playerCardExport.ts` | — | 227 (player card PNG model and canvas drawing) |
 | `src/utils/playerDetailFormat.ts` | — | 52 |
 
 ## Still large, and next in line
@@ -86,7 +89,7 @@ row in `docs/data-parity-contract-map.md`.
 | File | Lines | Why it is still one file | Plan |
 | --- | --- | --- | --- |
 | `src/App.tsx` | 1,328 | Chrome, routing, persistence, backup, squad deltas and the `.fm` import pipeline are out; what remains is the shared tab state, the derived summaries and the render tree | Split the render tree by tab, starting with the Hub and Analyst workspace |
-| `src/components/PlayerDetailModal.tsx` | 1,507 | The sheet chrome, the derived model, the Overview and Stats & Contract panels | Split the contract panel into `src/components/player-detail/` |
+| `src/components/PlayerDetailModal.tsx` | 608 | The sheet chrome, the derived model, the tab bar and the shortlist action | Nothing left to split; the five panels and the PNG export are out |
 | `src/utils/fmSaveHydrator.ts` | 1,939 | Decoder output to UI records in one pass | Split by source table (club, squad, staff, fixtures) |
 | `src/services/saveCache.ts` | 1,830 | IndexedDB snapshots plus journey reports | Split snapshot storage from journey reporting |
 
