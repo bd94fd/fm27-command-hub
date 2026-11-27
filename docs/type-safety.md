@@ -23,7 +23,7 @@ garbage. Do not cast the parsed value and hope.
 The chat answer is the one place where a language model writes into the app: it
 can add a match to the Match Log, change a player's role, condition or note, and
 set the save date. Before R39 that answer was typed `any` and read with ad-hoc
-`typeof` checks spread over a 9,000-line component.
+`typeof` checks spread across a component that has since been split (see `docs/component-map.md`).
 
 `parseAnalystChatResponse` now narrows every field and returns a typed
 `AnalystChatResponse`:

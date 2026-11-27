@@ -2,10 +2,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildLiveTacticalAnalystContext,
-  diagnoseTacticalAnalystPayload,
   MAX_LIVE_ANALYST_CONTEXT_CHARS,
-  SERVER_MAX_CONTEXT_CHARS,
 } from './tacticalAnalystContext.ts';
+import {
+  diagnoseTacticalAnalystPayload,
+  SERVER_MAX_CONTEXT_CHARS,
+} from './analystPayload.ts';
 import { solveBestXi, type CustomSlotOverride } from './bestXiSolver.ts';
 import { buildSquadTransferAudit } from './transferAudit.ts';
 import { buildDynamicSetPieceRoutines } from './fmSyncEngine.ts';

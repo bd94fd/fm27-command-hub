@@ -80,6 +80,12 @@
 - Every PR title or body must include `Roadmap: Rxx`. Before suggesting a next step, read `ROADMAP.md` and name the next item by ID.
 - Add new ideas to the right roadmap wave instead of keeping them only in chat.
 
+## Where code goes
+
+- Analyst UI goes in `src/components/analyst/`. The workspace passes props down; a panel does not reach back into it, and a new panel gets its own file.
+- Payload diagnostics and pre-flight validation live in `src/utils/analystPayload.ts`, which imports from `tacticalAnalystContext.ts` and never the reverse. Do not re-export across the two, or the cycle comes back.
+- `docs/component-map.md` says which file owns what, and which big files are still unsplit. Read it before adding to a large component.
+
 ## Verification on this machine
 
 - Browser gates read `dist/` from a production server on port 12000. Both harnesses now disable the HTTP cache; before that, a cached bundle could pass for a build that no longer existed.

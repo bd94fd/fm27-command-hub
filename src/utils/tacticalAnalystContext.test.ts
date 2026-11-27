@@ -758,7 +758,7 @@ test('diagnoseTacticalAnalystPayload & logTacticalAnalystPayloadDiagnostics veri
     SERVER_MAX_CONTEXT_CHARS,
     diagnoseTacticalAnalystPayload,
     logTacticalAnalystPayloadDiagnostics,
-  } = await import('./tacticalAnalystContext.ts');
+  } = await import('./analystPayload.ts');
 
   assert.equal(
     SERVER_MAX_CONTEXT_CHARS,
@@ -923,7 +923,7 @@ test('validatePreFlightAnalystPayload flags missing or null required fields and 
   const {
     validatePreFlightAnalystPayload,
     runPreFlightAnalystValidation,
-  } = await import('./tacticalAnalystContext.ts');
+  } = await import('./analystPayload.ts');
 
   // 1. Direct payload with all 4 required fields present passes cleanly
   const okResult = validatePreFlightAnalystPayload({

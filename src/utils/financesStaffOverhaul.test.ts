@@ -56,7 +56,9 @@ test('Staff tab keeps Preferred Job Affinity inside the detail modal only', () =
 });
 
 test('Hub Finances panel is driven by clubFinances and staffRatings selectors', () => {
-  const src = readSrc('src/components/AutoSyncWorkspace.tsx');
+  const src =
+    readSrc('src/components/AutoSyncWorkspace.tsx') +
+    readSrc('src/components/analyst/HubFinancesPanel.tsx');
 
   assert.match(src, /buildFinancesPanelFromSave/);
   for (const label of [
@@ -147,7 +149,9 @@ test('Staff and Finances functional labels stay at 11px or above', () => {
   assert.match(staff, /text-micro font-bold uppercase tracking-wider text-slate-400 leading-tight/);
   assert.match(staff, /grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2/);
 
-  const hub = readSrc('src/components/AutoSyncWorkspace.tsx');
+  const hub =
+    readSrc('src/components/AutoSyncWorkspace.tsx') +
+    readSrc('src/components/analyst/HubFinancesPanel.tsx');
   assert.match(
     hub,
     /text-micro font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 leading-tight/

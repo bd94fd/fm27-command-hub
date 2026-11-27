@@ -56,7 +56,7 @@ test('the empty-state hint is not the muted grey that failed the contrast check'
 });
 
 test('icon-only send button keeps an accessible name on mobile', () => {
-  const src = read('src/components/AutoSyncWorkspace.tsx');
+  const src = read('src/components/analyst/AnalystComposer.tsx');
   const submit = src.slice(src.indexOf('type="submit"'), src.indexOf('type="submit"') + 400);
   assert.match(submit, /aria-label="Send message"/, 'the label is hidden below 640px');
 });
