@@ -25,30 +25,20 @@ import { useSheetHistory } from './hooks/useHistoryNavigation';
 import { useAppNavigation, type ActiveTab } from './hooks/useAppNavigation';
 import { useSavePersistence } from './hooks/useSavePersistence';
 import { useShareSummary } from './hooks/useShareSummary';
+import { useFmSaveImport } from './hooks/useFmSaveImport';
 import { useBackupTransfer } from './hooks/useBackupTransfer';
 import { useSquadDeltaUpdates } from './hooks/useSquadDeltaUpdates';
-import { selectHydratedHeaderLabels } from './utils/hydratedLabels';
-import { selectJourneyPair } from './utils/saveJourneyTimeline';
 import { clearAllChatHistory } from './services/chatStorage';
 import { PwaStatusBanners } from './components/PwaStatusBanners';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { computeCompetitiveSummary } from './utils/competitiveSummary';
 import { formatNation } from './utils/displayValue';
-import {
-  finishSaveLoadBenchmark,
-  markSaveLoadStage,
-} from './utils/saveLoadBenchmark';
-import type {
-  DecodedFmSavePayload,
-  HydratedSaveState,
-} from './utils/fmSaveHydrator';
+import type { HydratedSaveState } from './utils/fmSaveHydrator';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
 import { SharedReportView } from './components/SharedReportView';
 import { TabWorkspaceSkeleton } from './components/WorkspaceSkeletons';
 import {
   clearPersistedFmState,
-  recordPreviousSnapshot,
-
   isScoutTargetTracked,
   toggleTrackedScoutTarget,
   loadTrackedScoutTargets,
@@ -63,7 +53,6 @@ import type {
   RecruitmentTarget,
 } from './types/fmSave';
 import type { DeepJourneyReport } from './services/saveCache';
-import type { CompactBinaryDiffSnapshot } from './utils/fm27BinaryDictionary';
 import type { CalibrationLabTab } from './components/Fm27BinaryCalibrationLab';
 import type { BackgroundSyncStatus } from './components/shell/backgroundSync';
 import { AppHeader } from './components/shell/AppHeader';
@@ -298,20 +287,31 @@ export default function App() {
   const [showMobileDetails, setShowMobileDetails] = useState<boolean>(false);
   const backupFileInputRef = useRef<HTMLInputElement | null>(null);
   const quickFmFileInputRef = useRef<HTMLInputElement | null>(null);
-  const preSyncBaselineRef = useRef<{
-    saveDate: string;
-    clubName: string;
-    players: PlayerRecord[];
-    matches: MatchLogEntry[];
-  } | null>(null);
-  const latestJourneyPromiseRef = useRef<Promise<DeepJourneyReport | null> | null>(
-    null
-  );
   const resetConfirmTimeoutRef = useRef<number | null>(null);
 
   const showGlobalToast = useCallback((msg: string) => {
     emitFeedback({ text: msg, tone: 'success' });
   }, []);
+
+  const { applyDecodedSave, preSyncBaselineRef, latestJourneyPromiseRef } = useFmSaveImport({
+    players,
+    matches,
+    saveDate,
+    hydratedFmSave,
+    setPlayers,
+    setStaff,
+    setMatches,
+    setSaveDate,
+    setNextFixture,
+    setLeagueStandingSub,
+    setWageSpend,
+    setBalance,
+    setHydratedFmSave,
+    setSnapshotResetNonce,
+    setLatestJourneyReport,
+    setBackgroundSyncStatus,
+    showGlobalToast,
+  });
 
   // Everything that reports progress posts to the feedback bus, so a toast can be
   // raised from a deep component without threading a callback through every layer.
@@ -637,191 +637,7 @@ export default function App() {
     quickFmFileInputRef.current?.click();
   }, [backgroundSyncStatus]);
 
-  const handleApplyDecodedFmSave = async (
-    decoded: DecodedFmSavePayload,
-    options?: { isInterimCheckpoint?: boolean; benchmarkId?: string }
-  ): Promise<HydratedSaveState> => {
-    const isInterim = Boolean(options?.isInterimCheckpoint);
-
-    if (isInterim && !preSyncBaselineRef.current) {
-      preSyncBaselineRef.current = {
-        saveDate,
-        clubName: hydratedFmSave?.decodedPayload?.meta?.clubName || 'Managed Club',
-        players,
-        matches,
-      };
-    }
-
-    const baseline = preSyncBaselineRef.current ?? {
-      saveDate,
-      clubName: hydratedFmSave?.decodedPayload?.meta?.clubName || 'Managed Club',
-      players,
-      matches,
-    };
-
-    const [
-      { hydrateAppFromDecodedFmSave },
-      { captureProgressionSnapshot },
-      saveCacheMod,
-    ] = await Promise.all([
-      import('./utils/fmSaveHydrator'),
-      import('./utils/progressionDiff'),
-      isInterim ? Promise.resolve(null) : import('./services/saveCache'),
-    ]);
-
-    if (!isInterim) {
-      preSyncBaselineRef.current = null;
-      recordPreviousSnapshot(baseline.saveDate, baseline.players, baseline.matches);
-      if (baseline.players.length > 0 && baseline.saveDate && baseline.saveDate !== '--') {
-        captureProgressionSnapshot(
-          baseline.saveDate,
-          baseline.clubName,
-          baseline.players
-        );
-      }
-    }
-
-    const hydrated = hydrateAppFromDecodedFmSave(
-      decoded,
-      baseline.players,
-      baseline.matches
-    );
-    if (options?.benchmarkId && !isInterim) {
-      markSaveLoadStage(options.benchmarkId, 'hydrate_complete');
-    }
-
-    if (!isInterim && saveCacheMod) {
-      const {
-        createSaveHistoryPoint,
-        putSaveHistoryPoint,
-        listSaveHistoryPoints,
-        buildDeepJourneyReport,
-      } = saveCacheMod;
-      captureProgressionSnapshot(
-        hydrated.saveDateLabel,
-        decoded.meta.clubName || 'Managed Club',
-        hydrated.updatedSquad
-      );
-      const parsedPos = Number(
-        (hydrated.leagueStandingLabel || '').match(/^#?(\d+)/)?.[1] ?? ''
-      );
-      const standing = decoded.leagueStanding;
-      const promisesAtRisk =
-        hydrated.governance?.playerPromiseAudits.filter(
-          (p) => p.status === 'breached' || p.status === 'at_risk'
-        ).length ?? null;
-      const binaryDiffSnapshot: CompactBinaryDiffSnapshot | null =
-        decoded.tactics?.length || decoded.binaryForensics
-          ? {
-              label: `${hydrated.saveDateLabel} · ${decoded.meta.fileName || decoded.meta.clubName || 'FM27 Save'}`,
-              inGameDate: hydrated.saveDateLabel,
-              fmBuild: decoded.binaryForensics?.fmBuild || decoded.meta.build || undefined,
-              tactics: decoded.tactics || [],
-              binaryForensics: decoded.binaryForensics ?? null,
-            }
-          : null;
-      const snapshotPoint = createSaveHistoryPoint({
-        saveName: decoded.meta.fileName || decoded.meta.saveName || 'fm27-save',
-        inGameDate: hydrated.saveDateLabel,
-        clubName: decoded.meta.clubName || 'Managed Club',
-        players: hydrated.updatedSquad,
-        matches: hydrated.updatedMatches,
-        balance: hydrated.balanceLabel || undefined,
-        balanceNum: hydrated.canonicalBalanceNum ?? decoded.finances?.balance ?? null,
-        monthlyBurnRate: hydrated.financialRunway?.monthlyBurnRate ?? null,
-        wagePayrollWeekly: decoded.finances?.wagePayrollWeekly ?? null,
-        wageBudgetWeekly: decoded.finances?.wageBudgetWeekly ?? null,
-        leaguePosition:
-          standing?.position ?? (Number.isFinite(parsedPos) && parsedPos > 0 ? parsedPos : null),
-        played: standing?.played ?? null,
-        won: standing?.won ?? null,
-        drawn: standing?.drawn ?? null,
-        lost: standing?.lost ?? null,
-        points: standing?.points ?? null,
-        goalsFor: standing?.goalsFor ?? null,
-        goalsAgainst: standing?.goalsAgainst ?? null,
-        tacticName: hydrated.lastMatchTactic?.tacticName ?? null,
-        tacticFormation: hydrated.lastMatchTactic?.inPossessionFormation ?? null,
-        tacticMentality: hydrated.lastMatchTactic?.mentality ?? null,
-        activeInjuriesCount: decoded.activeInjuries?.length ?? 0,
-        activeSuspensionsCount: hydrated.activeSuspensions?.length ?? 0,
-        promisesAtRiskCount: promisesAtRisk,
-        managerExpires: hydrated.governance?.managerContract.expires ?? null,
-        boardGrade: hydrated.governance?.boardConfidence.grade ?? null,
-        supporterGrade: hydrated.governance?.supporterConfidence.grade ?? null,
-        binaryDiffSnapshot,
-      });
-      latestJourneyPromiseRef.current = putSaveHistoryPoint(snapshotPoint)
-        .then(async () => {
-          const items = await listSaveHistoryPoints();
-          setSnapshotResetNonce((n) => n + 1);
-          const pair = selectJourneyPair(items, snapshotPoint.clubName);
-          if (pair) {
-            const report = buildDeepJourneyReport(
-              pair.previous,
-              pair.latest,
-              pair.sameClub,
-              hydrated.updatedMatches
-            );
-            setLatestJourneyReport(report);
-            return report;
-          }
-          setLatestJourneyReport(null);
-          return null;
-        })
-        .catch((err) => {
-          console.warn('Failed to persist FM27 save history point:', err);
-          emitFeedback({
-            text: 'Save history could not be stored on this device (storage may be full) — live analytics are unaffected',
-            tone: 'error',
-          });
-          return null;
-        });
-    }
-
-    setHydratedFmSave(hydrated);
-    setPlayers(hydrated.updatedSquad);
-    setStaff(hydrated.updatedStaff || []);
-    if (!isInterim || hydrated.updatedMatches.length > 0) {
-      setMatches(hydrated.updatedMatches);
-    }
-    const labels = selectHydratedHeaderLabels(hydrated, isInterim);
-    setSaveDate(labels.saveDate);
-    if (labels.nextFixture !== undefined) setNextFixture(labels.nextFixture);
-    if (labels.leagueStanding !== undefined) setLeagueStandingSub(labels.leagueStanding);
-    if (labels.wageSpend !== undefined) setWageSpend(labels.wageSpend);
-    if (labels.balance !== undefined) setBalance(labels.balance);
-
-    if (options?.benchmarkId) {
-      const benchmarkId = options.benchmarkId;
-      if (typeof window !== 'undefined') {
-        window.requestAnimationFrame(() => {
-          if (isInterim) {
-            markSaveLoadStage(benchmarkId, 'first_useful_screen');
-            return;
-          }
-          markSaveLoadStage(benchmarkId, 'state_applied');
-          window.requestAnimationFrame(() => {
-            window.requestAnimationFrame(() => {
-              finishSaveLoadBenchmark(benchmarkId);
-            });
-          });
-        });
-      }
-    }
-
-    if (isInterim) {
-      showGlobalToast(
-        `${decoded.meta.clubName || 'Club'} squad, staff & tactics ready — finishing fixtures & stats in background…`
-      );
-    } else {
-      setBackgroundSyncStatus(null);
-      showGlobalToast(
-        `Synced ${decoded.meta.clubName || 'Club'} (${hydrated.updatedSquad.length} players · ${hydrated.saveDateLabel})`
-      );
-    }
-    return hydrated;
-  };
+  const handleApplyDecodedFmSave = applyDecodedSave;
 
   const { bulkMergePlayers, applyPlayerUpdates } = useSquadDeltaUpdates({
     players,
