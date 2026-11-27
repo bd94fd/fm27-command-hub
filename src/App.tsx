@@ -20,22 +20,12 @@ import {
   parsePwaLaunchParams,
   usePwaLifecycle,
 } from './hooks/usePwaLifecycle';
-import {
-  defaultPanelForTab,
-  parseNavigationParams,
-  type HubPanel,
-  type TacticsPanel,
-} from './utils/navigationUrl';
-import { sectionHref, sectionLabel } from './utils/sectionLabels';
-import {
-  browserViewStorage,
-  readRecentViews,
-  recordRecentView,
-  writeRecentViews,
-  type RecentView,
-} from './utils/viewPreferences';
 import { useMobileKeyboard } from './hooks/useMobileKeyboard';
-import { useSectionHistory, useSheetHistory } from './hooks/useHistoryNavigation';
+import { useSheetHistory } from './hooks/useHistoryNavigation';
+import { useAppNavigation, type ActiveTab } from './hooks/useAppNavigation';
+import { useSavePersistence } from './hooks/useSavePersistence';
+import { useShareSummary } from './hooks/useShareSummary';
+import { selectJourneyPair } from './utils/saveJourneyTimeline';
 import { clearAllChatHistory } from './services/chatStorage';
 import { PwaStatusBanners } from './components/PwaStatusBanners';
 import { MobileBottomNav } from './components/MobileBottomNav';
@@ -58,9 +48,6 @@ import { AppErrorBoundary } from './components/AppErrorBoundary';
 import { SharedReportView } from './components/SharedReportView';
 import { TabWorkspaceSkeleton } from './components/WorkspaceSkeletons';
 import {
-  loadPersistedFmState,
-  loadPersistedFmStateFromIndexedDb,
-  savePersistedFmState,
   clearPersistedFmState,
   recordPreviousSnapshot,
   exportFmStateBackupJson,
@@ -72,19 +59,14 @@ import {
   PersistedCustomSlot,
   FmHubPersistedState,
 } from './services/fmStorage';
-import { isIndexedDbSnapshotNewer, hasPersistedContent } from './utils/persistedStateRecency';
 import { buildFinancesPanelFromSave } from './utils/clubFinances';
-import { decodeShareSummary } from './utils/shareSummary';
 import type { FormationPresetKey } from './utils/bestXiSolver';
 import type {
   ClubGovernanceState,
   LastMatchTacticBlueprint,
   RecruitmentTarget,
 } from './types/fmSave';
-import type {
-  DeepJourneyReport,
-  SaveHistoryPoint,
-} from './services/saveCache';
+import type { DeepJourneyReport } from './services/saveCache';
 import type { CompactBinaryDiffSnapshot } from './utils/fm27BinaryDictionary';
 import type { CalibrationLabTab } from './components/Fm27BinaryCalibrationLab';
 import type { BackgroundSyncStatus } from './components/shell/backgroundSync';
@@ -159,31 +141,30 @@ const Fm27BinaryCalibrationLab = lazy(() =>
   }))
 );
 
-type ActiveTab =
-  | 'sync'
-  | 'tactics'
-  | 'squad'
-  | 'recruitment'
-  | 'staff'
-  | 'setpieces'
-  | 'matches';
-
 const DEFAULT_ACTIVE_SHAPE: FormationPresetKey = '4-3-3 DM Wide';
 
 export default function App() {
-  const initialNav =
-    typeof window === 'undefined'
-      ? { tab: null, panel: null }
-      : parseNavigationParams(window.location.search);
-
-  const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
-    if (initialNav.tab) return initialNav.tab;
-    if (typeof window === 'undefined') return 'sync';
-    return (parsePwaLaunchParams(window.location.search).initialTab as ActiveTab | null) ?? 'sync';
-  });
-  const [hubPanel, setHubPanel] = useState<HubPanel>(
-    () => (initialNav.panel as HubPanel | null) ?? 'analyst'
+  const nav = useAppNavigation(
+    () =>
+      showMoreSheet ||
+      showCommandPalette ||
+      showKnowledgeBase ||
+      calibrationLabOpen ||
+      Boolean(selectedPlayer) ||
+      Boolean(selectedStaff)
   );
+  const {
+    activeTab,
+    hubPanel,
+    tacticsSubTab,
+    recentViews,
+    setActiveTab,
+    selectTab,
+    changeHubPanel,
+    changeTacticsSubTab,
+    openRecentView,
+    scrollToTop,
+  } = nav;
   const [matches, setMatches] = useState<MatchLogEntry[]>(
     COMPETITIVE_MATCH_LOGS
   );
@@ -222,15 +203,7 @@ export default function App() {
   const [selectedStaff, setSelectedStaff] = useState<StaffRecord | null>(null);
   const [showKnowledgeBase, setShowKnowledgeBase] = useState<boolean>(false);
   const [showShareModal, setShowShareModal] = useState<boolean>(false);
-  const [shareToken] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const token = new URLSearchParams(window.location.search).get('share');
-    return token && token.trim() ? token.trim() : null;
-  });
-  const sharedSummary = useMemo(
-    () => (shareToken ? decodeShareSummary(shareToken) : null),
-    [shareToken]
-  );
+  const { shareToken, sharedSummary, openOwnHub: handleOpenOwnHub } = useShareSummary();
 
   const shareFinancesPanel = useMemo(
     () =>
@@ -244,13 +217,6 @@ export default function App() {
     [hydratedFmSave, players, staff, balance, wageSpend]
   );
 
-  const handleOpenOwnHub = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    const url = new URL(window.location.href);
-    url.searchParams.delete('share');
-    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
-    window.location.reload();
-  }, []);
   const [showCommandPalette, setShowCommandPalette] = useState<boolean>(false);
   const [showMoreSheet, setShowMoreSheet] = useState<boolean>(false);
   const [calibrationLabOpen, setCalibrationLabOpen] = useState<boolean>(false);
@@ -346,9 +312,6 @@ export default function App() {
     null
   );
   const resetConfirmTimeoutRef = useRef<number | null>(null);
-  const idbRestoreCancelledRef = useRef<boolean>(false);
-  const isResettingRef = useRef<boolean>(false);
-  const skipNextAutosaveRef = useRef<boolean>(true);
 
   const showGlobalToast = useCallback((msg: string) => {
     emitFeedback({ text: msg, tone: 'success' });
@@ -375,16 +338,6 @@ export default function App() {
     }
   }, [pwa.launchedFmFile]);
 
-  useEffect(
-    () => () => {
-      if (resetConfirmTimeoutRef.current !== null) {
-        window.clearTimeout(resetConfirmTimeoutRef.current);
-        resetConfirmTimeoutRef.current = null;
-      }
-      idbRestoreCancelledRef.current = true;
-    },
-    []
-  );
 
   useEffect(() => {
     const onGlobalKeyDown = (e: KeyboardEvent) => {
@@ -397,115 +350,17 @@ export default function App() {
     return () => window.removeEventListener('keydown', onGlobalKeyDown);
   }, []);
 
-  const [tacticsSubTab, setTacticsSubTab] = useState<TacticsPanel>(
-    () => (initialNav.panel as TacticsPanel | null) ?? 'pitch'
-  );
+  const handleScrollToTop = scrollToTop;
+  const handleOpenRecentView = openRecentView;
+  const handleHubPanelChange = changeHubPanel;
+  const handleTacticsSubTabChange = changeTacticsSubTab;
 
-  const handleScrollToTop = useCallback(() => {
-    if (typeof window !== 'undefined') {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  }, []);
-
-  const navSection = {
-    tab: activeTab as string,
-    panel:
-      activeTab === 'sync'
-        ? hubPanel
-        : activeTab === 'tactics'
-          ? tacticsSubTab
-          : defaultPanelForTab(activeTab),
-  };
-
-  const [recentViews, setRecentViews] = useState<RecentView[]>(() =>
-    readRecentViews(browserViewStorage())
-  );
-
-  useEffect(() => {
-    const href = sectionHref(navSection.tab, navSection.panel);
-    setRecentViews((prev) => {
-      if (prev[0]?.href === href) return prev;
-      const next = recordRecentView(prev, {
-        href,
-        label: sectionLabel(navSection.tab, navSection.panel),
-      });
-      writeRecentViews(browserViewStorage(), next);
-      return next;
-    });
-  }, [navSection.tab, navSection.panel]);
-
-  const { pushSection: pushNavSection, replaceSection: replaceNavSection } =
-    useSectionHistory(navSection, (next) => {
-      const tab = next.tab as ActiveTab;
-      setActiveTab(tab);
-      if (tab === 'sync' && next.panel) setHubPanel(next.panel as HubPanel);
-      if (tab === 'tactics' && next.panel) setTacticsSubTab(next.panel as TacticsPanel);
-      handleScrollToTop();
-    });
-
-  const handleOpenRecentView = useCallback(
-    (href: string) => {
-      const { tab, panel } = parseNavigationParams(href);
-      if (!tab) return;
-      setActiveTab(tab);
-      if (tab === 'sync' && panel) setHubPanel(panel as HubPanel);
-      if (tab === 'tactics' && panel) setTacticsSubTab(panel as TacticsPanel);
-      pushNavSection({ tab, panel: panel ?? defaultPanelForTab(tab) });
-      handleScrollToTop();
-    },
-    [pushNavSection, handleScrollToTop]
-  );
-
+  // Choosing a tab from the strip closes the More sheet first, so the sheet never
+  // stays open over a section the user has already left.
   const handleSelectTab = (tab: ActiveTab) => {
-    const nextTab: ActiveTab = tab === 'setpieces' ? 'tactics' : tab;
-    const nextPanel =
-      tab === 'setpieces'
-        ? 'setpieces'
-        : nextTab === 'tactics'
-          ? 'pitch'
-          : nextTab === 'sync'
-            ? hubPanel
-            : defaultPanelForTab(nextTab);
-    const hadOpenOverlay =
-      showMoreSheet ||
-      showCommandPalette ||
-      showKnowledgeBase ||
-      calibrationLabOpen ||
-      Boolean(selectedPlayer) ||
-      Boolean(selectedStaff);
     setShowMoreSheet(false);
-    if (tab === 'setpieces') {
-      setTacticsSubTab('setpieces');
-    } else if (tab === 'tactics') {
-      setTacticsSubTab('pitch');
-    }
-    // A tab chosen while an overlay is open replaces that overlay's history entry
-    // instead of stacking a stale entry behind the new tab.
-    const nextSection = { tab: nextTab as string, panel: nextPanel };
-    if (hadOpenOverlay) {
-      replaceNavSection(nextSection);
-    } else {
-      pushNavSection(nextSection);
-    }
-    setActiveTab(nextTab);
-    handleScrollToTop();
+    selectTab(tab);
   };
-
-  const handleHubPanelChange = useCallback(
-    (panel: HubPanel) => {
-      setHubPanel(panel);
-      pushNavSection({ tab: 'sync', panel });
-    },
-    [pushNavSection]
-  );
-
-  const handleTacticsSubTabChange = useCallback(
-    (panel: TacticsPanel) => {
-      setTacticsSubTab(panel);
-      pushNavSection({ tab: 'tactics', panel });
-    },
-    [pushNavSection]
-  );
 
   // These three overlays do not use MobileSheetFrame, so App owns their Back entries.
   useSheetHistory(showMoreSheet, () => setShowMoreSheet(false));
@@ -593,165 +448,48 @@ export default function App() {
     setIsRestoredFromMemory(true);
   }, []);
 
-  // Restore saved state from previous session on initial mount
-  useEffect(() => {
-    const saved = loadPersistedFmState();
-    if (saved && hasPersistedContent(saved)) {
-      applyPersistedSnapshot(saved);
-    }
+  const snapshotToPersist = useMemo(
+    () => ({
+      saveDate,
+      nextFixture,
+      leagueStandingSub,
+      wageSpend,
+      balance,
+      clubName: hydratedFmSave?.decodedPayload?.meta?.clubName,
+      players,
+      matches,
+      staff,
+      recruitmentCases,
+      shortlists,
+      hydratedFmSave,
+      activeShape,
+      customSlots,
+      applyToAnalystOnly,
+    }),
+    [
+      saveDate,
+      nextFixture,
+      leagueStandingSub,
+      wageSpend,
+      balance,
+      hydratedFmSave,
+      players,
+      matches,
+      staff,
+      recruitmentCases,
+      shortlists,
+      activeShape,
+      customSlots,
+      applyToAnalystOnly,
+    ]
+  );
 
-    void loadPersistedFmStateFromIndexedDb()
-      .then((idbSaved) => {
-        // A reset may have landed while the IndexedDB read was in flight
-        if (idbRestoreCancelledRef.current) return saved;
-        if (!hasPersistedContent(idbSaved)) return saved;
-        // Only a strictly newer IndexedDB cache may replace the localStorage session
-        if (!isIndexedDbSnapshotNewer(idbSaved, saved)) return saved;
-        applyPersistedSnapshot(idbSaved);
-        return idbSaved;
-      })
-      .then((activeSnapshot) => {
-        // Only unlock auto-save after IndexedDB recency resolution completes so
-        // an older localStorage restore can never overwrite a newer IndexedDB snapshot.
-        skipNextAutosaveRef.current = false;
-        if (idbRestoreCancelledRef.current) return;
-        // Hydrate Save-to-Save Journey Report asynchronously off the cold-start bundle
-        void import('./services/saveCache').then(
-          ({ listSaveHistoryPoints, buildDeepJourneyReport }) =>
-            listSaveHistoryPoints().then((items: SaveHistoryPoint[]) => {
-              if (idbRestoreCancelledRef.current || items.length < 2) return;
-              const latestClub = (items[0].clubName || '').trim().toLowerCase();
-              const sameClub = latestClub
-                ? items.filter(
-                    (i) => (i.clubName || '').trim().toLowerCase() === latestClub
-                  )
-                : items;
-              if (sameClub.length < 2) return;
-              const parseSaveDateMs = (raw: string | undefined): number => {
-                if (!raw) return 0;
-                const dmy = raw.trim().match(/^(\d{1,2})\/(\d{1,2})\/(20\d{2})$/);
-                if (dmy) {
-                  return Date.UTC(
-                    Number(dmy[3]),
-                    Number(dmy[2]) - 1,
-                    Number(dmy[1])
-                  );
-                }
-                const parsed = Date.parse(raw);
-                return Number.isNaN(parsed) ? 0 : parsed;
-              };
-              const chronological = [...sameClub].sort((a, b) => {
-                const da = parseSaveDateMs(a.inGameDate);
-                const db = parseSaveDateMs(b.inGameDate);
-                if (da !== db) return db - da;
-                return b.capturedAt.localeCompare(a.capturedAt);
-              });
-              const report = buildDeepJourneyReport(
-                chronological[1],
-                chronological[0],
-                sameClub,
-                activeSnapshot?.matches ?? []
-              );
-              if (report) {
-                setLatestJourneyReport(report);
-              }
-            })
-        );
-      })
-      .catch(() => {
-        skipNextAutosaveRef.current = false;
-      });
-  }, [applyPersistedSnapshot]);
-
-  // Automatically persist non-empty state across browser refreshes & sessions.
-  // Debounces rapid bursts (180ms) to avoid back-to-back main-thread JSON.stringify
-  // stalls on Android Chrome, while flushing immediately on pagehide/visibilitychange.
-  useEffect(() => {
-    // Wait until initial mount restore (incl. IndexedDB recency check) has settled
-    // so an older localStorage snapshot never clobbers a newer IndexedDB cache.
-    if (skipNextAutosaveRef.current) {
-      return;
-    }
-    if (isResettingRef.current) return;
-    if (
-      players.length > 0 ||
-      matches.length > 0 ||
-      staff.length > 0 ||
-      recruitmentCases.length > 0 ||
-      shortlists.length > 0
-    ) {
-      let cancelled = false;
-      let flushed = false;
-      const snapshotToPersist = {
-        saveDate,
-        nextFixture,
-        leagueStandingSub,
-        wageSpend,
-        balance,
-        clubName: hydratedFmSave?.decodedPayload?.meta?.clubName,
-        players,
-        matches,
-        staff,
-        recruitmentCases,
-        shortlists,
-        hydratedFmSave,
-        activeShape,
-        customSlots,
-        applyToAnalystOnly,
-      };
-
-      const flushSave = () => {
-        if (cancelled || flushed || isResettingRef.current) return;
-        flushed = true;
-        void savePersistedFmState(snapshotToPersist)
-          .then((saved) => {
-            if (!cancelled && saved) {
-              setIsRestoredFromMemory(true);
-            }
-          })
-          .catch((err) => {
-            console.warn('Failed to auto-save FM27 state:', err);
-          });
-      };
-
-      const timer = window.setTimeout(flushSave, 180);
-      const handleVisibilityFlush = () => {
-        if (document.visibilityState === 'hidden') {
-          window.clearTimeout(timer);
-          flushSave();
-        }
-      };
-      const handlePageHide = () => {
-        window.clearTimeout(timer);
-        flushSave();
-      };
-
-      window.addEventListener('pagehide', handlePageHide);
-      document.addEventListener('visibilitychange', handleVisibilityFlush);
-
-      return () => {
-        cancelled = true;
-        window.clearTimeout(timer);
-        window.removeEventListener('pagehide', handlePageHide);
-        document.removeEventListener('visibilitychange', handleVisibilityFlush);
-      };
-    }
-  }, [
-    players,
-    matches,
-    staff,
-    recruitmentCases,
-    shortlists,
-    saveDate,
-    nextFixture,
-    leagueStandingSub,
-    wageSpend,
-    balance,
-    hydratedFmSave,
-    activeShape,
-    customSlots,
-    applyToAnalystOnly,
-  ]);
+  const persistence = useSavePersistence({
+    snapshot: snapshotToPersist,
+    onRestore: applyPersistedSnapshot,
+    onJourneyReport: setLatestJourneyReport,
+    onPersisted: () => setIsRestoredFromMemory(true),
+  });
 
   const summary = useMemo(
     () => computeCompetitiveSummary(matches, saveDate),
@@ -789,10 +527,10 @@ export default function App() {
       window.clearTimeout(resetConfirmTimeoutRef.current);
       resetConfirmTimeoutRef.current = null;
     }
-    // Block the auto-save effect while the reset is being applied
-    isResettingRef.current = true;
-    // Cancel any in-flight IndexedDB restore so it cannot resurrect cleared state
-    idbRestoreCancelledRef.current = true;
+    // Block auto-save while the reset is applied, and stop an in-flight IndexedDB
+    // restore from writing cleared state back.
+    persistence.pauseAutosave();
+    persistence.cancelPendingRestore();
     await clearPersistedFmState();
     const [{ clearProgressionArchive }, { clearAllSaveCache }] =
       await Promise.all([
@@ -827,7 +565,7 @@ export default function App() {
     setSnapshotResetNonce((n) => n + 1);
     showGlobalToast('All saved state, cached saves & snapshots cleared — ready to test fresh');
     window.setTimeout(() => {
-      isResettingRef.current = false;
+      persistence.resumeAutosave();
     }, 0);
   };
 
@@ -1087,32 +825,12 @@ export default function App() {
         .then(async () => {
           const items = await listSaveHistoryPoints();
           setSnapshotResetNonce((n) => n + 1);
-          const targetClub = (snapshotPoint.clubName || '').trim().toLowerCase();
-          const sameClub = targetClub
-            ? items.filter(
-                (i) => (i.clubName || '').trim().toLowerCase() === targetClub
-              )
-            : items;
-          if (sameClub.length >= 2) {
-            const parseSaveDateMs = (raw: string | undefined): number => {
-              if (!raw) return 0;
-              const dmy = raw.trim().match(/^(\d{1,2})\/(\d{1,2})\/(20\d{2})$/);
-              if (dmy) {
-                return Date.UTC(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
-              }
-              const parsed = Date.parse(raw);
-              return Number.isNaN(parsed) ? 0 : parsed;
-            };
-            const chronological = [...sameClub].sort((a, b) => {
-              const da = parseSaveDateMs(a.inGameDate);
-              const db = parseSaveDateMs(b.inGameDate);
-              if (da !== db) return db - da;
-              return b.capturedAt.localeCompare(a.capturedAt);
-            });
+          const pair = selectJourneyPair(items, snapshotPoint.clubName);
+          if (pair) {
             const report = buildDeepJourneyReport(
-              chronological[1],
-              chronological[0],
-              sameClub,
+              pair.previous,
+              pair.latest,
+              pair.sameClub,
               hydrated.updatedMatches
             );
             setLatestJourneyReport(report);
