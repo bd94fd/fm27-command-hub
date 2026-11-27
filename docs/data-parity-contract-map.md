@@ -15,6 +15,7 @@ flowchart LR
   C --> D["hydrateAppFromDecodedFmSave()<br/>fmSaveHydrator.ts"]
   D --> D1["buildAvailabilityIndex()<br/>hydrateAvailability.ts"]
   D --> D0["mergeSquadWithSave()<br/>hydratePlayerMerge.ts"]
+  D --> D3["buildMatchLog()<br/>hydrateMatchLog.ts"]
   D --> D2["buildAnalystSaveContext()<br/>hydrateAnalystContext.ts"]
   D --> E["PlayerRecord / StaffRecord<br/>MatchLogEntry / HydratedSaveState"]
   E --> F["UI tabs"]
