@@ -13,6 +13,7 @@ import {
   Download,
   RefreshCw,
   Search,
+  Share2,
   Trash2,
   Upload,
 } from 'lucide-react';
@@ -67,6 +68,7 @@ import type {
 } from './utils/fmSaveHydrator';
 import type { PlayerAutoUpdate } from './components/AutoSyncWorkspace';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
+import { SharedReportView } from './components/SharedReportView';
 import { TabWorkspaceSkeleton } from './components/WorkspaceSkeletons';
 import {
   loadPersistedFmState,
@@ -84,6 +86,8 @@ import {
   FmHubPersistedState,
 } from './services/fmStorage';
 import { isIndexedDbSnapshotNewer, hasPersistedContent } from './utils/persistedStateRecency';
+import { buildFinancesPanelFromSave } from './utils/clubFinances';
+import { decodeShareSummary } from './utils/shareSummary';
 import type { FormationPresetKey } from './utils/bestXiSolver';
 import type {
   ClubGovernanceState,
@@ -117,6 +121,12 @@ const MobileMoreSheet = lazy(() =>
     default: m.MobileMoreSheet,
   }))
 );
+const ShareReportModal = lazy(() =>
+  import('./components/ShareReportModal').then((m) => ({
+    default: m.ShareReportModal,
+  }))
+);
+
 const TacticalWarRoom = lazy(() =>
   import('./components/TacticalWarRoom').then((m) => ({
     default: m.TacticalWarRoom,
@@ -230,6 +240,36 @@ export default function App() {
   );
   const [selectedStaff, setSelectedStaff] = useState<StaffRecord | null>(null);
   const [showKnowledgeBase, setShowKnowledgeBase] = useState<boolean>(false);
+  const [showShareModal, setShowShareModal] = useState<boolean>(false);
+  const [shareToken] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const token = new URLSearchParams(window.location.search).get('share');
+    return token && token.trim() ? token.trim() : null;
+  });
+  const sharedSummary = useMemo(
+    () => (shareToken ? decodeShareSummary(shareToken) : null),
+    [shareToken]
+  );
+
+  const shareFinancesPanel = useMemo(
+    () =>
+      buildFinancesPanelFromSave({
+        hydratedSave: hydratedFmSave,
+        players,
+        staff,
+        balanceLabel: balance,
+        wageSpendLabel: wageSpend,
+      }),
+    [hydratedFmSave, players, staff, balance, wageSpend]
+  );
+
+  const handleOpenOwnHub = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('share');
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    window.location.reload();
+  }, []);
   const [showCommandPalette, setShowCommandPalette] = useState<boolean>(false);
   const [showMoreSheet, setShowMoreSheet] = useState<boolean>(false);
   const [calibrationLabOpen, setCalibrationLabOpen] = useState<boolean>(false);
@@ -1435,6 +1475,17 @@ export default function App() {
             <>
               <button
                 type="button"
+                onClick={() => setShowShareModal(true)}
+                aria-label="Share and export a clean report"
+                title="Share and export: CSV, PNG card, print or PDF, read-only link"
+                className="hidden md:inline-flex items-center justify-center gap-1 min-h-[38px] min-w-[38px] px-2 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer"
+              >
+                <Share2 className="w-3.5 h-3.5 text-indigo-400" />
+                <span className="hidden lg:inline">Share</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={handleExportBackup}
                 aria-label="Export campaign snapshot as JSON backup"
                 title="Export campaign snapshot as JSON backup"
@@ -2102,6 +2153,7 @@ export default function App() {
             }}
             onApplyUpdate={pwa.applyUpdate}
             onExportBackup={handleExportBackup}
+            onOpenShare={() => setShowShareModal(true)}
             onRequestRestore={() => backupFileInputRef.current?.click()}
             confirmResetPending={confirmResetPending}
             onResetMemory={() => {
@@ -2109,6 +2161,32 @@ export default function App() {
             }}
           />
         </Suspense>
+      )}
+
+      {/* Share & export sheet (lazy-loaded when opened) */}
+      {showShareModal && (
+        <Suspense fallback={null}>
+          <ShareReportModal
+            isOpen={showShareModal}
+            onClose={() => setShowShareModal(false)}
+            clubName={clubName}
+            saveDate={saveDate}
+            players={players}
+            staff={staff}
+            matches={matches}
+            finances={shareFinancesPanel}
+            onToast={showGlobalToast}
+          />
+        </Suspense>
+      )}
+
+      {/* Read-only view for a link someone shared. Never reads or writes the local save. */}
+      {shareToken && (
+        <SharedReportView
+          summary={sharedSummary}
+          rawToken={shareToken}
+          onOpenOwnHub={handleOpenOwnHub}
+        />
       )}
 
       {/* Global Floating Toast Notification */}
