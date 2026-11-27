@@ -110,6 +110,7 @@ export function projectFinanceScenario(
 ): FinanceScenarioProjection {
   const currencySymbol = input.currencySymbol || '£';
   const deltas = input.deltas;
+  // A wage rise costs cash, so it moves the monthly net down; only sponsorship income adds.
   const wageDeltaMonthly = deltas.wageDeltaWeekly * WEEKS_PER_MONTH;
   const sponsorshipDeltaMonthly = deltas.sponsorshipDeltaAnnual / 12;
   const oneOffCash = Math.abs(deltas.transferFeeIn) - Math.abs(deltas.transferFeeOut);
@@ -154,7 +155,7 @@ export function projectFinanceScenario(
 
   const balance = balanceNow;
   const monthlyNetBefore = baselineMonthlyNet;
-  const monthlyNetAfter = Math.round(monthlyNetBefore + wageDeltaMonthly + sponsorshipDeltaMonthly);
+  const monthlyNetAfter = Math.round(monthlyNetBefore - wageDeltaMonthly + sponsorshipDeltaMonthly);
   const balanceAfter = Math.round(balance + oneOffCash);
 
   const latestMonthRunway = runwayMonthsFor(balance, monthlyNetBefore);
