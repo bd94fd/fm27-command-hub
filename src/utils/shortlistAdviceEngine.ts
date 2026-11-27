@@ -9,6 +9,7 @@
  */
 
 import type { PlayerRecord } from '../types/fm27';
+import { formatClubMoney } from './clubFinances';
 import type {
   DivisionBenchmarks,
   LastMatchTacticBlueprint,
@@ -154,13 +155,6 @@ export function mapExactSlotToBucketCode(slot: ExactPositionSlot): PositionBucke
     default:
       return 'CM';
   }
-}
-
-function formatCompactMoney(amount: number): string {
-  const abs = Math.abs(Math.round(amount));
-  if (abs >= 1_000_000) return `£${(abs / 1_000_000).toFixed(2)}M`;
-  if (abs >= 1_000) return `£${Math.round(abs / 1_000)}k`;
-  return `£${abs.toLocaleString()}`;
 }
 
 const POSITIVE_TRAIT_HINTS: Array<{ match: RegExp; note: string; bonus: number }> = [
@@ -411,13 +405,13 @@ function evaluateBudgetGate(
       loanAdvice.incomingLoanPriorities[0]?.maxWeeklyWageSharePw ?? Math.round(currentWage * 0.35),
       Math.round(currentWage * 0.35)
     );
-    feeLabel = `£0 Loan Path (Val ${estimatedFee ? formatCompactMoney(estimatedFee) : 'Parent Club'})`;
+    feeLabel = `£0 Loan Path (Val ${estimatedFee ? formatClubMoney(estimatedFee) : 'Parent Club'})`;
   } else {
     dealRoute = 'cash_fee';
     if (minReleaseClause && estimatedFee === minReleaseClause) {
-      feeLabel = `Clause ${formatCompactMoney(minReleaseClause)}`;
+      feeLabel = `Clause ${formatClubMoney(minReleaseClause)}`;
     } else if (estimatedFee !== null && estimatedFee > 0) {
-      feeLabel = `Est. Fee ${formatCompactMoney(estimatedFee)}`;
+      feeLabel = `Est. Fee ${formatClubMoney(estimatedFee)}`;
     } else {
       feeLabel = 'Transfer Fee Required';
     }
@@ -444,10 +438,10 @@ function evaluateBudgetGate(
       !isInDebt && incumbentMarketVal > 0 && incumbentMarketVal + availableTransferCash >= reqFee;
     if (isInDebt && reqFee > 0) {
       feePasses = false;
-      feeBlockReason = `Cash fee (${formatCompactMoney(reqFee)}) blocked while club is in ${clubProfile.balanceLabel} debt`;
+      feeBlockReason = `Cash fee (${formatClubMoney(reqFee)}) blocked while club is in ${clubProfile.balanceLabel} debt`;
     } else if (reqFee > availableTransferCash && !fundedBySale) {
       feePasses = false;
-      feeBlockReason = `Est. fee (${formatCompactMoney(reqFee)}) exceeds available transfer budget (${formatCompactMoney(availableTransferCash)})`;
+      feeBlockReason = `Est. fee (${formatClubMoney(reqFee)}) exceeds available transfer budget (${formatClubMoney(availableTransferCash)})`;
     }
   }
 

@@ -124,7 +124,7 @@ const finances: ClubFinancesPanelData = {
     runwayWarning: null,
   },
   payroll: {
-    clubPayrollLabel: '£8.66k/wk',
+    clubPayrollLabel: '£8.66K/wk',
     wagePayrollWeekly: 8660,
     wageBudgetLabel: '£10,203/wk',
     wageBudgetWeekly: 10_203,
@@ -132,9 +132,9 @@ const finances: ClubFinancesPanelData = {
     wageHeadroomLabel: '-£976/wk',
     wageHeadroomWeekly: -976,
     wageSeverity: 'over',
-    staffPayrollLabel: '£10.6k/wk',
+    staffPayrollLabel: '£10.6K/wk',
     staffMissingWageCount: 0,
-    squadWageSubtotalLabel: '£8.09k/wk',
+    squadWageSubtotalLabel: '£8.09K/wk',
     squadWageMissingCount: 0,
   },
   sponsorships: [
@@ -245,7 +245,7 @@ test('the finances CSV lists cash, payroll and sponsorship lines', () => {
   const lines = rows.slice(1).map((row) => `${row[0]}:${row[1]}:${row[2]}`);
   assert.ok(lines.includes('Cash:Balance:-£631K'));
   assert.ok(lines.includes('Cash:Runway:overdrawn'));
-  assert.ok(lines.includes('Payroll:Wage bill:£8.66k/wk'));
+  assert.ok(lines.includes('Payroll:Wage bill:£8.66K/wk'));
   assert.ok(lines.includes('Sponsorship:Hoofdsponsor:£250K until 30/06/2028'));
 });
 

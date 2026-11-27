@@ -1,4 +1,4 @@
-import { formatClubMoney } from './clubFinances';
+import { formatClubMoney, formatWeeklyAmount } from './clubFinances';
 
 /**
  * A week is 52/12 of a month. FM27 reports wages per week and cash flow per month, so
@@ -94,9 +94,7 @@ function runwayLabel(balance: number, monthlyNet: number, months: number | null)
 }
 
 /** Weekly figures stay exact to the pound, the way the payroll cards show them. */
-function formatWeeklyExact(amount: number, currencySymbol: string): string {
-  return `${currencySymbol}${Math.round(Math.abs(amount)).toLocaleString()}/wk`;
-}
+
 
 /**
  * Projects balance, monthly cash flow, runway and wage compliance under one user-defined
@@ -183,8 +181,8 @@ export function projectFinanceScenario(
     wageHeadroomAfterWeekly === null
       ? '--'
       : wageHeadroomAfterWeekly >= 0
-        ? `${formatWeeklyExact(wageHeadroomAfterWeekly, currencySymbol)} under cap`
-        : `${formatWeeklyExact(wageHeadroomAfterWeekly, currencySymbol)} over cap`;
+        ? `${formatWeeklyAmount(Math.abs(wageHeadroomAfterWeekly), currencySymbol)} under cap`
+        : `${formatWeeklyAmount(Math.abs(wageHeadroomAfterWeekly), currencySymbol)} over cap`;
 
   return {
     available: true,
@@ -218,7 +216,7 @@ export function projectFinanceScenario(
 
 function describeWageChange(deltas: FinanceScenarioDeltas, currencySymbol: string): string | null {
   if (deltas.wageDeltaWeekly === 0) return null;
-  const amount = formatWeeklyExact(deltas.wageDeltaWeekly, currencySymbol).replace('/wk', '');
+  const amount = formatWeeklyAmount(Math.abs(deltas.wageDeltaWeekly), currencySymbol).replace('/wk', '');
   return deltas.wageDeltaWeekly > 0
     ? `adding ${amount}/wk of wages`
     : `saving ${amount}/wk of wages`;
@@ -283,8 +281,8 @@ function buildVerdict(input: {
     input.wageHeadroomAfterWeekly === null
       ? ''
       : input.wageHeadroomAfterWeekly >= 0
-        ? ` Wages stay ${formatWeeklyExact(input.wageHeadroomAfterWeekly, input.currencySymbol)} under the cap.`
-        : ` Wages would be ${formatWeeklyExact(input.wageHeadroomAfterWeekly, input.currencySymbol)} over the cap.`;
+        ? ` Wages stay ${formatWeeklyAmount(Math.abs(input.wageHeadroomAfterWeekly), input.currencySymbol)} under the cap.`
+        : ` Wages would be ${formatWeeklyAmount(Math.abs(input.wageHeadroomAfterWeekly), input.currencySymbol)} over the cap.`;
 
   const balanceSentence =
     input.balanceAfter < 0

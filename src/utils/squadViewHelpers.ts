@@ -4,6 +4,7 @@ import {
   formatContractExpiry,
   isPlaceholderValue,
 } from './displayValue';
+import { formatClubMoney } from './clubFinances';
 
 import { isSuspensionActiveForCompetition } from './bestXiSolver';
 import {
@@ -367,16 +368,7 @@ export function formatCompactCurrency(value?: number | null): string {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
     return MISSING_VALUE;
   }
-  if (value === 0) {
-    return '£0';
-  }
-  if (value >= 1_000_000) {
-    return `£${(value / 1_000_000).toFixed(value >= 10_000_000 ? 1 : 2)}m`;
-  }
-  if (value >= 1_000) {
-    return `£${Math.round(value / 1_000)}k`;
-  }
-  return `£${Math.round(value)}`;
+  return formatClubMoney(value);
 }
 
 /**
@@ -388,7 +380,7 @@ export function formatWeeklyWage(wagePw?: number | null): string {
     return MISSING_VALUE;
   }
   if (wagePw >= 1000) {
-    return `£${(wagePw / 1000).toFixed(wagePw >= 10_000 ? 1 : 2)}k/wk`;
+    return `£${(wagePw / 1000).toFixed(wagePw >= 10_000 ? 1 : 2)}K/wk`;
   }
   return `£${Math.round(wagePw)}/wk`;
 }

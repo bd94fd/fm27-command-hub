@@ -1,4 +1,5 @@
 import { PlayerRecord } from '../types/fm27';
+import { clampAttributeValue } from '../types/fmSave';
 import { inferFm27Roles } from './fm27RoleMatcher';
 import { MISSING_VALUE } from './squadViewHelpers';
 
@@ -549,31 +550,30 @@ export function parseFmStructuredExport(
 
       if (hasAttributes) {
         const attrs: Partial<PlayerRecord['attributes']> = {};
-        const clamp = (v: number) => Math.max(1, Math.min(20, Math.round(v)));
         const p = toNumber(row[paceIdx]);
-        if (p !== undefined) attrs.pace = clamp(p);
+        if (p !== undefined) attrs.pace = clampAttributeValue(p);
         const ac = toNumber(row[accIdx]);
-        if (ac !== undefined) attrs.acceleration = clamp(ac);
+        if (ac !== undefined) attrs.acceleration = clampAttributeValue(ac);
         const st = toNumber(row[staIdx]);
-        if (st !== undefined) attrs.stamina = clamp(st);
+        if (st !== undefined) attrs.stamina = clampAttributeValue(st);
         const jr = toNumber(row[jrIdx]);
-        if (jr !== undefined) attrs.jumpingReach = clamp(jr);
+        if (jr !== undefined) attrs.jumpingReach = clampAttributeValue(jr);
         const dt = toNumber(row[detIdx]);
-        if (dt !== undefined) attrs.determination = clamp(dt);
+        if (dt !== undefined) attrs.determination = clampAttributeValue(dt);
         const ps = toNumber(row[pasIdx]);
-        if (ps !== undefined) attrs.passing = clamp(ps);
+        if (ps !== undefined) attrs.passing = clampAttributeValue(ps);
         const fn = toNumber(row[finIdx]);
-        if (fn !== undefined) attrs.finishing = clamp(fn);
+        if (fn !== undefined) attrs.finishing = clampAttributeValue(fn);
         const tk = toNumber(row[tckIdx]);
-        if (tk !== undefined) attrs.tackling = clamp(tk);
+        if (tk !== undefined) attrs.tackling = clampAttributeValue(tk);
         const ft = toNumber(row[firIdx]);
-        if (ft !== undefined) attrs.firstTouch = clamp(ft);
+        if (ft !== undefined) attrs.firstTouch = clampAttributeValue(ft);
         const dc = toNumber(row[decIdx]);
-        if (dc !== undefined) attrs.decisions = clamp(dc);
+        if (dc !== undefined) attrs.decisions = clampAttributeValue(dc);
         const wr = toNumber(row[worIdx]);
-        if (wr !== undefined) attrs.workRate = clamp(wr);
+        if (wr !== undefined) attrs.workRate = clampAttributeValue(wr);
         const ob = toNumber(row[otbIdx]);
-        if (ob !== undefined) attrs.offTheBall = clamp(ob);
+        if (ob !== undefined) attrs.offTheBall = clampAttributeValue(ob);
         if (Object.keys(attrs).length > 0) {
           delta.attributes = attrs;
         }
