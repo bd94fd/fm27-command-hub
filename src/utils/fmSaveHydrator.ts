@@ -1,16 +1,10 @@
 import { MatchLogEntry, PlayerRecord, StaffJobRatings, StaffRecord } from '../types/fm27';
 import {
-  buildSponsorshipPanelRows,
-  filterUsableSponsorshipDeals,
   formatClubMoney,
   formatWageComplianceSummary,
   normalizeSponsorshipDeal,
   resolveCanonicalBalanceNum,
 } from './clubFinances';
-import {
-  buildSaveDataQualityReport,
-  formatSaveDataQualityForAnalyst,
-} from './saveDataQuality';
 import {
   ActiveSuspensionRecord,
   BinaryForensicsSnapshot,
@@ -43,10 +37,8 @@ import {
   clampAttributeValue,
   clampConditionSharpness,
 } from '../types/fmSave';
-import { normalizeJobVacancy } from './jobVacancies';
 import { normalizePlayerName } from './fmFileImporter';
 import { inferFm27Roles } from './fm27RoleMatcher';
-import { isSuspensionActiveForCompetition } from './bestXiSolver';
 import {
   buildClubGovernanceState,
   buildLastMatchTacticBlueprint,
@@ -55,7 +47,14 @@ import {
   classifyMatchCompetitionBucket,
   deriveFootballSeasonLabel,
 } from './matchScopeHelpers';
-import { formatAge, formatNation, formatWeeklyWage, MISSING_VALUE } from './squadViewHelpers';
+import { normalizeJobVacancy } from './jobVacancies';
+import { buildAvailabilityIndex } from './hydrateAvailability';
+import {
+  buildAnalystSaveContext,
+  collectExtractionWarnings,
+  resolveCompetitionRules,
+} from './hydrateAnalystContext';
+import { formatWeeklyWage, MISSING_VALUE } from './squadViewHelpers';
 
 export const WORKER_CACHE_BUSTER = '?v=25';
 
@@ -789,48 +788,10 @@ export function hydrateAppFromDecodedFmSave(
     byNorm.set(normalizePlayerName(p.name), p);
   }
 
-  // Pass 1 Tier-1: Collect structured suspensions by playerUid
-  const activeSuspensionsList: ActiveSuspensionRecord[] = [];
-  const seenBanKey = new Set<string>();
-  const pushBan = (ban: ActiveSuspensionRecord) => {
-    if (!ban || typeof ban.matchesRemaining !== 'number' || ban.matchesRemaining <= 0) return;
-    const key = `${ban.playerUid}|${ban.competitionName}|${ban.matchesRemaining}`;
-    if (seenBanKey.has(key)) return;
-    seenBanKey.add(key);
-    activeSuspensionsList.push(ban);
-  };
-  for (const b of decoded.activeSuspensions || []) {
-    pushBan(b);
-  }
-  for (const dp of decoded.players) {
-    for (const b of dp.activeSuspensions || []) {
-      pushBan(b);
-    }
-  }
-  const bansByUid = new Map<number, ActiveSuspensionRecord[]>();
-  for (const ban of activeSuspensionsList) {
-    const arr = bansByUid.get(ban.playerUid) || [];
-    arr.push(ban);
-    bansByUid.set(ban.playerUid, arr);
-  }
-
-  // Hydrate active injuries from decoded.activeInjuries so Best XI / Match Prep / AI Analyst respect injured status
-  const injuredUids = new Set<number>();
-  const injuredNames = new Set<string>();
-  for (const inj of decoded.activeInjuries || []) {
-    if (!inj) continue;
-    if (typeof inj.playerUid === 'number' && inj.playerUid > 0) {
-      injuredUids.add(inj.playerUid);
-    }
-    if (typeof inj.playerName === 'string' && inj.playerName.trim()) {
-      injuredNames.add(normalizePlayerName(inj.playerName));
-    }
-  }
-  const isPlayerActivelyInjured = (uid: number | undefined, name: string | undefined): boolean => {
-    if (typeof uid === 'number' && uid > 0 && injuredUids.has(uid)) return true;
-    if (name && injuredNames.has(normalizePlayerName(name))) return true;
-    return false;
-  };
+  const availability = buildAvailabilityIndex(decoded);
+  const activeSuspensionsList = availability.suspensions;
+  const bansByUid = availability.bansByUid;
+  const isPlayerActivelyInjured = availability.isInjured;
 
   const changedPlayers: Array<{ name: string; changes: string[] }> = [];
   const matchedSaveUids = new Set<number>();
@@ -1598,294 +1559,25 @@ export function hydrateAppFromDecodedFmSave(
   }));
 
   // 4. Build Rich Ground-Truth Context for Tactical Analyst (ZERO raw CA/PA or raw hidden numbers!)
-  const nextFixtureCompetition = decoded.upcomingFixtures[0]?.competition || null;
-
-  const playedLines = decoded.playedMatches
-    .map(
-      (m) =>
-        `- ${m.dateDmy || m.dateIso} [${m.competition}] vs ${m.opponent} (${m.venue}): ${m.result} ${m.score}` +
-        (m.xGFor !== null
-          ? ` | xG ${m.xGFor.toFixed(2)} - ${(m.xGAgainst ?? 0).toFixed(2)} | Poss ${m.possession ?? '?'}% | Shots ${m.shotsFor ?? '?'} vs ${m.shotsAgainst ?? '?'} | CCC ${m.cccFor ?? '?'}-${m.cccAgainst ?? '?'}`
-          : '')
-    )
-    .join('\n');
-
-  const upcomingLines = decoded.upcomingFixtures
-    .map(
-      (f) =>
-        `- ${f.dateDmy || f.dateIso}: [${f.competition}] vs ${f.opponent} (${f.venue === 'H' ? 'Home' : 'Away'})`
-    )
-    .join('\n');
-
-  const injuryLines =
-    decoded.activeInjuries.length > 0
-      ? decoded.activeInjuries
-          .map(
-            (i) =>
-              `- ${i.playerName || 'Player'}: ${i.typeName} (${i.severity || i.kind}, ${
-                i.expectedReturn ? `expected return ${i.expectedReturn}` : i.date || 'active'
-              })`
-          )
-          .join('\n')
-      : '- No active injuries reported in save.';
-
-  const suspensionLines =
-    activeSuspensionsList.length > 0
-      ? activeSuspensionsList
-          .map((b) => {
-            const blocksNext = isSuspensionActiveForCompetition(
-              b,
-              nextFixtureCompetition
-            );
-            return blocksNext
-              ? `- ${b.playerName}: BANNED FOR NEXT MATCH (${b.matchesRemaining}m remaining · ${b.competitionName} [${b.scope}] · ${b.reason}) — DO NOT SELECT AS STARTER`
-              : `- ${b.playerName}: OTHER-COMPETITION BAN ONLY (${b.matchesRemaining}m in ${b.competitionName} [${b.scope}] · ${b.reason}) — AVAILABLE FOR NEXT MATCH (${nextFixtureCompetition})`;
-          })
-          .join('\n')
-      : '- No active disciplinary suspensions.';
-
-  const rawRules = decoded.competitionRules as Partial<CompetitionRegistrationRules> | undefined;
-  const typedRules: CompetitionRegistrationRules | null =
-    rawRules &&
-    (rawRules.competitionName ||
-      rawRules.maxSquadSize !== undefined ||
-      rawRules.matchdaySubsLimit !== undefined)
-      ? {
-          competitionName:
-            typeof rawRules.competitionName === 'string'
-              ? rawRules.competitionName
-              : decoded.leagueStanding?.competitionName || null,
-          maxSquadSize:
-            typeof rawRules.maxSquadSize === 'number' ? rawRules.maxSquadSize : null,
-          minHomegrownClub:
-            typeof rawRules.minHomegrownClub === 'number'
-              ? rawRules.minHomegrownClub
-              : null,
-          minHomegrownNation:
-            typeof rawRules.minHomegrownNation === 'number'
-              ? rawRules.minHomegrownNation
-              : null,
-          maxForeignPlayers:
-            typeof rawRules.maxForeignPlayers === 'number'
-              ? rawRules.maxForeignPlayers
-              : null,
-          u21Exempt:
-            typeof rawRules.u21Exempt === 'boolean' ? rawRules.u21Exempt : null,
-          matchdaySubsLimit:
-            typeof rawRules.matchdaySubsLimit === 'number'
-              ? rawRules.matchdaySubsLimit
-              : null,
-          fixturesPerClub:
-            typeof rawRules.fixturesPerClub === 'number'
-              ? rawRules.fixturesPerClub
-              : null,
-          promotionPlaces:
-            typeof rawRules.promotionPlaces === 'number'
-              ? rawRules.promotionPlaces
-              : null,
-          playoffPlaces:
-            typeof rawRules.playoffPlaces === 'number'
-              ? rawRules.playoffPlaces
-              : null,
-          relegationPlaces:
-            typeof rawRules.relegationPlaces === 'number'
-              ? rawRules.relegationPlaces
-              : null,
-          prizeMoney:
-            typeof rawRules.prizeMoney === 'number' ? rawRules.prizeMoney : null,
-          rounds:
-            typeof rawRules.rounds === 'number' ? rawRules.rounds : null,
-        }
-      : null;
-
+  const typedRules = resolveCompetitionRules(decoded);
+  const mergedWarnings = collectExtractionWarnings(decoded);
+  const usedFastSync = Boolean(decoded.fastSync ?? decoded.meta?.fastSync ?? false);
   const divisionBenchmarks = decoded.divisionBenchmarks || null;
 
-  const mentoringLines =
-    decoded.mentoring.length > 0
-      ? decoded.mentoring
-          .map((m) => `- ${m.label}: ${m.members.join(', ')}`)
-          .join('\n')
-      : '- No mentoring groups returned by reader.';
-
-  const diffLines =
-    changedPlayers.length > 0
-      ? changedPlayers
-          .slice(0, 20)
-          .map((c) => `- ${c.name}: ${c.changes.join(', ')}`)
-          .join('\n')
-      : '- Baseline synced directly from .fm save.';
-
-  const runwayLine = financialRunway
-    ? `Financial Runway: ${financialRunway.status} (${financialRunway.runwayMonths} months remaining · Monthly Burn: £${Math.round(financialRunway.monthlyBurnRate).toLocaleString()}/mo)`
-    : '';
-
-  const facilitiesLine = decoded.facilities
-    ? `Club Facilities: Training=${String(decoded.facilities.training ?? 'Unknown')}, Youth=${String(decoded.facilities.youth ?? 'Unknown')}, Corporate=${String(decoded.facilities.corporate ?? 'Unknown')}`
-    : '';
-
-  const vacanciesLine =
-    decoded.jobVacancies && decoded.jobVacancies.length > 0
-      ? `Job Centre Vacancies (${decoded.jobVacancies.length}; feed may include filled roles): ${decoded.jobVacancies
-          .slice(0, 8)
-          .map((v, index) => normalizeJobVacancy(v, index))
-          .map((v) => `${v.role || 'Staff'} at ${v.club || 'Club'}`)
-          .join(', ')}`
-      : '';
-
-  const sponsorshipRows = buildSponsorshipPanelRows(
-    filterUsableSponsorshipDeals(decoded.sponsorships) ?? []
-  );
-  const sponsorshipLine =
-    sponsorshipRows.length > 0
-      ? `Sponsorship Deals (${sponsorshipRows.length}): ${sponsorshipRows
-          .slice(0, 8)
-          .map(
-            (row) =>
-              `${row.name} ${row.annualValueLabel === '--' ? '--' : `${row.annualValueLabel}/yr`}`
-          )
-          .join(', ')}`
-      : '';
-
-  const rulesSummaryParts: string[] = [];
-  if (typedRules?.maxSquadSize) rulesSummaryParts.push(`Max Squad ${typedRules.maxSquadSize}`);
-  if (typedRules?.minHomegrownClub) rulesSummaryParts.push(`Min HGC ${typedRules.minHomegrownClub}`);
-  if (typedRules?.minHomegrownNation) rulesSummaryParts.push(`Min HGN ${typedRules.minHomegrownNation}`);
-  if (typedRules?.maxForeignPlayers) rulesSummaryParts.push(`Max Foreign ${typedRules.maxForeignPlayers}`);
-  if (typedRules?.u21Exempt !== null && typedRules?.u21Exempt !== undefined) {
-    rulesSummaryParts.push(`U21 Exempt: ${typedRules.u21Exempt ? 'Yes' : 'No'}`);
-  }
-  if (typedRules?.matchdaySubsLimit) rulesSummaryParts.push(`Subs Limit ${typedRules.matchdaySubsLimit}`);
-  const rulesLine =
-    rulesSummaryParts.length > 0
-      ? `Registration & Competition Rules (${typedRules?.competitionName || 'League'}): ${rulesSummaryParts.join(' · ')}`
-      : '';
-
-  const fullTableLines =
-    decoded.leagueStanding?.rows && decoded.leagueStanding.rows.length > 0
-      ? `\n=== FULL DOMESTIC LEAGUE TABLE (${decoded.leagueStanding.competitionName}) ===\n${decoded.leagueStanding.rows
-          .map(
-            (r) =>
-              `#${r.position} ${r.clubName} (${r.played}P ${r.won}W-${r.drawn}D-${r.lost}L, ${r.goalDifference >= 0 ? '+' : ''}${r.goalDifference}GD, ${r.points}Pts${r.form && r.form.length > 0 ? `, Form ${r.form.join('')}` : ''})`
-          )
-          .join('\n')}\n`
-      : '';
-
-  const targetsSummary =
-    recruitmentTargets.length > 0
-      ? `\n=== MANAGER'S IN-GAME FM27 SHORTLIST (${recruitmentTargets.length} PLAYERS) ===\n${recruitmentTargets
-          .slice(0, 12)
-          .map((t) => {
-            const clubStr = t.isFreeAgent
-              ? 'Free Agent'
-              : `${t.currentClub || 'Club'} (Exp ${t.expires || `<=${t.contractExpiryMonths}m`})`;
-            const valStr =
-              typeof t.transferValue === 'number' &&
-              t.transferValue > 0 &&
-              t.transferValueState !== 'capped'
-                ? ` · Val £${t.transferValue.toLocaleString()}`
-                : '';
-            const persStr = t.personality ? ` · ${t.personality}` : '';
-            return `- ${t.name} (${t.primaryPosition}, Age ${formatAge(t.age)}, ${formatNation(t.nationality)}): ${clubStr}${valStr} · Wage ~£${(t.currentWagePw ?? t.demandedWageEur ?? 0).toLocaleString()}/wk${persStr}`;
-          })
-          .join('\n')}\n`
-      : '';
-
-  const reorderedSponsorships = (Array.isArray(decoded.sponsorships)
-    ? decoded.sponsorships
-    : []
-  ).filter((deal) => deal?.dates_reordered === true);
-  const sponsorshipWarnings =
-    reorderedSponsorships.length > 0
-      ? [
-          `sponsorships: fmsave reversed the stored dates of ${reorderedSponsorships.length} ended FM27 contract(s) using the financial term — start and end are swapped for those rows, so read the dates with that in mind`,
-        ]
-      : [];
-
-  const mergedWarnings = Array.from(
-    new Set([
-      ...(Array.isArray(decoded.extractionWarnings) ? decoded.extractionWarnings : []),
-      ...(Array.isArray(decoded.warnings) ? decoded.warnings : []),
-      ...sponsorshipWarnings,
-    ])
-  );
-
-  // Contract clauses are not part of the canonical squad profile line, so they travel here — only
-  // for players that actually carry one, which keeps this a clause appendix rather than a second
-  // squad table.
-  const contractClauseLines = decoded.players
-    .map((p) => {
-      const cd = p.contractDetails;
-      if (!cd) return null;
-      const parts: string[] = [];
-      if (cd.promisedPlayingTime) parts.push(`PT: ${cd.promisedPlayingTime}`);
-      if (cd.optionalExtensionYears && cd.optionalExtensionYears > 0) {
-        parts.push(`Club Opt +${cd.optionalExtensionYears}y`);
-      }
-      for (const rc of cd.releaseClauses || []) {
-        parts.push(`${rc.type} ${formatMoney(rc.amount)}`);
-      }
-      return parts.length > 0 ? `- ${p.name}: ${parts.join(' · ')}` : null;
-    })
-    .filter((line): line is string => Boolean(line));
-
-  const contractClauseBlock =
-    contractClauseLines.length > 0
-      ? `=== CONTRACT CLAUSES IN SAVE (${contractClauseLines.length} PLAYERS) ===\n${contractClauseLines.join('\n')}\n\n`
-      : '';
-
-  const usedFastSync = Boolean(decoded.fastSync ?? decoded.meta?.fastSync ?? false);
-
-  const dataQualityBlock = formatSaveDataQualityForAnalyst(
-    buildSaveDataQualityReport(decoded)
-  );
-
-  const analystPromptContext = `[LIVE FULL .FM SAVE DECODED VIA FMSAVE ${decoded.meta.fmsaveVersion} — PASS 0 & PASS 1 TIER-1 REAL IN-GAME DATA${usedFastSync ? ' · FAST SYNC MODE' : ''}]
-Game: ${decoded.meta.game} (Build ${decoded.meta.build}) | Save: ${decoded.meta.saveName}
-EXACT CURRENT IN-GAME DATE: ${saveDateLabel}
-Managed Club: ${decoded.meta.clubName} (Manager: ${decoded.meta.managerName})
-${leagueStandingLabel ? `Live League Standing (${decoded.leagueStanding?.competitionName}): ${leagueStandingLabel}` : ''}
-${decoded.leagueStanding?.nextOpponentStanding ? `Next Opponent Table Standing: ${decoded.leagueStanding.nextOpponentStanding.clubName} (#${decoded.leagueStanding.nextOpponentStanding.position}, ${decoded.leagueStanding.nextOpponentStanding.points} Pts, ${decoded.leagueStanding.nextOpponentStanding.goalDiff >= 0 ? '+' : ''}${decoded.leagueStanding.nextOpponentStanding.goalDiff} GD)` : ''}
-${wageComplianceLabel ? `Live Finances: Balance ${balanceLabel} | Wages ${wageComplianceLabel}` : balanceLabel ? `Live Balance: ${balanceLabel}` : ''}
-${runwayLine}
-${facilitiesLine}
-${sponsorshipLine}
-${rulesLine}
-${vacanciesLine}
-${dataQualityBlock}
-=== DIFFS AUTO-APPLIED TO SQUAD DATABASE (${changedPlayers.length} PLAYERS UPDATED, ${removedPlayers.length} REMOVED, ${newlyAddedCount} NEW MATCHES LOGGED) ===
-${diffLines}
-
-=== RECENT PLAYED MATCHES (NEWEST FIRST) ===
-${playedLines || 'None found'}
-
-=== UPCOMING SCHEDULE FROM CURRENT IN-GAME DATE (${saveDateLabel}) ===
-${upcomingLines || 'None found'}
-
-=== ACTIVE INJURIES ===
-${injuryLines}
-
-=== ACTIVE SUSPENSIONS (DO NOT SELECT BANNED STARTERS) ===
-${suspensionLines}
-
-=== LIVE MENTORING GROUPS IN SAVE ===
-${mentoringLines}
-${fullTableLines}
-=== SQUAD DATA — SEE THE CANONICAL SQUAD PROFILES BLOCK ===
-Per-player squad detail is NOT repeated here. It is carried once, by the live app context block
-"SQUAD PROFILES & SEASON STATS (X OF N FULL POOL)" — the same pool the Squad tab renders, with star
-ratings, contract/wage, Best Fit %, season stats, attributes, badges, traits, Last-5 form, suspensions
-and injuries. Always quote squad counts from that block (Full Pool + First Team), never from an
-earlier import summary.
-
-${contractClauseBlock}${targetsSummary}${mergedWarnings.length > 0 ? `\n=== READER NOTES (NON-FATAL) ===\n${mergedWarnings.map((w) => `- ${w}`).join('\n')}\n` : ''}
-ANALYST MISSION FOR THIS .FM SAVE DROP:
-1. Acknowledge the exact in-game date (${saveDateLabel}), league position, recent results (never fabricate match-level xG or possession if not present in the save — cite the exact player season xG/xA and fixture scorelines), financial runway, and finances directly from the .fm file.
-2. Audit player performance, attribute changes, Last-5 form trends, Scout Report Badges, traits, fatigue/minutes load, contract clauses/extensions, injuries, and active suspensions. NEVER select a BANNED player as a starter, and NEVER cite raw hidden CA/PA or raw hidden attribute numbers.
-3. Produce a **COMPLETE ACTION PLAN FROM ${saveDateLabel} FORWARD**:
-   - Exact Starting XI + Bench + 62m/75m substitution plan for the very next fixture (${nextFixtureLabel || 'next scheduled match'}), obeying Playbook v2.0 & Club Rules #1–#6 (Tracking Wingers OOP, 3-man midfield late, never pull both CBs, <=125m Double-GW cap).
-   - Multi-match rotation & training schedule plan across the upcoming fixtures listed above.
-   - Wage/contract/recruitment/mentoring actions to click before hitting Continue.
-4. Populate the structured JSON fields (docEventBulletBlock, sheetRowValues, inGameDate="${saveDateLabel}") so ${decoded.meta.managerName || 'the manager'} can push this full save checkpoint straight to their Google Sheet & Google Doc in one click.`;
+  const analystPromptContext = buildAnalystSaveContext({
+    decoded,
+    saveDateLabel,
+    nextFixtureLabel,
+    leagueStandingLabel,
+    wageComplianceLabel,
+    balanceLabel,
+    financialRunway,
+    changedPlayers,
+    removedPlayers,
+    newlyAddedCount,
+    recruitmentTargets,
+    suspensions: activeSuspensionsList,
+  });
 
   const governance = buildClubGovernanceState(decoded, finalSquad);
   const lastMatchTactic = buildLastMatchTacticBlueprint(decoded, finalSquad, 0);
