@@ -6,7 +6,6 @@ import {
   Layers,
   Sparkles,
   TrendingDown,
-  UserPlus,
 } from 'lucide-react';
 import type { PlayerRecord } from '../../types/fm27';
 import type {

@@ -65,7 +65,7 @@ export async function createApp(
     })
   );
   app.use(compression());
-  app.use((req, res, next) => {
+  app.use((_req, res, next) => {
     const requestId = randomUUID();
     res.locals.requestId = requestId;
     res.locals.requestStartedAtMs = Date.now();

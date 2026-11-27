@@ -13,7 +13,6 @@ import { Info, X } from 'lucide-react';
 import type { PlayerRecord } from '../../types/fm27';
 import {
   evaluatePlayerMetaScore,
-  FM_ARENA_GK_META_WEIGHTS,
   FM_ARENA_OUTFIELD_META_WEIGHTS,
   type PlayerMetaEvaluation,
 } from '../../utils/metaScoreEngine';

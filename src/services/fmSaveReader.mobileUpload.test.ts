@@ -8,7 +8,7 @@ class TrackingBlob extends Blob {
   activeReads = 0;
   maxActiveReads = 0;
 
-  slice(start?: number, end?: number, contentType?: string): Blob {
+  override slice(start?: number, end?: number, contentType?: string): Blob {
     const real = super.slice(start, end, contentType);
     return {
       size: real.size,
@@ -37,7 +37,7 @@ test('mobile upload uses 4 parallel chunk writes but only one file read at a tim
   let activeUploads = 0;
   let maxActiveUploads = 0;
 
-  const mockFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  const mockFetch = (async (input: RequestInfo | URL, _init?: RequestInit) => {
     const url = String(input);
     if (url.endsWith('/api/fm27/decode-save/init')) {
       return new Response(

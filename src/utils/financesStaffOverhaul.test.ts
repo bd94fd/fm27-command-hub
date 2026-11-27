@@ -58,7 +58,7 @@ test('Staff tab keeps Preferred Job Affinity inside the detail modal only', () =
 test('Hub Finances panel is driven by clubFinances and staffRatings selectors', () => {
   const src = readSrc('src/components/AutoSyncWorkspace.tsx');
 
-  assert.match(src, /buildClubFinancesPanel/);
+  assert.match(src, /buildFinancesPanelFromSave/);
   for (const label of [
     'Club Finances',
     'Cash &amp; Runway',

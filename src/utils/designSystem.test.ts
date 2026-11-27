@@ -20,8 +20,7 @@ const sources = () => {
 
 const hits = (pattern: RegExp, classOnly = true) =>
   sources()
-    .filter(({ file, text }) => !classOnly || /className|classNames|clsx/.test(text))
-    .filter(({ file }) => !classOnly || !file.endsWith('.css'))
+    .filter(({ file, text }) => !classOnly || (/className|classNames|clsx/.test(text) && !file.endsWith('.css')))
     .flatMap(({ file, text }) =>
       [...text.matchAll(pattern)].map((m) => `${file}: ${m[0]}`)
     );

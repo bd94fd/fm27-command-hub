@@ -38,8 +38,6 @@ import {
   ChevronUp,
   ChevronRight,
   Clock,
-  Shield,
-  Briefcase,
   Wallet,
   MessageSquare,
   History,
@@ -112,6 +110,10 @@ import type {
   PreFlightPayloadValidationResult,
 } from '../utils/tacticalAnalystContext';
 import type { FormationPresetKey } from '../utils/bestXiSolver';
+import {
+  AnalystChatResponse,
+  parseAnalystChatResponse,
+} from '../utils/analystResponse';
 import type { PersistedCustomSlot } from '../services/fmStorage';
 import type {
   ClubGovernanceState,
@@ -135,9 +137,7 @@ import {
 } from '../utils/decodeTarget';
 import { recordFm27BuildRun } from '../utils/fm27BuildMemory';
 import {
-  buildClubFinancesPanel,
   buildFinancesPanelFromSave,
-  filterUsableSponsorshipDeals,
 } from '../utils/clubFinances';
 import { resolveSaveCompatibility } from '../utils/fm27SaveCompatibility';
 import { mergeAnalystCitations } from '../utils/analystCitations';
@@ -986,8 +986,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             body: JSON.stringify({ ...requestPayload, reasoningMode: mode }),
             signal: requestAbort?.signal,
           });
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          return await parseJsonApiResponse<any>(
+          return await parseJsonApiResponse<unknown>(
             response,
             'Failed to get Tactical Analyst response'
           );
@@ -1004,11 +1003,10 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         effectiveReasoningMode === 'max_xhigh';
       const primaryModeLabel = formatAnalystModeLabel(effectiveReasoningMode);
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let data: any;
+      let data: AnalystChatResponse | null = null;
       let failure: ApiResponseError | null = null;
       try {
-        data = await postTacticalChat(effectiveReasoningMode);
+        data = parseAnalystChatResponse(await postTacticalChat(effectiveReasoningMode));
       } catch (firstErr) {
         if (requestAbort?.signal.aborted) {
           updateTurnsForClub(targetClubKey, (prev) =>
@@ -1036,7 +1034,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             return;
           }
           try {
-            data = await postTacticalChat(effectiveReasoningMode);
+            data = parseAnalystChatResponse(await postTacticalChat(effectiveReasoningMode));
             failure = null;
           } catch (retryErr) {
             if (requestAbort?.signal.aborted) {
@@ -1088,7 +1086,7 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
             return;
           }
           try {
-            data = await postTacticalChat('fast_lite');
+            data = parseAnalystChatResponse(await postTacticalChat('fast_lite'));
             failure = null;
             fastSucceeded = true;
           } catch (fastErr) {
@@ -1132,33 +1130,35 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
 
       const assignedEventNum = nextEventNum;
 
+      if (!data) {
+        updateTurnsForClub(targetClubKey, (prev) =>
+          prev.filter((t) => t.id !== userTurn.id)
+        );
+        setChatFallbackNotice(null);
+        setChatError('The Analyst returned no usable answer. Try again.');
+        return;
+      }
+
+      if (data.issues.length > 0) {
+        console.warn('Analyst response repaired before use:', data.issues.join('; '));
+      }
+
       if (data.inGameDate && data.inGameDate !== '--' && onUpdateSaveDate) {
         onUpdateSaveDate(data.inGameDate);
       }
 
       const appliedPlayerNames: string[] = [...bulkUpdatedPlayerNames];
-      if (
-        Array.isArray(data.playerUpdates) &&
-        data.playerUpdates.length > 0 &&
-        onApplyPlayerUpdates
-      ) {
+      if (data.playerUpdates.length > 0 && onApplyPlayerUpdates) {
         onApplyPlayerUpdates(data.playerUpdates);
         for (const pu of data.playerUpdates) {
-          if (pu.name && !appliedPlayerNames.includes(pu.name)) {
-            appliedPlayerNames.push(pu.name);
-          }
+          if (!appliedPlayerNames.includes(pu.name)) appliedPlayerNames.push(pu.name);
         }
       }
 
       const alreadyHydratedMatch = fmFilesToSend.some(
         (f) => f.kind === 'FM_SAVE_DECODED'
       );
-      if (
-        !alreadyHydratedMatch &&
-        data.isMatchResult &&
-        data.matchFields?.opponent &&
-        data.matchFields?.score
-      ) {
+      if (!alreadyHydratedMatch && data.isMatchResult && data.matchFields) {
         const mf = data.matchFields;
         const newMatch: MatchLogEntry = {
           id: `chat-match-${Date.now()}`,
@@ -1166,21 +1166,17 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
           date: data.inGameDate || effectiveSaveDate,
           competition: mf.competition || 'Competitive Match',
           opponent: mf.opponent,
-          venue: mf.venue === 'H' ? 'H' : 'A',
-          result:
-            mf.result === 'W' || mf.result === 'D' || mf.result === 'L'
-              ? mf.result
-              : 'D',
+          venue: mf.venue,
+          result: mf.result,
           score: mf.score,
-          xGFor: typeof mf.xGFor === 'number' ? mf.xGFor : null,
-          xGAgainst: typeof mf.xGAgainst === 'number' ? mf.xGAgainst : null,
-          possession: typeof mf.possession === 'number' ? mf.possession : null,
-          passCompletion:
-            typeof mf.passCompletion === 'number' ? mf.passCompletion : null,
+          xGFor: mf.xGFor,
+          xGAgainst: mf.xGAgainst,
+          possession: mf.possession,
+          passCompletion: mf.passCompletion,
           shotsFor: mf.shotsFor || '—',
           shotsAgainst: mf.shotsAgainst || '—',
-          cccFor: typeof mf.cccFor === 'number' ? mf.cccFor : null,
-          cccAgainst: typeof mf.cccAgainst === 'number' ? mf.cccAgainst : null,
+          cccFor: mf.cccFor,
+          cccAgainst: mf.cccAgainst,
           goalTimeline: mf.goalTimeline || 'Logged from screenshot',
           potm: mf.potm || '—',
           defensiveWatchpoints: mf.defensiveWatchpoints || '—',
@@ -1199,10 +1195,8 @@ export const AutoSyncWorkspace: React.FC<AutoSyncWorkspaceProps> = ({
         screenDetected: data.screenDetected,
         inGameDate: data.inGameDate || effectiveSaveDate,
         analysisMarkdown: data.analysisMarkdown,
-        immediateClicks: data.immediateClicks || [],
-        followUpQuestions: Array.isArray(data.followUpQuestions)
-          ? data.followUpQuestions
-          : [],
+        immediateClicks: data.immediateClicks,
+        followUpQuestions: data.followUpQuestions,
         sourceCitations: mergeAnalystCitations(
           data.sourceCitations,
           data.analysisMarkdown

@@ -1,7 +1,6 @@
 import React from 'react';
 import { GitCompare, X } from 'lucide-react';
 import type { PlayerRecord } from '../../types/fm27';
-import type { RecruitmentTarget } from '../../types/fmSave';
 import { buildMultiPlayerComparison } from '../../utils/playerComparisonEngine';
 import { findTopSeniorStarterForPosition } from '../../utils/recruitmentHelpers';
 import { useCompareTray } from '../../context/CompareTrayContext';

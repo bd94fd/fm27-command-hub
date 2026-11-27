@@ -12,7 +12,6 @@ import {
   Square,
   Sun,
   Timer,
-  Zap,
 } from 'lucide-react';
 import { PlayerRecord } from '../types/fm27';
 import { FormationPresetKey, SolvedSlot } from '../utils/bestXiSolver';

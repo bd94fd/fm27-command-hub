@@ -6,7 +6,6 @@
 import React, { useState, useEffect, useRef, Suspense, lazy, useCallback, useMemo } from 'react';
 import {
   BookOpen,
-  CheckCircle2,
   ChevronDown,
   ChevronUp,
   Database,

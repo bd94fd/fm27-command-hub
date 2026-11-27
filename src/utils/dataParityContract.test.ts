@@ -164,7 +164,7 @@ const SELECTOR_PROBES: SelectorProbe[] = [
   {
     label: 'Player Wage Bill (canonical)',
     uiFile: 'src/components/AutoSyncWorkspace.tsx',
-    uiSelectors: ['buildClubFinancesPanel'],
+    uiSelectors: ['buildFinancesPanelFromSave'],
     analystFile: 'src/utils/tacticalAnalystContext.ts',
     analystSelectors: ['wageComplianceLabel'],
   },
