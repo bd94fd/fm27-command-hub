@@ -16,10 +16,7 @@ import {
 } from './server/routes/fmDecodeRoutes.ts';
 import { createSecurityGuard } from './server/middleware/securityGuard.ts';
 import { buildContentSecurityPolicy } from './server/contentSecurityPolicy.ts';
-import {
-  buildServerErrorEvent,
-  logServerError,
-} from './server/errorReporting.ts';
+import { buildServerErrorEvent, logServerError } from './server/errorReporting.ts';
 import { redactSensitiveText } from './src/utils/errorRedaction.ts';
 
 dotenv.config();
@@ -45,9 +42,7 @@ function isApiRequest(req: express.Request): boolean {
   return requestPath === '/api' || requestPath.startsWith('/api/');
 }
 
-export async function createApp(
-  options: CreateAppOptions = {}
-): Promise<express.Express> {
+export async function createApp(options: CreateAppOptions = {}): Promise<express.Express> {
   const app = express();
   const config = options.config ?? loadServerConfig();
   const geminiService = options.geminiService ?? new GeminiService({ config });
@@ -62,7 +57,7 @@ export async function createApp(
         : false,
       crossOriginEmbedderPolicy: false,
       crossOriginOpenerPolicy: false,
-    })
+    }),
   );
   app.use(compression());
   app.use((_req, res, next) => {
@@ -116,7 +111,7 @@ export async function createApp(
       },
       req: express.Request,
       res: express.Response,
-      next: express.NextFunction
+      next: express.NextFunction,
     ) => {
       if (!isApiRequest(req)) {
         return next(err);
@@ -148,9 +143,7 @@ export async function createApp(
       const status =
         typeof err?.status === 'number' && err.status >= 400 && err.status < 600
           ? err.status
-          : typeof err?.statusCode === 'number' &&
-              err.statusCode >= 400 &&
-              err.statusCode < 600
+          : typeof err?.statusCode === 'number' && err.statusCode >= 400 && err.statusCode < 600
             ? err.statusCode
             : 500;
       const startedAt = res.locals.requestStartedAtMs as number | undefined;
@@ -163,7 +156,7 @@ export async function createApp(
             status,
             durationMs: startedAt ? Date.now() - startedAt : undefined,
             error: err,
-          })
+          }),
         );
       }
       return res.status(status).json({
@@ -173,7 +166,7 @@ export async function createApp(
         status,
         requestId,
       });
-    }
+    },
   );
 
   if (options.serveFrontend !== false) {
@@ -190,20 +183,17 @@ export async function createApp(
         express.static(path.join(distPath, 'assets'), {
           maxAge: '1y',
           immutable: true,
-        })
+        }),
       );
       app.use(
         express.static(distPath, {
           setHeaders(res, filePath) {
             const base = path.basename(filePath);
             if (NO_CACHE_STATIC_FILES.has(base) || /^workbox-.*\.js$/i.test(base)) {
-              res.setHeader(
-                'Cache-Control',
-                'no-cache, no-store, must-revalidate'
-              );
+              res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
             }
           },
-        })
+        }),
       );
       app.get('/{*splat}', (_req, res) => {
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -247,8 +237,7 @@ async function startServer() {
 }
 
 const isDirectEntry =
-  process.argv[1] &&
-  path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+  process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
 
 if (isDirectEntry) {
   void startServer();

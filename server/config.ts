@@ -16,10 +16,7 @@ export interface ServerConfig {
 }
 
 export const FALLBACK_GEMINI_MODEL = 'gemini-3.5-flash-lite';
-export const PREFERRED_GEMINI_MODELS = [
-  'gemini-3.5-flash-lite',
-  'gemini-3.6-flash',
-] as const;
+export const PREFERRED_GEMINI_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.6-flash'] as const;
 export const DEFAULT_AI_TIMEOUT_MS = 45_000;
 export const DEEP_AI_TIMEOUT_MS = 60_000;
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -31,9 +28,7 @@ export const DEFAULT_RATE_LIMIT_MAX_REQUESTS = 60;
  * Loads strictly server-side configuration.
  * Never falls back to VITE_GEMINI_API_KEY or any client-exposed env var.
  */
-export function loadServerConfig(
-  env: NodeJS.ProcessEnv = process.env
-): ServerConfig {
+export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const nodeEnv = (env.NODE_ENV || 'development').trim();
   const isDev = nodeEnv !== 'production';
   const defaultAppPort = Number(env.DEFAULT_APP_PORT) || 3000;
@@ -61,9 +56,7 @@ export function loadServerConfig(
     hubAccessToken: rawHubToken || null,
     maxImageBytes: MAX_IMAGE_BYTES,
     maxContextChars: MAX_CONTEXT_CHARS,
-    rateLimitWindowMs:
-      Number(env.RATE_LIMIT_WINDOW_MS) || DEFAULT_RATE_LIMIT_WINDOW_MS,
-    rateLimitMaxRequests:
-      Number(env.RATE_LIMIT_MAX_REQUESTS) || DEFAULT_RATE_LIMIT_MAX_REQUESTS,
+    rateLimitWindowMs: Number(env.RATE_LIMIT_WINDOW_MS) || DEFAULT_RATE_LIMIT_WINDOW_MS,
+    rateLimitMaxRequests: Number(env.RATE_LIMIT_MAX_REQUESTS) || DEFAULT_RATE_LIMIT_MAX_REQUESTS,
   };
 }

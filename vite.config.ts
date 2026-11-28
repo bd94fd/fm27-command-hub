@@ -2,11 +2,11 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import fs from 'fs';
 import path from 'path';
-import {defineConfig} from 'vite';
-import {analyzer} from 'vite-bundle-analyzer';
-import {VitePWA} from 'vite-plugin-pwa';
+import { defineConfig } from 'vite';
+import { analyzer } from 'vite-bundle-analyzer';
+import { VitePWA } from 'vite-plugin-pwa';
 
-export default defineConfig(({command, mode}) => {
+export default defineConfig(({ command, mode }) => {
   // Prevent a shell-level NODE_ENV=development from leaking React dev-runtime
   // (jsx-dev-runtime + react-dom.development.js) into production builds while
   // leaving local dev server & HMR completely untouched.
@@ -19,19 +19,19 @@ export default defineConfig(({command, mode}) => {
     if (!fs.existsSync(distDir)) return;
     const pycacheDir = path.join(distDir, '__pycache__');
     if (fs.existsSync(pycacheDir)) {
-      fs.rmSync(pycacheDir, {recursive: true, force: true});
+      fs.rmSync(pycacheDir, { recursive: true, force: true });
     }
     const walk = (dir: string) => {
-      for (const entry of fs.readdirSync(dir, {withFileTypes: true})) {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) {
           if (entry.name === '__pycache__') {
-            fs.rmSync(full, {recursive: true, force: true});
+            fs.rmSync(full, { recursive: true, force: true });
           } else {
             walk(full);
           }
         } else if (entry.name.endsWith('.pyc') || entry.name.endsWith('.pyo')) {
-          fs.rmSync(full, {force: true});
+          fs.rmSync(full, { force: true });
         }
       }
     };
@@ -116,7 +116,7 @@ export default defineConfig(({command, mode}) => {
         },
       }),
       ...(process.env.ANALYZE_BUNDLE === 'true'
-        ? [analyzer({analyzerMode: 'static', openAnalyzer: false})]
+        ? [analyzer({ analyzerMode: 'static', openAnalyzer: false })]
         : []),
       // Copies src/assets into dist/ so root-relative URLs like
       // "/src/assets/images/..." (e.g. generate_image output) still resolve
@@ -132,7 +132,7 @@ export default defineConfig(({command, mode}) => {
           const srcAssets = path.resolve(import.meta.dirname, 'src/assets');
           const distAssets = path.resolve(distDir, 'src/assets');
           if (fs.existsSync(distDir) && fs.existsSync(srcAssets)) {
-            fs.cpSync(srcAssets, distAssets, {recursive: true, force: true});
+            fs.cpSync(srcAssets, distAssets, { recursive: true, force: true });
           }
         },
       },

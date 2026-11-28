@@ -17,7 +17,13 @@
  */
 
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { clickTab as clickTabShared, connect, fetchJson, sleep, startBrowser } from './lib/browser.mjs';
+import {
+  clickTab as clickTabShared,
+  connect,
+  fetchJson,
+  sleep,
+  startBrowser,
+} from './lib/browser.mjs';
 
 const MIN_TAP_PX = 36;
 const MIN_MOUSE_TARGET_PX = 24;
@@ -86,7 +92,14 @@ const PROFILES = [
 ];
 
 function parseArgs(argv) {
-  const args = { url: 'http://localhost:12000', cdp: 'http://127.0.0.1:9222', json: false, only: null, seed: null, screenshots: null };
+  const args = {
+    url: 'http://localhost:12000',
+    cdp: 'http://127.0.0.1:9222',
+    json: false,
+    only: null,
+    seed: null,
+    screenshots: null,
+  };
   for (const raw of argv.slice(2)) {
     const [key, value] = raw.replace(/^--/, '').split('=');
     if (key === 'json') args.json = true;
@@ -273,11 +286,15 @@ async function run() {
   if (args.seed) {
     const size = statSync(args.seed).size;
     if (size > 5_000_000) {
-      throw new Error(`Seed file is ${(size / 1e6).toFixed(1)} MB. Expected a JSON copy of fm27_command_hub_state_v1, not a save.`);
+      throw new Error(
+        `Seed file is ${(size / 1e6).toFixed(1)} MB. Expected a JSON copy of fm27_command_hub_state_v1, not a save.`,
+      );
     }
     seed = readFileSync(args.seed, 'utf8');
     if (!seed.trim().startsWith('{')) {
-      throw new Error(`Seed file is not JSON: ${args.seed}. Copy fm27_command_hub_state_v1 from localStorage instead.`);
+      throw new Error(
+        `Seed file is not JSON: ${args.seed}. Copy fm27_command_hub_state_v1 from localStorage instead.`,
+      );
     }
   }
   const stopBrowser = await ensureBrowser(args.cdp);
@@ -299,10 +316,11 @@ async function run() {
         if (args.screenshots) {
           const shot = await client.send('Page.captureScreenshot', { format: 'png' });
           const name = `${profile.name}-${label.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.png`;
-          if (shot.result?.data) writeFileSync(`${args.screenshots}/${name}`, Buffer.from(shot.result.data, 'base64'));
+          if (shot.result?.data)
+            writeFileSync(`${args.screenshots}/${name}`, Buffer.from(shot.result.data, 'base64'));
         }
         const probe = await client.evaluate(
-          PROBE.replace('__MIN_TAP__', String(profile.touch ? MIN_TAP_PX : MIN_MOUSE_TARGET_PX))
+          PROBE.replace('__MIN_TAP__', String(profile.touch ? MIN_TAP_PX : MIN_MOUSE_TARGET_PX)),
         );
         entry.tabs.push({ tab: label, opened, ...probe });
       }
@@ -316,14 +334,19 @@ async function run() {
       entry.consoleErrors = [...new Set(client.consoleErrors)].slice(0, 5);
       entry.failures = [];
       for (const tab of entry.tabs) {
-        if (tab.overflowX > 0) entry.failures.push(`${tab.tab}: horizontal overflow ${tab.overflowX}px`);
+        if (tab.overflowX > 0)
+          entry.failures.push(`${tab.tab}: horizontal overflow ${tab.overflowX}px`);
         if (tab.smallCount > 0) {
           const worst = tab.smallTargets[0];
           const floor = profile.touch ? MIN_TAP_PX : MIN_MOUSE_TARGET_PX;
-          entry.failures.push(`${tab.tab}: ${tab.smallCount} target(s) under ${floor}px (e.g. "${worst.label}" ${worst.height}px)`);
+          entry.failures.push(
+            `${tab.tab}: ${tab.smallCount} target(s) under ${floor}px (e.g. "${worst.label}" ${worst.height}px)`,
+          );
         }
         if (tab.zoomRiskInputs.length > 0) {
-          entry.failures.push(`${tab.tab}: input under ${MIN_INPUT_FONT_PX}px zooms on focus (${tab.zoomRiskInputs[0].fontSize}px)`);
+          entry.failures.push(
+            `${tab.tab}: input under ${MIN_INPUT_FONT_PX}px zooms on focus (${tab.zoomRiskInputs[0].fontSize}px)`,
+          );
         }
         if (tab.clippedText.length > 0) {
           entry.failures.push(`${tab.tab}: clipped text "${tab.clippedText[0].text}"`);
@@ -335,12 +358,16 @@ async function run() {
         entry.failures.push('standalone: install banner is still offered inside the installed app');
       }
       if (entry.tabs[0].standalone !== Boolean(profile.standalone)) {
-        entry.failures.push(`standalone detection mismatch (app reports ${entry.tabs[0].standalone})`);
+        entry.failures.push(
+          `standalone detection mismatch (app reports ${entry.tabs[0].standalone})`,
+        );
       }
       if (entry.consoleErrors.length > 0) {
         entry.failures.push(`console: ${entry.consoleErrors[0]}`);
       }
-      const analystEnv = entry.httpErrors.filter((line) => /tactical-chat|\/api\/fm27\//.test(line));
+      const analystEnv = entry.httpErrors.filter((line) =>
+        /tactical-chat|\/api\/fm27\//.test(line),
+      );
       entry.unexercised = analystEnv;
       entry.httpErrors = entry.httpErrors.filter((line) => !analystEnv.includes(line));
       if (entry.httpErrors.length > 0) entry.failures.push(`http: ${entry.httpErrors[0]}`);
@@ -361,10 +388,12 @@ async function run() {
       console.log(
         `${status} ${entry.profile.padEnd(18)} (${entry.note}${entry.seeded ? ', loaded save' : ''}) ` +
           `overflow=${overflow}px smallTargets=${smallest === 0 ? 0 : 'see below'} ` +
-          `root=${entry.tabs[0].rootFontSize}px standalone=${entry.tabs[0].standalone}`
+          `root=${entry.tabs[0].rootFontSize}px standalone=${entry.tabs[0].standalone}`,
       );
       if (entry.unexercised?.length > 0) {
-        console.log(`     ~ Analyst API not exercised here (no GEMINI_API_KEY in this environment)`);
+        console.log(
+          `     ~ Analyst API not exercised here (no GEMINI_API_KEY in this environment)`,
+        );
       }
       for (const failure of entry.failures) console.log(`     - ${failure}`);
     }
@@ -372,7 +401,7 @@ async function run() {
     console.log(
       failed.length === 0
         ? `PASS: ${results.length} profiles clean`
-        : `FAIL: ${failed.length} of ${results.length} profiles have findings`
+        : `FAIL: ${failed.length} of ${results.length} profiles have findings`,
     );
     process.exitCode = failed.length === 0 ? 0 : 1;
   }

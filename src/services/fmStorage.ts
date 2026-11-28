@@ -578,7 +578,7 @@ export function loadPreviousSnapshot(): FmHubPreviousSnapshot | null {
     const raw = window.localStorage.getItem(FM27_PREVIOUS_KEY);
     if (!raw) return null;
     return JSON.parse(raw) as FmHubPreviousSnapshot;
-  } catch (err) {
+  } catch {
     return null;
   }
 }

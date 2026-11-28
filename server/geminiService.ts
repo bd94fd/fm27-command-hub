@@ -1,9 +1,5 @@
 import { GoogleGenAI, ThinkingLevel, type ThinkingConfig } from '@google/genai';
-import {
-  FALLBACK_GEMINI_MODEL,
-  loadServerConfig,
-  type ServerConfig,
-} from './config.ts';
+import { FALLBACK_GEMINI_MODEL, loadServerConfig, type ServerConfig } from './config.ts';
 
 export const MODEL_DISCOVERY_TTL_MS = 5 * 60 * 1000; // 5 minutes
 export const FAST_MODEL_ID = 'gemini-3.5-flash-lite';
@@ -32,7 +28,7 @@ const RETIRED_MODEL_RE = /^(?:models\/)?gemini-(?:1\.|2\.0|2\.5)/i;
 export function resolveThinkingConfig(
   model: string,
   reasoningMode?: ReasoningMode,
-  isFailover = false
+  isFailover = false,
 ): ThinkingConfig | undefined {
   const normalized = normalizeModelName(model).toLowerCase();
   if (!normalized || isRetiredGeminiModel(normalized)) {
@@ -41,8 +37,7 @@ export function resolveThinkingConfig(
   if (!/^gemini-(?:3|4)/.test(normalized)) {
     return undefined;
   }
-  const supportsMinimal =
-    !/^gemini-(?:3\.8|4)/.test(normalized) && !normalized.includes('pro');
+  const supportsMinimal = !/^gemini-(?:3\.8|4)/.test(normalized) && !normalized.includes('pro');
 
   if (isFailover || reasoningMode === 'fast_lite') {
     return {
@@ -71,7 +66,7 @@ export function isRetiredGeminiModel(model: string): boolean {
 export class AnalystTimeoutError extends Error {
   constructor(timeoutMs: number) {
     super(
-      `The Tactical Analyst timed out after ${Math.round(timeoutMs / 1000)}s. Please try again with a shorter prompt.`
+      `The Tactical Analyst timed out after ${Math.round(timeoutMs / 1000)}s. Please try again with a shorter prompt.`,
     );
     this.name = 'AnalystTimeoutError';
   }
@@ -82,7 +77,7 @@ export class AnalystOverloadError extends Error {
 
   constructor(
     message = 'The AI Tactical Analyst is temporarily busy due to high demand. Automatic retries and model failover were attempted — please wait a few seconds and try again.',
-    status: 429 | 503 = 503
+    status: 429 | 503 = 503,
   ) {
     super(message);
     this.name = 'AnalystOverloadError';
@@ -133,7 +128,7 @@ export function isTransientOverloadError(err: unknown): boolean {
   }
   const msg = err instanceof Error ? err.message : String(err);
   return /\b(503|429)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded|temporarily unavailable|rate limit/i.test(
-    msg
+    msg,
   );
 }
 
@@ -193,12 +188,12 @@ export function buildOverloadErrorFromCause(err: unknown): AnalystOverloadError 
   if (isQuotaRateLimitError(err)) {
     return new AnalystOverloadError(
       'Google Gemini API rate limit or daily quota has been reached for this API key across all fallback models. Please wait a minute (or check your Google AI Studio billing/quota) and try again.',
-      429
+      429,
     );
   }
   return new AnalystOverloadError(
     'The AI Tactical Analyst is temporarily busy due to high demand. Automatic retries and model failover were attempted — please wait a few seconds and try again.',
-    503
+    503,
   );
 }
 
@@ -314,7 +309,7 @@ export class GeminiService {
   private getClient(): GeminiClientLike {
     if (!this.config.geminiApiKey) {
       throw new Error(
-        'GEMINI_API_KEY is missing. Set GEMINI_API_KEY in your .env file or cloud environment variables.'
+        'GEMINI_API_KEY is missing. Set GEMINI_API_KEY in your .env file or cloud environment variables.',
       );
     }
     return this.clientFactory(this.config.geminiApiKey);
@@ -334,9 +329,7 @@ export class GeminiService {
       return this.discoveryCache.models;
     }
 
-    const fallbackList = this.config.preferredModels.filter(
-      (m) => !isRetiredGeminiModel(m)
-    );
+    const fallbackList = this.config.preferredModels.filter((m) => !isRetiredGeminiModel(m));
 
     if (!this.config.geminiApiKey) {
       this.discoveryCache = { models: fallbackList, fetchedAtMs: currentMs };
@@ -408,10 +401,7 @@ export class GeminiService {
     if (options?.reasoningMode === 'fast_lite') {
       return this.getFastModelId();
     }
-    if (
-      options?.reasoningMode === 'deep_high' ||
-      options?.reasoningMode === 'max_xhigh'
-    ) {
+    if (options?.reasoningMode === 'deep_high' || options?.reasoningMode === 'max_xhigh') {
       const override = pickIfActive(this.config.geminiModelOverride);
       return override ?? DEEP_MODEL_ID;
     }
@@ -441,14 +431,13 @@ export class GeminiService {
       reasoningMode?: ReasoningMode;
       requestedModel?: string;
       timeoutMs?: number;
-    }
+    },
   ) {
     const client = this.getClient();
     const isDeepMode =
-      options?.reasoningMode === 'deep_high' ||
-      options?.reasoningMode === 'max_xhigh';
+      options?.reasoningMode === 'deep_high' || options?.reasoningMode === 'max_xhigh';
     const defaultModeTimeout = isDeepMode
-      ? this.config.deepAiTimeoutMs ?? this.config.aiTimeoutMs
+      ? (this.config.deepAiTimeoutMs ?? this.config.aiTimeoutMs)
       : this.config.aiTimeoutMs;
     const timeoutMs = options?.timeoutMs ?? defaultModeTimeout;
     const primaryModel = await this.resolveModel({
@@ -459,11 +448,7 @@ export class GeminiService {
     const fastModel = this.getFastModelId();
     const deadline = this.now() + timeoutMs;
 
-    const invoke = async (
-      model: string,
-      capDeadline = deadline,
-      isFailover = false
-    ) => {
+    const invoke = async (model: string, capDeadline = deadline, isFailover = false) => {
       const remainingMs = Math.min(deadline, capDeadline) - this.now();
       if (remainingMs <= 500) {
         throw new AnalystTimeoutError(timeoutMs);
@@ -525,11 +510,7 @@ export class GeminiService {
             : model !== fallbackModel
               ? fallbackModel
               : DEEP_MODEL_ID;
-      const candidates = [
-        first,
-        EMERGENCY_OVERLOAD_MODEL_ID,
-        EMERGENCY_LITE_MODEL_ID,
-      ];
+      const candidates = [first, EMERGENCY_OVERLOAD_MODEL_ID, EMERGENCY_LITE_MODEL_ID];
       const unique: string[] = [];
       for (const candidate of candidates) {
         if (
@@ -547,7 +528,7 @@ export class GeminiService {
     const invokeWithOverloadRetry = async (
       model: string,
       capDeadline = deadline,
-      isFailover = false
+      isFailover = false,
     ) => {
       const retryDelays = isFailover
         ? OVERLOAD_RETRY_DELAYS_MS.slice(0, 1)
@@ -580,8 +561,7 @@ export class GeminiService {
     };
 
     // Reserve ~33% of the total budget for automatic Fast-model failover when Deep Analyst runs slow
-    const canTimeoutFailoverToFast =
-      primaryModel !== fastModel && timeoutMs >= 30_000;
+    const canTimeoutFailoverToFast = primaryModel !== fastModel && timeoutMs >= 30_000;
     const primaryDeadline = canTimeoutFailoverToFast
       ? this.now() + Math.round(timeoutMs * 0.67)
       : deadline;
@@ -610,11 +590,7 @@ export class GeminiService {
             deadline - this.now() > 2_000
           ) {
             try {
-              return await invokeWithOverloadRetry(
-                EMERGENCY_OVERLOAD_MODEL_ID,
-                deadline,
-                true
-              );
+              return await invokeWithOverloadRetry(EMERGENCY_OVERLOAD_MODEL_ID, deadline, true);
             } catch (emergencyErr: unknown) {
               if (isTransientOverloadError(emergencyErr) || isNotFoundError(emergencyErr)) {
                 throw buildOverloadErrorFromCause(emergencyErr);
@@ -642,12 +618,9 @@ export class GeminiService {
             throw failoverErr;
           }
         }
-        if (
-          isTransientOverloadError(lastFailoverErr) ||
-          isNotFoundError(lastFailoverErr)
-        ) {
+        if (isTransientOverloadError(lastFailoverErr) || isNotFoundError(lastFailoverErr)) {
           throw buildOverloadErrorFromCause(
-            isNotFoundError(lastFailoverErr) ? err : lastFailoverErr
+            isNotFoundError(lastFailoverErr) ? err : lastFailoverErr,
           );
         }
         throw lastFailoverErr;

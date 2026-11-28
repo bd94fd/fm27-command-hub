@@ -35,8 +35,7 @@ export function createSecurityGuard(options: SecurityGuardOptions = {}) {
   const maxImageBytes = options.maxImageBytes ?? MAX_IMAGE_BYTES;
   const maxContextChars = options.maxContextChars ?? MAX_CONTEXT_CHARS;
   const windowMs = options.rateLimitWindowMs ?? DEFAULT_RATE_LIMIT_WINDOW_MS;
-  const maxRequests =
-    options.rateLimitMaxRequests ?? DEFAULT_RATE_LIMIT_MAX_REQUESTS;
+  const maxRequests = options.rateLimitMaxRequests ?? DEFAULT_RATE_LIMIT_MAX_REQUESTS;
   const now = options.now ?? (() => Date.now());
 
   const requestTimestampsByIp = new Map<string, number[]>();
@@ -44,10 +43,7 @@ export function createSecurityGuard(options: SecurityGuardOptions = {}) {
   let lastPrunedAtMs = 0;
 
   function pruneStaleIps(cutoffMs: number, currentMs: number): void {
-    if (
-      currentMs - lastPrunedAtMs < windowMs &&
-      requestTimestampsByIp.size < MAX_TRACKED_IPS
-    ) {
+    if (currentMs - lastPrunedAtMs < windowMs && requestTimestampsByIp.size < MAX_TRACKED_IPS) {
       return;
     }
     lastPrunedAtMs = currentMs;
@@ -67,17 +63,11 @@ export function createSecurityGuard(options: SecurityGuardOptions = {}) {
     }
   }
 
-  return function securityGuard(
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ) {
+  return function securityGuard(req: Request, res: Response, next: NextFunction) {
     // 1. Optional HUB_ACCESS_TOKEN verification
     if (hubAccessToken) {
       const authHeader =
-        typeof req.headers.authorization === 'string'
-          ? req.headers.authorization.trim()
-          : '';
+        typeof req.headers.authorization === 'string' ? req.headers.authorization.trim() : '';
       const bearerToken = authHeader.toLowerCase().startsWith('bearer ')
         ? authHeader.slice(7).trim()
         : '';
@@ -98,9 +88,7 @@ export function createSecurityGuard(options: SecurityGuardOptions = {}) {
     const currentMs = now();
     const cutoff = currentMs - windowMs;
     pruneStaleIps(cutoff, currentMs);
-    const recent = (requestTimestampsByIp.get(ip) ?? []).filter(
-      (ts) => ts > cutoff
-    );
+    const recent = (requestTimestampsByIp.get(ip) ?? []).filter((ts) => ts > cutoff);
     if (recent.length >= maxRequests) {
       requestTimestampsByIp.set(ip, recent);
       return res.status(429).json({
@@ -133,9 +121,7 @@ export function createSecurityGuard(options: SecurityGuardOptions = {}) {
             typeof img === 'object' &&
             typeof (img as { base64?: unknown }).base64 === 'string'
           ) {
-            totalImageBytes += estimateBase64DecodedBytes(
-              (img as { base64: string }).base64
-            );
+            totalImageBytes += estimateBase64DecodedBytes((img as { base64: string }).base64);
           }
         }
         if (totalImageBytes > maxImageBytes) {

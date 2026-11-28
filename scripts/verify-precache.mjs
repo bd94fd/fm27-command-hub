@@ -21,11 +21,13 @@ try {
 const urls = [...source.matchAll(/url:"([^"]+)"/g)].map((m) => m[1]);
 const problems = [];
 
-if (urls.length === 0) problems.push('the precache list is empty, so the installed app would have no offline shell');
+if (urls.length === 0)
+  problems.push('the precache list is empty, so the installed app would have no offline shell');
 if (urls.length > 0 && urls.length < MIN_ENTRIES) {
   problems.push(`only ${urls.length} files are precached; expected at least ${MIN_ENTRIES}`);
 }
-if (!urls.includes('index.html')) problems.push('index.html is not precached, so the offline shell would 404');
+if (!urls.includes('index.html'))
+  problems.push('index.html is not precached, so the offline shell would 404');
 if (!urls.some((u) => u.startsWith('assets/') && u.endsWith('.js'))) {
   problems.push('no JavaScript bundles are precached');
 }

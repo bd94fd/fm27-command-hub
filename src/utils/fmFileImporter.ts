@@ -363,7 +363,7 @@ export function parsePipeTableRows(text: string): string[][] {
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed.includes('|')) continue;
-    if (/^[\|\-\s=+]+$/.test(trimmed)) continue;
+    if (/^[|\s=+-]+$/.test(trimmed)) continue;
 
     const parts = trimmed
       .split('|')

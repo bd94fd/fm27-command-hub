@@ -61,7 +61,8 @@ function parseArgs(argv) {
     if (key === '--url') args.url = value;
     else if (key === '--cdp') args.cdp = value;
     else if (key === '--save') args.save = value;
-    else if (key === '--profile') args.profiles = value === 'both' ? ['desktop', 'mobile'] : [value];
+    else if (key === '--profile')
+      args.profiles = value === 'both' ? ['desktop', 'mobile'] : [value];
     else if (key === '--out') args.out = value;
     else if (key === '--max-stops') args.maxStops = Number(value);
     else if (key === '--views') args.views = Number(value);
@@ -77,7 +78,13 @@ function parseArgs(argv) {
 async function pressActivationKey(client, key) {
   const spec =
     key === 'Enter'
-      ? { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13, text: '\r' }
+      ? {
+          key: 'Enter',
+          code: 'Enter',
+          windowsVirtualKeyCode: 13,
+          nativeVirtualKeyCode: 13,
+          text: '\r',
+        }
       : { key: ' ', code: 'Space', windowsVirtualKeyCode: 32, nativeVirtualKeyCode: 32, text: ' ' };
   await client.send('Input.dispatchKeyEvent', { type: 'keyDown', ...spec });
   await client.send('Input.dispatchKeyEvent', { type: 'keyUp', ...spec });
@@ -172,7 +179,9 @@ async function preparePage(client, browserSend, profile, args) {
 }
 
 async function walkTabStops(client, limit) {
-  await client.evaluate(`(() => { document.activeElement?.blur?.(); window.scrollTo(0, 0); return true; })()`);
+  await client.evaluate(
+    `(() => { document.activeElement?.blur?.(); window.scrollTo(0, 0); return true; })()`,
+  );
   const stops = [];
   for (let i = 0; i < limit; i += 1) {
     await client.pressTab();
@@ -242,7 +251,7 @@ async function sweepSection(client, args, tab, results, check) {
     }
   }
   const rendered = await client.evaluate(
-    `document.querySelector('main[data-active-tab]')?.getAttribute('data-active-tab') ?? null`
+    `document.querySelector('main[data-active-tab]')?.getAttribute('data-active-tab') ?? null`,
   );
   check(`${tab}: Enter on the section button opens it`, rendered === target.tab, String(rendered));
 
@@ -251,28 +260,29 @@ async function sweepSection(client, args, tab, results, check) {
   check(
     `${tab}: ${summary.count} keyboard stops, each with a visible focus indicator`,
     summary.count > 0 && summary.noRing.length === 0,
-    summary.noRing.length ? `no ring on ${summary.noRing[0].tag} "${summary.noRing[0].name}"` : ''
+    summary.noRing.length ? `no ring on ${summary.noRing[0].tag} "${summary.noRing[0].name}"` : '',
   );
   check(
     `${tab}: no keyboard stop hides inside aria-hidden`,
     summary.hidden.length === 0,
-    summary.hidden.length ? `${summary.hidden[0].tag} "${summary.hidden[0].name}"` : ''
+    summary.hidden.length ? `${summary.hidden[0].tag} "${summary.hidden[0].name}"` : '',
   );
   check(
     `${tab}: no keyboard stop is zero-sized`,
     summary.invisible.length === 0,
-    summary.invisible.length ? `${summary.invisible[0].tag} "${summary.invisible[0].name}"` : ''
+    summary.invisible.length ? `${summary.invisible[0].tag} "${summary.invisible[0].name}"` : '',
   );
 
   const pointer = await client.evaluate(POINTER_ONLY_PROBE);
   check(
     `${tab}: every pointer control is reachable by keyboard`,
     pointer.count === 0,
-    pointer.count ? `${pointer.count} pointer-only, e.g. ${pointer.sample[0]}` : ''
+    pointer.count ? `${pointer.count} pointer-only, e.g. ${pointer.sample[0]}` : '',
   );
 
   // Each alternate view is its own screen, so it gets its own scan and a short walk.
-  const views = await client.evaluate(`(() => [...document.querySelectorAll('main [role="tab"], main [aria-pressed]')]
+  const views =
+    await client.evaluate(`(() => [...document.querySelectorAll('main [role="tab"], main [aria-pressed]')]
     .filter((el) => el.getClientRects().length > 0)
     .map((el, index) => ({
       index,
@@ -297,7 +307,7 @@ async function sweepSection(client, args, tab, results, check) {
     check(
       `${tab} → ${view.label}: every pointer control is reachable by keyboard`,
       viewPointer.count === 0,
-      viewPointer.count ? `${viewPointer.count} pointer-only, e.g. ${viewPointer.sample[0]}` : ''
+      viewPointer.count ? `${viewPointer.count} pointer-only, e.g. ${viewPointer.sample[0]}` : '',
     );
     const viewStops = summariseStops(await walkTabStops(client, 20));
     check(
@@ -305,7 +315,7 @@ async function sweepSection(client, args, tab, results, check) {
       viewStops.noRing.length === 0,
       viewStops.noRing.length
         ? `no ring on ${viewStops.noRing[0].tag} "${viewStops.noRing[0].name}"`
-        : `${viewStops.count} stops`
+        : `${viewStops.count} stops`,
     );
   }
   return results;
@@ -316,10 +326,18 @@ async function checkDialog(client, label, openScript, check) {
   await sleep(1500);
   const opened = await client.evaluate(DIALOG_PROBE);
   if (!opened.open) {
-    check(`${label}: opens and is a named modal dialog`, false, 'no role="dialog" surface appeared');
+    check(
+      `${label}: opens and is a named modal dialog`,
+      false,
+      'no role="dialog" surface appeared',
+    );
     return;
   }
-  check(`${label}: opens and is a named modal dialog`, opened.name.length > 0, opened.name || 'unnamed');
+  check(
+    `${label}: opens and is a named modal dialog`,
+    opened.name.length > 0,
+    opened.name || 'unnamed',
+  );
   check(`${label}: focus moves inside`, opened.focusInside);
 
   let escaped = -1;
@@ -333,7 +351,11 @@ async function checkDialog(client, label, openScript, check) {
       break;
     }
   }
-  check(`${label}: Tab stays inside`, escaped === -1, escaped === -1 ? '45 presses' : `left at press ${escaped}`);
+  check(
+    `${label}: Tab stays inside`,
+    escaped === -1,
+    escaped === -1 ? '45 presses' : `left at press ${escaped}`,
+  );
 
   await client.pressEscape();
   await sleep(600);
@@ -351,7 +373,7 @@ async function checkDialog(client, label, openScript, check) {
   check(
     `${label}: focus returns to the control that opened it`,
     !after.onBody,
-    after.onBody ? 'focus fell to <body>' : `${after.tag} "${after.name}"`
+    after.onBody ? 'focus fell to <body>' : `${after.tag} "${after.name}"`,
   );
 }
 
@@ -366,7 +388,9 @@ async function runProfile(client, browserSend, profile, args, savePath, results)
   await preparePage(client, browserSend, profile, args);
 
   // The skip link is the first thing Tab reaches on a fresh page.
-  await client.evaluate(`(() => { document.activeElement?.blur?.(); window.scrollTo(0, 0); return true; })()`);
+  await client.evaluate(
+    `(() => { document.activeElement?.blur?.(); window.scrollTo(0, 0); return true; })()`,
+  );
   await client.pressTab();
   await sleep(80);
   const skip = await client.evaluate(`(() => {
@@ -391,7 +415,9 @@ async function runProfile(client, browserSend, profile, args, savePath, results)
   }
 
   if (!savePath) {
-    console.log(`  section sweeps skipped (no --save); ${Math.round((Date.now() - started) / 1000)}s`);
+    console.log(
+      `  section sweeps skipped (no --save); ${Math.round((Date.now() - started) / 1000)}s`,
+    );
     return;
   }
 
@@ -408,9 +434,13 @@ async function runProfile(client, browserSend, profile, args, savePath, results)
       label: 'the squad after import',
     })
     .catch(() => null);
-  const loaded = await client.evaluate(`/(\\d+)\\s*First Team/.test(document.body.innerText || '')`);
+  const loaded = await client.evaluate(
+    `/(\\d+)\\s*First Team/.test(document.body.innerText || '')`,
+  );
   if (!loaded) {
-    const visible = await client.evaluate(`(document.body.innerText || '').replace(/\\s+/g, ' ').slice(0, 240)`);
+    const visible = await client.evaluate(
+      `(document.body.innerText || '').replace(/\\s+/g, ' ').slice(0, 240)`,
+    );
     console.log(`  save did not load; the page shows: ${visible}`);
   }
   check('save loaded for the section sweeps', loaded);
@@ -444,13 +474,17 @@ async function runProfile(client, browserSend, profile, args, savePath, results)
   check(
     `a squad ${profile.mobile ? 'card' : 'row'} can take focus`,
     opener.found && opener.kind === (profile.mobile ? 'card' : 'row'),
-    opener.found ? `${opener.kind} "${opener.name}"` : 'no focusable player control'
+    opener.found ? `${opener.kind} "${opener.name}"` : 'no focusable player control',
   );
   if (opener.found) {
     await pressActivationKey(client, 'Enter');
     await sleep(1500);
     const dialog = await client.evaluate(DIALOG_PROBE);
-    check(`Enter on a squad ${opener.kind} opens the player profile`, dialog.open, dialog.name || 'no dialog');
+    check(
+      `Enter on a squad ${opener.kind} opens the player profile`,
+      dialog.open,
+      dialog.name || 'no dialog',
+    );
     await client.pressEscape();
     await sleep(600);
     const returned = await client.evaluate(`(() => {
@@ -467,7 +501,7 @@ async function runProfile(client, browserSend, profile, args, savePath, results)
     check(
       'Escape from the player profile returns focus to the player control',
       returned.isPlayerControl && !returned.surface,
-      returned.onBody ? 'focus fell to <body>' : returned.tag
+      returned.onBody ? 'focus fell to <body>' : returned.tag,
     );
   }
 
@@ -493,7 +527,9 @@ async function runProfile(client, browserSend, profile, args, savePath, results)
     client,
     'share sheet',
     profile.mobile
-      ? openFromMore(`/Share and export|Share & Export/i.test((b.textContent || '') + (b.getAttribute('aria-label') || ''))`)
+      ? openFromMore(
+          `/Share and export|Share & Export/i.test((b.textContent || '') + (b.getAttribute('aria-label') || ''))`,
+        )
       : `(() => {
       const button = [...document.querySelectorAll('button')].find((b) => b.getClientRects().length > 0 && /Share and export/i.test(b.getAttribute('aria-label') || ''));
       if (!button) return false;
@@ -501,14 +537,16 @@ async function runProfile(client, browserSend, profile, args, savePath, results)
       button.click();
       return true;
     })()`,
-    check
+    check,
   );
 
   await checkDialog(
     client,
     'knowledge base',
     profile.mobile
-      ? openFromMore(`/Knowledge Base/i.test((b.textContent || '') + (b.getAttribute('aria-label') || ''))`)
+      ? openFromMore(
+          `/Knowledge Base/i.test((b.textContent || '') + (b.getAttribute('aria-label') || ''))`,
+        )
       : `(() => {
       const button = [...document.querySelectorAll('button')].find((b) => b.getClientRects().length > 0 && /FM27 KB/i.test(b.getAttribute('aria-label') || ''));
       if (!button) return false;
@@ -516,26 +554,32 @@ async function runProfile(client, browserSend, profile, args, savePath, results)
       button.click();
       return true;
     })()`,
-    check
+    check,
   );
 
   const beforePalette = await client.evaluate(
-    `(() => { const active = document.activeElement; const nav = document.querySelector('nav[aria-label="Primary sections"] button'); if (nav) nav.focus(); return document.activeElement === document.body; })()`
+    `(() => { const active = document.activeElement; const nav = document.querySelector('nav[aria-label="Primary sections"] button'); if (nav) nav.focus(); return document.activeElement === document.body; })()`,
   );
-  await client.evaluate(`(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })); return true; })()`);
+  await client.evaluate(
+    `(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })); return true; })()`,
+  );
   await sleep(1200);
   const palette = await client.evaluate(DIALOG_PROBE);
-  check('Ctrl+K opens the command palette with focus inside', palette.open && palette.focusInside, palette.name || 'no dialog');
+  check(
+    'Ctrl+K opens the command palette with focus inside',
+    palette.open && palette.focusInside,
+    palette.name || 'no dialog',
+  );
   await client.pressEscape();
   await sleep(500);
   const paletteClosed = await client.evaluate(
-    `(() => ({ closed: !document.querySelector('[role="dialog"][aria-modal="true"]'), onBody: document.activeElement === document.body }))()`
+    `(() => ({ closed: !document.querySelector('[role="dialog"][aria-modal="true"]'), onBody: document.activeElement === document.body }))()`,
   );
   check('Escape closes the command palette', paletteClosed.closed);
   check(
     'Escape from the command palette returns focus to the page',
     beforePalette || !paletteClosed.onBody,
-    paletteClosed.onBody ? 'focus fell to <body>' : 'returned'
+    paletteClosed.onBody ? 'focus fell to <body>' : 'returned',
   );
 
   if (profile.mobile) {
@@ -550,7 +594,7 @@ async function runProfile(client, browserSend, profile, args, savePath, results)
         more.click();
         return true;
       })()`,
-      check
+      check,
     );
   }
 
@@ -560,8 +604,12 @@ async function runProfile(client, browserSend, profile, args, savePath, results)
 async function main() {
   const args = parseArgs(process.argv);
   if (args.help) {
-    console.log('Usage: npm run keyboard:audit -- [--save=path] [--profile=desktop|mobile|both] [--max-stops=80] [--views=6] [--json]');
-    console.log('Start the production build on the target port first: NODE_ENV=production PORT=12000 npm start');
+    console.log(
+      'Usage: npm run keyboard:audit -- [--save=path] [--profile=desktop|mobile|both] [--max-stops=80] [--views=6] [--json]',
+    );
+    console.log(
+      'Start the production build on the target port first: NODE_ENV=production PORT=12000 npm start',
+    );
     return;
   }
 
@@ -590,7 +638,9 @@ async function main() {
   if (failed.length > 0) {
     console.log('\nFailures:');
     for (const failure of failed) {
-      console.log(`  [${failure.profile}] ${failure.check}${failure.detail ? ` — ${failure.detail}` : ''}`);
+      console.log(
+        `  [${failure.profile}] ${failure.check}${failure.detail ? ` — ${failure.detail}` : ''}`,
+      );
     }
     process.exitCode = 1;
   }

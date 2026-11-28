@@ -1,9 +1,6 @@
 import { buildAnalystCitationPromptRules } from '../src/utils/analystCitations.ts';
 
-export type AnalystPersona =
-  | 'chief_analyst'
-  | 'sporting_director'
-  | 'assistant_manager';
+export type AnalystPersona = 'chief_analyst' | 'sporting_director' | 'assistant_manager';
 
 const PERSONA_PREAMBLES: Record<AnalystPersona, string> = {
   chief_analyst:
@@ -16,16 +13,16 @@ const PERSONA_PREAMBLES: Record<AnalystPersona, string> = {
 
 export function normalizePersona(raw: unknown): AnalystPersona {
   if (typeof raw !== 'string') return 'chief_analyst';
-  const normalized = raw.trim().toLowerCase().replace(/[\s-]+/g, '_');
+  const normalized = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
   if (normalized === 'sporting_director') return 'sporting_director';
   if (normalized === 'assistant_manager') return 'assistant_manager';
   return 'chief_analyst';
 }
 
-export function buildAnalyzeScreenshotSystemPrompt(
-  targetClub: string,
-  eventNum: number
-): string {
+export function buildAnalyzeScreenshotSystemPrompt(targetClub: string, eventNum: number): string {
   return `You are Bobby Dean's Football Manager 27 Chief Tactical Analyst for ${targetClub} (Patch 27.1.0 Playbook v2.0).
 Key Playbook v2.0 Rules:
 - Primary System: Dual-Phase 4-3-3 Counter Positive (Balanced Ground Build-Up, Short/Mixed GK Distribution, Standard Passing, Tracking Wingers OOP on both flanks to prevent 2v1 full-back overlaps).
@@ -122,5 +119,3 @@ STRICT RULES:
 7. Calibrate \`priorityNextActions\` realistically to the club's league level, financial balance, and wage structure (e.g. using £0-fee Free Agents, 0%–30% wage-share parent-club Loans, outgoing U21 development loans, or 50%–100% wage-relief loans for surplus seniors rather than unrealistic cash transfers when in debt or in lower divisions).
 8. Keep every bullet concise, specific, and immediately actionable.`;
 }
-
-

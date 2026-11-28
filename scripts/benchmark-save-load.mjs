@@ -67,7 +67,7 @@ async function loadPlaywright() {
   } catch {
     const bundled = path.join(
       repoRoot,
-      '.agents/skills/playwright-skill/node_modules/playwright/index.js'
+      '.agents/skills/playwright-skill/node_modules/playwright/index.js',
     );
     const mod = await import(pathToFileURL(bundled).href);
     return mod.chromium ? mod : mod.default;
@@ -125,8 +125,8 @@ async function sampleMemory(cdp, page, serverPid, state) {
   }
 
   try {
-    const used = await page.evaluate(
-      () => (performance.memory ? performance.memory.usedJSHeapSize : null)
+    const used = await page.evaluate(() =>
+      performance.memory ? performance.memory.usedJSHeapSize : null,
     );
     if (typeof used === 'number') {
       state.peakJsHeapBytes = Math.max(state.peakJsHeapBytes, used);
@@ -173,19 +173,19 @@ async function waitForCompletedBenchmark(page, timeoutMs) {
   await page.waitForFunction(
     () => {
       const list = window.__FM27_SAVE_LOAD_BENCHMARKS__;
-      return (
-        Array.isArray(list) &&
-        list.some((record) => record && record.completedAtIso)
-      );
+      return Array.isArray(list) && list.some((record) => record && record.completedAtIso);
     },
     undefined,
-    { timeout: timeoutMs, polling: 500 }
+    { timeout: timeoutMs, polling: 500 },
   );
   return readBenchmarkRecord(page);
 }
 
 async function readSquadCount(page) {
-  const labels = await page.locator('button').allInnerTexts().catch(() => []);
+  const labels = await page
+    .locator('button')
+    .allInnerTexts()
+    .catch(() => []);
   const squadLabel = labels.find((label) => /^Squad \(\d+\)/.test(label)) || '';
   return Number((squadLabel.match(/\((\d+)\)/) || [])[1] || 0);
 }
@@ -201,7 +201,7 @@ async function readPwaState(page) {
             await Promise.race([
               registration.then(() => true),
               new Promise((resolve) => setTimeout(() => resolve(false), 3000)),
-            ])
+            ]),
           )
         : false;
     } catch {
@@ -221,12 +221,12 @@ async function measureWarmReload(page, timeoutMs) {
   await page.waitForFunction(
     () => {
       const labels = Array.from(document.querySelectorAll('button')).map((button) =>
-        (button.textContent || '').trim()
+        (button.textContent || '').trim(),
       );
       return labels.some((label) => /^Squad \(\d+\)/.test(label));
     },
     undefined,
-    { timeout: timeoutMs, polling: 250 }
+    { timeout: timeoutMs, polling: 250 },
   );
   return {
     warmReloadMs: Date.now() - startedAt,
@@ -242,7 +242,7 @@ async function runOneSave({ browser, devices, args, savePath }) {
           locale: 'en-GB',
           timezoneId: 'Europe/London',
         }
-      : { viewport: { width: 1440, height: 900 }, locale: 'en-GB' }
+      : { viewport: { width: 1440, height: 900 }, locale: 'en-GB' },
   );
   const page = await context.newPage();
   const errors = [];
@@ -324,16 +324,18 @@ function printSummary(results) {
   console.log('===================');
   for (const result of results) {
     const marks = result.cold.marksMs;
-    console.log(`\n${result.save} (${formatMb(result.saveSizeBytes)}) · ${result.mode}${result.cacheHit ? ' · cache hit' : ''}`);
     console.log(
-      `  cold: wall ${formatMs(result.cold.wallMs)} | upload ${formatMs(marks.upload_complete)} | decode ${formatMs(marks.decode_complete)} | hydrate ${formatMs(marks.hydrate_complete)} | first useful ${formatMs(marks.first_useful_screen)} | full ${formatMs(marks.full_tab_ready)}`
+      `\n${result.save} (${formatMb(result.saveSizeBytes)}) · ${result.mode}${result.cacheHit ? ' · cache hit' : ''}`,
     );
     console.log(
-      `  peak: JS heap ${formatMb(result.cold.peakJsHeapBytes)} | DOM ${result.cold.peakDomNodes} nodes | server RSS ${formatMb(result.cold.peakServerRssBytes)}`
+      `  cold: wall ${formatMs(result.cold.wallMs)} | upload ${formatMs(marks.upload_complete)} | decode ${formatMs(marks.decode_complete)} | hydrate ${formatMs(marks.hydrate_complete)} | first useful ${formatMs(marks.first_useful_screen)} | full ${formatMs(marks.full_tab_ready)}`,
+    );
+    console.log(
+      `  peak: JS heap ${formatMb(result.cold.peakJsHeapBytes)} | DOM ${result.cold.peakDomNodes} nodes | server RSS ${formatMb(result.cold.peakServerRssBytes)}`,
     );
     if (result.warm) {
       console.log(
-        `  warm reload: ${formatMs(result.warm.warmReloadMs)} | peak JS heap ${formatMb(result.warm.peakJsHeapBytes)} | squad ${result.warm.squadCount}`
+        `  warm reload: ${formatMs(result.warm.warmReloadMs)} | peak JS heap ${formatMb(result.warm.peakJsHeapBytes)} | squad ${result.warm.squadCount}`,
       );
     }
     if (Object.keys(result.cold.detailMs ?? {}).length > 0) {
@@ -372,7 +374,7 @@ async function main() {
     await fs.mkdir(path.dirname(outPath), { recursive: true });
     await fs.writeFile(
       outPath,
-      `${JSON.stringify({ generatedAtIso: new Date().toISOString(), args, results }, null, 2)}\n`
+      `${JSON.stringify({ generatedAtIso: new Date().toISOString(), args, results }, null, 2)}\n`,
     );
     console.log(`\nWrote ${outPath}`);
   }

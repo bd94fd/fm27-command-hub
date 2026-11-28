@@ -23,7 +23,7 @@ const args = Object.fromEntries(
   process.argv.slice(2).map((arg) => {
     const [key, value = 'true'] = arg.replace(/^--/, '').split('=');
     return [key, value];
-  })
+  }),
 );
 
 const URL_BASE = args.url || 'http://localhost:12000';
@@ -137,7 +137,11 @@ async function main() {
       const reg = await navigator.serviceWorker?.getRegistration?.();
       return { active: Boolean(reg?.active), caches: (await caches?.keys?.() ?? []) };
     })()`);
-    check('the service worker is installed', Boolean(swReady?.active), (swReady?.caches || []).join(', '));
+    check(
+      'the service worker is installed',
+      Boolean(swReady?.active),
+      (swReady?.caches || []).join(', '),
+    );
 
     // The worker fills the precache in the background right after it activates.
     const precache = await client
@@ -148,7 +152,7 @@ async function main() {
           const count = (await (await caches.open(name)).keys()).length;
           return count > 20 ? { name, count } : false;
         })()`,
-        { timeout: 60000, interval: 1000, label: 'the precache to fill' }
+        { timeout: 60000, interval: 1000, label: 'the precache to fill' },
       )
       .catch(() => null);
     check('the app shell is precached', Boolean(precache), `${precache?.count ?? 0} files`);
@@ -165,7 +169,7 @@ async function main() {
     await client.navigate(URL_BASE, 3000);
     check(
       'the app decodes on the device for the cache check',
-      Boolean(await evaluate(`localStorage.getItem('fm27_decode_target_v1') === 'local'`))
+      Boolean(await evaluate(`localStorage.getItem('fm27_decode_target_v1') === 'local'`)),
     );
 
     await client.setFileInput('input[accept=".fm"]', savePath);
@@ -185,13 +189,18 @@ async function main() {
     check(
       'the phone decoder is kept in Cache Storage for offline use',
       pyodideFiles > 0,
-      pyodideFiles > 0 ? `${pyodideFiles} Pyodide files cached` : 'only the HTTP cache has it, which the browser may evict'
+      pyodideFiles > 0
+        ? `${pyodideFiles} Pyodide files cached`
+        : 'only the HTTP cache has it, which the browser may evict',
     );
 
     // ---- Offline, with a save on the device.
     console.log('\noffline with a save');
     await client.send('Network.emulateNetworkConditions', OFFLINE);
-    check('the browser reports offline to the app', Boolean(await evaluate(`navigator.onLine === false`)));
+    check(
+      'the browser reports offline to the app',
+      Boolean(await evaluate(`navigator.onLine === false`)),
+    );
 
     await client.navigate(URL_BASE, 5000);
     const shell = await evaluate(`(() => {
@@ -203,12 +212,20 @@ async function main() {
       };
     })()`);
     check('the app starts from the cache with no network', Boolean(shell?.hasMain));
-    check('the save is still there after an offline reload', (shell?.firstTeam ?? 0) > 0, `${shell?.firstTeam ?? 0} first team`);
-    check('the offline banner explains what still works', /Offline mode/i.test(shell?.banner || ''), shell?.banner || 'no banner');
+    check(
+      'the save is still there after an offline reload',
+      (shell?.firstTeam ?? 0) > 0,
+      `${shell?.firstTeam ?? 0} first team`,
+    );
+    check(
+      'the offline banner explains what still works',
+      /Offline mode/i.test(shell?.banner || ''),
+      shell?.banner || 'no banner',
+    );
     check(
       'the offline banner says how old the data is',
       /last updated in game on/i.test(shell?.banner || ''),
-      shell?.banner || 'no save date in the banner'
+      shell?.banner || 'no save date in the banner',
     );
 
     for (const tab of ['Squad', 'Tactics & Corners', 'Transfers', 'Matches', 'Staff']) {
@@ -218,7 +235,11 @@ async function main() {
         const main = document.querySelector('main[data-active-tab]');
         return { tab: main?.getAttribute('data-active-tab'), chars: (main?.innerText || '').length };
       })()`);
-      check(`the ${tab} section renders offline`, Boolean(opened) && (rendered?.chars ?? 0) > 200, `${rendered?.chars ?? 0} chars`);
+      check(
+        `the ${tab} section renders offline`,
+        Boolean(opened) && (rendered?.chars ?? 0) > 200,
+        `${rendered?.chars ?? 0} chars`,
+      );
     }
 
     await clickTab(evaluate, sleep, 'Hub & Analyst');
@@ -246,17 +267,17 @@ async function main() {
           const notice = [...document.querySelectorAll('[role="status"]')].map((el) => el.innerText).join(' ');
           return /offline briefing/i.test(text) && /Analyst unavailable|offline/i.test(notice);
         })()`,
-        { timeout: 120000, interval: 1500, label: 'an offline Analyst answer' }
+        { timeout: 120000, interval: 1500, label: 'an offline Analyst answer' },
       )
       .catch(() => null);
     check('the Analyst answers offline instead of failing', Boolean(answered));
     const noticeText = await evaluate(
-      `[...document.querySelectorAll('[role="status"]')].map((el) => el.innerText.replace(/\\s+/g, ' ')).join(' | ')`
+      `[...document.querySelectorAll('[role="status"]')].map((el) => el.innerText.replace(/\\s+/g, ' ')).join(' | ')`,
     );
     check(
       'the offline answer says why in plain English, with no fetch jargon',
       /offline briefing/i.test(noticeText || '') && !/failed to fetch/i.test(noticeText || ''),
-      (noticeText || '').slice(0, 200)
+      (noticeText || '').slice(0, 200),
     );
 
     const backupClicked = await evaluate(`(() => {
@@ -281,7 +302,11 @@ async function main() {
         offline: /Offline mode/i.test(text),
       };
     })()`);
-    check('a first run still opens offline', Boolean(firstRun?.hasMain && firstRun?.importable), firstRun?.offline ? 'offline banner shown' : 'no offline banner');
+    check(
+      'a first run still opens offline',
+      Boolean(firstRun?.hasMain && firstRun?.importable),
+      firstRun?.offline ? 'offline banner shown' : 'no offline banner',
+    );
     check('the offline first run still offers the decode choice', Boolean(firstRun?.routeSwitch));
 
     const clickRoute = async (matchServer) => {
@@ -313,10 +338,14 @@ async function main() {
             .find((text) => /can.t be reached/i.test(text) && /will not upload/i.test(text));
           return match ? match.slice(0, 200) : false;
         })()`,
-        { timeout: 20000, interval: 500, label: 'a warning under the route switch' }
+        { timeout: 20000, interval: 500, label: 'a warning under the route switch' },
       )
       .catch(() => null);
-    check('choosing the server route offline warns before a file is picked', Boolean(hint), hint || 'no warning shown');
+    check(
+      'choosing the server route offline warns before a file is picked',
+      Boolean(hint),
+      hint || 'no warning shown',
+    );
 
     await client.setFileInput('input[accept=".fm"]', savePath).catch(() => null);
     const told = await client
@@ -326,13 +355,17 @@ async function main() {
           if (/not a valid Football Manager/i.test(text)) return 'WRONG: claims the save is invalid';
           return /was not uploaded/i.test(text) ? text.match(/[^.]*was not uploaded[^.]*/)[0].slice(0, 200) : false;
         })()`,
-        { timeout: 60000, interval: 1000, label: 'an honest message about the offline server route' }
+        {
+          timeout: 60000,
+          interval: 1000,
+          label: 'an honest message about the offline server route',
+        },
       )
       .catch(() => null);
     check(
       'an offline server-route import says it was not uploaded, not that the save is broken',
       Boolean(told) && !/^WRONG/.test(String(told)),
-      told ? String(told) : 'no message appeared'
+      told ? String(told) : 'no message appeared',
     );
 
     const switchedToPhone = await evaluate(`(() => {
@@ -341,28 +374,44 @@ async function main() {
       button.click();
       return true;
     })()`);
-    check('the offline error offers a one-tap switch to on-device decoding', Boolean(switchedToPhone));
+    check(
+      'the offline error offers a one-tap switch to on-device decoding',
+      Boolean(switchedToPhone),
+    );
     const decodedOffline = await client
-      .waitFor(SQUAD_LOADED, { timeout: 300000, interval: 2000, label: 'the save to decode with no network' })
+      .waitFor(SQUAD_LOADED, {
+        timeout: 300000,
+        interval: 2000,
+        label: 'the save to decode with no network',
+      })
       .catch(() => 0);
     check(
       'a save decodes on the phone with no signal at all',
       Boolean(decodedOffline),
-      decodedOffline ? `${decodedOffline} first team` : 'no squad appeared'
+      decodedOffline ? `${decodedOffline} first team` : 'no squad appeared',
     );
 
     // ---- Back online: the app must recover without a manual reload.
     console.log('\nback online');
     await client.send('Network.emulateNetworkConditions', ONLINE);
     const recovered = await client
-      .waitFor(`navigator.onLine === true`, { timeout: 20000, interval: 500, label: 'online again' })
+      .waitFor(`navigator.onLine === true`, {
+        timeout: 20000,
+        interval: 500,
+        label: 'online again',
+      })
       .catch(() => null);
     check('the app notices when the signal comes back', Boolean(recovered));
 
     const errors = client.consoleErrors.filter(
-      (line) => !/Failed to fetch|net::ERR_INTERNET_DISCONNECTED|NetworkError|net::ERR_FAILED/i.test(line)
+      (line) =>
+        !/Failed to fetch|net::ERR_INTERNET_DISCONNECTED|NetworkError|net::ERR_FAILED/i.test(line),
     );
-    check('no unexpected console errors during the offline run', errors.length === 0, errors.slice(0, 2).join(' | '));
+    check(
+      'no unexpected console errors during the offline run',
+      errors.length === 0,
+      errors.slice(0, 2).join(' | '),
+    );
   } finally {
     await client.send('Network.emulateNetworkConditions', ONLINE).catch(() => null);
     client.close();
@@ -375,7 +424,8 @@ async function main() {
     console.log(`PASS: ${results.length} offline checks clean`);
   } else {
     console.log(`FAIL: ${failures.length} of ${results.length} offline checks failed`);
-    for (const failure of failures) console.log(`  - ${failure.name}${failure.detail ? ` (${failure.detail})` : ''}`);
+    for (const failure of failures)
+      console.log(`  - ${failure.name}${failure.detail ? ` (${failure.detail})` : ''}`);
     process.exitCode = 1;
   }
 }

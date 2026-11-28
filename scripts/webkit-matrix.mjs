@@ -79,7 +79,7 @@ async function loadPlaywright() {
     }
   }
   console.error(
-    'Playwright is not installed. Run `npm i -D playwright` (or use npx) and `npx playwright install --with-deps webkit` first.'
+    'Playwright is not installed. Run `npm i -D playwright` (or use npx) and `npx playwright install --with-deps webkit` first.',
   );
   process.exit(2);
 }
@@ -141,10 +141,16 @@ async function clickTab(page, label) {
 
   if (target.nav) {
     const clicked = await page.evaluate((navLabel) => {
-      const nav = [...document.querySelectorAll('nav[aria-label="Mobile navigation"], nav[aria-label="Primary sections"]')].find((n) => n.getClientRects().length > 0);
+      const nav = [
+        ...document.querySelectorAll(
+          'nav[aria-label="Mobile navigation"], nav[aria-label="Primary sections"]',
+        ),
+      ].find((n) => n.getClientRects().length > 0);
       if (!nav) return false;
       const buttons = [...nav.querySelectorAll('button')];
-      const button = buttons.find((b) => b.textContent.trim() === navLabel) || buttons.find((b) => b.textContent.trim().startsWith(navLabel));
+      const button =
+        buttons.find((b) => b.textContent.trim() === navLabel) ||
+        buttons.find((b) => b.textContent.trim().startsWith(navLabel));
       if (!button) return false;
       button.click();
       return true;
@@ -153,7 +159,9 @@ async function clickTab(page, label) {
   } else {
     const opened = await page.evaluate(() => {
       const nav = document.querySelector('nav[aria-label="Mobile navigation"]');
-      const more = nav ? [...nav.querySelectorAll('button')].find((b) => b.textContent.trim() === 'More') : null;
+      const more = nav
+        ? [...nav.querySelectorAll('button')].find((b) => b.textContent.trim() === 'More')
+        : null;
       if (!more) return false;
       more.click();
       return true;
@@ -162,7 +170,9 @@ async function clickTab(page, label) {
     await page.waitForTimeout(600);
     const picked = await page.evaluate((sheetLabel) => {
       const sheet = document.getElementById('mobile-more-sheet') || document;
-      const button = [...sheet.querySelectorAll('button')].find((b) => b.textContent.trim().startsWith(sheetLabel));
+      const button = [...sheet.querySelectorAll('button')].find((b) =>
+        b.textContent.trim().startsWith(sheetLabel),
+      );
       if (!button) return false;
       button.click();
       return true;
@@ -171,7 +181,9 @@ async function clickTab(page, label) {
   }
 
   await page.waitForTimeout(700);
-  const rendered = await page.evaluate(() => document.querySelector('main[data-active-tab]')?.getAttribute('data-active-tab') ?? null);
+  const rendered = await page.evaluate(
+    () => document.querySelector('main[data-active-tab]')?.getAttribute('data-active-tab') ?? null,
+  );
   return rendered === target.tab;
 }
 
@@ -203,7 +215,7 @@ async function run() {
             // first document may not have an origin yet
           }
         },
-        ['fm27_command_hub_state_v1', seed]
+        ['fm27_command_hub_state_v1', seed],
       );
     }
     const page = await context.newPage();
@@ -240,23 +252,39 @@ async function run() {
     await page.evaluate(() => document.fonts.ready.then(() => true));
     await page.waitForTimeout(1200);
 
-    const entry = { profile: profile.name, note: profile.note, seeded: Boolean(seed), tabs: [], failures: [] };
+    const entry = {
+      profile: profile.name,
+      note: profile.note,
+      seeded: Boolean(seed),
+      tabs: [],
+      failures: [],
+    };
     for (const label of TABS) {
       const opened = await clickTab(page, label);
       await page.waitForTimeout(900);
       const floor = profile.viewport.width >= 700 ? MIN_TAP_PX_TABLET : MIN_TAP_PX_PHONE;
       const probe = await page.evaluate(PROBE.replace('__MIN_TAP__', String(floor)));
       entry.tabs.push({ tab: label, opened, ...probe });
-      if (probe.overflowX > 0) entry.failures.push(`${label}: horizontal overflow ${probe.overflowX}px`);
+      if (probe.overflowX > 0)
+        entry.failures.push(`${label}: horizontal overflow ${probe.overflowX}px`);
       if (probe.smallCount > 0) {
-        entry.failures.push(`${label}: ${probe.smallCount} target(s) under ${floor}px (e.g. "${probe.smallTargets[0].label}" ${probe.smallTargets[0].height}px)`);
+        entry.failures.push(
+          `${label}: ${probe.smallCount} target(s) under ${floor}px (e.g. "${probe.smallTargets[0].label}" ${probe.smallTargets[0].height}px)`,
+        );
       }
       if (probe.zoomRiskInputs.length > 0) {
-        entry.failures.push(`${label}: input under ${MIN_INPUT_FONT_PX}px zooms on focus (${probe.zoomRiskInputs[0].fontSize}px)`);
+        entry.failures.push(
+          `${label}: input under ${MIN_INPUT_FONT_PX}px zooms on focus (${probe.zoomRiskInputs[0].fontSize}px)`,
+        );
       }
-      if (!opened) entry.failures.push(`${label}: navigation did not reach that tab, so this row measured the wrong screen`);
+      if (!opened)
+        entry.failures.push(
+          `${label}: navigation did not reach that tab, so this row measured the wrong screen`,
+        );
       if (args.screenshots) {
-        await page.screenshot({ path: `${args.screenshots}/${profile.name}-${label.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.png` });
+        await page.screenshot({
+          path: `${args.screenshots}/${profile.name}-${label.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.png`,
+        });
       }
     }
 
@@ -282,14 +310,22 @@ async function run() {
   } else {
     for (const entry of results) {
       const overflow = Math.max(...entry.tabs.map((tab) => tab.overflowX));
-      console.log(`${entry.failures.length === 0 ? 'PASS' : 'FAIL'} ${entry.profile.padEnd(16)} (${entry.note}${entry.seeded ? ', loaded save' : ''}) overflow=${overflow}px`);
+      console.log(
+        `${entry.failures.length === 0 ? 'PASS' : 'FAIL'} ${entry.profile.padEnd(16)} (${entry.note}${entry.seeded ? ', loaded save' : ''}) overflow=${overflow}px`,
+      );
       if (entry.unexercised.length > 0) {
-        console.log(`     ~ Analyst chat not exercised: no GEMINI_API_KEY in this environment (${entry.unexercised[0]})`);
+        console.log(
+          `     ~ Analyst chat not exercised: no GEMINI_API_KEY in this environment (${entry.unexercised[0]})`,
+        );
       }
       for (const failure of entry.failures) console.log(`     - ${failure}`);
     }
     const failed = results.filter((entry) => entry.failures.length > 0);
-    console.log(failed.length === 0 ? `PASS: ${results.length} Safari profiles clean` : `FAIL: ${failed.length} of ${results.length} Safari profiles have findings`);
+    console.log(
+      failed.length === 0
+        ? `PASS: ${results.length} Safari profiles clean`
+        : `FAIL: ${failed.length} of ${results.length} Safari profiles have findings`,
+    );
     process.exitCode = failed.length === 0 ? 0 : 1;
   }
 }

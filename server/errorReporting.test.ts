@@ -1,9 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  buildClientErrorEvent,
-  buildServerErrorEvent,
-} from './errorReporting.ts';
+import { buildClientErrorEvent, buildServerErrorEvent } from './errorReporting.ts';
 
 describe('server error reporting', () => {
   it('builds a structured server event without request bodies or save data', () => {
@@ -14,7 +11,7 @@ describe('server error reporting', () => {
       status: 500,
       durationMs: 12.6,
       error: new Error(
-        'GEMINI_API_KEY=AIzaSyDummyKeyThatShouldNeverAppear123456 failed for auto_save.fm'
+        'GEMINI_API_KEY=AIzaSyDummyKeyThatShouldNeverAppear123456 failed for auto_save.fm',
       ),
       context: {
         body: { liveAppContext: 'player data' },
@@ -57,7 +54,7 @@ describe('server error reporting', () => {
           apiKey: 'secret',
         },
       },
-      { requestId: 'req-client-1', method: 'POST', path: '/api/fm27/client-error' }
+      { requestId: 'req-client-1', method: 'POST', path: '/api/fm27/client-error' },
     );
 
     assert.equal(event.type, 'client');

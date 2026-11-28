@@ -39,14 +39,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, isAbsolute, join, resolve } from 'node:path';
-import {
-  clickTab,
-  connect,
-  fetchJson,
-  sleep,
-  startBrowser,
-  TAB_TARGETS,
-} from './lib/browser.mjs';
+import { clickTab, connect, fetchJson, sleep, startBrowser, TAB_TARGETS } from './lib/browser.mjs';
 
 const STATE_KEY = 'fm27_command_hub_state_v1';
 const TABS = Object.keys(TAB_TARGETS);
@@ -98,7 +91,8 @@ function parseArgs(argv) {
     if (key === '--url') args.url = value;
     else if (key === '--cdp') args.cdp = value;
     else if (key === '--save') args.save = value;
-    else if (key === '--profile') args.profiles = value === 'both' ? ['desktop', 'mobile'] : [value];
+    else if (key === '--profile')
+      args.profiles = value === 'both' ? ['desktop', 'mobile'] : [value];
     else if (key === '--out') args.out = value;
     else if (key === '--timeout') args.timeout = Number(value);
     else if (key === '--json') args.json = true;
@@ -141,7 +135,9 @@ function writeTruncatedCopy(savePath, targetPath, bytes = 3 * 1024 * 1024) {
 /** Wipes everything the app persists, so each profile starts as a new install. */
 async function resetStorage(client, url) {
   await client.navigate(url, 1500);
-  await client.evaluate(`(async () => {
+  await client
+    .evaluate(
+      `(async () => {
     try { localStorage.clear(); sessionStorage.clear(); } catch {}
     try {
       const registrations = (await navigator.serviceWorker?.getRegistrations?.()) ?? [];
@@ -180,7 +176,9 @@ async function resetStorage(client, url) {
       );
     } catch {}
     return true;
-  })()`).catch(() => null);
+  })()`,
+    )
+    .catch(() => null);
   await client.navigate(url, 2500);
   await client.evaluate(`document.fonts.ready.then(() => true)`).catch(() => null);
 }
@@ -213,11 +211,15 @@ async function readSummary(client) {
 async function waitForComposer(client, timeout = 90000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
-    const ready = await client.evaluate(`(() => {
+    const ready = await client
+      .evaluate(
+        `(() => {
       const box = document.querySelector('textarea[aria-label="Message your FM27 Tactical Analyst"]');
       const button = document.querySelector('button[aria-label="Send message"]');
       return Boolean(box && button && !button.disabled);
-    })()`).catch(() => false);
+    })()`,
+      )
+      .catch(() => false);
     if (ready) return true;
     await sleep(1000);
   }
@@ -250,7 +252,7 @@ const transcriptHas = (client, needle) =>
       const text = (document.querySelector('main')?.innerText || '').replace(/\\s+/g, ' ');
       return text.includes(${JSON.stringify(needle)}) ? true : false;
     })()`,
-    { timeout: 180000, interval: 1000, label: `transcript containing ${needle}` }
+    { timeout: 180000, interval: 1000, label: `transcript containing ${needle}` },
   );
 
 async function waitForDownload(client, downloadDir, { timeout = 60000 } = {}) {
@@ -291,7 +293,15 @@ async function currentBundle(url) {
   }
 }
 
-async function runProfile(client, browserSend, profile, args, savePath, results, capabilities = {}) {
+async function runProfile(
+  client,
+  browserSend,
+  profile,
+  args,
+  savePath,
+  results,
+  capabilities = {},
+) {
   const started = Date.now();
   const requestBaseline = client.requests.length;
   const check = (name, ok, detail = '') => {
@@ -338,28 +348,34 @@ async function runProfile(client, browserSend, profile, args, savePath, results,
       alreadyLoaded: /First Team/.test(text),
     };
   })()`);
-  check('first run shows the app with no save loaded', landed?.hasShell && !landed.alreadyLoaded, landed?.hasShell ? '' : 'no main element');
-  const running = await client.evaluate(
-    `[...document.querySelectorAll('script[src]')].map((s) => s.getAttribute('src')).join(' ')`
+  check(
+    'first run shows the app with no save loaded',
+    landed?.hasShell && !landed.alreadyLoaded,
+    landed?.hasShell ? '' : 'no main element',
   );
-  check('the browser is running the build the server is serving', Boolean(running && running.includes(capabilities.bundle)), capabilities.bundle || 'no bundle reference');
+  const running = await client.evaluate(
+    `[...document.querySelectorAll('script[src]')].map((s) => s.getAttribute('src')).join(' ')`,
+  );
+  check(
+    'the browser is running the build the server is serving',
+    Boolean(running && running.includes(capabilities.bundle)),
+    capabilities.bundle || 'no bundle reference',
+  );
 
   // Step 1b: a half-written save must say so, and must not leave the app stuck.
   const truncated = writeTruncatedCopy(
     savePath,
-    resolve(process.cwd(), args.out, profile.name, 'truncated.fm')
+    resolve(process.cwd(), args.out, profile.name, 'truncated.fm'),
   );
   await client.setFileInput('input[accept=".fm"]', truncated);
   const refused = await client
     .waitFor(
       `/appears incomplete|still being written|Could not read|not a valid|could not be read/i.test(document.body.innerText || '')`,
-      { timeout: 120000, interval: 1000, label: 'a message about the damaged save' }
+      { timeout: 120000, interval: 1000, label: 'a message about the damaged save' },
     )
     .catch(() => null);
   check('a half-written save is refused with a readable message', Boolean(refused));
-  const stillEmpty = await client.evaluate(
-    `!/First Team/.test(document.body.innerText || '')`
-  );
+  const stillEmpty = await client.evaluate(`!/First Team/.test(document.body.innerText || '')`);
   check('a refused save does not half-load the app', stillEmpty);
 
   // Step 2: import the save, whichever way this profile decodes it.
@@ -379,14 +395,20 @@ async function runProfile(client, browserSend, profile, args, savePath, results,
     });
   } catch (error) {
     const progress = await client
-      .evaluate(`(document.querySelector('main')?.innerText || '').replace(/\\s+/g, ' ').slice(0, 300)`)
+      .evaluate(
+        `(document.querySelector('main')?.innerText || '').replace(/\\s+/g, ' ').slice(0, 300)`,
+      )
       .catch(() => '');
     check('import finishes and shows a squad', false, error.message);
     console.log(`       last screen: ${progress}`);
     return;
   }
   const importSeconds = Math.round((Date.now() - importStarted) / 1000);
-  check('import finishes and shows a squad', loaded > 0, `${loaded} first team, ${importSeconds}s, ${toMb(statSync(savePath).size)} save`);
+  check(
+    'import finishes and shows a squad',
+    loaded > 0,
+    `${loaded} first team, ${importSeconds}s, ${toMb(statSync(savePath).size)} save`,
+  );
 
   // The debounced auto-save lands about a second after the squad renders. Wait for it,
   // otherwise the stored-state check below is skipped by a race instead of asserted.
@@ -398,9 +420,17 @@ async function runProfile(client, browserSend, profile, args, savePath, results,
 
   const summary = await readSummary(client);
   const club = summary.stored?.clubName || summary.club;
-  check('header names the club and the in-game date', Boolean(summary.date && club), `${summary.date || 'no date'} · ${club || 'no club'}`);
+  check(
+    'header names the club and the in-game date',
+    Boolean(summary.date && club),
+    `${summary.date || 'no date'} · ${club || 'no club'}`,
+  );
   if (summary.stored) {
-    check('players reach the stored state', summary.stored.players >= loaded, `${summary.stored.players} players stored`);
+    check(
+      'players reach the stored state',
+      summary.stored.players >= loaded,
+      `${summary.stored.players} players stored`,
+    );
   }
 
   // Which route the save took: the phone must not have uploaded it.
@@ -411,17 +441,21 @@ async function runProfile(client, browserSend, profile, args, savePath, results,
     check(
       'save decoded on desktop (server decoder absent, so the phone decoder took over)',
       decodeRoute.length === 0,
-      'install fmsave on the server to exercise the upload path'
+      'install fmsave on the server to exercise the upload path',
     );
   } else if (profile.decode === 'server') {
-    check('server decode was used on desktop', decodeRoute.length > 0, `${decodeRoute.length} decode requests`);
+    check(
+      'server decode was used on desktop',
+      decodeRoute.length > 0,
+      `${decodeRoute.length} decode requests`,
+    );
   } else {
     check(
       'phone decode was used on mobile (nothing uploaded)',
       decodeRoute.length === 0,
       decodeRoute.length
         ? `${decodeRoute.length} upload requests: ${[...new Set(decodeRoute.map((request) => request.url.replace(/\?.*/, '')))].join(', ')}`
-        : 'no upload'
+        : 'no upload',
     );
   }
 
@@ -433,7 +467,7 @@ async function runProfile(client, browserSend, profile, args, savePath, results,
       continue;
     }
     const text = await client.evaluate(
-      `(document.querySelector('main')?.innerText || '').replace(/\\s+/g, ' ').trim()`
+      `(document.querySelector('main')?.innerText || '').replace(/\\s+/g, ' ').trim()`,
     );
     const expected = TAB_EXPECTED[label];
     const ok =
@@ -442,7 +476,7 @@ async function runProfile(client, browserSend, profile, args, savePath, results,
     check(
       `${label} renders with the save`,
       ok,
-      ok ? `${text.length} chars` : `${text.length} chars, missing "${expected}"`
+      ok ? `${text.length} chars` : `${text.length} chars, missing "${expected}"`,
     );
   }
   await clickTab(client.evaluate, sleep, 'Hub & Analyst');
@@ -450,8 +484,15 @@ async function runProfile(client, browserSend, profile, args, savePath, results,
   // Step 4a: a question with no model available must still produce an answer.
   const askedAt = client.requests.length;
   const composerReady = await waitForComposer(client);
-  check('Analyst composer is ready for input', composerReady, composerReady ? '' : 'send button stayed disabled');
-  const sent = await sendChat(client, 'Smoke test: what is the biggest squad risk for the next fixture?');
+  check(
+    'Analyst composer is ready for input',
+    composerReady,
+    composerReady ? '' : 'send button stayed disabled',
+  );
+  const sent = await sendChat(
+    client,
+    'Smoke test: what is the biggest squad risk for the next fixture?',
+  );
   check('Analyst composer accepts and sends a message', sent);
   if (sent) {
     try {
@@ -466,7 +507,7 @@ async function runProfile(client, browserSend, profile, args, savePath, results,
           const text = (document.querySelector('main')?.innerText || '').replace(/\\s+/g, ' ');
           return /offline briefing|Analyst unavailable/i.test(text) || text.length > 4000;
         })()`,
-        { timeout: 240000, interval: 1500, label: 'an Analyst answer' }
+        { timeout: 240000, interval: 1500, label: 'an Analyst answer' },
       )
       .catch(() => null);
     const chatStatus = client.requests
@@ -476,7 +517,7 @@ async function runProfile(client, browserSend, profile, args, savePath, results,
     check(
       'the Analyst answers, or says plainly that it cannot',
       Boolean(answered),
-      chatStatus.length ? `chat API ${chatStatus.join(',')}` : 'no chat request seen'
+      chatStatus.length ? `chat API ${chatStatus.join(',')}` : 'no chat request seen',
     );
   }
 
@@ -486,7 +527,7 @@ async function runProfile(client, browserSend, profile, args, savePath, results,
     JSON.stringify({
       analysisMarkdown: `## ${stubMarker}\n\nDepth is thin at left back; the next fixture is the one to rotate.`,
       sourceCitations: [],
-    })
+    }),
   ).toString('base64');
   const stubHandler = (message) => {
     if (message.method !== 'Fetch.requestPaused') return;
@@ -499,18 +540,25 @@ async function runProfile(client, browserSend, profile, args, savePath, results,
   };
   await browserSend('Fetch.enable', { patterns: [{ urlPattern: '*tactical-chat*' }] });
   client.onEvent(stubHandler);
-  const stubbed = await sendChat(client, 'Smoke test: confirm the reply path renders a canned answer.');
+  const stubbed = await sendChat(
+    client,
+    'Smoke test: confirm the reply path renders a canned answer.',
+  );
   const rendered = stubbed
     ? await client
         .waitFor(
           `(document.querySelector('main')?.innerText || '').includes(${JSON.stringify(stubMarker)})`,
-          { timeout: 120000, interval: 1000, label: 'the stubbed Analyst reply' }
+          { timeout: 120000, interval: 1000, label: 'the stubbed Analyst reply' },
         )
         .catch(() => null)
     : null;
   client.offEvent(stubHandler);
   await browserSend('Fetch.disable');
-  check('a real API answer renders in the transcript', Boolean(rendered), rendered ? '' : 'stub reply never displayed');
+  check(
+    'a real API answer renders in the transcript',
+    Boolean(rendered),
+    rendered ? '' : 'stub reply never displayed',
+  );
 
   // Step 5: back up, wipe, restore. A missing control or a missing file is a
   // failure, never a quiet skip, or a broken export would read as a pass.
@@ -528,7 +576,7 @@ async function runProfile(client, browserSend, profile, args, savePath, results,
     try {
       backupPath = await waitForDownload(
         client,
-        resolve(process.cwd(), args.out, profile.name, 'downloads')
+        resolve(process.cwd(), args.out, profile.name, 'downloads'),
       );
       check('clicking Backup produces a file', true, basename(backupPath));
     } catch (error) {
@@ -548,7 +596,7 @@ async function runProfile(client, browserSend, profile, args, savePath, results,
     check(
       'backup is a valid campaign file with the squad in it',
       backupPlayers > 0,
-      `${basename(backupPath)}, ${backupPlayers} players, ${toMb(statSync(backupPath).size)}`
+      `${basename(backupPath)}, ${backupPlayers} players, ${toMb(statSync(backupPath).size)}`,
     );
   }
 
@@ -558,7 +606,7 @@ async function runProfile(client, browserSend, profile, args, savePath, results,
   } else {
     await resetStorage(client, args.url);
     const emptyAgain = await client.evaluate(
-      `!/First Team/.test(document.querySelector('main')?.innerText || '')`
+      `!/First Team/.test(document.querySelector('main')?.innerText || '')`,
     );
     check('wiping the browser really clears the save', emptyAgain);
 
@@ -574,7 +622,7 @@ async function runProfile(client, browserSend, profile, args, savePath, results,
     check(
       'restoring the backup brings the campaign back',
       Boolean(restored) && after.firstTeam === before.firstTeam,
-      `${after.firstTeam} players after restore, ${before.firstTeam} before`
+      `${after.firstTeam} players after restore, ${before.firstTeam} before`,
     );
 
     await client.navigate(args.url, 3000);
@@ -582,19 +630,25 @@ async function runProfile(client, browserSend, profile, args, savePath, results,
     check(
       'the restored campaign survives a reload',
       afterReload.firstTeam === before.firstTeam && Boolean(afterReload.date),
-      `${afterReload.firstTeam} players, ${afterReload.date || 'no date'}`
+      `${afterReload.firstTeam} players, ${afterReload.date || 'no date'}`,
     );
   }
 
   const uncaught = client.consoleErrors.filter((entry) => entry.startsWith('uncaught:'));
-  check('no uncaught errors during the run', uncaught.length === 0, uncaught.slice(0, 2).join(' / '));
+  check(
+    'no uncaught errors during the run',
+    uncaught.length === 0,
+    uncaught.slice(0, 2).join(' / '),
+  );
   console.log(`  done in ${Math.round((Date.now() - started) / 1000)}s`);
 }
 
 async function main() {
   const args = parseArgs(process.argv);
   if (args.help) {
-    console.log('Usage: npm run smoke:e2e -- [--save=path.fm] [--profile=desktop|mobile|both] [--url=...] [--json]');
+    console.log(
+      'Usage: npm run smoke:e2e -- [--save=path.fm] [--profile=desktop|mobile|both] [--url=...] [--json]',
+    );
     return;
   }
   const savePath = findSave(args.save);
@@ -619,7 +673,7 @@ async function main() {
   console.log(
     `save: ${basename(savePath)} (${toMb(statSync(savePath).size)}) · server decoder ${
       capabilities.serverDecode ? 'available' : 'absent (phones and desktops both decode locally)'
-    }`
+    }`,
   );
   const client = await connect(args.cdp);
 
@@ -630,7 +684,9 @@ async function main() {
     for (const name of args.profiles) {
       const profile = PROFILES[name];
       if (!profile) throw new Error(`Unknown profile ${name}`);
-      console.log(`\n${profile.name} (${profile.viewport.width}x${profile.viewport.height}, ${profile.decode} decode)`);
+      console.log(
+        `\n${profile.name} (${profile.viewport.width}x${profile.viewport.height}, ${profile.decode} decode)`,
+      );
       await runProfile(client, client.send, profile, args, savePath, results, capabilities);
     }
   } finally {
@@ -647,7 +703,8 @@ async function main() {
     console.log(`PASS: ${results.length} checks clean across ${args.profiles.join(', ')}`);
   } else {
     console.log(`FAIL: ${failures.length} of ${results.length} checks failed`);
-    for (const failure of failures) console.log(`  - [${failure.profile}] ${failure.name}: ${failure.detail}`);
+    for (const failure of failures)
+      console.log(`  - [${failure.profile}] ${failure.name}: ${failure.detail}`);
     process.exitCode = 1;
   }
 }

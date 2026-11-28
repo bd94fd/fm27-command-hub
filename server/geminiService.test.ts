@@ -20,10 +20,7 @@ describe('server/config', () => {
     assert.equal(cfg.geminiModelOverride, null);
     assert.equal(cfg.geminiFastModelOverride, 'gemini-3.5-flash-lite');
     assert.equal(cfg.fallbackModel, 'gemini-3.5-flash-lite');
-    assert.deepEqual(cfg.preferredModels, [
-      'gemini-3.5-flash-lite',
-      'gemini-3.6-flash',
-    ]);
+    assert.deepEqual(cfg.preferredModels, ['gemini-3.5-flash-lite', 'gemini-3.6-flash']);
     assert.equal(cfg.aiTimeoutMs, 45_000);
     assert.equal(cfg.deepAiTimeoutMs, 60_000);
   });
@@ -117,10 +114,7 @@ describe('server/geminiService', () => {
       clientFactory: () => ({
         models: {
           list: async () => ({
-            models: [
-              { name: 'models/gemini-3.5-flash-lite' },
-              { name: 'models/gemini-3.6-flash' },
-            ],
+            models: [{ name: 'models/gemini-3.5-flash-lite' }, { name: 'models/gemini-3.6-flash' }],
           }),
           generateContent: (async () => ({ text: '{}' })) as never,
         },
@@ -161,7 +155,7 @@ describe('server/geminiService', () => {
 
     const res = await service.generateContent(
       { contents: 'Hello' },
-      { reasoningMode: 'deep_high' }
+      { reasoningMode: 'deep_high' },
     );
     assert.equal(res.text, '{"ok":true}');
     assert.deepEqual(calledModels, ['gemini-3.6-flash', 'gemini-3.5-flash-lite']);
@@ -185,9 +179,9 @@ describe('server/geminiService', () => {
       () =>
         service.generateContent(
           { contents: 'Slow call' },
-          { reasoningMode: 'fast_lite', timeoutMs: 600 }
+          { reasoningMode: 'fast_lite', timeoutMs: 600 },
         ),
-      AnalystTimeoutError
+      AnalystTimeoutError,
     );
   });
 
@@ -202,16 +196,13 @@ describe('server/geminiService', () => {
       clientFactory: () => ({
         models: {
           list: async () => ({
-            models: [
-              { name: 'models/gemini-3.6-flash' },
-              { name: 'models/gemini-3.5-flash-lite' },
-            ],
+            models: [{ name: 'models/gemini-3.6-flash' }, { name: 'models/gemini-3.5-flash-lite' }],
           }),
           generateContent: (async (params: { model: string }) => {
             calledModels.push(params.model);
             if (params.model === 'gemini-3.6-flash') {
               const err = new Error(
-                '{"error":{"code":503,"message":"This model is currently experiencing high demand.","status":"UNAVAILABLE"}}'
+                '{"error":{"code":503,"message":"This model is currently experiencing high demand.","status":"UNAVAILABLE"}}',
               ) as Error & { status?: number };
               err.status = 503;
               throw err;
@@ -224,7 +215,7 @@ describe('server/geminiService', () => {
 
     const res = await service.generateContent(
       { contents: 'Tactical check' },
-      { reasoningMode: 'deep_high' }
+      { reasoningMode: 'deep_high' },
     );
     assert.equal(res.text, '{"ok":true,"failover":true}');
     assert.deepEqual(calledModels, [
@@ -246,10 +237,7 @@ describe('server/geminiService', () => {
       clientFactory: () => ({
         models: {
           list: async () => ({
-            models: [
-              { name: 'models/gemini-3.6-flash' },
-              { name: 'models/gemini-3.5-flash-lite' },
-            ],
+            models: [{ name: 'models/gemini-3.6-flash' }, { name: 'models/gemini-3.5-flash-lite' }],
           }),
           generateContent: (async (params: { model: string }) => {
             calledModels.push(params.model);
@@ -267,13 +255,10 @@ describe('server/geminiService', () => {
 
     const res = await service.generateContent(
       { contents: 'Squad & Wage Audit' },
-      { reasoningMode: 'deep_high' }
+      { reasoningMode: 'deep_high' },
     );
     assert.equal(res.text, '{"ok":true,"timeoutFailover":true}');
-    assert.deepEqual(calledModels, [
-      'gemini-3.6-flash',
-      'gemini-3.5-flash-lite',
-    ]);
+    assert.deepEqual(calledModels, ['gemini-3.6-flash', 'gemini-3.5-flash-lite']);
   });
 
   it('resolves latency-safe thinkingConfig levels for fast_lite, deep_high, max_xhigh, and failover', async () => {
@@ -336,7 +321,7 @@ describe('server/geminiService', () => {
 
     const res = await service.generateContent(
       { contents: 'Pre-Match Plan' },
-      { reasoningMode: 'deep_high' }
+      { reasoningMode: 'deep_high' },
     );
     assert.equal(res.text, '{"ok":true}');
     assert.equal(listCalls, 0, 'explicit reasoningMode should not block on models.list()');
@@ -363,10 +348,7 @@ describe('server/geminiService', () => {
               model: params.model,
               thinkingLevel: params.config?.thinkingConfig?.thinkingLevel,
             });
-            if (
-              params.model === 'gemini-3.6-flash' ||
-              params.model === 'gemini-3.5-flash-lite'
-            ) {
+            if (params.model === 'gemini-3.6-flash' || params.model === 'gemini-3.5-flash-lite') {
               const err = new Error('503 UNAVAILABLE: high demand') as Error & {
                 status?: number;
               };
@@ -381,7 +363,7 @@ describe('server/geminiService', () => {
 
     const res = await service.generateContent(
       { contents: 'Squad & Wage Audit' },
-      { reasoningMode: 'deep_high' }
+      { reasoningMode: 'deep_high' },
     );
     assert.equal(res.text, '{"ok":true,"emergencyFailover":true}');
     assert.deepEqual(
@@ -393,7 +375,7 @@ describe('server/geminiService', () => {
         'gemini-3.5-flash-lite',
         'gemini-3.5-flash-lite',
         'gemini-3.8-flash',
-      ]
+      ],
     );
     assert.equal(seenCalls[seenCalls.length - 1].thinkingLevel, ThinkingLevel.LOW);
   });
@@ -415,7 +397,7 @@ describe('server/geminiService', () => {
               return { text: '{"ok":true,"tier4":true}' };
             }
             const err = new Error(
-              '{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"You exceeded your current quota (GenerateRequestsPerDayPerProjectPerModel-FreeTier)."}}'
+              '{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"You exceeded your current quota (GenerateRequestsPerDayPerProjectPerModel-FreeTier)."}}',
             ) as Error & { status?: number };
             err.status = 429;
             throw err;
@@ -426,7 +408,7 @@ describe('server/geminiService', () => {
 
     const res = await service.generateContent(
       { contents: 'Squad & Wage Audit' },
-      { reasoningMode: 'deep_high' }
+      { reasoningMode: 'deep_high' },
     );
     assert.equal(res.text, '{"ok":true,"tier4":true}');
     assert.equal(sleepCalls, 0, 'hard daily quota should immediately cascade without retry sleeps');
@@ -447,7 +429,7 @@ describe('server/geminiService', () => {
         models: {
           generateContent: (async () => {
             const err = new Error(
-              '{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"You exceeded your current quota (PerDay). See https://ai.google.dev/quota AIzaSyFAKEKEY123456"}}'
+              '{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"You exceeded your current quota (PerDay). See https://ai.google.dev/quota AIzaSyFAKEKEY123456"}}',
             ) as Error & { status?: number };
             err.status = 429;
             throw err;
@@ -460,16 +442,14 @@ describe('server/geminiService', () => {
       () =>
         exhaustedService.generateContent(
           { contents: 'Squad & Wage Audit' },
-          { reasoningMode: 'deep_high' }
+          { reasoningMode: 'deep_high' },
         ),
       (err: unknown) => {
         const e = err as { name?: string; status?: number; message?: string };
         return (
-          e?.name === 'AnalystOverloadError' &&
-          e?.status === 429 &&
-          /quota/i.test(e?.message || '')
+          e?.name === 'AnalystOverloadError' && e?.status === 429 && /quota/i.test(e?.message || '')
         );
-      }
+      },
     );
     const diag = exhaustedService.getLastUpstreamFailure();
     assert.ok(diag);
@@ -478,6 +458,3 @@ describe('server/geminiService', () => {
     assert.doesNotMatch(diag.reason, /AIzaSy|https?:\/\//);
   });
 });
-
-
-

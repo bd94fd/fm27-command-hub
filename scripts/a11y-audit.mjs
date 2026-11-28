@@ -61,7 +61,8 @@ function parseArgs(argv) {
     if (key === '--url') args.url = value;
     else if (key === '--cdp') args.cdp = value;
     else if (key === '--save') args.save = value;
-    else if (key === '--profile') args.profiles = value === 'both' ? ['desktop', 'mobile'] : [value];
+    else if (key === '--profile')
+      args.profiles = value === 'both' ? ['desktop', 'mobile'] : [value];
     else if (key === '--out') args.out = value;
     else if (key === '--timeout') args.timeout = Number(value);
     else if (key === '--json') args.json = true;
@@ -153,15 +154,25 @@ async function runKeyboardChecks(client, results, check) {
   check(
     'every nav landmark has an accessible name',
     structure.navNames.length > 0 && structure.navNames.every(Boolean),
-    structure.navNames.map((name) => name || '(unnamed)').join(', ')
+    structure.navNames.map((name) => name || '(unnamed)').join(', '),
   );
-  check('no positive tabindex values', structure.positiveTabindex.length === 0, structure.positiveTabindex[0] || '');
-  check('nothing focusable inside aria-hidden', structure.hiddenFocusable.length === 0, structure.hiddenFocusable[0] || '');
+  check(
+    'no positive tabindex values',
+    structure.positiveTabindex.length === 0,
+    structure.positiveTabindex[0] || '',
+  );
+  check(
+    'nothing focusable inside aria-hidden',
+    structure.hiddenFocusable.length === 0,
+    structure.hiddenFocusable[0] || '',
+  );
 
   // Walk real tab stops: programmatic focus() does not trigger :focus-visible,
   // so the ring has to be measured after an actual Tab key press.
   const stops = [];
-  await client.evaluate(`(() => { document.activeElement?.blur?.(); window.scrollTo(0, 0); return true; })()`);
+  await client.evaluate(
+    `(() => { document.activeElement?.blur?.(); window.scrollTo(0, 0); return true; })()`,
+  );
   for (let i = 0; i < 12; i += 1) {
     await client.pressTab();
     await sleep(80);
@@ -184,7 +195,9 @@ async function runKeyboardChecks(client, results, check) {
   check(
     'every keyboard stop shows a focus indicator',
     stops.length > 0 && ringless.length === 0,
-    ringless.length ? `${ringless.length}/${stops.length} without a ring, e.g. "${ringless[0].name}"` : `${stops.length} stops`
+    ringless.length
+      ? `${ringless.length}/${stops.length} without a ring, e.g. "${ringless[0].name}"`
+      : `${stops.length} stops`,
   );
 
   const skip = await client.evaluate(`(() => {
@@ -206,7 +219,7 @@ async function runKeyboardChecks(client, results, check) {
   check(
     'a skip link jumps past the navigation',
     Boolean(skip && skip.targetExists && skip.movedFocus),
-    skip ? `${skip.text} → ${skip.activeTag}` : 'no skip link found'
+    skip ? `${skip.text} → ${skip.activeTag}` : 'no skip link found',
   );
 
   return structure;
@@ -276,13 +289,15 @@ async function runProfile(client, browserSend, profile, args, axeSource, savePat
         const text = (document.body.innerText || '').replace(/\\s+/g, ' ');
         return /(\\d+)\\s*First Team/.test(text) ? true : false;
       })()`,
-      { timeout: args.timeout, interval: 1500, label: 'the squad after import' }
+      { timeout: args.timeout, interval: 1500, label: 'the squad after import' },
     )
     .catch(() => null);
-  const loaded = await client.evaluate(`/(\\d+)\\s*First Team/.test(document.body.innerText || '')`);
+  const loaded = await client.evaluate(
+    `/(\\d+)\\s*First Team/.test(document.body.innerText || '')`,
+  );
   if (!loaded) {
     const visible = await client.evaluate(
-      `(document.body.innerText || '').replace(/\\s+/g, ' ').slice(0, 300)`
+      `(document.body.innerText || '').replace(/\\s+/g, ' ').slice(0, 300)`,
     );
     console.log(`  save did not load; the page shows: ${visible}`);
   }
@@ -341,7 +356,7 @@ async function runProfile(client, browserSend, profile, args, axeSource, savePat
         closed.hidden && closed.focusControls === 'mobile-more-sheet',
         `sheet ${closed.hidden ? 'closed' : 'still open'}, focus ${closed.focusTag}${
           closed.focusControls ? `[aria-controls=${closed.focusControls}]` : ''
-        }, More button ${closed.moreButtonExists ? 'present' : 'missing'}`
+        }, More button ${closed.moreButtonExists ? 'present' : 'missing'}`,
       );
     }
   }
@@ -376,7 +391,11 @@ async function runProfile(client, browserSend, profile, args, axeSource, savePat
   })()`);
 
   if (opened && dialog) {
-    check('the player sheet is a named dialog', dialog.name !== '(unnamed)', String(dialog.name).slice(0, 40));
+    check(
+      'the player sheet is a named dialog',
+      dialog.name !== '(unnamed)',
+      String(dialog.name).slice(0, 40),
+    );
     check('opening the player sheet moves focus inside it', dialog.focusInside);
     await audit('player sheet');
 
@@ -390,9 +409,12 @@ async function runProfile(client, browserSend, profile, args, axeSource, savePat
     })()`);
     await client.pressTab();
     const stillInside = await client.evaluate(
-      `(() => { const s = document.querySelector('[role="dialog"][aria-modal="true"]'); return Boolean(s && s.contains(document.activeElement)); })()`
+      `(() => { const s = document.querySelector('[role="dialog"][aria-modal="true"]'); return Boolean(s && s.contains(document.activeElement)); })()`,
     );
-    check('tabbing forward never leaves the player sheet', Boolean(trapped.trapped) && Boolean(stillInside));
+    check(
+      'tabbing forward never leaves the player sheet',
+      Boolean(trapped.trapped) && Boolean(stillInside),
+    );
 
     await client.pressEscape();
     await sleep(600);
@@ -401,9 +423,17 @@ async function runProfile(client, browserSend, profile, args, axeSource, savePat
       focusInMain: Boolean(document.querySelector('main')?.contains(document.activeElement)),
       activeText: (document.activeElement?.textContent || document.activeElement?.tagName || '').trim().slice(0, 40),
     }))()`);
-    check('Escape closes the player sheet and returns focus', closed.gone && closed.focusInMain, `focus on "${closed.activeText}"`);
+    check(
+      'Escape closes the player sheet and returns focus',
+      closed.gone && closed.focusInMain,
+      `focus on "${closed.activeText}"`,
+    );
   } else if (opened) {
-    check('a player sheet opens as a dialog', false, 'no aria-modal dialog found after clicking a squad row');
+    check(
+      'a player sheet opens as a dialog',
+      false,
+      'no aria-modal dialog found after clicking a squad row',
+    );
   }
 
   console.log(`  ${profile.name} done in ${Math.round((Date.now() - started) / 1000)}s`);
@@ -412,7 +442,9 @@ async function runProfile(client, browserSend, profile, args, axeSource, savePat
 async function main() {
   const args = parseArgs(process.argv);
   if (args.help) {
-    console.log('Usage: npm run a11y:audit -- [--save=path.fm] [--profile=desktop|mobile|both] [--url=...] [--json]');
+    console.log(
+      'Usage: npm run a11y:audit -- [--save=path.fm] [--profile=desktop|mobile|both] [--url=...] [--json]',
+    );
     return;
   }
 
@@ -457,7 +489,9 @@ async function main() {
   }
   console.log('');
   if (failures.length === 0) {
-    console.log(`PASS: ${results.length} accessibility checks clean across ${args.profiles.join(', ')}`);
+    console.log(
+      `PASS: ${results.length} accessibility checks clean across ${args.profiles.join(', ')}`,
+    );
   } else {
     console.log(`FAIL: ${failures.length} of ${results.length} checks failed`);
     for (const [rule, count] of byImpact) console.log(`  - ${rule}: ${count}`);

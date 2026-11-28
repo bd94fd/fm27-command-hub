@@ -2984,7 +2984,8 @@ test('Server Decode Parallel Upload & Progressive Checkpoint: uploads chunks con
       maxConcurrentChunks = Math.max(maxConcurrentChunks, inFlightChunks);
       const headers = new Headers(init?.headers);
       const offset = Number(headers.get('x-fm-chunk-offset') || '0');
-      const buf = new Uint8Array(await (init?.body as Blob).arrayBuffer());
+      const body = init?.body;
+      const buf = body instanceof Blob ? new Uint8Array(await body.arrayBuffer()) : new Uint8Array();
       await new Promise((r) => setTimeout(r, 15));
       assembled.set(buf, offset);
       inFlightChunks -= 1;
