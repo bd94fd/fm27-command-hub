@@ -97,7 +97,12 @@ test('offline briefing includes a citation footer list', () => {
 test('Analyst reply footer renders the grounded-in chips and copy text', () => {
   const read = (rel: string) =>
     readFileSync(new URL(`../components/${rel}`, import.meta.url), 'utf8');
-  const source = read('AutoSyncWorkspace.tsx') + read('analyst/AnalystChatFeed.tsx');
+  const dispatch = readFileSync(
+    new URL('../hooks/useAnalystDispatch.ts', import.meta.url),
+    'utf8'
+  );
+  const source =
+    read('AutoSyncWorkspace.tsx') + dispatch + read('analyst/AnalystChatFeed.tsx');
   assert.match(source, /mergeAnalystCitations/);
   assert.match(source, /Grounded in/);
   assert.match(source, /turnCitations\.map/);

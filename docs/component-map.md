@@ -35,6 +35,7 @@ in `src/components/shell/`, so the shell component keeps state and routing.
 | --- | --- |
 | `src/App.tsx` | Launch URLs, tab routing, persistence wiring, restore, the `.fm` import call and the render tree |
 | `src/hooks/useCampaignState.ts` | The campaign bundle — squad, matches, staff, recruitment lists, header labels, the decoded save and the plan fields — and the three whole-campaign writes |
+| `src/hooks/useAnalystDispatch.ts` | One analyst turn end to end: the prompt and its attached files, the app context, the request, the retry and Fast fallback, the parsed answer and the two turns written back |
 | `src/hooks/useOverlayState.ts` | Every surface that floats over the workspace, the three Back entries they own, the Cmd/Ctrl+K palette shortcut and the "anything open" flag |
 | `src/hooks/useAnalystHandoff.ts` | The prompt raised elsewhere and the newest Journey report, held until the workspace takes them |
 | `src/hooks/useCampaignSummaries.ts` | The numbers computed from the campaign rather than read from the save: league record, payroll, manual-match count, club and manager name, and the figures the shared report is built from |
@@ -104,6 +105,7 @@ row in `docs/data-parity-contract-map.md`.
 | `src/utils/hydrateExecutiveLabels.ts` | — | 149 (executive strip: save date, next fixture, league record and standing, squad output, tactic headline) |
 | `src/utils/saveJourneyReport.ts` | — | 942 (snapshot diff, journey findings, timeline and the AI payload) |
 | `src/services/saveCacheDb.ts` | — | 297 (the IndexedDB open, the write transaction, quota eviction and the payload read and write) |
+| `src/hooks/useAnalystDispatch.ts` | — | 712 (one analyst turn: context, request, retries, fallback, parse, write back) |
 | `src/utils/playerDetailFormat.ts` | — | 52 |
 | `src/utils/campaignState.ts` | — | 157 (the campaign shape, the opening and cleared states, the stored-snapshot and backup rules, and the persisted snapshot) |
 | `src/hooks/useCampaignState.ts` | — | 189 (the campaign state owner) |
@@ -118,7 +120,7 @@ row in `docs/data-parity-contract-map.md`.
 | File | Lines | Why it is still one file | Plan |
 | --- | --- | --- | --- |
 | `src/App.tsx` | 540 | Chrome, routing, persistence, backup, squad deltas, the `.fm` import pipeline, the tab workspace, the overlays, the recruitment domain, the campaign state, the overlay and chat state, the derived summaries, the live governance and the clear-all flow are out; what remains is the state that has to live above every tab and the props that join them | Nothing left to split cheaply; the render tree is a props bridge and the remaining state is one line per field |
-| `src/components/AutoSyncWorkspace.tsx` | 2,655 | The analyst workspace: the chat turn loop, the browse views per tab and the panel wiring | Split the file-ingest pipeline and the chat-turn runner out of it |
+| `src/components/AutoSyncWorkspace.tsx` | 2,102 | The analyst workspace: the chat feed state, the browse views per tab, the file intake and the panel wiring | Split the file-ingest pipeline out of it |
 | `src/components/PlayerDetailModal.tsx` | 608 | The sheet chrome, the derived model, the tab bar and the shortlist action | Nothing left to split; the five panels and the PNG export are out |
 | `src/utils/fmSaveHydrator.ts` | 634 | Decoder output to UI records: availability, squad merge, match log, labels, staff, finances, governance and the payload it hands on | Nothing left to split; the hydrator now delegates every build to its own module |
 | `src/services/saveCache.ts` | 648 | The public cache API: keys, the compact history point, snapshot history, stats and the clear-all; the IndexedDB plumbing is out, and the journey report lives in `src/utils/saveJourneyReport.ts` | Nothing left to split; the payload storage and its eviction now sit in `src/services/saveCacheDb.ts` |
