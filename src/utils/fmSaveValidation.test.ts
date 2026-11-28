@@ -122,10 +122,15 @@ test('allows optional null blocks and omits optional arrays', () => {
 });
 
 test('the Hub validates both final and checkpoint payloads before hydration', () => {
-  const src = readFileSync(
-    new URL('../components/AutoSyncWorkspace.tsx', import.meta.url),
-    'utf8'
-  );
+  const src =
+    readFileSync(
+      new URL('../components/AutoSyncWorkspace.tsx', import.meta.url),
+      'utf8'
+    ) +
+    readFileSync(
+      new URL('../hooks/useFmFileIngest.ts', import.meta.url),
+      'utf8'
+    );
   assert.match(src, /assertValidDecodedFmSavePayload\(/);
   assert.match(src, /mode: 'checkpoint'/);
 });
