@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FORMATION_PRESETS, solveBestXi } from './bestXiSolver.ts';
+import { FORMATION_PRESETS, solveBestXi, type SolvedSlot } from './bestXiSolver.ts';
 import {
   analyzeRestDefenseMatrix,
+  classifySlotRestDefenseCategory,
   getRestDefenseRoleExplanation,
 } from './restDefenseEngine.ts';
 import { PlayerRecord } from '../types/fm27.ts';
@@ -177,3 +178,70 @@ test('Phase 2: Inside Forward moves forward, Advanced Wing-Back & Inside Full-Ba
   assert.equal(ram?.ipRole, 'Second Striker');
 });
 
+
+test('classifySlotRestDefenseCategory covers every outfield role family', () => {
+  const cases: Array<[string, string, string, string, string]> = [
+    ['Goalkeeper', 'Goalkeeper', 'Goalkeeper', 'GOALKEEPER', 'Sweeper / Line Keeper'],
+    ['Centre-Back', 'Ball-Playing Centre-Back', 'Stopper', 'BASE_ANCHOR', 'Rest-Defense CB'],
+    ['Full-Back', 'Inverted Full-Back', 'Holding Full-Back', 'BASE_ANCHOR', 'Auxiliary 3rd CB'],
+    ['Wing-Back', 'Inside Full-Back', 'Pressing Wing-Back', 'BASE_ANCHOR', 'Auxiliary 3rd CB'],
+    ['Full-Back', 'Full-Back', 'Holding Full-Back', 'BASE_ANCHOR', 'Tucked Rest-Defense FB'],
+    ['Wing-Back', 'Attacking Wing-Back', 'Pressing Wing-Back', 'ATTACKING_OUTLET', 'High Flank Overlapper'],
+    ['Full-Back', 'Full-Back', 'Pressing Full-Back', 'TRANSITION_SHUTTLE', 'Recovery Full-Back'],
+    ['Defensive Midfielder', 'Half-Back', 'Screening Defensive Midfielder', 'BASE_ANCHOR', 'Dropping Half-Back Base'],
+    ['Central Midfielder', 'Central Midfielder', 'Dropping Defensive Midfielder', 'BASE_ANCHOR', 'Dropping Half-Back Base'],
+    ['Defensive Midfielder', 'Defensive Midfielder', 'Screening Defensive Midfielder', 'BASE_ANCHOR', 'Zone 5 Pivot Screen'],
+    ['Central Midfielder', 'Central Midfielder', 'Screening Central Midfielder', 'BASE_ANCHOR', 'Zone 5 Pivot Screen'],
+    ['Central Midfielder', 'Box-to-Box Midfielder', 'Screening Central Midfielder', 'TRANSITION_SHUTTLE', 'Box-to-Box Counter-Presser'],
+    ['Winger', 'Winger', 'Tracking Winger', 'TRANSITION_SHUTTLE', 'Tracking Wide Shuttle'],
+    ['Wide Midfielder', 'Wide Midfielder', 'Wide Outlet Winger', 'ATTACKING_OUTLET', 'Wide Counter Outlet'],
+    ['Attacking Midfielder', 'Attacking Midfielder', 'Tracking Attacking Midfielder', 'TRANSITION_SHUTTLE', 'Half-Space Recovery AM'],
+    ['Attacking Midfielder', 'Attacking Midfielder', 'Pressing Attacking Midfielder', 'ATTACKING_OUTLET', 'High Line Breaker'],
+    ['Striker', 'Deep-Lying Forward', 'Pressing Forward', 'TRANSITION_SHUTTLE', 'Pressing Link Forward'],
+    ['Striker', 'Advanced Forward', 'Tracking Forward', 'TRANSITION_SHUTTLE', 'Pressing Link Forward'],
+    ['Striker', 'Advanced Forward', 'Pressing Forward', 'ATTACKING_OUTLET', 'Vertical Pin / Outlet'],
+  ];
+
+  for (const [positionGroup, ipRole, oopRole, category, label] of cases) {
+    const info = classifySlotRestDefenseCategory({
+      positionGroup,
+      ipRole,
+      oopRole,
+    } as unknown as SolvedSlot);
+    assert.equal(info.category, category, `${positionGroup} / ${ipRole} / ${oopRole}`);
+    assert.equal(info.categoryLabel, label, `${positionGroup} / ${ipRole} / ${oopRole}`);
+  }
+});
+
+test('classifySlotRestDefenseCategory marks which roles form the rear and screen lines', () => {
+  const cb = classifySlotRestDefenseCategory({
+    positionGroup: 'Centre-Back',
+    ipRole: 'Ball-Playing Centre-Back',
+    oopRole: 'Stopper',
+  } as unknown as SolvedSlot);
+  assert.equal(cb.isRearLineBase, true);
+  assert.equal(cb.isMidfieldScreenBase, false);
+
+  const tucked = classifySlotRestDefenseCategory({
+    positionGroup: 'Full-Back',
+    ipRole: 'Full-Back',
+    oopRole: 'Holding Full-Back',
+  } as unknown as SolvedSlot);
+  assert.equal(tucked.isRearLineBase, false);
+  assert.equal(tucked.isMidfieldScreenBase, true);
+
+  const pivot = classifySlotRestDefenseCategory({
+    positionGroup: 'Defensive Midfielder',
+    ipRole: 'Defensive Midfielder',
+    oopRole: 'Screening Defensive Midfielder',
+  } as unknown as SolvedSlot);
+  assert.equal(pivot.isRearLineBase, false);
+  assert.equal(pivot.isMidfieldScreenBase, true);
+});
+
+test('getRestDefenseRoleExplanation falls back to the category when the label is unknown', () => {
+  assert.match(getRestDefenseRoleExplanation('Unlisted', 'BASE_ANCHOR'), /Stays behind the ball/);
+  assert.match(getRestDefenseRoleExplanation('Unlisted', 'TRANSITION_SHUTTLE'), /Shuttles between attack and defence/);
+  assert.match(getRestDefenseRoleExplanation('Unlisted', 'ATTACKING_OUTLET'), /Stays high up the pitch/);
+  assert.match(getRestDefenseRoleExplanation('Unlisted', 'GOALKEEPER'), /Protects the space behind/);
+});

@@ -76,6 +76,8 @@ Purpose: remember tools and skills worth adding later, so we do not search for t
 - 26 Nov 2026: found that Chrome DevTools MCP could list its tools but could not start a browser (`Target closed`). Cause: Chromium cannot create a sandbox as root, and only Playwright had `--no-sandbox`. Documented the `--chromeArg=--no-sandbox` fix rather than adding a second trace tool.
 
 - 26 Nov 2026: R28 added the Safari leg of the device matrix. Playwright stays an on-demand tool, not a dependency: `scripts/webkit-matrix.mjs` imports `playwright` if present and exits with install instructions if not, so `npm install` and CI do not download a second browser engine. WebKit on this Linux image needed `libgstreamer-plugins-bad1.0-0`, `libgtk-4-1`, `libsecret-1-0`, `libenchant-2-2` and `libmanette-0.2-0` before `webkit.launch()` would start.
+- 28 Nov 2026: R41 used Node's built-in test coverage (`--experimental-test-coverage`) and its threshold flags instead of adding `c8` or `nyc`. No new dependency, and the same runner and transform already drive the suite. The threshold flags were checked on Node 22.23.5, the version CI installs, as well as Node 24.
+
 ## Rejected for now
 
 | Tool or skill | Why not now |
