@@ -30,7 +30,11 @@ Everything else on save A reads: 162,554 players, 56,224 staff, 14,102 finance r
 
 ## To post them
 
-Needs a credential with `issues: write` on `rhiever/fmsave`:
+Checked again on 2026-11-27. The credential in this workspace is a GitHub App token installed only on `bd94fd/fm27-command-hub`, so issue creation on `rhiever/fmsave` returns `403 Resource not accessible by integration`, with or without labels. The two git credential-helper tokens return `401`. There is no duplicate upstream: the nearest open reports are #122 (tactics slot roles) and #114 (team match stats on 27.1).
+
+Upstream takes reports through issue forms and sets `blank_issues_enabled: false`. A pre-filled `?title=&body=` link therefore cannot carry these reports: the form replaces the body with its own fields, and the reports would have to be pasted in by hand, field by field.
+
+That leaves one route that keeps the work in this workspace: a fine-grained personal access token with `Issues: read and write` on `rhiever/fmsave`, added as a secret. With it, the two commands below post both reports unchanged:
 
 ```bash
 gh issue create --repo rhiever/fmsave \
