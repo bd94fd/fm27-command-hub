@@ -28,4 +28,4 @@ changelog:
         - docker
     - title: Other changes
       labels:
-        - "*"
+        - '*'

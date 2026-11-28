@@ -24,15 +24,8 @@ import {
   TACTICAL_CHAT_SCHEMA,
 } from '../schemas.ts';
 import { createSecurityGuard } from '../middleware/securityGuard.ts';
-import {
-  buildClientErrorEvent,
-  buildServerErrorEvent,
-  logServerError,
-} from '../errorReporting.ts';
-import {
-  extractStructuredJsonObject,
-  normalizeTacticalChatHistory,
-} from '../jsonExtractor.ts';
+import { buildClientErrorEvent, buildServerErrorEvent, logServerError } from '../errorReporting.ts';
+import { extractStructuredJsonObject, normalizeTacticalChatHistory } from '../jsonExtractor.ts';
 import { mergeAnalystCitations } from '../../src/utils/analystCitations.ts';
 
 export interface Fm27RoutesOptions {
@@ -58,7 +51,7 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
     req: express.Request,
     res: express.Response,
     error: unknown,
-    status: number
+    status: number,
   ): void => {
     if (status < 500) return;
     logServerError(
@@ -69,14 +62,14 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
         status,
         error,
         context: { scope: 'fm27Routes' },
-      })
+      }),
     );
   };
 
   const respondFailure = (
     req: express.Request,
     res: express.Response,
-    error: unknown
+    error: unknown,
   ): express.Response => {
     if (error instanceof AnalystTimeoutError) {
       logFailure(req, res, error, 504);
@@ -139,14 +132,13 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
 
   router.post('/fm27/analyze-screenshot', guard, async (req, res) => {
     try {
-      const { imageBase64, mimeType, notes, nextEventNumber, clubName } =
-        req.body as {
-          imageBase64?: string;
-          mimeType?: string;
-          notes?: string;
-          nextEventNumber?: number;
-          clubName?: string;
-        };
+      const { imageBase64, mimeType, notes, nextEventNumber, clubName } = req.body as {
+        imageBase64?: string;
+        mimeType?: string;
+        notes?: string;
+        nextEventNumber?: number;
+        clubName?: string;
+      };
 
       if (!gemini.hasApiKey()) {
         logFailure(req, res, 'GEMINI_API_KEY is missing.', 500);
@@ -160,10 +152,8 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
       const targetClub = clubName || 'the managed club';
       const systemPrompt = buildAnalyzeScreenshotSystemPrompt(targetClub, eventNum);
 
-      const parts: Array<
-        | { text: string }
-        | { inlineData: { mimeType: string; data: string } }
-      > = [];
+      const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> =
+        [];
 
       if (imageBase64 && mimeType) {
         parts.push({
@@ -189,7 +179,7 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
         },
         {
           reasoningMode: 'deep_high',
-        }
+        },
       );
 
       const extracted = extractStructuredJsonObject(response.text ?? '');
@@ -202,9 +192,7 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
       const payload = extracted.value as Record<string, unknown>;
       payload.sourceCitations = mergeAnalystCitations(
         payload.sourceCitations,
-        typeof payload.analysisMarkdown === 'string'
-          ? payload.analysisMarkdown
-          : null
+        typeof payload.analysisMarkdown === 'string' ? payload.analysisMarkdown : null,
       );
       return res.json(payload);
     } catch (error: unknown) {
@@ -247,8 +235,7 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
       }
 
       const eventNum = nextEventNumber || 1;
-      const targetClub =
-        clubName && clubName !== '--' ? clubName : 'the manager’s club';
+      const targetClub = clubName && clubName !== '--' ? clubName : 'the manager’s club';
 
       const systemPrompt = buildTacticalChatSystemPrompt({
         targetClub,
@@ -258,10 +245,7 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
 
       const contents: Array<{
         role: 'user' | 'model';
-        parts: Array<
-          | { text: string }
-          | { inlineData: { mimeType: string; data: string } }
-        >;
+        parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }>;
       }> = [];
 
       const normalizedHistory = normalizeTacticalChatHistory(history, 6);
@@ -270,8 +254,7 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
       }
 
       const currentTurnParts: Array<
-        | { text: string }
-        | { inlineData: { mimeType: string; data: string } }
+        { text: string } | { inlineData: { mimeType: string; data: string } }
       > = [];
 
       if (importedFileContext && importedFileContext.trim().length > 0) {
@@ -316,7 +299,7 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
         },
         {
           reasoningMode: reasoningMode ?? 'deep_high',
-        }
+        },
       );
 
       const extracted = extractStructuredJsonObject(response.text ?? '');
@@ -329,9 +312,7 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
       const payload = extracted.value as Record<string, unknown>;
       payload.sourceCitations = mergeAnalystCitations(
         payload.sourceCitations,
-        typeof payload.analysisMarkdown === 'string'
-          ? payload.analysisMarkdown
-          : null
+        typeof payload.analysisMarkdown === 'string' ? payload.analysisMarkdown : null,
       );
       return res.json(payload);
     } catch (error: unknown) {
@@ -351,13 +332,11 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
       if (!gemini.hasApiKey()) {
         logFailure(req, res, 'GEMINI_API_KEY is missing.', 500);
         return res.status(500).json({
-          error:
-            'GEMINI_API_KEY is missing. Set GEMINI_API_KEY in your environment variables.',
+          error: 'GEMINI_API_KEY is missing. Set GEMINI_API_KEY in your environment variables.',
         });
       }
 
-      const targetClub =
-        clubName && clubName !== '--' ? clubName : 'the managed club';
+      const targetClub = clubName && clubName !== '--' ? clubName : 'the managed club';
       const systemPrompt = buildMatchDebriefSystemPrompt(targetClub);
       const compactPayload = JSON.stringify(
         {
@@ -367,7 +346,7 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
           match: matchSummary || {},
         },
         null,
-        2
+        2,
       );
 
       const response = await gemini.generateContent(
@@ -390,7 +369,7 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
         },
         {
           reasoningMode: 'fast_lite',
-        }
+        },
       );
 
       const extracted = extractStructuredJsonObject(response.text ?? '');
@@ -403,9 +382,7 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
       const payload = extracted.value as Record<string, unknown>;
       payload.sourceCitations = mergeAnalystCitations(
         payload.sourceCitations,
-        typeof payload.analysisMarkdown === 'string'
-          ? payload.analysisMarkdown
-          : null
+        typeof payload.analysisMarkdown === 'string' ? payload.analysisMarkdown : null,
       );
       return res.json(payload);
     } catch (error: unknown) {
@@ -423,15 +400,12 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
       const journeySummary = body.journeySummary ?? body.journeyData;
       const clubName =
         body.clubName ??
-        (typeof journeySummary?.clubName === 'string'
-          ? journeySummary.clubName
-          : undefined);
+        (typeof journeySummary?.clubName === 'string' ? journeySummary.clubName : undefined);
 
       if (!gemini.hasApiKey()) {
         logFailure(req, res, 'GEMINI_API_KEY is missing.', 500);
         return res.status(500).json({
-          error:
-            'GEMINI_API_KEY is missing. Set GEMINI_API_KEY in your environment variables.',
+          error: 'GEMINI_API_KEY is missing. Set GEMINI_API_KEY in your environment variables.',
         });
       }
 
@@ -441,8 +415,7 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
         });
       }
 
-      const targetClub =
-        clubName && clubName !== '--' ? clubName : 'the managed club';
+      const targetClub = clubName && clubName !== '--' ? clubName : 'the managed club';
       const systemPrompt = buildJourneyReportSystemPrompt(targetClub);
       const compactPayload = JSON.stringify(journeySummary).slice(0, 14000);
 
@@ -466,17 +439,12 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
         },
         {
           reasoningMode: 'deep_high',
-        }
+        },
       );
 
       const extracted = extractStructuredJsonObject(response.text ?? '');
       if (!extracted.ok) {
-        logFailure(
-          req,
-          res,
-          'The Tactical Analyst returned malformed Journey Briefing JSON.',
-          502
-        );
+        logFailure(req, res, 'The Tactical Analyst returned malformed Journey Briefing JSON.', 502);
         return res.status(502).json({
           error: 'The Tactical Analyst returned malformed Journey Briefing JSON.',
         });
@@ -492,5 +460,3 @@ export function createFm27Router(options: Fm27RoutesOptions = {}): express.Route
 
   return router;
 }
-
-

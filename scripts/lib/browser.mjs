@@ -37,7 +37,7 @@ export async function startBrowser(cdp) {
       `--user-data-dir=${profile}`,
       'about:blank',
     ],
-    { stdio: 'ignore' }
+    { stdio: 'ignore' },
   );
 
   for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -83,7 +83,10 @@ export async function connect(cdp, { listeners = [] } = {}) {
     const message = JSON.parse(event.data);
     if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') {
       consoleErrors.push(
-        message.params.args.map((arg) => arg.value ?? arg.description ?? '').join(' ').slice(0, 200)
+        message.params.args
+          .map((arg) => arg.value ?? arg.description ?? '')
+          .join(' ')
+          .slice(0, 200),
       );
     }
     if (message.method === 'Runtime.exceptionThrown') {
@@ -92,7 +95,7 @@ export async function connect(cdp, { listeners = [] } = {}) {
           message.params.exceptionDetails?.exception?.description?.split('\n')[0] ||
           message.params.exceptionDetails?.text ||
           'error'
-        }`.slice(0, 200)
+        }`.slice(0, 200),
       );
     }
     if (message.method === 'Network.responseReceived') {
@@ -102,11 +105,18 @@ export async function connect(cdp, { listeners = [] } = {}) {
         httpErrors.push(`${response.status} ${response.url.slice(0, 140)}`);
       }
     }
-    if (message.method === 'Page.javascriptDialogOpening' && message.params?.type === 'beforeunload') {
+    if (
+      message.method === 'Page.javascriptDialogOpening' &&
+      message.params?.type === 'beforeunload'
+    ) {
       // A live upload guard asks before the page unloads. Answer it, or the navigation
       // that follows never completes.
       ws.send(
-        JSON.stringify({ id: ++nextId, method: 'Page.handleJavaScriptDialog', params: { accept: true } })
+        JSON.stringify({
+          id: ++nextId,
+          method: 'Page.handleJavaScriptDialog',
+          params: { accept: true },
+        }),
       );
     }
     for (const listener of listeners) listener(message);
@@ -149,7 +159,7 @@ export async function connect(cdp, { listeners = [] } = {}) {
   /** Polls a JS expression until it is truthy. */
   const waitFor = async (
     expression,
-    { timeout = 30000, interval = 400, label = expression } = {}
+    { timeout = 30000, interval = 400, label = expression } = {},
   ) => {
     const deadline = Date.now() + timeout;
     while (Date.now() < deadline) {
@@ -272,7 +282,7 @@ export async function clickTab(evaluate, sleep, label) {
 
   await sleep(700);
   const rendered = await evaluate(
-    `document.querySelector('main[data-active-tab]')?.getAttribute('data-active-tab') ?? null`
+    `document.querySelector('main[data-active-tab]')?.getAttribute('data-active-tab') ?? null`,
   );
   return rendered === target.tab;
 }

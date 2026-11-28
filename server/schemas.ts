@@ -200,7 +200,8 @@ export const TACTICAL_CHAT_SCHEMA: Schema = {
           },
           status: {
             type: Type.STRING,
-            description: 'Updated squad status if changed: Starter, Rotation, Youth, Surplus, or Injured',
+            description:
+              'Updated squad status if changed: Starter, Rotation, Youth, Surplus, or Injured',
           },
           condition: {
             type: Type.NUMBER,
@@ -251,26 +252,22 @@ export const MATCH_DEBRIEF_SCHEMA: Schema = {
     },
     xgAndExecutionAudit: {
       type: Type.STRING,
-      description:
-        'Concise xG, shot quality, possession, and clinicality comparison',
+      description: 'Concise xG, shot quality, possession, and clinicality comparison',
     },
     primaryTacticalFlaws: {
       type: Type.ARRAY,
       items: { type: Type.STRING },
-      description:
-        '2-3 specific tactical or transition flaws detected from the match metrics',
+      description: '2-3 specific tactical or transition flaws detected from the match metrics',
     },
     subOptimalRoleCombinations: {
       type: Type.ARRAY,
       items: { type: Type.STRING },
-      description:
-        '2-3 FM27 Dual-Phase IP/OOP role pairing warnings or improvements',
+      description: '2-3 FM27 Dual-Phase IP/OOP role pairing warnings or improvements',
     },
     inGameAdjustmentRecommendations: {
       type: Type.ARRAY,
       items: { type: Type.STRING },
-      description:
-        '3 actionable in-game tactical adjustments for the next fixture',
+      description: '3 actionable in-game tactical adjustments for the next fixture',
     },
   },
   required: [
@@ -297,17 +294,20 @@ export const JOURNEY_REPORT_SCHEMA: Schema = {
     whatImproved: {
       type: Type.ARRAY,
       items: { type: Type.STRING },
-      description: '3-5 concrete improvements backed by exact numbers/player names from the snapshot delta',
+      description:
+        '3-5 concrete improvements backed by exact numbers/player names from the snapshot delta',
     },
     whatWorsened: {
       type: Type.ARRAY,
       items: { type: Type.STRING },
-      description: '2-4 concrete regressions, warning signs, or dips backed by exact numbers/player names',
+      description:
+        '2-4 concrete regressions, warning signs, or dips backed by exact numbers/player names',
     },
     thingsToNote: {
       type: Type.ARRAY,
       items: { type: Type.STRING },
-      description: '3-4 notable tactical shifts, contract cliffs, squad turnover, or breakout trends',
+      description:
+        '3-4 notable tactical shifts, contract cliffs, squad turnover, or breakout trends',
     },
     tacticalEvolution: {
       type: Type.STRING,
@@ -336,5 +336,3 @@ export const JOURNEY_REPORT_SCHEMA: Schema = {
     'priorityNextActions',
   ],
 };
-
-

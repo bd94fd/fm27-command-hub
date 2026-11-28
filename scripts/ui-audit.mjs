@@ -20,21 +20,33 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const MIN_TAP_PX = 36;
-const TABS = [
-  'Hub & Analyst',
-  'Squad',
-  'Tactics & Corners',
-  'Transfers',
-  'Matches',
-  'Staff',
-];
+const TABS = ['Hub & Analyst', 'Squad', 'Tactics & Corners', 'Transfers', 'Matches', 'Staff'];
 const VIEWPORTS = [
-  { name: 'mobile', width: 390, height: 844, deviceScaleFactor: 2, mobile: true, enforceTargets: true },
-  { name: 'desktop', width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false, enforceTargets: false },
+  {
+    name: 'mobile',
+    width: 390,
+    height: 844,
+    deviceScaleFactor: 2,
+    mobile: true,
+    enforceTargets: true,
+  },
+  {
+    name: 'desktop',
+    width: 1920,
+    height: 1080,
+    deviceScaleFactor: 1,
+    mobile: false,
+    enforceTargets: false,
+  },
 ];
 
 function parseArgs(argv) {
-  const args = { url: 'http://localhost:12000', cdp: 'http://127.0.0.1:9222', seed: null, json: false };
+  const args = {
+    url: 'http://localhost:12000',
+    cdp: 'http://127.0.0.1:9222',
+    seed: null,
+    json: false,
+  };
   for (const raw of argv.slice(2)) {
     const [key, value] = raw.replace(/^--/, '').split('=');
     if (key === 'json') args.json = true;
@@ -74,7 +86,7 @@ async function ensureBrowser(cdp) {
       `--user-data-dir=${profile}`,
       'about:blank',
     ],
-    { stdio: 'ignore' }
+    { stdio: 'ignore' },
   );
 
   for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -277,11 +289,13 @@ async function main() {
         const result = JSON.parse(await evaluate(PROBE));
         tabs[tab] = result;
         if (result.overflowX > 0) {
-          report.violations.push(`${viewport.name}/${tab}: horizontal overflow ${result.overflowX}px`);
+          report.violations.push(
+            `${viewport.name}/${tab}: horizontal overflow ${result.overflowX}px`,
+          );
         }
         if (viewport.enforceTargets && result.smallTargets.length > 0) {
           report.violations.push(
-            `${viewport.name}/${tab}: ${result.smallTargets.length} target(s) under ${MIN_TAP_PX}px`
+            `${viewport.name}/${tab}: ${result.smallTargets.length} target(s) under ${MIN_TAP_PX}px`,
           );
         }
       }
@@ -309,7 +323,9 @@ async function main() {
         await sleep(1000);
         report.dock = JSON.parse(await measureDock(evaluate));
         if (report.dock.found && report.dock.gapAboveNav !== null && report.dock.gapAboveNav < 0) {
-          report.violations.push(`mobile/dock: overlaps bottom nav by ${-report.dock.gapAboveNav}px`);
+          report.violations.push(
+            `mobile/dock: overlaps bottom nav by ${-report.dock.gapAboveNav}px`,
+          );
         }
       } else {
         report.dock = { found: false, reason: 'no compare toggle on the squad list' };
@@ -331,7 +347,7 @@ async function main() {
             ? `  <-- ${result.smallTargets.map((t) => `${t.height}px ${t.label}`).join(', ')}`
             : '';
           console.log(
-            `  ${tab.padEnd(18)} overflowX=${String(result.overflowX).padStart(3)}px  under${MIN_TAP_PX}px=${result.smallTargets.length}${targets}`
+            `  ${tab.padEnd(18)} overflowX=${String(result.overflowX).padStart(3)}px  under${MIN_TAP_PX}px=${result.smallTargets.length}${targets}`,
           );
         }
       }
@@ -339,13 +355,13 @@ async function main() {
         console.log(
           report.dock.found
             ? `\ndock: ${report.dock.gapAboveNav}px above bottom nav, insets ${report.dock.leftInset}/${report.dock.rightInset}px`
-            : `\ndock: skipped (${report.dock.reason})`
+            : `\ndock: skipped (${report.dock.reason})`,
         );
       }
       console.log(
         report.violations.length
           ? `\nFAIL (${report.violations.length})\n${report.violations.map((v) => `  - ${v}`).join('\n')}`
-          : `\nPASS: no overflow and no touch targets under ${MIN_TAP_PX}px`
+          : `\nPASS: no overflow and no touch targets under ${MIN_TAP_PX}px`,
       );
     }
   } finally {

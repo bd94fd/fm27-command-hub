@@ -51,7 +51,7 @@ async function startDecodeServer(mapperPath: string) {
         fmsaveVersion: '0.14.3-stress',
         checkedAtMs: Date.now(),
       }),
-    })
+    }),
   );
   const server = http.createServer(app);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
@@ -61,7 +61,7 @@ async function startDecodeServer(mapperPath: string) {
     baseUrl: `http://127.0.0.1:${address.port}`,
     close: () =>
       new Promise<void>((resolve, reject) =>
-        server.close((err) => (err ? reject(err) : resolve()))
+        server.close((err) => (err ? reject(err) : resolve())),
       ),
   };
 }
@@ -132,10 +132,7 @@ describe('Phase 4 server decode stress, idempotent chunking & 512 MB RAM safety'
     const t0 = performance.now();
 
     // Mock Python mapper that hashes the uploaded .fm save and returns a compact JSON object
-    const mockMapperPath = path.join(
-      os.tmpdir(),
-      `fm27-stress-hash-${crypto.randomUUID()}.py`
-    );
+    const mockMapperPath = path.join(os.tmpdir(), `fm27-stress-hash-${crypto.randomUUID()}.py`);
     tempScripts.push(mockMapperPath);
     await fs.promises.writeFile(
       mockMapperPath,
@@ -160,7 +157,7 @@ describe('Phase 4 server decode stress, idempotent chunking & 512 MB RAM safety'
         'print("PROGRESS: Verified upload hash", file=sys.stderr, flush=True)',
         'print(json.dumps({"ok": True, "size": total, "sha256": h.hexdigest(), "filename": args.filename}))',
       ].join('\n'),
-      'utf8'
+      'utf8',
     );
 
     const srv = await startDecodeServer(mockMapperPath);
@@ -187,10 +184,9 @@ describe('Phase 4 server decode stress, idempotent chunking & 512 MB RAM safety'
       const abortFilePath = path.resolve(os.tmpdir(), `fm27-save-${abortedId}.fm`);
       assert.equal(fs.existsSync(abortFilePath), true);
 
-      const delRes = await fetch(
-        `${srv.baseUrl}/api/fm27/decode-save/upload/${abortedId}`,
-        { method: 'DELETE' }
-      );
+      const delRes = await fetch(`${srv.baseUrl}/api/fm27/decode-save/upload/${abortedId}`, {
+        method: 'DELETE',
+      });
       assert.equal(delRes.status, 200);
       assert.equal(fs.existsSync(abortFilePath), false, 'DELETE must unlink aborted upload file');
 
@@ -277,7 +273,7 @@ describe('Phase 4 server decode stress, idempotent chunking & 512 MB RAM safety'
       assert.equal(
         overlapJson.bytesReceived,
         TOTAL_BYTES,
-        'overlapping retry must never double-count bytesReceived'
+        'overlapping retry must never double-count bytesReceived',
       );
 
       // Release test-side buffers before finalize so memory sample reflects server decode
@@ -299,28 +295,22 @@ describe('Phase 4 server decode stress, idempotent chunking & 512 MB RAM safety'
       assert.equal(terminal.body.payload?.sha256, expectedSha256);
       assert.ok(
         typeof terminal.body.serverStageTimingsMs?.jobToDoneMs === 'number',
-        'server decode response must include stage timings for profiling'
+        'server decode response must include stage timings for profiling',
       );
       assert.ok(
         typeof terminal.body.serverStageTimingsMs?.jobToSpawnMs === 'number',
-        'server decode response must include the spawn stage'
+        'server decode response must include the spawn stage',
       );
 
       // Deterministic cleanup verification: input .fm and output .json must be gone
       await new Promise((r) => setTimeout(r, 30));
-      assert.equal(
-        fs.existsSync(path.resolve(os.tmpdir(), `fm27-save-${uploadId}.fm`)),
-        false
-      );
-      assert.equal(
-        fs.existsSync(path.resolve(os.tmpdir(), `fm27-out-${jobId}.json`)),
-        false
-      );
+      assert.equal(fs.existsSync(path.resolve(os.tmpdir(), `fm27-save-${uploadId}.fm`)), false);
+      assert.equal(fs.existsSync(path.resolve(os.tmpdir(), `fm27-out-${jobId}.json`)), false);
 
       const elapsedMs = Math.round(performance.now() - t0);
       const mem = tracker.report();
       console.log(
-        `[Phase 4 Stress] 24 MB Upload + Retries/Overlaps: ${elapsedMs}ms | peakRSS=${mem.peakRssMb} MB | peakHeapUsed=${mem.peakHeapUsedMb} MB`
+        `[Phase 4 Stress] 24 MB Upload + Retries/Overlaps: ${elapsedMs}ms | peakRSS=${mem.peakRssMb} MB | peakHeapUsed=${mem.peakHeapUsedMb} MB`,
       );
     } finally {
       await srv.close();
@@ -331,10 +321,7 @@ describe('Phase 4 server decode stress, idempotent chunking & 512 MB RAM safety'
     const tracker = createMemoryTracker();
     const t0 = performance.now();
 
-    const mockMapperPath = path.join(
-      os.tmpdir(),
-      `fm27-stress-12mb-out-${crypto.randomUUID()}.py`
-    );
+    const mockMapperPath = path.join(os.tmpdir(), `fm27-stress-12mb-out-${crypto.randomUUID()}.py`);
     tempScripts.push(mockMapperPath);
     await fs.promises.writeFile(
       mockMapperPath,
@@ -364,7 +351,7 @@ describe('Phase 4 server decode stress, idempotent chunking & 512 MB RAM safety'
         'sys.stdout.write("]}")',
         'sys.stdout.flush()',
       ].join('\n'),
-      'utf8'
+      'utf8',
     );
 
     const srv = await startDecodeServer(mockMapperPath);
@@ -413,15 +400,12 @@ describe('Phase 4 server decode stress, idempotent chunking & 512 MB RAM safety'
 
       // Output temp file must be deleted cleanly after streaming finishes
       await new Promise((r) => setTimeout(r, 40));
-      assert.equal(
-        fs.existsSync(path.resolve(os.tmpdir(), `fm27-out-${jobId}.json`)),
-        false
-      );
+      assert.equal(fs.existsSync(path.resolve(os.tmpdir(), `fm27-out-${jobId}.json`)), false);
 
       const elapsedMs = Math.round(performance.now() - t0);
       const mem = tracker.report();
       console.log(
-        `[Phase 4 Stress] 12 MB Python->Node Streaming Handoff: ${elapsedMs}ms | peakRSS=${mem.peakRssMb} MB | peakHeapUsed=${mem.peakHeapUsedMb} MB`
+        `[Phase 4 Stress] 12 MB Python->Node Streaming Handoff: ${elapsedMs}ms | peakRSS=${mem.peakRssMb} MB | peakHeapUsed=${mem.peakHeapUsedMb} MB`,
       );
     } finally {
       await srv.close();
@@ -461,10 +445,7 @@ describe('Phase 4 server decode stress, idempotent chunking & 512 MB RAM safety'
       assert.equal(terminal.httpStatus, 507);
       assert.equal(terminal.body.errorCode, 'SERVER_OOM');
       assert.equal(terminal.body.serverDecodeAvailable, false);
-      assert.equal(
-        fs.existsSync(path.resolve(os.tmpdir(), `fm27-out-${jobId}.json`)),
-        false
-      );
+      assert.equal(fs.existsSync(path.resolve(os.tmpdir(), `fm27-out-${jobId}.json`)), false);
     } finally {
       await oomSrv.close();
     }
@@ -475,7 +456,7 @@ describe('Phase 4 server decode stress, idempotent chunking & 512 MB RAM safety'
     await fs.promises.writeFile(
       badJsonScript,
       'import sys\nsys.stdout.write("{not-valid-json")\n',
-      'utf8'
+      'utf8',
     );
 
     const badSrv = await startDecodeServer(badJsonScript);
@@ -504,19 +485,13 @@ describe('Phase 4 server decode stress, idempotent chunking & 512 MB RAM safety'
       const terminal = await waitForJobTerminal(badSrv.baseUrl, jobId);
       assert.equal(terminal.body.status, 'error');
       assert.match(String(terminal.body.error || ''), /Failed to parse decoded save JSON/i);
-      assert.equal(
-        fs.existsSync(path.resolve(os.tmpdir(), `fm27-out-${jobId}.json`)),
-        false
-      );
+      assert.equal(fs.existsSync(path.resolve(os.tmpdir(), `fm27-out-${jobId}.json`)), false);
     } finally {
       await badSrv.close();
     }
 
     // 3. Orphan output temp file sweep
-    const orphanOut = path.resolve(
-      os.tmpdir(),
-      `fm27-out-${crypto.randomUUID()}.json`
-    );
+    const orphanOut = path.resolve(os.tmpdir(), `fm27-out-${crypto.randomUUID()}.json`);
     await fs.promises.writeFile(orphanOut, '{"orphan":true}', 'utf8');
     const past = new Date(Date.now() - 5_000);
     await fs.promises.utimes(orphanOut, past, past);

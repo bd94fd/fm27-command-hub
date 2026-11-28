@@ -108,9 +108,7 @@ function errorDetails(error: unknown): ErrorDetails {
     const record = error as Record<string, unknown>;
     return {
       name: safeText(record.name, 80) || 'Error',
-      message:
-        safeText(record.message) ||
-        'A non-Error value was thrown. Payload omitted.',
+      message: safeText(record.message) || 'A non-Error value was thrown. Payload omitted.',
       ...(typeof record.stack === 'string'
         ? { stack: redactSensitiveText(record.stack, 6000) }
         : {}),
@@ -139,24 +137,17 @@ export function buildServerErrorEvent(input: ServerErrorInput): ServerErrorEvent
       ? { durationMs: Math.max(0, Math.round(input.durationMs)) }
       : {}),
     error: errorDetails(input.error),
-    ...(input.context
-      ? { context: redactForLog(input.context) as Record<string, unknown> }
-      : {}),
+    ...(input.context ? { context: redactForLog(input.context) as Record<string, unknown> } : {}),
   };
 }
 
 export function buildClientErrorEvent(
   report: unknown,
-  meta: ClientErrorMeta = {}
+  meta: ClientErrorMeta = {},
 ): ServerErrorEvent {
-  const record =
-    report && typeof report === 'object'
-      ? (report as Record<string, unknown>)
-      : {};
+  const record = report && typeof report === 'object' ? (report as Record<string, unknown>) : {};
   const app =
-    record.app && typeof record.app === 'object'
-      ? (record.app as Record<string, unknown>)
-      : {};
+    record.app && typeof record.app === 'object' ? (record.app as Record<string, unknown>) : {};
 
   return {
     type: 'client',
@@ -169,9 +160,7 @@ export function buildClientErrorEvent(
     route: requestPath(record.route),
     userAgent: safeText(record.userAgent, 300),
     error: errorDetails(record.error),
-    ...(record.context
-      ? { context: sanitizeClientContext(record.context) }
-      : {}),
+    ...(record.context ? { context: sanitizeClientContext(record.context) } : {}),
   };
 }
 

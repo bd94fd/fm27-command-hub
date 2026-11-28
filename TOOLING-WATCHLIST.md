@@ -1,6 +1,6 @@
 # FM27 tooling watchlist
 
-Last updated: 25 November 2026
+Last updated: 28 November 2026
 Purpose: remember tools and skills worth adding later, so we do not search for them again.
 
 ## How to use this list
@@ -32,6 +32,8 @@ Purpose: remember tools and skills worth adding later, so we do not search for t
 | `fm27-release-check` | Project skill | Full release gate and file-scope guard. | 25 Nov 2026 |
 | Playwright MCP (`playwright`) | MCP server | Live UI inspection, clicking, screenshots and console checks. | 26 Nov 2026 |
 | Chrome DevTools MCP (`chrome-devtools`) | MCP server | Performance traces, long tasks, memory and network diagnostics. | 26 Nov 2026 |
+| `oxlint` | Dev dependency | Correctness linting for `src/`, `server/` and `scripts/`. | 28 Nov 2026 |
+| `prettier` | Dev dependency | Formatting gate for workflows, configs, scripts and `server/`. | 28 Nov 2026 |
 
 ## Add at a specific roadmap item
 
@@ -77,6 +79,7 @@ Purpose: remember tools and skills worth adding later, so we do not search for t
 
 - 26 Nov 2026: R28 added the Safari leg of the device matrix. Playwright stays an on-demand tool, not a dependency: `scripts/webkit-matrix.mjs` imports `playwright` if present and exits with install instructions if not, so `npm install` and CI do not download a second browser engine. WebKit on this Linux image needed `libgstreamer-plugins-bad1.0-0`, `libgtk-4-1`, `libsecret-1-0`, `libenchant-2-2` and `libmanette-0.2-0` before `webkit.launch()` would start.
 - 28 Nov 2026: R41 used Node's built-in test coverage (`--experimental-test-coverage`) and its threshold flags instead of adding `c8` or `nyc`. No new dependency, and the same runner and transform already drive the suite. The threshold flags were checked on Node 22.23.5, the version CI installs, as well as Node 24.
+- 28 Nov 2026: R42 added `oxlint` and `prettier`. Oxlint runs the `correctness` category only: TypeScript already owns types and unused locals, and the four `unicorn` rules it flagged were style preferences on deliberate patterns, so those rules are off. Prettier is scoped to workflows, configs, scripts and `server/`; `src/` is left out until a separate formatting pass so a mechanical reformat does not hide behaviour changes.
 
 ## Rejected for now
 

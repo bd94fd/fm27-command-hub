@@ -178,9 +178,7 @@ function findBalancedObjectCandidates(text: string): string[] {
  *
  * Strictly rejects arrays, primitives, null, empty strings, and malformed/truncated replies.
  */
-export function extractStructuredJsonObject(
-  rawText: string
-): JsonObjectExtractResult {
+export function extractStructuredJsonObject(rawText: string): JsonObjectExtractResult {
   if (typeof rawText !== 'string') {
     return { ok: false, reason: 'Empty or non-string AI response' };
   }
@@ -213,9 +211,7 @@ export function extractStructuredJsonObject(
   }
 
   // 3. String-aware balanced `{ ... }` scan across full text (largest objects first)
-  const braceCandidates = findBalancedObjectCandidates(cleaned).sort(
-    (a, b) => b.length - a.length
-  );
+  const braceCandidates = findBalancedObjectCandidates(cleaned).sort((a, b) => b.length - a.length);
   for (const slice of braceCandidates) {
     const parsed = tryParseJsonObject(slice);
     if (parsed) {
@@ -255,7 +251,7 @@ export function extractStructuredJsonObject(
  */
 export function normalizeTacticalChatHistory(
   history: unknown,
-  maxTurns = 6
+  maxTurns = 6,
 ): NormalizedGeminiTurn[] {
   if (!Array.isArray(history) || history.length === 0 || maxTurns < 2) {
     return [];

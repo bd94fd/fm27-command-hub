@@ -149,10 +149,7 @@ describe('server routes & JSON 404', () => {
       body: debriefBody,
     });
     assert.equal(rateLimitedRes.status, 429);
-    assert.match(
-      rateLimitedRes.headers.get('content-type') || '',
-      /application\/json/i
-    );
+    assert.match(rateLimitedRes.headers.get('content-type') || '', /application\/json/i);
     const rateLimitedJson = (await rateLimitedRes.json()) as Record<string, unknown>;
     assert.match(String(rateLimitedJson.error), /Rate limit exceeded/i);
   });
@@ -212,10 +209,7 @@ describe('server routes & JSON 404', () => {
       clientFactory: () => ({
         models: {
           list: async () => ({
-            models: [
-              { name: 'models/gemini-3.5-flash-lite' },
-              { name: 'models/gemini-3.6-flash' },
-            ],
+            models: [{ name: 'models/gemini-3.5-flash-lite' }, { name: 'models/gemini-3.6-flash' }],
           }),
           generateContent: (async (req: {
             model: string;
@@ -357,11 +351,11 @@ describe('server routes & JSON 404', () => {
 
     const mainContentSrc = fs.readFileSync(
       path.resolve(process.cwd(), 'src/components/shell/AppMainContent.tsx'),
-      'utf8'
+      'utf8',
     );
     const overlaysSrc = fs.readFileSync(
       path.resolve(process.cwd(), 'src/components/shell/AppOverlays.tsx'),
-      'utf8'
+      'utf8',
     );
     assert.match(mainContentSrc, /const TacticalWarRoom = lazy\(/);
     assert.match(mainContentSrc, /const StaffDirectory = lazy\(/);
@@ -371,11 +365,11 @@ describe('server routes & JSON 404', () => {
 
     const squadSrc = fs.readFileSync(
       path.resolve(process.cwd(), 'src/components/SquadAnalyticsTable.tsx'),
-      'utf8'
+      'utf8',
     );
     const recSrc = fs.readFileSync(
       path.resolve(process.cwd(), 'src/components/RecruitmentWorkspace.tsx'),
-      'utf8'
+      'utf8',
     );
     assert.match(squadSrc, /useDeferredValue\(search\)/);
     assert.match(recSrc, /useDeferredValue\(search\)/);
@@ -441,7 +435,7 @@ describe('server routes & JSON 404', () => {
               reject(err);
             }
           });
-        }
+        },
       );
       req.on('error', reject);
       req.write(
@@ -453,7 +447,7 @@ describe('server routes & JSON 404', () => {
             result: 'W',
             score: '2 - 0',
           },
-        })
+        }),
       );
       req.end();
     });
@@ -466,67 +460,55 @@ describe('server routes & JSON 404', () => {
     const path = await import('node:path');
 
     // Pack 2 checks
-    const viteConfigSrc = fs.readFileSync(
-      path.resolve(process.cwd(), 'vite.config.ts'),
-      'utf8'
-    );
+    const viteConfigSrc = fs.readFileSync(path.resolve(process.cwd(), 'vite.config.ts'), 'utf8');
     assert.match(viteConfigSrc, /VitePWA\(/);
     assert.match(viteConfigSrc, /navigateFallbackDenylist:\s*\[\s*\/\^\\\/api\\\/\/\s*\]/);
 
     const companionSrc = fs.readFileSync(
       path.resolve(process.cwd(), 'src/components/MatchdayCompanionView.tsx'),
-      'utf8'
+      'utf8',
     );
     assert.match(companionSrc, /wakeLock\.request\('screen'\)/);
     assert.match(companionSrc, /Keep Screen Awake/);
 
     const cmdPaletteSrc = fs.readFileSync(
       path.resolve(process.cwd(), 'src/components/CommandPaletteModal.tsx'),
-      'utf8'
+      'utf8',
     );
     assert.match(cmdPaletteSrc, /Quick-Jump Command Palette/);
     assert.match(cmdPaletteSrc, /Shortcut: ⌘K \/ Ctrl\+K/);
 
     const recSrc = fs.readFileSync(
       path.resolve(process.cwd(), 'src/components/RecruitmentWorkspace.tsx'),
-      'utf8'
+      'utf8',
     );
     assert.match(recSrc, /evaluateInGameShortlist/);
     assert.match(recSrc, /<ShortlistView/);
 
     // Pack 3 checks
-    const dockerfileSrc = fs.readFileSync(
-      path.resolve(process.cwd(), 'Dockerfile'),
-      'utf8'
-    );
+    const dockerfileSrc = fs.readFileSync(path.resolve(process.cwd(), 'Dockerfile'), 'utf8');
     assert.match(dockerfileSrc, /AS builder/);
     assert.match(dockerfileSrc, /AS runtime/);
     assert.match(dockerfileSrc, /USER node/);
 
-    const dockerignoreSrc = fs.readFileSync(
-      path.resolve(process.cwd(), '.dockerignore'),
-      'utf8'
-    );
+    const dockerignoreSrc = fs.readFileSync(path.resolve(process.cwd(), '.dockerignore'), 'utf8');
     assert.match(dockerignoreSrc, /src\/\*\*\/\*\.test\.ts/);
     assert.match(dockerignoreSrc, /\.github/);
 
     const errorBoundarySrc = fs.readFileSync(
       path.resolve(process.cwd(), 'src/components/AppErrorBoundary.tsx'),
-      'utf8'
+      'utf8',
     );
     assert.match(errorBoundarySrc, /getDerivedStateFromError/);
     assert.match(errorBoundarySrc, /Reset Local Cache/);
 
     const guardSrc = fs.readFileSync(
       path.resolve(process.cwd(), 'server/middleware/securityGuard.ts'),
-      'utf8'
+      'utf8',
     );
     assert.match(guardSrc, /pruneStaleIps/);
 
-    const serverSrc = fs.readFileSync(
-      path.resolve(process.cwd(), 'server.ts'),
-      'utf8'
-    );
+    const serverSrc = fs.readFileSync(path.resolve(process.cwd(), 'server.ts'), 'utf8');
     assert.match(serverSrc, /app\.set\('trust proxy',\s*1\)/);
     assert.match(serverSrc, /helmet\(/);
     assert.match(serverSrc, /process\.on\('SIGTERM'/);
@@ -578,7 +560,7 @@ describe('server routes & JSON 404', () => {
           fmsaveVersion: '0.14.4',
           checkedAtMs: Date.now(),
         }),
-      })
+      }),
     );
     const srv = await startTestServer(app as Awaited<ReturnType<typeof createApp>>);
     activeClose = srv.close;
@@ -648,7 +630,7 @@ describe('server routes & JSON 404', () => {
     // Clean up parallel upload temp file
     const delParallel = await fetch(
       `${srv.baseUrl}/api/fm27/decode-save/upload/${parallelBody.uploadId}`,
-      { method: 'DELETE' }
+      { method: 'DELETE' },
     );
     assert.equal(delParallel.status, 200);
 
@@ -691,7 +673,7 @@ describe('server routes & JSON 404', () => {
           fmsaveVersion: '0.14.4',
           checkedAtMs: Date.now(),
         }),
-      })
+      }),
     );
     const decodeSrv = await startTestServer(decodeApp);
     try {
@@ -807,20 +789,20 @@ describe('server routes & JSON 404', () => {
           fmsaveVersion: '0.14.4',
           checkedAtMs: Date.now(),
         }),
-      })
+      }),
     );
     const decodeSrv = await startTestServer(decodeApp);
     try {
       // Invalid UUID -> 400 JSON
       const badIdRes = await fetch(
-        `${decodeSrv.baseUrl}/api/fm27/decode-save/upload/not-a-uuid/status`
+        `${decodeSrv.baseUrl}/api/fm27/decode-save/upload/not-a-uuid/status`,
       );
       assert.equal(badIdRes.status, 400);
       assert.match(badIdRes.headers.get('content-type') || '', /application\/json/);
 
       // Unknown valid UUID -> 404 JSON
       const missingRes = await fetch(
-        `${decodeSrv.baseUrl}/api/fm27/decode-save/upload/99999999-2222-4333-8444-555555555555/status`
+        `${decodeSrv.baseUrl}/api/fm27/decode-save/upload/99999999-2222-4333-8444-555555555555/status`,
       );
       assert.equal(missingRes.status, 404);
 
@@ -859,7 +841,7 @@ describe('server routes & JSON 404', () => {
       });
 
       const statusRes = await fetch(
-        `${decodeSrv.baseUrl}/api/fm27/decode-save/upload/${initBody.uploadId}/status`
+        `${decodeSrv.baseUrl}/api/fm27/decode-save/upload/${initBody.uploadId}/status`,
       );
       assert.equal(statusRes.status, 200);
       const statusBody = (await statusRes.json()) as {
@@ -885,12 +867,11 @@ describe('server routes & JSON 404', () => {
       assert.ok(statusBody.holdRemainingMs > 0);
 
       // Delete upload -> status returns 404 cleanly
-      await fetch(
-        `${decodeSrv.baseUrl}/api/fm27/decode-save/upload/${initBody.uploadId}`,
-        { method: 'DELETE' }
-      );
+      await fetch(`${decodeSrv.baseUrl}/api/fm27/decode-save/upload/${initBody.uploadId}`, {
+        method: 'DELETE',
+      });
       const afterDelRes = await fetch(
-        `${decodeSrv.baseUrl}/api/fm27/decode-save/upload/${initBody.uploadId}/status`
+        `${decodeSrv.baseUrl}/api/fm27/decode-save/upload/${initBody.uploadId}/status`,
       );
       assert.equal(afterDelRes.status, 404);
     } finally {
@@ -898,6 +879,3 @@ describe('server routes & JSON 404', () => {
     }
   });
 });
-
-
-

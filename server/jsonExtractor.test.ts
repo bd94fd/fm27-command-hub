@@ -2,10 +2,7 @@ import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import express from 'express';
-import {
-  extractStructuredJsonObject,
-  normalizeTacticalChatHistory,
-} from './jsonExtractor.ts';
+import { extractStructuredJsonObject, normalizeTacticalChatHistory } from './jsonExtractor.ts';
 import {
   AnalystTimeoutError,
   DEEP_MODEL_ID,
@@ -24,7 +21,7 @@ async function startTestServer(app: express.Express) {
     baseUrl: `http://127.0.0.1:${address.port}`,
     close: () =>
       new Promise<void>((resolve, reject) =>
-        server.close((err) => (err ? reject(err) : resolve()))
+        server.close((err) => (err ? reject(err) : resolve())),
       ),
   };
 }
@@ -32,7 +29,9 @@ async function startTestServer(app: express.Express) {
 describe('Phase 5: Resilient structured JSON extraction & chat alternation', () => {
   it('unwraps clean JSON, BOM, markdown fences, prose wrappers, trailing commas, and raw string newlines', () => {
     // 1. Direct JSON + BOM
-    const direct = extractStructuredJsonObject('\uFEFF {"analysisMarkdown":"Clean reply","ok":true}');
+    const direct = extractStructuredJsonObject(
+      '\uFEFF {"analysisMarkdown":"Clean reply","ok":true}',
+    );
     assert.equal(direct.ok, true);
     if (direct.ok) {
       assert.equal(direct.strategy, 'direct');
@@ -41,7 +40,7 @@ describe('Phase 5: Resilient structured JSON extraction & chat alternation', () 
 
     // 2. Markdown ```json fence with prose wrapper
     const fenced = extractStructuredJsonObject(
-      'Here is your FM27 tactical briefing:\n\n```json\n{"headlineVerdict":"Strong press","primaryTacticalFlaws":["Wide gap"]}\n```\n\nLet me know if you want another look.'
+      'Here is your FM27 tactical briefing:\n\n```json\n{"headlineVerdict":"Strong press","primaryTacticalFlaws":["Wide gap"]}\n```\n\nLet me know if you want another look.',
     );
     assert.equal(fenced.ok, true);
     if (fenced.ok) {
@@ -51,7 +50,7 @@ describe('Phase 5: Resilient structured JSON extraction & chat alternation', () 
 
     // 3. Prose wrapper without fences + braces inside string + stray {note} in preamble
     const prose = extractStructuredJsonObject(
-      'Note {summary}: below is the payload {"screenDetected":"Match Review","analysisMarkdown":"Use {4-3-3} with \\"Tracking Winger\\" OOP"} — end of transmission.'
+      'Note {summary}: below is the payload {"screenDetected":"Match Review","analysisMarkdown":"Use {4-3-3} with \\"Tracking Winger\\" OOP"} — end of transmission.',
     );
     assert.equal(prose.ok, true);
     if (prose.ok) {
@@ -62,15 +61,13 @@ describe('Phase 5: Resilient structured JSON extraction & chat alternation', () 
 
     // 4. Trailing comma + unescaped raw newline inside string value
     const glitched = extractStructuredJsonObject(
-      '```json\n{\n  "analysisMarkdown": "Line 1\nLine 2",\n  "immediateClicks": ["Switch AMR to Tracking Winger OOP",],\n}\n```'
+      '```json\n{\n  "analysisMarkdown": "Line 1\nLine 2",\n  "immediateClicks": ["Switch AMR to Tracking Winger OOP",],\n}\n```',
     );
     assert.equal(glitched.ok, true);
     if (glitched.ok) {
       assert.equal(glitched.strategy, 'repaired');
       assert.equal(glitched.value.analysisMarkdown, 'Line 1\nLine 2');
-      assert.deepEqual(glitched.value.immediateClicks, [
-        'Switch AMR to Tracking Winger OOP',
-      ]);
+      assert.deepEqual(glitched.value.immediateClicks, ['Switch AMR to Tracking Winger OOP']);
     }
   });
 
@@ -113,7 +110,7 @@ describe('Phase 5: Resilient structured JSON extraction & chat alternation', () 
     assert.equal(normalized.length, 6);
     assert.deepEqual(
       normalized.map((t) => t.role),
-      ['user', 'model', 'user', 'model', 'user', 'model']
+      ['user', 'model', 'user', 'model', 'user', 'model'],
     );
     // Kept latest 3 completed pairs (Turns 2, 3, 4) and dropped Turn 1 & trailing unanswered Turn
     assert.equal(normalized[0].parts[0].text, 'Turn 2');
@@ -129,7 +126,7 @@ describe('Phase 5: Resilient structured JSON extraction & chat alternation', () 
         { role: 'model', text: 'A1 extra' },
         { role: 'user', text: 'Unanswered' },
       ],
-      6
+      6,
     );
     assert.equal(merged.length, 2);
     assert.equal(merged[0].role, 'user');
@@ -157,10 +154,7 @@ describe('Phase 5: Live route JSON unwrapping & Deep -> Fast timeout failover', 
       clientFactory: () => ({
         models: {
           list: async () => ({
-            models: [
-              { name: `models/${FAST_MODEL_ID}` },
-              { name: `models/${DEEP_MODEL_ID}` },
-            ],
+            models: [{ name: `models/${FAST_MODEL_ID}` }, { name: `models/${DEEP_MODEL_ID}` }],
           }),
           generateContent: (async () => ({
             get text() {
@@ -209,7 +203,10 @@ describe('Phase 5: Live route JSON unwrapping & Deep -> Fast timeout failover', 
       body: JSON.stringify({ clubName: 'KVV Zelzate', journeySummary: { from: 'Sep', to: 'Nov' } }),
     });
     assert.equal(journeyOk.status, 200);
-    const journeyBody = (await journeyOk.json()) as { headline: string; briefing: { headline: string } };
+    const journeyBody = (await journeyOk.json()) as {
+      headline: string;
+      briefing: { headline: string };
+    };
     assert.equal(journeyBody.headline, 'Upward trajectory');
     assert.equal(journeyBody.briefing.headline, 'Upward trajectory');
 
@@ -263,10 +260,7 @@ describe('Phase 5: Live route JSON unwrapping & Deep -> Fast timeout failover', 
       clientFactory: () => ({
         models: {
           list: async () => ({
-            models: [
-              { name: `models/${FAST_MODEL_ID}` },
-              { name: `models/${DEEP_MODEL_ID}` },
-            ],
+            models: [{ name: `models/${FAST_MODEL_ID}` }, { name: `models/${DEEP_MODEL_ID}` }],
           }),
           generateContent: (async (req: { model: string }) => {
             attemptedModels.push(req.model);
@@ -287,7 +281,7 @@ describe('Phase 5: Live route JSON unwrapping & Deep -> Fast timeout failover', 
 
     const okRes = await failoverService.generateContent(
       { contents: [{ role: 'user', parts: [{ text: 'Deep audit' }] }] },
-      { reasoningMode: 'deep_high', timeoutMs: 60_000 }
+      { reasoningMode: 'deep_high', timeoutMs: 60_000 },
     );
     assert.deepEqual(attemptedModels, ['gemini-3.6-flash', 'gemini-3.5-flash-lite']);
     assert.match(okRes.text ?? '', /Failover Fast reply OK/);
@@ -301,10 +295,7 @@ describe('Phase 5: Live route JSON unwrapping & Deep -> Fast timeout failover', 
       clientFactory: () => ({
         models: {
           list: async () => ({
-            models: [
-              { name: `models/${FAST_MODEL_ID}` },
-              { name: `models/${DEEP_MODEL_ID}` },
-            ],
+            models: [{ name: `models/${FAST_MODEL_ID}` }, { name: `models/${DEEP_MODEL_ID}` }],
           }),
           generateContent: (async (req: { model: string }) => {
             doubleAttempts.push(req.model);
@@ -319,9 +310,9 @@ describe('Phase 5: Live route JSON unwrapping & Deep -> Fast timeout failover', 
       () =>
         doubleTimeoutService.generateContent(
           { contents: [{ role: 'user', parts: [{ text: 'Double timeout' }] }] },
-          { reasoningMode: 'deep_high', timeoutMs: 60_000 }
+          { reasoningMode: 'deep_high', timeoutMs: 60_000 },
         ),
-      AnalystTimeoutError
+      AnalystTimeoutError,
     );
     assert.deepEqual(doubleAttempts, ['gemini-3.6-flash', 'gemini-3.5-flash-lite']);
   });

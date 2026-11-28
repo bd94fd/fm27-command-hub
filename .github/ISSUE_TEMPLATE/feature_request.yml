@@ -1,7 +1,7 @@
 name: Feature request
 description: Suggest a change that makes the app safer, clearer, or faster.
-title: "[Feature]: "
-labels: ["enhancement"]
+title: '[Feature]: '
+labels: ['enhancement']
 body:
   - type: markdown
     attributes:

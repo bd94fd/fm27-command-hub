@@ -23,7 +23,14 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { connect, sleep, startBrowser, TAB_TARGETS } from './lib/browser.mjs';
 
-const ARGS = { url: 'http://localhost:12000', cdp: 'http://127.0.0.1:9222', save: null, out: null, profile: 'desktop', timeout: 300000 };
+const ARGS = {
+  url: 'http://localhost:12000',
+  cdp: 'http://127.0.0.1:9222',
+  save: null,
+  out: null,
+  profile: 'desktop',
+  timeout: 300000,
+};
 for (const raw of process.argv.slice(2)) {
   const [key, value] = raw.split('=');
   if (key === '--url') ARGS.url = value;
@@ -33,7 +40,9 @@ for (const raw of process.argv.slice(2)) {
   else if (key === '--profile') ARGS.profile = value;
   else if (key === '--timeout') ARGS.timeout = Number(value);
   else if (key === '--help') {
-    console.log('Usage: npm run parity:snapshot -- --out=before.json [--save=save.fm] [--profile=desktop|mobile]');
+    console.log(
+      'Usage: npm run parity:snapshot -- --out=before.json [--save=save.fm] [--profile=desktop|mobile]',
+    );
     process.exit(0);
   } else throw new Error(`Unknown argument ${raw}`);
 }
@@ -142,10 +151,11 @@ async function settle(client) {
     .waitFor(
       `!document.querySelector('button[title="View active .fm save upload progress"],button[aria-label="View active .fm save upload progress"]')`,
       {
-      timeout: 60000,
-      interval: 500,
-      label: 'the header sync button to go idle',
-    })
+        timeout: 60000,
+        interval: 500,
+        label: 'the header sync button to go idle',
+      },
+    )
     .catch(() => null);
   await sleep(800);
 }
@@ -173,12 +183,23 @@ async function main() {
     });
     await client.send('Emulation.setTouchEmulationEnabled', { enabled: profile.mobile });
     await client.navigate('about:blank', 400);
-    await client.send('Storage.clearDataForOrigin', { origin: new URL(ARGS.url).origin, storageTypes: 'all' });
+    await client.send('Storage.clearDataForOrigin', {
+      origin: new URL(ARGS.url).origin,
+      storageTypes: 'all',
+    });
     await client.navigate(ARGS.url, 3000);
 
-    await client.waitFor(`!!document.querySelector('input[accept=".fm"]')`, { timeout: 30000, interval: 500, label: 'the import input' });
+    await client.waitFor(`!!document.querySelector('input[accept=".fm"]')`, {
+      timeout: 30000,
+      interval: 500,
+      label: 'the import input',
+    });
     await client.setFileInput('input[accept=".fm"]', ARGS.save);
-    await client.waitFor(`/(\\d+)\\s*First Team/.test(document.body.innerText || '')`, { timeout: ARGS.timeout, interval: 1500, label: 'the squad after import' });
+    await client.waitFor(`/(\\d+)\\s*First Team/.test(document.body.innerText || '')`, {
+      timeout: ARGS.timeout,
+      interval: 1500,
+      label: 'the squad after import',
+    });
     // The background finishing pass draws a banner that disappears when it ends.
     // Capturing while it runs makes the snapshot depend on decode speed.
     await client.waitFor(`!/finishing in background/i.test(document.body.innerText || '')`, {
@@ -213,7 +234,9 @@ async function main() {
         })()`);
       }
       await sleep(1400);
-      const rendered = await client.evaluate(`document.querySelector('main[data-active-tab]')?.getAttribute('data-active-tab') ?? null`);
+      const rendered = await client.evaluate(
+        `document.querySelector('main[data-active-tab]')?.getAttribute('data-active-tab') ?? null`,
+      );
       if (rendered !== target.tab) {
         console.log(`  ${tab}: did not render (${rendered})`);
         snapshot.sections[tab] = null;
@@ -231,7 +254,10 @@ async function main() {
       const state = await client.evaluate(opener);
       await sleep(1400);
       await settle(client);
-      const captured = state === 'opened' ? await client.evaluate(`(${CAPTURE})('[role="dialog"][aria-modal="true"]')`) : null;
+      const captured =
+        state === 'opened'
+          ? await client.evaluate(`(${CAPTURE})('[role="dialog"][aria-modal="true"]')`)
+          : null;
       snapshot.overlays[label] = { state, tree: captured };
       console.log(`  ${label}: ${state}${captured ? ' (captured)' : ''}`);
       await client.pressEscape();

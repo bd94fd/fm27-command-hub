@@ -92,13 +92,15 @@ console.log('====================');
 for (const { save, profile } of profiles) {
   console.log(`\n${save} (${profile.fileSizeMb} MB)`);
   console.log(
-    `  upload ${profile.uploadMs}ms | decode ${profile.decodeMs}ms | transfer ${profile.transferMs}ms | hydrate ${profile.hydrateMs}ms | render ${profile.renderMs}ms`
+    `  upload ${profile.uploadMs}ms | decode ${profile.decodeMs}ms | transfer ${profile.transferMs}ms | hydrate ${profile.hydrateMs}ms | render ${profile.renderMs}ms`,
   );
   console.log(
-    `  decoder measured ${profile.decoderMeasuredMs}ms | server job ${profile.serverDetailMs.jobToDoneMs ?? '—'}ms | unattributed ${profile.unattributedDecodeMs}ms`
+    `  decoder measured ${profile.decoderMeasuredMs}ms | server job ${profile.serverDetailMs.jobToDoneMs ?? '—'}ms | unattributed ${profile.unattributedDecodeMs}ms`,
   );
   for (const step of profile.decodeSteps) {
-    console.log(`    ${String(step.ms).padStart(7)}ms ${String(step.sharePct).padStart(5)}% ${step.label}`);
+    console.log(
+      `    ${String(step.ms).padStart(7)}ms ${String(step.sharePct).padStart(5)}% ${step.label}`,
+    );
   }
 }
 

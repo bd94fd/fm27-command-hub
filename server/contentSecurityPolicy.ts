@@ -14,8 +14,7 @@
  */
 
 export type ContentSecurityPolicyDecision =
-  | { enabled: true; directives: Record<string, string[]> }
-  | { enabled: false };
+  { enabled: true; directives: Record<string, string[]> } | { enabled: false };
 
 export function buildContentSecurityPolicy(nodeEnv: string): ContentSecurityPolicyDecision {
   if (nodeEnv !== 'production') return { enabled: false };

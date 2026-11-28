@@ -66,8 +66,11 @@ jobs:
             echo "No tests/python directory yet; skipping."
           fi
 
-      - name: TypeScript type-check
+      - name: Type-check and lint
         run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
 
       - name: Check upstream fmsave (informational)
         continue-on-error: true
@@ -123,4 +126,3 @@ jobs:
           FM27_REAL_SAVE_DIR: ${{ vars.FM27_REAL_SAVE_DIR }}
           FM27_REAL_SAVE_REQUIRED: '1'
         run: python -m unittest tests.python.test_real_save_regression -v
-
