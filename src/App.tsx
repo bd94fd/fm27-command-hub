@@ -4,17 +4,9 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { EMPTY_CLUB_META, SQUAD_PLAYERS } from './data/squadData';
 import { emitFeedback, subscribeFeedback, type FeedbackMessage } from './utils/feedbackBus';
 import { CompareTrayProvider } from './context/CompareTrayContext';
-import { COMPETITIVE_MATCH_LOGS } from './data/matchAndTacticsData';
-import {
-  MatchLogEntry,
-  PlayerRecord,
-  RecruitmentCase,
-  ShortlistRecord,
-  StaffRecord,
-} from './types/fm27';
+import { MatchLogEntry, PlayerRecord, StaffRecord } from './types/fm27';
 import {
   parsePwaLaunchParams,
   usePwaLifecycle,
@@ -25,25 +17,18 @@ import { useAppNavigation, type ActiveTab } from './hooks/useAppNavigation';
 import { useSavePersistence } from './hooks/useSavePersistence';
 import { useShareSummary } from './hooks/useShareSummary';
 import { useFmSaveImport } from './hooks/useFmSaveImport';
+import { useCampaignState } from './hooks/useCampaignState';
 import { useRecruitmentState } from './hooks/useRecruitmentState';
 import { useBackupTransfer } from './hooks/useBackupTransfer';
 import { useSquadDeltaUpdates } from './hooks/useSquadDeltaUpdates';
 import { clearAllChatHistory } from './services/chatStorage';
 import { PwaStatusBanners } from './components/PwaStatusBanners';
 import { computeCompetitiveSummary } from './utils/competitiveSummary';
-import type { HydratedSaveState } from './utils/fmSaveHydrator';
-import {
-  clearPersistedFmState,
-  loadTrackedScoutTargets,
-  PersistedCustomSlot,
-  FmHubPersistedState,
-} from './services/fmStorage';
+import { clearPersistedFmState, FmHubPersistedState } from './services/fmStorage';
 import { buildFinancesPanelFromSave } from './utils/clubFinances';
-import type { FormationPresetKey } from './utils/bestXiSolver';
 import type {
   ClubGovernanceState,
   LastMatchTacticBlueprint,
-  RecruitmentTarget,
 } from './types/fmSave';
 import type { DeepJourneyReport } from './services/saveCache';
 import type { CalibrationLabTab } from './components/Fm27BinaryCalibrationLab';
@@ -52,9 +37,6 @@ import { AppHeader } from './components/shell/AppHeader';
 import { AppMainContent } from './components/shell/AppMainContent';
 import { AppOverlays } from './components/shell/AppOverlays';
 
-
-
-const DEFAULT_ACTIVE_SHAPE: FormationPresetKey = '4-3-3 DM Wide';
 
 export default function App() {
   const nav = useAppNavigation(
@@ -78,29 +60,47 @@ export default function App() {
     openRecentView,
     scrollToTop,
   } = nav;
-  const [matches, setMatches] = useState<MatchLogEntry[]>(
-    COMPETITIVE_MATCH_LOGS
-  );
-  const [players, setPlayers] = useState<PlayerRecord[]>(SQUAD_PLAYERS);
-  const [staff, setStaff] = useState<StaffRecord[]>([]);
-  const [recruitmentCases, setRecruitmentCases] = useState<RecruitmentCase[]>(
-    []
-  );
-  const [shortlists, setShortlists] = useState<ShortlistRecord[]>([]);
-  const [trackedTargets, setTrackedTargets] = useState<RecruitmentTarget[]>(() =>
-    loadTrackedScoutTargets()
-  );
+  const campaignOwner = useCampaignState();
+  const {
+    campaign,
+    snapshot: snapshotToPersist,
+    restoreSnapshot,
+    restoreBackup,
+    clearCampaign,
+    setPlayers,
+    setMatches,
+    setStaff,
+    setRecruitmentCases,
+    setShortlists,
+    setTrackedTargets,
+    setSaveDate,
+    setNextFixture,
+    setLeagueStandingSub,
+    setWageSpend,
+    setBalance,
+    setHydratedFmSave,
+    setActiveShape,
+    setCustomSlots,
+    setApplyToAnalystOnly,
+  } = campaignOwner;
+  const {
+    players,
+    matches,
+    staff,
+    recruitmentCases,
+    shortlists,
+    trackedTargets,
+    saveDate,
+    nextFixture,
+    leagueStandingSub,
+    wageSpend,
+    balance,
+    hydratedFmSave,
+    activeShape,
+    customSlots,
+    applyToAnalystOnly,
+  } = campaign;
   const [pendingAnalystPrompt, setPendingAnalystPrompt] = useState<string | null>(
-    null
-  );
-  const [saveDate, setSaveDate] = useState<string>(EMPTY_CLUB_META.saveDate);
-  const [nextFixture, setNextFixture] = useState<string>(
-    EMPTY_CLUB_META.nextFixture
-  );
-  const [leagueStandingSub, setLeagueStandingSub] = useState<string>('--');
-  const [wageSpend, setWageSpend] = useState<string>(EMPTY_CLUB_META.wageSpend);
-  const [balance, setBalance] = useState<string>(EMPTY_CLUB_META.balance);
-  const [hydratedFmSave, setHydratedFmSave] = useState<HydratedSaveState | null>(
     null
   );
   const [latestJourneyReport, setLatestJourneyReport] =
@@ -305,66 +305,12 @@ export default function App() {
   const managerName =
     hydratedFmSave?.decodedPayload?.meta?.managerName || '--';
 
-  const [activeShape, setActiveShape] =
-    useState<FormationPresetKey>(DEFAULT_ACTIVE_SHAPE);
-  const [customSlots, setCustomSlots] = useState<PersistedCustomSlot[]>([]);
-  const [applyToAnalystOnly, setApplyToAnalystOnly] = useState<boolean>(false);
-
-  // Applies a complete persisted snapshot (localStorage or IndexedDB) without dropping fields
-  const applyPersistedSnapshot = useCallback((saved: FmHubPersistedState) => {
-    if (Array.isArray(saved.players)) setPlayers(saved.players);
-    if (Array.isArray(saved.matches)) setMatches(saved.matches);
-    if (saved.staff) setStaff(saved.staff);
-    if (saved.recruitmentCases) setRecruitmentCases(saved.recruitmentCases);
-    if (saved.shortlists) setShortlists(saved.shortlists);
-    if (saved.saveDate) setSaveDate(saved.saveDate);
-    if (saved.nextFixture) setNextFixture(saved.nextFixture);
-    if (saved.leagueStandingSub) setLeagueStandingSub(saved.leagueStandingSub);
-    if (saved.wageSpend) setWageSpend(saved.wageSpend);
-    if (saved.balance) setBalance(saved.balance);
-    if (saved.hydratedFmSave) setHydratedFmSave(saved.hydratedFmSave);
-    if (saved.activeShape) setActiveShape(saved.activeShape);
-    if (saved.customSlots) setCustomSlots(saved.customSlots);
-    if (typeof saved.applyToAnalystOnly === 'boolean') {
-      setApplyToAnalystOnly(saved.applyToAnalystOnly);
-    }
-    setIsRestoredFromMemory(true);
-  }, []);
-
-  const snapshotToPersist = useMemo(
-    () => ({
-      saveDate,
-      nextFixture,
-      leagueStandingSub,
-      wageSpend,
-      balance,
-      clubName: hydratedFmSave?.decodedPayload?.meta?.clubName,
-      players,
-      matches,
-      staff,
-      recruitmentCases,
-      shortlists,
-      hydratedFmSave,
-      activeShape,
-      customSlots,
-      applyToAnalystOnly,
-    }),
-    [
-      saveDate,
-      nextFixture,
-      leagueStandingSub,
-      wageSpend,
-      balance,
-      hydratedFmSave,
-      players,
-      matches,
-      staff,
-      recruitmentCases,
-      shortlists,
-      activeShape,
-      customSlots,
-      applyToAnalystOnly,
-    ]
+  const applyPersistedSnapshot = useCallback(
+    (saved: FmHubPersistedState) => {
+      restoreSnapshot(saved);
+      setIsRestoredFromMemory(true);
+    },
+    [restoreSnapshot]
   );
 
   const persistence = useSavePersistence({
@@ -425,23 +371,9 @@ export default function App() {
     await clearAllSaveCache();
     // A late auto-save IndexedDB write may land after the wipe; clear once more
     await clearPersistedFmState();
-    setPlayers([]);
-    setMatches([]);
-    setStaff([]);
-    setRecruitmentCases([]);
-    setShortlists([]);
-    setTrackedTargets([]);
+    clearCampaign();
     latestJourneyPromiseRef.current = null;
     setLatestJourneyReport(null);
-    setSaveDate(EMPTY_CLUB_META.saveDate);
-    setNextFixture(EMPTY_CLUB_META.nextFixture);
-    setLeagueStandingSub('--');
-    setWageSpend(EMPTY_CLUB_META.wageSpend);
-    setBalance(EMPTY_CLUB_META.balance);
-    setHydratedFmSave(null);
-    setActiveShape(DEFAULT_ACTIVE_SHAPE);
-    setCustomSlots([]);
-    setApplyToAnalystOnly(false);
     setIsRestoredFromMemory(false);
     setSelectedPlayer(null);
     setSelectedStaff(null);
@@ -456,20 +388,7 @@ export default function App() {
     snapshot: snapshotToPersist,
     onExported: () => showGlobalToast('Campaign JSON backup exported'),
     onImport: (imported) => {
-      setPlayers(imported.players);
-      setMatches(imported.matches);
-      setStaff(imported.staff || []);
-      setRecruitmentCases(imported.recruitmentCases || []);
-      setShortlists(imported.shortlists || []);
-      setSaveDate(imported.saveDate);
-      setNextFixture(imported.nextFixture);
-      setLeagueStandingSub(imported.leagueStandingSub);
-      setWageSpend(imported.wageSpend);
-      setBalance(imported.balance);
-      setHydratedFmSave(imported.hydratedFmSave);
-      if (imported.activeShape) setActiveShape(imported.activeShape);
-      setCustomSlots(imported.customSlots ?? []);
-      setApplyToAnalystOnly(Boolean(imported.applyToAnalystOnly));
+      restoreBackup(imported);
       setIsRestoredFromMemory(true);
       showGlobalToast(
         `Restored campaign snapshot (${imported.players.length} players)`
