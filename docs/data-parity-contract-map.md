@@ -10,6 +10,8 @@ Read it before changing a decoder field, a hydrator, a selector, or a prompt blo
 
 ```mermaid
 flowchart LR
+  U["useFmFileIngest.ts<br/>the drop: read, route, cache check"] --> A
+  U --> I["imageCompression.ts<br/>screenshot shrink"]
   A[".fm save"] --> B["public/fm-save-mapper.py<br/>_build_current_payload()"]
   B --> C["DecodedFmSavePayload"]
   C --> D["hydrateAppFromDecodedFmSave()<br/>fmSaveHydrator.ts"]
@@ -158,6 +160,7 @@ The hydrated state reaches the UI through one owner: `useCampaignState` holds th
 | `formatAge` | `src/components/PlayerDetailModal.tsx` | `src/utils/tacticalAnalystContext.ts` |
 | `hasPlayerMatchStats` | `src/utils/squadViewHelpers.ts` (shared row builder) | `src/utils/tacticalAnalystContext.ts` |
 | `describeSquadPool` | `src/components/AutoSyncWorkspace.tsx` | `src/utils/tacticalAnalystContext.ts` |
+| `processIncomingFiles` | `src/hooks/useFmFileIngest.ts` | Not sent: the intake publishes the decoded save, then the shared selectors above apply |
 | `computeCompetitiveSummary` | `src/hooks/useCampaignSummaries.ts` | `src/utils/tacticalAnalystContext.ts` |
 | `classifyMatchEntryBucket` | `src/components/MatchLogArchive.tsx` | `src/utils/tacticalAnalystContext.ts` |
 | `analyzePlayerCard` | `src/components/PlayerDetailModal.tsx` | `src/utils/tacticalAnalystContext.ts` |
