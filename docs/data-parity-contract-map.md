@@ -21,12 +21,16 @@ flowchart LR
   D --> D6["buildExecutiveLabels()<br/>hydrateExecutiveLabels.ts"]
   D --> D2["buildAnalystSaveContext()<br/>hydrateAnalystContext.ts"]
   D --> E["PlayerRecord / StaffRecord<br/>MatchLogEntry / HydratedSaveState"]
+  E --> K["restorePersistedCampaign() / campaignFromBackup()<br/>campaignState.ts, held by useCampaignState.ts"]
+  K --> F
   E --> J["diffSaveHistoryPoints() / buildDeepJourneyReport()<br/>saveJourneyReport.ts"]
   J --> F
   E --> G["buildLiveTacticalAnalystContext()"]
   H["Shared selectors<br/>staffRatings, clubFinances,<br/>squadViewHelpers, matchScopeHelpers,<br/>metaScoreEngine, transferAudit, ..."] --> F
   H --> G
 ```
+
+The hydrated state reaches the UI through one owner: `useCampaignState` holds the squad, matches, staff, recruitment lists, header labels and the decoded save together, so a restore, a backup import and a reset all replace the same bundle. `campaignState.ts` decides, per field, whether a stored snapshot or a backup file may replace it.
 
 ## How to read the table
 
