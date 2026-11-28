@@ -76,6 +76,9 @@ jobs:
       - name: Run unit test suite
         run: npm test
 
+      - name: Run test coverage gate
+        run: npm run test:coverage
+
       - name: Build production bundle
         run: npm run build
 
