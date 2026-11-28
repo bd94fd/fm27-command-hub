@@ -33,8 +33,12 @@ in `src/components/shell/`, so the shell component keeps state and routing.
 
 | File | Owns |
 | --- | --- |
-| `src/App.tsx` | Launch URLs, tab routing, chat state, overlay history, persistence wiring and restore |
+| `src/App.tsx` | Launch URLs, tab routing, persistence wiring, restore, the `.fm` import call and the render tree |
 | `src/hooks/useCampaignState.ts` | The campaign bundle — squad, matches, staff, recruitment lists, header labels, the decoded save and the plan fields — and the three whole-campaign writes |
+| `src/hooks/useOverlayState.ts` | Every surface that floats over the workspace, the three Back entries they own, the Cmd/Ctrl+K palette shortcut and the "anything open" flag |
+| `src/hooks/useAnalystHandoff.ts` | The prompt raised elsewhere and the newest Journey report, held until the workspace takes them |
+| `src/hooks/useCampaignSummaries.ts` | The numbers computed from the campaign rather than read from the save: league record, payroll, manual-match count, club and manager name, and the figures the shared report is built from |
+| `src/hooks/useLiveGovernance.ts` | The governance and last-match tactic: the save's values straight away, then sharpened from the decoded payload by a deferred import |
 | `src/components/shell/AppMainContent.tsx` | The section container under the header: the executive strip, the sync pill and one lazy view per section |
 | `src/components/shell/AppOverlays.tsx` | Everything that floats over the workspace: the bottom navigation, the More sheet, the share sheet, the shared view, the toast and the five modals |
 | `src/components/shell/AppHeader.tsx` | Skip link, brand, desktop section nav, the header actions and the hidden file inputs |
@@ -70,7 +74,7 @@ row in `docs/data-parity-contract-map.md`.
 | `src/utils/tacticalAnalystContext.ts` | 2,976 | 2,033 |
 | `src/utils/analystPayload.ts` | — | 956 |
 | `src/components/analyst/*` | — | 757 across four files |
-| `src/App.tsx` | 2,296 | 674 |
+| `src/App.tsx` | 2,296 | 540 |
 | `src/components/shell/*` | — | 1,479 across six files |
 | `src/hooks/useAppNavigation.ts` | — | 208 |
 | `src/hooks/useSavePersistence.ts` | — | 163 |
@@ -102,22 +106,29 @@ row in `docs/data-parity-contract-map.md`.
 | `src/utils/playerDetailFormat.ts` | — | 52 |
 | `src/utils/campaignState.ts` | — | 157 (the campaign shape, the opening and cleared states, the stored-snapshot and backup rules, and the persisted snapshot) |
 | `src/hooks/useCampaignState.ts` | — | 189 (the campaign state owner) |
+| `src/hooks/useOverlayState.ts` | — | 106 (overlay flags, their Back entries, the palette shortcut and the open flag) |
+| `src/hooks/useAnalystHandoff.ts` | — | 46 (pending analyst prompt and the newest Journey report) |
+| `src/hooks/useCampaignSummaries.ts` | — | 73 (league record, payroll, manual-match count, club and manager name, report figures) |
+| `src/hooks/useLiveGovernance.ts` | — | 79 (governance and last-match tactic, save values then the decoded sharpening) |
+| `src/hooks/useClearAllData.ts` | — | 84 (the two-press clear: arming, the wipe, the caches and the chat history) |
 
 ## Still large, and next in line
 
 | File | Lines | Why it is still one file | Plan |
 | --- | --- | --- | --- |
-| `src/App.tsx` | 674 | Chrome, routing, persistence, backup, squad deltas, the `.fm` import pipeline, the tab workspace, the overlays, the recruitment domain and the campaign state are out; what remains is the chat and overlay state, the derived summaries and the callbacks that join them | Split the chat state, then the derived summaries |
+| `src/App.tsx` | 540 | Chrome, routing, persistence, backup, squad deltas, the `.fm` import pipeline, the tab workspace, the overlays, the recruitment domain, the campaign state, the overlay and chat state, the derived summaries, the live governance and the clear-all flow are out; what remains is the state that has to live above every tab and the props that join them | Nothing left to split cheaply; the render tree is a props bridge and the remaining state is one line per field |
+| `src/components/AutoSyncWorkspace.tsx` | 2,655 | The analyst workspace: the chat turn loop, the browse views per tab and the panel wiring | Split the file-ingest pipeline and the chat-turn runner out of it |
 | `src/components/PlayerDetailModal.tsx` | 608 | The sheet chrome, the derived model, the tab bar and the shortlist action | Nothing left to split; the five panels and the PNG export are out |
 | `src/utils/fmSaveHydrator.ts` | 634 | Decoder output to UI records: availability, squad merge, match log, labels, staff, finances, governance and the payload it hands on | Nothing left to split; the hydrator now delegates every build to its own module |
 | `src/services/saveCache.ts` | 917 | IndexedDB payload caches and snapshot history; the journey report now lives in `src/utils/saveJourneyReport.ts` | Split the payload caches from snapshot history |
 
-`src/App.tsx` changes most often after the workspace, so it stays the next
-target. Nine passes have taken the chrome, the section routing, the save
-persistence, the backup and squad-delta handlers, the `.fm` import pipeline, the
-tab workspace, the overlays, the recruitment domain and the campaign state out
-of it; what is left is the chat state, the derived summaries and the callbacks
-that join them, so the next move is the chat state.
+`src/App.tsx` changes most often after the workspace, so it was the next target.
+Ten passes have taken the chrome, the section routing, the save persistence, the
+backup and squad-delta handlers, the `.fm` import pipeline, the tab workspace,
+the overlays, the recruitment domain, the campaign state and the chat, overlay,
+summary, governance and reset state out
+of it. What is left above every tab is one line of state per field and the props
+that join the shell to the workspace, so the next target is the workspace.
 The others are split as they are touched, not for their own sake.
 
 ## Where the App logic lives now
@@ -130,7 +141,12 @@ The others are split as they are touched, not for their own sake.
 | Cold-start restore, IndexedDB recency check, debounced auto-save, reset pause/cancel | `src/hooks/useSavePersistence.ts` |
 | `?share=` token, decoded share summary, leaving the shared view | `src/hooks/useShareSummary.ts` |
 | Which two saves a Journey report compares | `src/utils/saveJourneyTimeline.ts` |
-| Overlay Back entries for the More sheet, knowledge base and calibration lab | `src/hooks/useHistoryNavigation.ts` |
+| Overlay Back entries for the More sheet, knowledge base and calibration lab | `src/hooks/useOverlayState.ts`, on `src/hooks/useHistoryNavigation.ts` |
+| Overlay flags, the Cmd/Ctrl+K palette shortcut and "anything open" | `src/hooks/useOverlayState.ts` |
+| The pending analyst prompt and the newest Journey report | `src/hooks/useAnalystHandoff.ts` |
+| League record, payroll, manual-match count, club and manager name, report figures | `src/hooks/useCampaignSummaries.ts` |
+| Governance and last-match tactic, save values first then decoded | `src/hooks/useLiveGovernance.ts` |
+| The two-press clear of stored state, caches and chat history | `src/hooks/useClearAllData.ts` |
 | Campaign backup out and back in, and the backup file name | `src/hooks/useBackupTransfer.ts` |
 | Parsed squad merges and Analyst player write-back | `src/hooks/useSquadDeltaUpdates.ts` |
 | Which header labels an interim checkpoint may write | `src/utils/hydratedLabels.ts` |

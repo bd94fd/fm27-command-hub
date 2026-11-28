@@ -25,6 +25,8 @@
     "smoke:e2e": "node scripts/e2e-smoke.mjs",
     "a11y:audit": "node scripts/a11y-audit.mjs",
     "keyboard:audit": "node scripts/keyboard-audit.mjs",
+    "parity:snapshot": "node scripts/parity-snapshot.mjs",
+    "parity:compare": "node scripts/parity-compare.mjs",
     "verify:precache": "node scripts/verify-precache.mjs"
   },
   "dependencies": {

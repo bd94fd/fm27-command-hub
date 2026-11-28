@@ -58,7 +58,7 @@ const SELECTOR_PROBES: SelectorProbe[] = [
   },
   {
     label: 'League position, record, points',
-    uiFile: 'src/App.tsx',
+    uiFile: 'src/hooks/useCampaignSummaries.ts',
     uiSelectors: ['computeCompetitiveSummary'],
     analystFile: 'src/utils/tacticalAnalystContext.ts',
     analystSelectors: ['computeCompetitiveSummary'],
@@ -107,7 +107,7 @@ const SELECTOR_PROBES: SelectorProbe[] = [
   },
   {
     label: 'Manager contract and job security',
-    uiFile: 'src/App.tsx',
+    uiFile: 'src/hooks/useLiveGovernance.ts',
     uiSelectors: ['buildClubGovernanceState'],
     analystFile: 'src/utils/tacticalAnalystContext.ts',
     analystSelectors: ['buildClubGovernanceState'],

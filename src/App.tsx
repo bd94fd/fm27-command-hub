@@ -3,17 +3,21 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { emitFeedback, subscribeFeedback, type FeedbackMessage } from './utils/feedbackBus';
 import { CompareTrayProvider } from './context/CompareTrayContext';
-import { MatchLogEntry, PlayerRecord, StaffRecord } from './types/fm27';
+import { MatchLogEntry } from './types/fm27';
 import {
   parsePwaLaunchParams,
   usePwaLifecycle,
 } from './hooks/usePwaLifecycle';
 import { useMobileKeyboard } from './hooks/useMobileKeyboard';
-import { useSheetHistory } from './hooks/useHistoryNavigation';
 import { useAppNavigation, type ActiveTab } from './hooks/useAppNavigation';
+import { useOverlayState } from './hooks/useOverlayState';
+import { useAnalystHandoff } from './hooks/useAnalystHandoff';
+import { useCampaignSummaries } from './hooks/useCampaignSummaries';
+import { useLiveGovernance } from './hooks/useLiveGovernance';
+import { useClearAllData } from './hooks/useClearAllData';
 import { useSavePersistence } from './hooks/useSavePersistence';
 import { useShareSummary } from './hooks/useShareSummary';
 import { useFmSaveImport } from './hooks/useFmSaveImport';
@@ -21,17 +25,9 @@ import { useCampaignState } from './hooks/useCampaignState';
 import { useRecruitmentState } from './hooks/useRecruitmentState';
 import { useBackupTransfer } from './hooks/useBackupTransfer';
 import { useSquadDeltaUpdates } from './hooks/useSquadDeltaUpdates';
-import { clearAllChatHistory } from './services/chatStorage';
 import { PwaStatusBanners } from './components/PwaStatusBanners';
-import { computeCompetitiveSummary } from './utils/competitiveSummary';
-import { clearPersistedFmState, FmHubPersistedState } from './services/fmStorage';
-import { buildFinancesPanelFromSave } from './utils/clubFinances';
-import type {
-  ClubGovernanceState,
-  LastMatchTacticBlueprint,
-} from './types/fmSave';
+import { FmHubPersistedState } from './services/fmStorage';
 import type { DeepJourneyReport } from './services/saveCache';
-import type { CalibrationLabTab } from './components/Fm27BinaryCalibrationLab';
 import type { BackgroundSyncStatus } from './components/shell/backgroundSync';
 import { AppHeader } from './components/shell/AppHeader';
 import { AppMainContent } from './components/shell/AppMainContent';
@@ -39,15 +35,8 @@ import { AppOverlays } from './components/shell/AppOverlays';
 
 
 export default function App() {
-  const nav = useAppNavigation(
-    () =>
-      showMoreSheet ||
-      showCommandPalette ||
-      showKnowledgeBase ||
-      calibrationLabOpen ||
-      Boolean(selectedPlayer) ||
-      Boolean(selectedStaff)
-  );
+  const overlaysOpenRef = useRef(false);
+  const nav = useAppNavigation(() => overlaysOpenRef.current);
   const {
     activeTab,
     hubPanel,
@@ -60,6 +49,26 @@ export default function App() {
     openRecentView,
     scrollToTop,
   } = nav;
+  const {
+    showMoreSheet,
+    setShowMoreSheet,
+    showShareModal,
+    setShowShareModal,
+    showKnowledgeBase,
+    setShowKnowledgeBase,
+    showCommandPalette,
+    setShowCommandPalette,
+    calibrationLabOpen,
+    setCalibrationLabOpen,
+    calibrationLabTab,
+    openCalibrationLab,
+    selectedPlayer,
+    setSelectedPlayer,
+    selectedStaff,
+    setSelectedStaff,
+    anyOverlayOpen,
+  } = useOverlayState();
+  overlaysOpenRef.current = anyOverlayOpen;
   const campaignOwner = useCampaignState();
   const {
     campaign,
@@ -100,111 +109,20 @@ export default function App() {
     customSlots,
     applyToAnalystOnly,
   } = campaign;
-  const [pendingAnalystPrompt, setPendingAnalystPrompt] = useState<string | null>(
-    null
-  );
-  const [latestJourneyReport, setLatestJourneyReport] =
-    useState<DeepJourneyReport | null>(null);
   const [snapshotResetNonce, setSnapshotResetNonce] = useState<number>(0);
   const [isRestoredFromMemory, setIsRestoredFromMemory] =
     useState<boolean>(false);
-  const [confirmResetPending, setConfirmResetPending] =
-    useState<boolean>(false);
-  const [selectedPlayer, setSelectedPlayer] = useState<PlayerRecord | null>(
-    null
-  );
-  const [selectedStaff, setSelectedStaff] = useState<StaffRecord | null>(null);
-  const [showKnowledgeBase, setShowKnowledgeBase] = useState<boolean>(false);
-  const [showShareModal, setShowShareModal] = useState<boolean>(false);
   const { shareToken, sharedSummary, openOwnHub: handleOpenOwnHub } = useShareSummary();
-
-  const shareFinancesPanel = useMemo(
-    () =>
-      buildFinancesPanelFromSave({
-        hydratedSave: hydratedFmSave,
-        players,
-        staff,
-        balanceLabel: balance,
-        wageSpendLabel: wageSpend,
-      }),
-    [hydratedFmSave, players, staff, balance, wageSpend]
-  );
-
-  const [showCommandPalette, setShowCommandPalette] = useState<boolean>(false);
-  const [showMoreSheet, setShowMoreSheet] = useState<boolean>(false);
-  const [calibrationLabOpen, setCalibrationLabOpen] = useState<boolean>(false);
-  const [calibrationLabTab, setCalibrationLabTab] = useState<CalibrationLabTab>('roles');
   const [dictionaryVersion, setDictionaryVersion] = useState<number>(0);
   const [feedbackMessage, setFeedbackMessage] = useState<FeedbackMessage | null>(null);
   const { isKeyboardOpen } = useMobileKeyboard();
 
-  const handleOpenCalibrationLab = useCallback((tab: CalibrationLabTab = 'roles') => {
-    setCalibrationLabTab(tab);
-    setCalibrationLabOpen(true);
-  }, []);
+  const { liveGovernance, liveLastMatchTactic } = useLiveGovernance({
+    hydratedFmSave,
+    players,
+    dictionaryVersion,
+  });
 
-  const [derivedGovernance, setDerivedGovernance] =
-    useState<ClubGovernanceState | null>(null);
-  const [derivedLastMatchTactic, setDerivedLastMatchTactic] =
-    useState<LastMatchTacticBlueprint | null>(null);
-
-  // Immediately expose persisted governance & tactic on cold start, then
-  // refresh asynchronously via dynamic import when decodedPayload / dictionary changes.
-  useEffect(() => {
-    if (!hydratedFmSave?.decodedPayload) {
-      setDerivedGovernance(null);
-      setDerivedLastMatchTactic(null);
-      return;
-    }
-    let cancelled = false;
-    void Promise.all([
-      import('./utils/clubGovernanceAndTactics'),
-      import('./utils/fm27BinaryDictionary'),
-      import('./utils/fm27TacticRoleInference'),
-    ])
-      .then(
-        ([
-          { buildClubGovernanceState, buildLastMatchTacticBlueprint },
-          { loadFm27BinaryDictionary },
-          { loadTacticRoleOverrides },
-        ]) => {
-          if (cancelled || !hydratedFmSave.decodedPayload) return;
-          const dict = loadFm27BinaryDictionary();
-          setDerivedGovernance(
-            buildClubGovernanceState(
-              hydratedFmSave.decodedPayload,
-              players,
-              dict
-            )
-          );
-          setDerivedLastMatchTactic(
-            buildLastMatchTacticBlueprint(
-              hydratedFmSave.decodedPayload,
-              players,
-              0,
-              loadTacticRoleOverrides(),
-              dict
-            ) ??
-              hydratedFmSave.lastMatchTactic ??
-              null
-          );
-        }
-      )
-      .catch(() => {
-        // fallback cleanly to hydratedFmSave persisted governance/tactic
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [hydratedFmSave, players, dictionaryVersion]);
-
-  const liveGovernance = hydratedFmSave
-    ? derivedGovernance ?? hydratedFmSave.governance ?? null
-    : null;
-
-  const liveLastMatchTactic = hydratedFmSave
-    ? derivedLastMatchTactic ?? hydratedFmSave.lastMatchTactic ?? null
-    : null;
   const [backgroundSyncStatus, setBackgroundSyncStatus] =
     useState<BackgroundSyncStatus | null>(null);
   const [workspaceBusy, setWorkspaceBusy] = useState<boolean>(false);
@@ -215,13 +133,23 @@ export default function App() {
   const [showMobileDetails, setShowMobileDetails] = useState<boolean>(false);
   const backupFileInputRef = useRef<HTMLInputElement | null>(null);
   const quickFmFileInputRef = useRef<HTMLInputElement | null>(null);
-  const resetConfirmTimeoutRef = useRef<number | null>(null);
 
   const showGlobalToast = useCallback((msg: string) => {
     emitFeedback({ text: msg, tone: 'success' });
   }, []);
 
-  const { applyDecodedSave, preSyncBaselineRef, latestJourneyPromiseRef } = useFmSaveImport({
+  const journeyPromiseRef = useRef<Promise<DeepJourneyReport | null> | null>(null);
+  const {
+    pendingPrompt: pendingAnalystPrompt,
+    setPendingPrompt: setPendingAnalystPrompt,
+    clearPrompt: handleClearPendingPrompt,
+    latestJourneyReport,
+    setLatestJourneyReport,
+    getLatestJourneyReportAsync,
+    clearJourneyReport,
+  } = useAnalystHandoff({ latestJourneyPromiseRef: journeyPromiseRef });
+
+  const { applyDecodedSave, preSyncBaselineRef } = useFmSaveImport({
     players,
     matches,
     saveDate,
@@ -239,6 +167,7 @@ export default function App() {
     setLatestJourneyReport,
     setBackgroundSyncStatus,
     showGlobalToast,
+    journeyPromiseRef,
   });
 
   // Everything that reports progress posts to the feedback bus, so a toast can be
@@ -263,17 +192,6 @@ export default function App() {
   }, [pwa.launchedFmFile]);
 
 
-  useEffect(() => {
-    const onGlobalKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setShowCommandPalette((prev) => !prev);
-      }
-    };
-    window.addEventListener('keydown', onGlobalKeyDown);
-    return () => window.removeEventListener('keydown', onGlobalKeyDown);
-  }, []);
-
   const handleScrollToTop = scrollToTop;
   const handleOpenRecentView = openRecentView;
   const handleHubPanelChange = changeHubPanel;
@@ -286,24 +204,10 @@ export default function App() {
     selectTab(tab);
   };
 
-  // These three overlays do not use MobileSheetFrame, so App owns their Back entries.
-  useSheetHistory(showMoreSheet, () => setShowMoreSheet(false));
-  useSheetHistory(showKnowledgeBase, () => setShowKnowledgeBase(false));
-  useSheetHistory(calibrationLabOpen, () => setCalibrationLabOpen(false));
-
   const handleAskAnalystPrompt = (prompt: string) => {
     setPendingAnalystPrompt(prompt);
     handleSelectTab('sync');
   };
-
-  const handleClearPendingPrompt = useCallback(() => {
-    setPendingAnalystPrompt(null);
-  }, []);
-
-  const clubName =
-    hydratedFmSave?.decodedPayload?.meta?.clubName || 'FM27 Command Hub';
-  const managerName =
-    hydratedFmSave?.decodedPayload?.meta?.managerName || '--';
 
   const applyPersistedSnapshot = useCallback(
     (saved: FmHubPersistedState) => {
@@ -320,69 +224,38 @@ export default function App() {
     onPersisted: () => setIsRestoredFromMemory(true),
   });
 
-  const summary = useMemo(
-    () => computeCompetitiveSummary(matches, saveDate),
-    [matches, saveDate]
-  );
+  const {
+    summary,
+    playerBasicWeekly,
+    manualMatchCount,
+    hasManualMatches,
+    shareFinancesPanel,
+    clubName,
+    managerName,
+  } = useCampaignSummaries({
+    players,
+    matches,
+    staff,
+    saveDate,
+    balance,
+    wageSpend,
+    hydratedFmSave,
+  });
 
-  const playerBasicWeekly = useMemo(
-    () => players.reduce((sum, p) => sum + (p.wagePw || 0), 0),
-    [players]
-  );
-
-  // Chat-logged matches are not part of the .fm snapshot, so the live header must
-  // prefer the recomputed summary over the stale save labels once one is added.
-  const manualMatchCount = useMemo(
-    () => matches.filter((m) => m.source === 'CHAT').length,
-    [matches]
-  );
-  const hasManualMatches = manualMatchCount > 0;
-
-  const handleClearMemory = async () => {
-    if (!confirmResetPending) {
-      setConfirmResetPending(true);
-      if (resetConfirmTimeoutRef.current !== null) {
-        window.clearTimeout(resetConfirmTimeoutRef.current);
-      }
-      resetConfirmTimeoutRef.current = window.setTimeout(() => {
-        resetConfirmTimeoutRef.current = null;
-        setConfirmResetPending(false);
-      }, 5000);
-      return;
-    }
-
-    setConfirmResetPending(false);
-    if (resetConfirmTimeoutRef.current !== null) {
-      window.clearTimeout(resetConfirmTimeoutRef.current);
-      resetConfirmTimeoutRef.current = null;
-    }
-    // Block auto-save while the reset is applied, and stop an in-flight IndexedDB
-    // restore from writing cleared state back.
-    persistence.pauseAutosave();
-    persistence.cancelPendingRestore();
-    await clearPersistedFmState();
-    const [{ clearProgressionArchive }, { clearAllSaveCache }] =
-      await Promise.all([
-        import('./utils/progressionDiff'),
-        import('./services/saveCache'),
-      ]);
-    clearProgressionArchive();
-    clearAllChatHistory();
-    await clearAllSaveCache();
-    // A late auto-save IndexedDB write may land after the wipe; clear once more
-    await clearPersistedFmState();
-    clearCampaign();
-    latestJourneyPromiseRef.current = null;
-    setLatestJourneyReport(null);
-    setIsRestoredFromMemory(false);
-    setSelectedPlayer(null);
-    setSelectedStaff(null);
-    setSnapshotResetNonce((n) => n + 1);
-    showGlobalToast('All saved state, cached saves & snapshots cleared — ready to test fresh');
-    window.setTimeout(() => {
-      persistence.resumeAutosave();
-    }, 0);
-  };
+  const { confirmResetPending, requestClear } = useClearAllData({
+    pauseAutosave: persistence.pauseAutosave,
+    cancelPendingRestore: persistence.cancelPendingRestore,
+    resumeAutosave: persistence.resumeAutosave,
+    onCleared: () => {
+      clearCampaign();
+      clearJourneyReport();
+      setIsRestoredFromMemory(false);
+      setSelectedPlayer(null);
+      setSelectedStaff(null);
+    },
+    onResetNonce: () => setSnapshotResetNonce((nonce) => nonce + 1),
+    showToast: showGlobalToast,
+  });
 
   const { exportBackup, importBackup } = useBackupTransfer({
     snapshot: snapshotToPersist,
@@ -474,13 +347,6 @@ export default function App() {
   const handleBulkMergePlayers = bulkMergePlayers;
   const handleApplyPlayerUpdates = applyPlayerUpdates;
 
-  const getLatestJourneyReportAsync = async () => {
-    if (latestJourneyPromiseRef.current) {
-      return latestJourneyPromiseRef.current;
-    }
-    return latestJourneyReport;
-  };
-
   return (
     <CompareTrayProvider>
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col">
@@ -503,7 +369,7 @@ export default function App() {
         onOpenKnowledgeBase={() => setShowKnowledgeBase(true)}
         onOpenShare={() => setShowShareModal(true)}
         onExportBackup={handleExportBackup}
-        onResetMemory={handleClearMemory}
+        onResetMemory={requestClear}
       />
 
       {/* PWA Status Banners: Offline Notice, Safe Update Prompt, Android/iOS Install */}
@@ -592,7 +458,7 @@ export default function App() {
           onChangeApplyToAnalystOnly={setApplyToAnalystOnly}
           onSubTabChange={handleTacticsSubTabChange}
           onAskAnalystPrompt={handleAskAnalystPrompt}
-          onOpenCalibrationLab={handleOpenCalibrationLab}
+          onOpenCalibrationLab={openCalibrationLab}
           onToggleTrackTarget={handleToggleTrackTarget}
           onAddCase={handleAddRecruitmentCase}
           onUpdateCase={handleUpdateRecruitmentCase}
@@ -655,7 +521,7 @@ export default function App() {
         onScrollToTop={handleScrollToTop}
         onExportBackup={handleExportBackup}
         onRequestRestore={() => backupFileInputRef.current?.click()}
-        onClearMemory={handleClearMemory}
+        onClearMemory={requestClear}
         onOpenOwnHub={handleOpenOwnHub}
         onDismissToast={(id) =>
           setFeedbackMessage((prev) => (prev && prev.id === id ? null : prev))
