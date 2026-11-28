@@ -9,6 +9,7 @@ import {
 } from '../../utils/squadViewHelpers';
 import { renderColumnValue } from './squadBadges';
 import { CompareTrayToggle } from '../CompareTrayToggle';
+import { shouldActivateRowFromKey } from '../../utils/keyboardRowActivation';
 
 interface SquadDataTableProps {
   activePreset: SquadViewPreset;
@@ -100,6 +101,9 @@ export const SquadDataTable: React.FC<SquadDataTableProps> = ({
           className="overflow-x-auto"
         >
           <table className="w-full text-left border-collapse">
+            <caption className="sr-only">
+              Squad list. Press Enter on a player row to open the profile.
+            </caption>
             <thead>
               <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 text-micro font-semibold text-slate-500 dark:text-slate-400">
                 <th
@@ -160,7 +164,14 @@ export const SquadDataTable: React.FC<SquadDataTableProps> = ({
                   <tr
                     key={p.id}
                     onClick={() => onSelectPlayer?.(p)}
-                    className={`group hover:bg-slate-50 dark:hover:bg-slate-800/70 transition ${
+                    onKeyDown={(e) => {
+                      if (!shouldActivateRowFromKey(e)) return;
+                      e.preventDefault();
+                      onSelectPlayer?.(p);
+                    }}
+                    tabIndex={onSelectPlayer ? 0 : undefined}
+                    aria-haspopup={onSelectPlayer ? 'dialog' : undefined}
+                    className={`group hover:bg-slate-50 dark:hover:bg-slate-800/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-emerald-400 transition ${
                       onSelectPlayer ? 'cursor-pointer' : ''
                     }`}
                   >

@@ -50,6 +50,18 @@ The Hub's chat send button hides its "Send" text below 640px and had no `aria-la
 - `npx tsc --noEmit` clean, `npm run build` clean, `npm run ui:audit` PASS on all six tabs at 390px.
 - Phone 390×844 screenshots in the shipped theme: focus ring visible around the Sync .fm button; active view pill is emerald-500 with near-black text.
 
-## Not covered
+## Not covered by the first pass
 
-Screens that only appear with a loaded save — the player table rows, transfer cards, match cards — were not measured this session, since the browser had no save. Their colours come from the same tokens fixed here, but the specific combinations are unchecked. That belongs with R28, the device matrix, where a save can be loaded on a real phone.
+Screens that only appear with a loaded save — the player table rows, transfer cards, match cards — were not measured in the first pass, since the browser had no save. Their colours come from the same tokens fixed here, but the specific combinations were unchecked.
+
+## The save-dependent sweep
+
+The second pass loaded a real save and answered the gap. `npm run keyboard:audit` now walks every section, up to 80 Tab stops per section, and six views inside each section on desktop and on a phone. It found three things the first pass could not see, all fixed:
+
+- a clickable squad row with no focus stop, so the player profile could not be opened without a mouse;
+- a knowledge base drawer that was not a dialog at all: no focus move, no Tab trap, no Escape;
+- focus falling to `<body>` when the share or knowledge base sheet closed on a phone, because the button that opened it had been unmounted with the More sheet.
+
+The full list, the fixes and the reasoning for what was left alone are in `docs/accessibility.md`. The gate is 151 checks and runs in about four minutes with a save.
+
+The colours on those save-dependent rows came through the same tokens and did not need a change.

@@ -41,6 +41,9 @@ in `src/components/shell/`, so the shell component keeps state and routing.
 | `src/components/shell/ClubBaselineStrip.tsx` | The save receipt: date and file name, the club title, the four headline numbers, the verification card and the governance banner |
 | `src/components/shell/BackgroundSyncPill.tsx` | The "still reading your save" pill shown on the other tabs |
 | `src/components/shell/backgroundSync.ts` | The `BackgroundSyncStatus` shape shared by the header button and the pill |
+| `src/components/MobileSheetFrame.tsx` | The sheet layout: overlay, surface, sticky header, body and footer. It re-exports the trap helpers so existing imports keep working |
+| `src/hooks/useModalDialog.ts` | The keyboard contract every modal surface shares: body scroll lock, first focus, Tab trap, Escape, and focus back to the opener (or the section navigation if the opener is gone) |
+| `src/utils/focusTrap.ts` | The building blocks underneath it: the focusable query, the reference-counted scroll lock, the Tab wrap and the focus-return anchor |
 
 `src/components/MobileBottomNav.tsx` was already its own file and stays the
 owner of the phone tab bar; `MobileMoreSheet` owns the sheet behind it.
