@@ -30,6 +30,24 @@ So class names, roles, aria labels and heading text all take part. Nothing is
 selected by hand, which is the point: the comparison cannot miss a change by
 looking only at the fields someone remembered to list.
 
+## Comparing two builds on one server
+
+Serve both builds from the same server rather than a second port:
+
+```bash
+npm run build                                    # build A (with the change)
+npm run parity:snapshot -- --save=<save>.fm --out=/tmp/a.json
+git stash -u && npm run build && npm run parity:snapshot -- --save=<save>.fm --out=/tmp/b.json
+git stash pop && npm run build                   # leave the tree serving build A
+npm run parity:compare -- /tmp/b.json /tmp/a.json
+```
+
+A second worktree on a second port gave a false difference twice on 28 November
+2026: the worktree build rendered a mobile tab strip the same commit did not in
+the main checkout. The same-server recipe above reported identical on the first
+run. Use it, and treat a difference from a second port as unproven until the
+same-server comparison agrees.
+
 ## Proving the gate is worth having
 
 Two checks, both cheap:
