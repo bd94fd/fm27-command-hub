@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   BookOpen,
@@ -19,6 +19,8 @@ import {
 import { PlayerRecord } from '../types/fm27';
 import { rankSquadForFm27Role } from '../utils/fm27RoleMatcher';
 import { formatWeeklyWage } from '../utils/squadViewHelpers';
+import { useModalDialog } from '../hooks/useModalDialog';
+import { trapTabKey } from '../utils/focusTrap';
 
 interface KnowledgeBasePanelProps {
   isOpen: boolean;
@@ -56,6 +58,10 @@ export const KnowledgeBasePanel: React.FC<KnowledgeBasePanelProps> = ({
     'All' | KnowledgeCategory
   >('All');
   const [verifyInput, setVerifyInput] = useState('');
+
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
+  useModalDialog({ isOpen, onClose, surfaceRef, rootRef });
 
   // Dual-Phase Role Encyclopedia filters
   const [roleSearch, setRoleSearch] = useState('');
@@ -96,12 +102,19 @@ export const KnowledgeBasePanel: React.FC<KnowledgeBasePanelProps> = ({
 
   return (
     <div
+      ref={rootRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="FM27 verified knowledge base"
       className="fixed inset-0 z-50 flex items-center justify-end bg-slate-950/75 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
+        ref={surfaceRef}
+        tabIndex={-1}
         className="h-full w-full max-w-2xl overflow-y-auto border-l border-slate-800 bg-slate-900 shadow-2xl flex flex-col"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => trapTabKey(e, surfaceRef.current, document.activeElement)}
       >
         {/* Header */}
         <div className="sticky top-0 z-10 border-b border-slate-800 bg-slate-900/95 px-5 pt-4 pb-3 backdrop-blur space-y-3">

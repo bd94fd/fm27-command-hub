@@ -108,15 +108,32 @@ test('Clear Chat requires a confirmation step instead of wiping history immediat
 });
 
 test('MobileSheetFrame adds initial focus, a focus trap, and focus restore', () => {
-  const src = readSrc('src/components/MobileSheetFrame.tsx');
+  const frame = readSrc('src/components/MobileSheetFrame.tsx');
+  const dialog = readSrc('src/hooks/useModalDialog.ts');
+  const trap = readSrc('src/utils/focusTrap.ts');
 
-  assert.match(src, /FOCUSABLE_SELECTOR/);
-  assert.match(src, /getFocusableElements/);
-  assert.match(src, /focusInitial/);
-  assert.match(src, /previouslyFocused\.focus\(\)/);
-  assert.match(src, /handleSurfaceKeyDown/);
+  assert.match(trap, /FOCUSABLE_SELECTOR/);
+  assert.match(trap, /getFocusableElements/);
+  assert.match(frame, /useModalDialog\(/);
+  assert.match(frame, /handleSurfaceKeyDown/);
+  assert.match(frame, /tabIndex=\{-1\}/);
+  assert.match(dialog, /focusInitial/);
+  assert.match(dialog, /previouslyFocused/);
+  // A recorded opener that has since unmounted must not strand focus on <body>.
+  assert.match(dialog, /findFocusAnchor\(\)/);
+  assert.match(dialog, /returnTarget\?\.focus\?\.\(\)/);
+  assert.match(dialog, /acquireBodyScrollLock\(\)/);
+});
+
+test('the knowledge base drawer carries the same dialog contract as the sheets', () => {
+  const src = readSrc('src/components/KnowledgeBasePanel.tsx');
+
+  assert.match(src, /role="dialog"/);
+  assert.match(src, /aria-modal="true"/);
+  assert.match(src, /aria-label="FM27 verified knowledge base"/);
+  assert.match(src, /useModalDialog\(\{ isOpen, onClose, surfaceRef, rootRef \}\)/);
   assert.match(src, /tabIndex=\{-1\}/);
-  assert.match(src, /acquireBodyScrollLock\(\)/);
+  assert.match(src, /trapTabKey\(/);
 });
 
 test('muted informational labels were bumped off text-slate-500', () => {

@@ -3,67 +3,21 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useRef } from 'react';
 import { X } from 'lucide-react';
 import { useSheetHistory } from '../hooks/useHistoryNavigation';
+import { useModalDialog } from '../hooks/useModalDialog';
+import { trapTabKey } from '../utils/focusTrap';
 
-/**
- * Focusable descendants used by the sheet's focus trap. Disabled controls and
- * `tabindex="-1"` elements are excluded so Tab never parks on an unfocusable node.
- */
-export const FOCUSABLE_SELECTOR =
-  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-type FocusableContainer = Pick<HTMLElement, 'querySelectorAll'>;
-
-export function getFocusableElements(
-  container: FocusableContainer
-): HTMLElement[] {
-  return Array.from(
-    container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
-  ).filter((el) => {
-    if (el.tabIndex < 0) return false;
-    // A control that is not rendered cannot take focus, and calling focus() on
-    // it silently leaves focus on the page behind the sheet.
-    if (typeof el.getClientRects === 'function' && el.getClientRects().length === 0) {
-      return false;
-    }
-    if (typeof el.closest === 'function' && el.closest('[aria-hidden="true"]')) {
-      return false;
-    }
-    return true;
-  });
-}
-
-// Reference-counted body scroll lock so stacked or rapid-swap modals never leave body frozen.
-let activeScrollLockCount = 0;
-let savedBodyOverflow: string | null = null;
-
-export function acquireBodyScrollLock(doc: Pick<Document, 'body'> | null = typeof document !== 'undefined' ? document : null): void {
-  if (!doc?.body) return;
-  if (activeScrollLockCount === 0) {
-    savedBodyOverflow = doc.body.style.overflow;
-    doc.body.style.overflow = 'hidden';
-  }
-  activeScrollLockCount += 1;
-}
-
-export function releaseBodyScrollLock(doc: Pick<Document, 'body'> | null = typeof document !== 'undefined' ? document : null): void {
-  if (activeScrollLockCount <= 0) {
-    activeScrollLockCount = 0;
-    return;
-  }
-  activeScrollLockCount -= 1;
-  if (activeScrollLockCount === 0 && doc?.body) {
-    doc.body.style.overflow = savedBodyOverflow ?? '';
-    savedBodyOverflow = null;
-  }
-}
-
-export function resetBodyScrollLockForTests(): void {
-  activeScrollLockCount = 0;
-  savedBodyOverflow = null;
-}
+// The trap, scroll lock and focus contract live in shared modules so the
+// knowledge base drawer can use the same behaviour without the sheet layout.
+export {
+  FOCUSABLE_SELECTOR,
+  getFocusableElements,
+  acquireBodyScrollLock,
+  releaseBodyScrollLock,
+  resetBodyScrollLockForTests,
+} from '../utils/focusTrap';
 
 export interface MobileSheetFrameClassOptions {
   maxWidthClass?: string;
@@ -136,89 +90,7 @@ export const MobileSheetFrame: React.FC<MobileSheetFrameProps> = ({
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   useSheetHistory(isOpen, onClose);
-  // Latest callbacks in refs so a parent re-render cannot re-run the focus/scroll effect
-  // and steal focus back to the first control mid-interaction.
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-  const disableEscapeRef = useRef(disableWindowEscape);
-  disableEscapeRef.current = disableWindowEscape;
-
-  useEffect(() => {
-    if (!isOpen) return;
-    acquireBodyScrollLock();
-
-    const previouslyFocused =
-      typeof document !== 'undefined'
-        ? (document.activeElement as HTMLElement | null)
-        : null;
-
-    const focusInitial = () => {
-      const surface = surfaceRef.current;
-      if (!surface) return;
-      const focusable = getFocusableElements(surface);
-      (focusable[0] ?? surface).focus();
-    };
-    // Focus synchronously: rAF never fires while the page is hidden or
-    // occluded (background tab, headless run), which would leave focus on the
-    // page behind the sheet. The rAF pass only covers late-mounting content.
-    focusInitial();
-    const raf =
-      typeof requestAnimationFrame === 'function'
-        ? requestAnimationFrame(() => {
-            const surface = surfaceRef.current;
-            if (surface && !surface.contains(document.activeElement)) focusInitial();
-          })
-        : null;
-
-    const handleWindowKeyDown = (e: KeyboardEvent) => {
-      if (!disableEscapeRef.current && e.key === 'Escape') {
-        e.preventDefault();
-        onCloseRef.current();
-      }
-    };
-    // While the sheet is modal, anything outside it that grabs focus is pulled
-    // back. This also covers late-mounting content and re-renders that would
-    // otherwise leave focus on the page behind (WCAG 2.4.3).
-    const onFocusIn = (event: FocusEvent) => {
-      const root = rootRef.current;
-      const target = event.target as Node | null;
-      if (!root || !target || target === document.body) return;
-      if (!root.contains(target)) focusInitial();
-    };
-
-    // A re-render can swap out the focused node, which drops focus to <body>
-    // without firing focusin; watch for that and pull focus back too.
-    const onFocusOut = (event: FocusEvent) => {
-      const root = rootRef.current;
-      if (!root) return;
-      const next = event.relatedTarget as Node | null;
-      if (next && root.contains(next)) return;
-      setTimeout(() => {
-        const surface = surfaceRef.current;
-        if (surface && !surface.contains(document.activeElement)) focusInitial();
-      }, 0);
-    };
-
-    window.addEventListener('keydown', handleWindowKeyDown);
-    document.addEventListener('focusin', onFocusIn, true);
-    document.addEventListener('focusout', onFocusOut, true);
-    return () => {
-      if (raf !== null && typeof cancelAnimationFrame === 'function') {
-        cancelAnimationFrame(raf);
-      }
-      releaseBodyScrollLock();
-      window.removeEventListener('keydown', handleWindowKeyDown);
-      document.removeEventListener('focusin', onFocusIn, true);
-      document.removeEventListener('focusout', onFocusOut, true);
-      if (
-        previouslyFocused &&
-        typeof previouslyFocused.focus === 'function' &&
-        (typeof document === 'undefined' || document.contains(previouslyFocused))
-      ) {
-        previouslyFocused.focus();
-      }
-    };
-  }, [isOpen]);
+  useModalDialog({ isOpen, onClose, surfaceRef, rootRef, disableEscape: disableWindowEscape });
 
   if (!isOpen) return null;
 
@@ -229,25 +101,7 @@ export const MobileSheetFrame: React.FC<MobileSheetFrameProps> = ({
     });
 
   const handleSurfaceKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Tab' && surfaceRef.current) {
-      const surface = surfaceRef.current;
-      const focusable = getFocusableElements(surface);
-      if (focusable.length === 0) {
-        e.preventDefault();
-        surface.focus();
-      } else {
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        const active = document.activeElement as HTMLElement | null;
-        if (e.shiftKey && (active === first || active === surface)) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && active === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
-    }
+    trapTabKey(e, surfaceRef.current, document.activeElement);
     onKeyDown?.(e);
   };
 
