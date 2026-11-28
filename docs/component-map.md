@@ -103,6 +103,7 @@ row in `docs/data-parity-contract-map.md`.
 | `src/utils/hydrateFinances.ts` | — | 102 (canonical balance, wage summary, financial runway) |
 | `src/utils/hydrateExecutiveLabels.ts` | — | 149 (executive strip: save date, next fixture, league record and standing, squad output, tactic headline) |
 | `src/utils/saveJourneyReport.ts` | — | 942 (snapshot diff, journey findings, timeline and the AI payload) |
+| `src/services/saveCacheDb.ts` | — | 297 (the IndexedDB open, the write transaction, quota eviction and the payload read and write) |
 | `src/utils/playerDetailFormat.ts` | — | 52 |
 | `src/utils/campaignState.ts` | — | 157 (the campaign shape, the opening and cleared states, the stored-snapshot and backup rules, and the persisted snapshot) |
 | `src/hooks/useCampaignState.ts` | — | 189 (the campaign state owner) |
@@ -120,7 +121,7 @@ row in `docs/data-parity-contract-map.md`.
 | `src/components/AutoSyncWorkspace.tsx` | 2,655 | The analyst workspace: the chat turn loop, the browse views per tab and the panel wiring | Split the file-ingest pipeline and the chat-turn runner out of it |
 | `src/components/PlayerDetailModal.tsx` | 608 | The sheet chrome, the derived model, the tab bar and the shortlist action | Nothing left to split; the five panels and the PNG export are out |
 | `src/utils/fmSaveHydrator.ts` | 634 | Decoder output to UI records: availability, squad merge, match log, labels, staff, finances, governance and the payload it hands on | Nothing left to split; the hydrator now delegates every build to its own module |
-| `src/services/saveCache.ts` | 917 | IndexedDB payload caches and snapshot history; the journey report now lives in `src/utils/saveJourneyReport.ts` | Split the payload caches from snapshot history |
+| `src/services/saveCache.ts` | 648 | The public cache API: keys, the compact history point, snapshot history, stats and the clear-all; the IndexedDB plumbing is out, and the journey report lives in `src/utils/saveJourneyReport.ts` | Nothing left to split; the payload storage and its eviction now sit in `src/services/saveCacheDb.ts` |
 
 `src/App.tsx` changes most often after the workspace, so it was the next target.
 Ten passes have taken the chrome, the section routing, the save persistence, the
