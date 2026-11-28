@@ -8,15 +8,19 @@ const readSrc = (relPath: string) => fs.readFileSync(path.join(ROOT, relPath), '
 
 test('MobileSheetFrame and App both register history layers', () => {
   const frame = readSrc('src/components/MobileSheetFrame.tsx');
+  const overlays = readSrc('src/hooks/useOverlayState.ts');
   const app = readSrc('src/App.tsx');
   const nav = readSrc('src/hooks/useAppNavigation.ts');
   const hook = readSrc('src/hooks/useHistoryNavigation.ts');
 
   assert.match(frame, /useSheetHistory\(isOpen, onClose\)/);
   assert.match(nav, /useSectionHistory\(navSection/);
-  assert.match(app, /useSheetHistory\(showMoreSheet/);
-  assert.match(app, /useSheetHistory\(showKnowledgeBase/);
-  assert.match(app, /useSheetHistory\(calibrationLabOpen/);
+  // The overlays that are not sheet-frame based keep their Back entries in the
+  // overlay hook, which the shell calls.
+  assert.match(overlays, /useSheetHistory\(showMoreSheet/);
+  assert.match(overlays, /useSheetHistory\(showKnowledgeBase/);
+  assert.match(overlays, /useSheetHistory\(calibrationLabOpen/);
+  assert.match(app, /useOverlayState\(\)/);
   assert.match(hook, /addEventListener\('popstate'/);
   assert.match(hook, /history\.pushState/);
   assert.match(hook, /history\.back\(\)/);

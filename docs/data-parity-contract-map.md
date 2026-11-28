@@ -158,7 +158,7 @@ The hydrated state reaches the UI through one owner: `useCampaignState` holds th
 | `formatAge` | `src/components/PlayerDetailModal.tsx` | `src/utils/tacticalAnalystContext.ts` |
 | `hasPlayerMatchStats` | `src/utils/squadViewHelpers.ts` (shared row builder) | `src/utils/tacticalAnalystContext.ts` |
 | `describeSquadPool` | `src/components/AutoSyncWorkspace.tsx` | `src/utils/tacticalAnalystContext.ts` |
-| `computeCompetitiveSummary` | `src/App.tsx` | `src/utils/tacticalAnalystContext.ts` |
+| `computeCompetitiveSummary` | `src/hooks/useCampaignSummaries.ts` | `src/utils/tacticalAnalystContext.ts` |
 | `classifyMatchEntryBucket` | `src/components/MatchLogArchive.tsx` | `src/utils/tacticalAnalystContext.ts` |
 | `analyzePlayerCard` | `src/components/PlayerDetailModal.tsx` | `src/utils/tacticalAnalystContext.ts` |
 | `rankRolesForPlayer` / `RankedRoleFit` weights | `src/components/PlayerDetailModal.tsx` | `src/utils/tacticalAnalystContext.ts` squad BF% from the same `bestIpRole` |
@@ -166,7 +166,7 @@ The hydrated state reaches the UI through one owner: `useCampaignState` holds th
 | `buildSquadTransferAudit` | `src/components/RecruitmentWorkspace.tsx` | `src/utils/tacticalAnalystContext.ts` |
 | `buildDynamicSetPieceRoutines` | `src/components/SetPiecesAndTraining.tsx` | `src/utils/tacticalAnalystContext.ts` |
 | `buildLastMatchTacticBlueprint` | `src/components/LastMatchTacticBlueprintCard.tsx` | `src/utils/tacticalAnalystContext.ts` |
-| `buildClubGovernanceState` | `src/App.tsx` | `src/utils/tacticalAnalystContext.ts` |
+| `buildClubGovernanceState` | `src/hooks/useLiveGovernance.ts` | `src/utils/tacticalAnalystContext.ts` |
 | `resolveSquadPlannerSlotMeta` | `src/components/charts/SquadScatterAndPlannerCharts.tsx` | `src/utils/tacticalAnalystContext.ts` |
 | `normalizeJobVacancy` | `src/components/StaffDirectory.tsx` | `src/utils/tacticalAnalystContext.ts` |
 | `isStaffContractExpiringSoon` | `src/components/StaffDirectory.tsx` | `src/utils/tacticalAnalystContext.ts` |

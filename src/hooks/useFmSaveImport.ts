@@ -40,6 +40,11 @@ export interface FmSaveImportDeps {
   setLatestJourneyReport: (report: DeepJourneyReport | null) => void;
   setBackgroundSyncStatus: (status: BackgroundSyncStatus | null) => void;
   showGlobalToast: (message: string) => void;
+  /**
+   * Supplied by the shell when another hook also needs to wait for the pending
+   * Journey report; otherwise the hook owns the ref itself.
+   */
+  journeyPromiseRef?: MutableRefObject<Promise<DeepJourneyReport | null> | null>;
 }
 
 export interface FmSaveImport {
@@ -67,7 +72,8 @@ export function useFmSaveImport(deps: FmSaveImportDeps): FmSaveImport {
   depsRef.current = deps;
 
   const preSyncBaselineRef = useRef<PreSyncBaseline | null>(null);
-  const latestJourneyPromiseRef = useRef<Promise<DeepJourneyReport | null> | null>(null);
+  const ownJourneyPromiseRef = useRef<Promise<DeepJourneyReport | null> | null>(null);
+  const latestJourneyPromiseRef = deps.journeyPromiseRef ?? ownJourneyPromiseRef;
 
   const applyDecodedSave = async (
     decoded: DecodedFmSavePayload,
